@@ -38,10 +38,9 @@ export function useAISuggestions(threadId: string | null) {
   const { data, error, isLoading, mutate } = useFrappeGetCall<{
     message?: AISuggestionsData;
   }>(
-    threadId
-      ? "excom.excom.api.chat.get_ai_suggestions"
-      : (null as unknown as string),
+    threadId ? "excom.excom.api.chat.get_ai_suggestions" : "",
     threadId ? { thread_id: threadId } : undefined,
+    threadId ? undefined : null,
   );
 
   const suggestions: AISuggestionsData = data?.message ?? {

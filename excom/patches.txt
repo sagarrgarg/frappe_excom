@@ -17,3 +17,5 @@ excom.patches.v1_0.add_spam_status_and_identity_flag
 excom.patches.v1_0.add_email_signature_doctype
 excom.patches.v1_0.merge_email_threads_by_identity
 excom.patches.v1_0.migrate_email_tokens_to_account
+
+excom.patches.v1_0.seed_voice_channel

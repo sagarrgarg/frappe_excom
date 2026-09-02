@@ -1,3 +1,5 @@
+import { ActiveCallWidget } from "./components/ActiveCallWidget";
+import { IncomingCallScreenPop } from "./components/IncomingCallScreenPop";
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { FrappeProvider } from "frappe-react-sdk";
 import { Toaster } from "sonner";
@@ -48,10 +50,49 @@ const getSocketPort = (): string | undefined => {
   const fromBoot = (window as any).frappe?.boot?.socketio_port;
   if (fromBoot != null) return String(fromBoot);
 
-  return undefined;
+  return window.location.port ? window.location.port : "8000";
 };
 
 function ExcomDashboard() {
+  const [activeCall, setActiveCall] = useState<any>(null);
+  const [incomingCall, setIncomingCall] = useState<any>(null);
+
+  useEffect(() => {
+    const handleIncomingCall = (data: any) => {
+      console.log("[Excom SPA] Incoming Call Event Received:", data);
+      setIncomingCall(data);
+    };
+    const handleCallStatusUpdate = (data: any) => {
+      console.log("[Excom SPA] Call Status Update Received:", data);
+      if (data.status === "Ringing" || data.status === "In-progress") {
+        setActiveCall((prev: any) => ({ ...(prev || {}), ...data }));
+      } else {
+        setActiveCall(null);
+        setIncomingCall(null);
+      }
+    };
+
+    let attached = false;
+    const attachRealtime = () => {
+      if ((window as any).frappe?.realtime && !attached) {
+        (window as any).frappe.realtime.on("excom_incoming_call", handleIncomingCall);
+        (window as any).frappe.realtime.on("excom_call_status_update", handleCallStatusUpdate);
+        attached = true;
+      }
+    };
+
+    attachRealtime();
+    const intervalId = setInterval(attachRealtime, 1500);
+
+    return () => {
+      clearInterval(intervalId);
+      if ((window as any).frappe?.realtime && attached) {
+        (window as any).frappe.realtime.off?.("excom_incoming_call", handleIncomingCall);
+        (window as any).frappe.realtime.off?.("excom_call_status_update", handleCallStatusUpdate);
+      }
+    };
+  }, []);
+
   const [currentPage, setCurrentPage] = useState<AppPage>("inbox");
   const [selectedChannel, setSelectedChannel] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -397,6 +438,25 @@ function ExcomDashboard() {
           </div>
         </div>
       )}
+
+            <ActiveCallWidget
+        call={activeCall}
+        onHangup={(callId) => {
+          (window as any).frappe?.call?.({
+            method: "excom.excom.api.voice.hangup_call",
+            args: { call_id: callId }
+          });
+          setActiveCall(null);
+        }}
+      />
+      <IncomingCallScreenPop
+        call={incomingCall}
+        onDismiss={() => setIncomingCall(null)}
+        onAccept={(call) => {
+          setIncomingCall(null);
+          setActiveCall({ ...call, status: "In-progress" });
+        }}
+      />
 
       {showNewConversation && (
         <NewConversationDialog

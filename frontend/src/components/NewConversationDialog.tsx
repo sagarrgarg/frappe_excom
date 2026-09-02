@@ -45,7 +45,7 @@ export function NewConversationDialog({
   onConversationCreated,
 }: NewConversationDialogProps) {
   const [tab, setTab] = useState<TabMode>("search");
-  const [channel, setChannel] = useState<"whatsapp" | "email">("whatsapp");
+  const [channel, setChannel] = useState<"whatsapp" | "email" | "voice">("whatsapp");
 
   const [searchText, setSearchText] = useState("");
   const [identities, setIdentities] = useState<IdentityResult[]>([]);
@@ -136,9 +136,9 @@ export function NewConversationDialog({
         payload.omni_identity = selectedIdentity.name;
       } else if (tab === "create") {
         payload.display_name = newName.trim();
-        if (channel === "whatsapp") {
+        if (channel === "whatsapp" || channel === "voice") {
           if (!newPhone.trim()) {
-            toast.error("Phone number is required for WhatsApp");
+            toast.error("Phone number is required");
             setSubmitting(false);
             return;
           }
@@ -161,6 +161,20 @@ export function NewConversationDialog({
       const data = (res as any)?.message;
       if (data?.thread_id) {
         toast.success("Conversation started");
+        if (channel === "voice") {
+          const targetPhone = selectedIdentity?.primary_phone || newPhone.trim();
+          if (targetPhone) {
+            try {
+              await (window as any).frappe?.call?.({
+                method: "excom.excom.api.voice.initiate_call",
+                args: { to_number: targetPhone, account_name: selectedAccount, thread_id: data.thread_id }
+              });
+              toast.success("Call initiated to " + targetPhone);
+            } catch (err: any) {
+              console.error("Outbound call error:", err);
+            }
+          }
+        }
         onConversationCreated(data.thread_id, data.omni_identity);
       } else {
         toast.error("Unexpected response");
@@ -188,7 +202,7 @@ export function NewConversationDialog({
     selectedAccount &&
     ((tab === "search" && selectedIdentity) ||
       (tab === "create" &&
-        ((channel === "whatsapp" && newPhone.trim()) ||
+        (((channel === "whatsapp" || channel === "voice") && newPhone.trim()) ||
           (channel === "email" && newEmail.trim()))));
 
   const getAccountLabel = (acc: ChannelAccount): string => {
@@ -248,6 +262,17 @@ export function NewConversationDialog({
               >
                 <Mail className="w-4 h-4" />
                 Email
+              </button>
+              <button
+                onClick={() => setChannel("voice")}
+                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
+                  channel === "voice"
+                    ? "bg-emerald-500/15 text-emerald-700 border-emerald-500/40"
+                    : "bg-zinc-100 text-zinc-600 border-zinc-300 hover:text-zinc-700"
+                }`}
+              >
+                <Phone className="w-4 h-4" />
+                Call
               </button>
             </div>
           </div>

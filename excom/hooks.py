@@ -26,7 +26,7 @@ website_route_rules = [
 # Includes in <head>
 # ------------------
 
-app_include_js = "/assets/excom/js/excom_navbar.js"
+app_include_js = ["/assets/excom/js/excom_navbar.js", "/assets/excom/js/excom_voice_desk.js"]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/excom/css/excom.css"
@@ -185,6 +185,7 @@ scheduler_events = {
 		"excom.excom.channels.email.inbound.poll_all_email_accounts",
 		"excom.excom.services.broadcast_schedule.process_due_scheduled_broadcasts",
 		"excom.excom.services.delivery_watchdog.check_stale_messages",
+		"excom.excom.channels.voice.reconcile.reconcile_pending_calls",
 	],
 	"hourly": [
 		"excom.excom.utils.trigger_whatsapp_notifications_hourly",

@@ -48,6 +48,7 @@ def upsert_thread(omni_identity: str, channel: str, account: str) -> str:
             "unread_count": 0,
             "last_message_at": frappe.utils.now_datetime(),
         })
+        frappe.flags.ignore_permissions = True
         doc.insert(ignore_permissions=True)
         return doc.name
     except (frappe.DuplicateEntryError, frappe.UniqueValidationError):

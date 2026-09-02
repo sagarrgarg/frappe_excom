@@ -10,6 +10,13 @@ import frappe
 
 CHANNELS = [
 	{
+		"name": "voice",
+		"channel_label": "Calls",
+		"allows_multiple_accounts": 1,
+		"is_enabled": 1,
+		"description": "Voice Telephony channel (Calls) with dynamic routing and recording.",
+	},
+	{
 		"name": "whatsapp",
 		"channel_label": "WhatsApp",
 		"allows_multiple_accounts": 1,

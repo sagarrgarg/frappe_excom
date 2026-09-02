@@ -32,12 +32,13 @@
   "column_break_rel",
   "reference_doctype",
   "reference_name",
-    "is_internal",
-    "pinning_section",
-    "is_pinned",
-    "pinned_by",
-    "reactions_section",
-    "reactions"
+  "excom_call",
+  "is_internal",
+  "pinning_section",
+  "is_pinned",
+  "pinned_by",
+  "reactions_section",
+  "reactions"
  ],
  "fields": [
   {
@@ -74,7 +75,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Type",
-   "options": "Text\nImage\nVideo\nAudio\nDocument\nSticker\nLocation\nInteractive\nTemplate\nFlow\nReaction\nContact\nButton\nEmail",
+   "options": "Text\nImage\nVideo\nAudio\nDocument\nSticker\nLocation\nInteractive\nTemplate\nFlow\nReaction\nContact\nButton\nEmail\nCall",
    "reqd": 1
   },
   {
@@ -236,6 +237,12 @@
    "fieldname": "reactions",
    "fieldtype": "JSON",
    "label": "Reactions"
+  },
+  {
+   "fieldname": "excom_call",
+   "fieldtype": "Link",
+   "label": "Excom Call",
+   "options": "Excom Call"
   }
  ],
  "index_web_pages_for_search": 1,

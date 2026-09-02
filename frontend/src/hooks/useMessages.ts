@@ -11,8 +11,9 @@ export function useMessages(threadId: string) {
   const { data, error, isLoading, mutate } = useFrappeGetCall<{
     message: { messages: ExcomMessage[]; auto_claimed_by: string | null };
   }>(
-    threadId ? "excom.excom.api.chat.get_messages" : (null as unknown as string),
-    threadId ? { thread_id: threadId, limit: 100 } : undefined
+    threadId ? "excom.excom.api.chat.get_messages" : "",
+    threadId ? { thread_id: threadId, limit: 100 } : undefined,
+    threadId ? undefined : null
   );
 
   const payload = data?.message;

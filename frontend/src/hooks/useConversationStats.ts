@@ -17,10 +17,9 @@ export function useConversationStats(omniIdentity: string | null) {
   const { data, error, isLoading, mutate } = useFrappeGetCall<{
     message?: ConversationStats;
   }>(
-    omniIdentity
-      ? "excom.excom.api.chat.get_conversation_stats"
-      : (null as unknown as string),
-    omniIdentity ? { omni_identity: omniIdentity } : undefined
+    omniIdentity ? "excom.excom.api.chat.get_conversation_stats" : "",
+    omniIdentity ? { omni_identity: omniIdentity } : undefined,
+    omniIdentity ? undefined : null
   );
 
   const stats: ConversationStats = data?.message ?? {

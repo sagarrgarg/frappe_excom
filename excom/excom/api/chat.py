@@ -1344,14 +1344,14 @@ def initiate_outbound(
     if not channel:
         frappe.throw(_("Channel is required"))
 
-    if channel not in ("whatsapp", "email"):
-        frappe.throw(_("Channel must be 'whatsapp' or 'email'"))
+    if channel not in ("whatsapp", "email", "voice"):
+        frappe.throw(_("Channel must be 'whatsapp', 'email', or 'voice'"))
 
     if not omni_identity and not phone and not email:
         frappe.throw(_("Provide an existing identity or at least a phone/email"))
 
-    if channel == "whatsapp" and not phone and not omni_identity:
-        frappe.throw(_("Phone number is required for WhatsApp conversations"))
+    if channel in ("whatsapp", "voice") and not phone and not omni_identity:
+        frappe.throw(_("Phone number is required for {0} conversations").format(channel))
 
     if channel == "email" and not email and not omni_identity:
         frappe.throw(_("Email is required for email conversations"))

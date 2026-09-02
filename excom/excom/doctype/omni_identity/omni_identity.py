@@ -348,6 +348,7 @@ def resolve_identity(phone: str = "", email: str = "", channel: str = "", channe
 		doc.needs_review = 1
 		doc.potential_duplicate_of = suspected_duplicate
 
+	frappe.flags.ignore_permissions = True
 	doc.insert(ignore_permissions=True)
 	frappe.db.commit()
 

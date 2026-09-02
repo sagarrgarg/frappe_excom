@@ -15,8 +15,9 @@ export function useLinkedEntities(omniIdentity: string | null) {
   const { data, error, isLoading, mutate } = useFrappeGetCall<{
     message?: LinkedEntity[];
   }>(
-    omniIdentity ? "excom.excom.api.chat.get_linked_entities" : (null as unknown as string),
-    omniIdentity ? { omni_identity: omniIdentity } : undefined
+    omniIdentity ? "excom.excom.api.chat.get_linked_entities" : "",
+    omniIdentity ? { omni_identity: omniIdentity } : undefined,
+    omniIdentity ? undefined : null
   );
 
   const linkedEntities = data?.message ?? [];

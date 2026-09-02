@@ -44,7 +44,7 @@ export function useRelatedDocuments(omniIdentity: string | null) {
   }>(
     omniIdentity
       ? "excom.excom.api.chat.get_related_documents"
-      : (null as unknown as string),
+      : null,
     omniIdentity ? { omni_identity: omniIdentity } : undefined,
   );
 

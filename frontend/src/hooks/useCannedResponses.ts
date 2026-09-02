@@ -19,7 +19,7 @@ export function useCannedResponses(search: string | null, channel?: string) {
   }>(
     search !== null
       ? "excom.excom.api.chat.get_canned_responses"
-      : (null as unknown as string),
+      : null,
     search !== null
       ? { search: search || "", channel: channel || "" }
       : undefined,

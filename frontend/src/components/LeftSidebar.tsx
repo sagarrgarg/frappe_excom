@@ -60,7 +60,7 @@ const CHANNEL_CHIPS: { key: string; label: string; icon: ReactNode }[] = [
   { key: "whatsapp", label: "WA", icon: <MessageCircle className="w-3.5 h-3.5" /> },
   { key: "email", label: "Email", icon: <Mail className="w-3.5 h-3.5" /> },
   { key: "instagram", label: "IG", icon: <Instagram className="w-3.5 h-3.5" /> },
-  { key: "calls", label: "Calls", icon: <Phone className="w-3.5 h-3.5" /> },
+  { key: "voice", label: "Calls", icon: <Phone className="w-3.5 h-3.5" /> },
 ];
 
 const CHANNEL_DISPLAY: Record<string, string> = {
@@ -68,6 +68,7 @@ const CHANNEL_DISPLAY: Record<string, string> = {
   email: "Email",
   instagram: "Instagram",
   calls: "Calls",
+  voice: "Calls",
 };
 
 export function LeftSidebar({

@@ -12,7 +12,6 @@
   "column_break_gen",
   "is_default_incoming",
   "is_default_outgoing",
-
   "whatsapp_section",
   "wa_token",
   "wa_url",
@@ -24,7 +23,6 @@
   "wa_webhook_verify_token",
   "wa_app_secret",
   "wa_allow_auto_read_receipt",
-
   "email_section",
   "email_address",
   "email_connected_app",
@@ -42,7 +40,6 @@
   "column_break_email_sync",
   "email_label_filter",
   "email_poll_interval_minutes",
-
   "webchat_section",
   "webchat_widget_title",
   "webchat_welcome_message",
@@ -51,7 +48,18 @@
   "webchat_color",
   "webchat_position",
   "webchat_prechat_fields",
-
+  "voice_section",
+  "voice_provider",
+  "voice_account_sid",
+  "voice_api_base",
+  "voice_api_key",
+  "column_break_voice",
+  "voice_api_secret",
+  "voice_phone_number",
+  "voice_webhook_token",
+  "voice_record_calls",
+  "voice_recording_channels",
+  "voice_intl_policy",
   "visibility_section",
   "allowed_teams"
  ],
@@ -104,7 +112,6 @@
    "fieldtype": "Check",
    "label": "Default Outgoing"
   },
-
   {
    "depends_on": "eval:doc.channel=='whatsapp'",
    "fieldname": "whatsapp_section",
@@ -374,6 +381,86 @@
    "label": "Allowed Teams",
    "options": "Excom Account Team",
    "description": "If empty, all teams can see this account. Otherwise only the listed teams (and their sub-teams) can use it for new conversations and broadcasts."
+  },
+  {
+   "fieldtype": "Section Break",
+   "label": "Voice & Telephony Configuration",
+   "fieldname": "voice_section",
+   "depends_on": "eval:doc.channel=='voice'"
+  },
+  {
+   "default": "Exotel",
+   "depends_on": "eval:doc.channel=='voice'",
+   "label": "Voice Provider",
+   "fieldtype": "Select",
+   "options": "Exotel\nAirtel IQ",
+   "fieldname": "voice_provider"
+  },
+  {
+   "fieldtype": "Data",
+   "label": "Account SID / Customer ID",
+   "fieldname": "voice_account_sid",
+   "depends_on": "eval:doc.channel=='voice'"
+  },
+  {
+   "fieldtype": "Data",
+   "label": "API Base / Cluster",
+   "default": "api.in.exotel.com",
+   "fieldname": "voice_api_base",
+   "depends_on": "eval:doc.channel=='voice'"
+  },
+  {
+   "fieldtype": "Data",
+   "label": "API Key",
+   "fieldname": "voice_api_key",
+   "depends_on": "eval:doc.channel=='voice'"
+  },
+  {
+   "fieldtype": "Column Break",
+   "fieldname": "column_break_voice",
+   "depends_on": "eval:doc.channel=='voice'"
+  },
+  {
+   "fieldtype": "Password",
+   "label": "API Secret / Token",
+   "fieldname": "voice_api_secret",
+   "depends_on": "eval:doc.channel=='voice'"
+  },
+  {
+   "fieldtype": "Data",
+   "label": "Business Phone Number (DID)",
+   "fieldname": "voice_phone_number",
+   "depends_on": "eval:doc.channel=='voice'"
+  },
+  {
+   "fieldtype": "Data",
+   "label": "Webhook Verify Token",
+   "fieldname": "voice_webhook_token",
+   "depends_on": "eval:doc.channel=='voice'"
+  },
+  {
+   "default": "All",
+   "depends_on": "eval:doc.channel=='voice'",
+   "label": "Record Calls",
+   "fieldtype": "Select",
+   "options": "Never\nInbound only\nOutbound only\nAll",
+   "fieldname": "voice_record_calls"
+  },
+  {
+   "default": "Dual",
+   "depends_on": "eval:doc.channel=='voice'",
+   "label": "Recording Channels",
+   "fieldtype": "Select",
+   "options": "Mixed\nDual",
+   "fieldname": "voice_recording_channels"
+  },
+  {
+   "default": "Block",
+   "depends_on": "eval:doc.channel=='voice'",
+   "label": "International Calling Policy",
+   "fieldtype": "Select",
+   "options": "Block\nAllowlist\nAllow",
+   "fieldname": "voice_intl_policy"
   }
  ],
  "index_web_pages_for_search": 1,

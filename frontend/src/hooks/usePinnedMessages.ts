@@ -14,10 +14,9 @@ export function usePinnedMessages(threadId: string) {
   const { data, error, isLoading, mutate } = useFrappeGetCall<{
     message: PinnedMessage[];
   }>(
-    threadId
-      ? "excom.excom.api.chat.get_pinned_messages"
-      : (null as unknown as string),
-    threadId ? { thread_id: threadId } : undefined
+    threadId ? "excom.excom.api.chat.get_pinned_messages" : "",
+    threadId ? { thread_id: threadId } : undefined,
+    threadId ? undefined : null
   );
 
   return {

@@ -32,10 +32,9 @@ export function useThreadTags(threadId: string) {
   const { data, error, isLoading, mutate } = useFrappeGetCall<{
     message: ThreadTagEntry[];
   }>(
-    threadId
-      ? "excom.excom.api.chat.get_thread_tags"
-      : (null as unknown as string),
-    threadId ? { thread_id: threadId } : undefined
+    threadId ? "excom.excom.api.chat.get_thread_tags" : "",
+    threadId ? { thread_id: threadId } : undefined,
+    threadId ? undefined : null
   );
 
   const { call: addCall } = useFrappePostCall("excom.excom.api.chat.add_thread_tag");
