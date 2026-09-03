@@ -240,10 +240,9 @@ def _ingest_email_metadata(account_name: str, account, meta: dict):
     internal_date = meta.get("internalDate", "")
     if internal_date:
         try:
-            # Gmail internalDate is UTC milliseconds since epoch.
-            # fromtimestamp() converts to local (server) timezone — matching
-            # how Frappe stores naive datetimes in the system timezone.
-            provider_ts = datetime.fromtimestamp(int(internal_date) / 1000)
+            # Gmail internalDate is UTC milliseconds since epoch → site time zone (not the OS clock).
+            from excom.excom.utils.site_time import epoch_to_site_time
+            provider_ts = epoch_to_site_time(int(internal_date) / 1000)
         except (ValueError, OSError):
             provider_ts = now_datetime()
     else:

@@ -188,7 +188,8 @@ def _process_inbound_message(message, sender_profile_name, channel_account, acco
 	provider_msg_id = message.get("id", "")
 	provider_ts = ""
 	if message.get("timestamp"):
-		provider_ts = datetime.datetime.fromtimestamp(int(message["timestamp"])).strftime("%Y-%m-%d %H:%M:%S")
+		from excom.excom.utils.site_time import epoch_to_site_time
+		provider_ts = epoch_to_site_time(int(message["timestamp"]))
 
 	is_reply = bool(message.get("context") and "forwarded" not in message.get("context", {}))
 	reply_to_id = message["context"]["id"] if is_reply else ""
