@@ -28,6 +28,16 @@ interface RailItem {
  * Top→bottom: company switcher (hidden with one company), New, Today, Inbox, Pipeline, Contacts,
  * divider, Broadcasts, Analytics, divider, avatar menu.
  */
+const RAIL_EXPLAIN: Record<string, string> = {
+  "/today": "Your day: overdue follow-ups, SLA breaches, unanswered chats.",
+  "/inbox": "Every conversation across WhatsApp, email and web chat, one row per contact.",
+  "/intake": "New leads not yet qualified — respond, classify, convert.",
+  "/pipeline": "Open opportunities by stage, per customer type.",
+  "/contacts": "Everyone you have talked to, with their ERP record.",
+  "/broadcasts": "Template sends to subscriber lists, with delivery logs.",
+  "/analytics": "Response times, volumes, funnel.",
+};
+
 export function Rail() {
   const { totalUnread, setNewOpen, filters, setFilters, density, setDensity, setPaletteOpen } = useInbox();
   const { companies } = useCompanies();
@@ -61,6 +71,7 @@ export function Rail() {
       key={it.to}
       to={it.to}
       title={it.flagged ? `${it.label} — available in P3` : it.label}
+      data-detail={`${it.label} | ${RAIL_EXPLAIN[it.to] || ""}`}
       aria-disabled={it.flagged}
       onClick={(e) => { if (it.flagged) { e.preventDefault(); } }}
       className={({ isActive }) =>

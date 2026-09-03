@@ -157,3 +157,11 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 | Negative outcome + "also close CRM": Lead → Do Not Contact (pipeline stage Closed Lost), Opportunity → Lost via declare_enquiry_lost with the reason as an Opportunity Lost Reason | S | ✅ |
 | Reopen (⋯ → Reopen): threads back to Open, closure cleared, Lead/Opportunity reopened, comment logged | S | ✅ |
 | Resolved / Converted never touch the CRM record's status | S | ✅ |
+
+## Direct actions, context menus, detail mode (2026-09-03)
+
+| Case | Sev | Result |
+|---|---|---|
+| Record header ≥ 720 px wide: Transfer / Tags / Assign / Classify / Promote / Convert / Quote / Close as icon buttons; the rest under ⋯; narrower → all under ⋯ | S | ✅ |
+| Right-click on an inbox row or the record header opens Excom's own menu (same items as ⋯); long-press on touch (700 ms) does the same | S | ✅ code; long-press per Radix ContextMenu |
+| Hold Ctrl / ⌘ and hover: rows, header actions, rail items and message meta show a detail panel (full contact, record, owner, exact times, what a button does) | S | ✅ code |

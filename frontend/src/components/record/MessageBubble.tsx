@@ -149,7 +149,7 @@ export const MessageBubble = memo(function MessageBubble({ message: m, contactNa
           {isUser && <DeliveryIcon status={m.status} />}
           {m.isPinned && <Pin className="size-3 text-crayon-amber-text shrink-0" />}
           {showChannel && m.accountUsed && (
-            <span className="inline-flex items-center gap-1 min-w-0" title={`${ch.label} · ${m.accountUsed.name} (${m.accountUsed.identifier})`}>
+            <span className="inline-flex items-center gap-1 min-w-0" title={`${ch.label} · ${m.accountUsed.name} (${m.accountUsed.identifier})`} data-detail={`Sent via ${ch.label} | Account: ${m.accountUsed.name} (${m.accountUsed.identifier}) | Status: ${m.status} · ${formatServerTime(m.timestamp)}`}>
               <ch.icon className={cn("size-3.5 shrink-0", `text-crayon-${ch.accent}-base`)} />
               <span className="truncate max-w-[160px]">{m.accountUsed.name}</span>
             </span>

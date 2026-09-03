@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Archive, ArchiveRestore, UserPlus, Eye, EyeOff, AlertOctagon, Trash2, Copy, Clock } from "lucide-react";
-import { Row, Avatar, Badge, Chip, OverflowMenu, type MenuGroup } from "../primitives";
+import { Row, Avatar, Badge, Chip, OverflowMenu, ContextMenu, type MenuGroup } from "../primitives";
 import type { Accent } from "../primitives/Chip";
 import { channelMeta } from "../../lib/channels";
 import { SLA_RISK_MS } from "../../lib/views";
@@ -72,12 +72,25 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
     ],
   ];
 
+  const detail = [
+    c.contactName,
+    [c.contactInfo.phone, c.contactInfo.email].filter(Boolean).join(" · ") || "No phone / email",
+    c.contactInfo.company ? `Company: ${c.contactInfo.company}` : "",
+    kind ? `${kind.label}${c.kinds?.[0]?.name ? ` · ${c.kinds[0].name}` : ""}` : "No ERP record yet",
+    `Team: ${c.assignedTeamName || "—"} · Owner: ${ownerDisabled ? `${c.assignedTo?.name} (disabled)` : c.assignedTo?.name || "Unassigned"}`,
+    `Last message: ${formatServerTime(c.timestamp)} · ${c.lastMessageDirection === "Inbound" ? "from them" : "from us"}${unread ? ` · ${c.totalUnreadCount} unread` : ""}`,
+    c.tags?.length ? `Tags: ${c.tags.map((t) => t.tag_name).join(", ")}` : "",
+    c.closure ? `Closed · ${c.closure.outcome}${c.closure.reason ? ` — ${c.closure.reason}` : ""}` : "",
+  ].filter(Boolean).join(" | ");
+
   return (
+    <ContextMenu groups={groups}>
     <Row
       selected={selected}
       onClick={onOpen}
       data-thread-row
       data-id={c.id}
+      data-detail={detail}
       className={cn("border-b border-border", selected && "border-l-crayon-blue-base")}
       title={`${c.contactName}${c.contactInfo.company ? " · " + c.contactInfo.company : ""}\n${formatServerTime(c.timestamp)}`}
     >
@@ -126,5 +139,6 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
         <OverflowMenu groups={groups} size="icon-sm" />
       </div>
     </Row>
+    </ContextMenu>
   );
 });

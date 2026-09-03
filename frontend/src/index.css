@@ -81,3 +81,6 @@ kbd, .tabular-nums, table, [data-counter] { font-variant-numeric: tabular-nums; 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
+
+/* Ctrl/⌘ held: anything with a richer explanation gets a help cursor and a faint dashed outline. */
+html[data-detail-mode] [data-detail] { cursor: help; outline: 1px dashed var(--ex-border); outline-offset: -1px; }

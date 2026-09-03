@@ -14,3 +14,4 @@ export { EmptyState } from "./EmptyState";
 export { Field, Input, Textarea, Select, inputClass } from "./Field";
 export { SegmentedControl } from "./SegmentedControl";
 export type { Segment } from "./SegmentedControl";
+export { ContextMenu } from "./ContextMenu";

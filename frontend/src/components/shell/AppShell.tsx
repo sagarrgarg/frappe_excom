@@ -6,6 +6,7 @@ import { PhoneTabs } from "./PhoneTabs";
 import { useInbox } from "./InboxProvider";
 import { useHotkeys } from "../../lib/hotkeys";
 import { NewConversationDialog } from "../NewConversationDialog";
+import { DetailLayer } from "./DetailLayer";
 
 const CommandPalette = lazy(() => import("../CommandPalette").then((m) => ({ default: m.CommandPalette })));
 
@@ -67,6 +68,7 @@ export function AppShell() {
       {paletteOpen && (
         <Suspense fallback={null}>
           <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+          <DetailLayer />
         </Suspense>
       )}
     </div>
