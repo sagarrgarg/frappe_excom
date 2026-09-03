@@ -28,6 +28,8 @@ interface InboxCtx {
   contacts: UnifiedContact[];
   allContacts: UnifiedContact[];
   isLoading: boolean;
+  /** Last list-fetch error (e.g. rate limit) so the list can say so instead of "Nothing here". */
+  listError: string | null;
   refresh: () => void;
   totalUnread: number;
 
@@ -118,7 +120,7 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
   }, [custom, viewId, navigate]);
 
   // Server-side filters → useThreads; view predicate + tags + company → client-side.
-  const { unifiedContacts, isLoading, refresh } = useThreads(
+  const { unifiedContacts, isLoading, refresh, error: listErr } = useThreads(
     filters.q, filters.team, filters.broadcast, filters.bstatus, filters.channel, filters.account, filters.from, filters.to, filters.archived === "1"
   );
   const contacts = useMemo(() => {
@@ -180,6 +182,7 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
     bp, coarse, density, setDensity,
     filters, setFilters, viewId, setView, views, saveView, deleteView,
     contacts, allContacts: unifiedContacts, isLoading, refresh, totalUnread,
+    listError: listErr ? (listErr.httpStatus === 429 ? "Too many requests — the list is paused for a moment." : (listErr.message || "Could not load conversations.")) : null,
     selectedId, selected, openRecord, closeRecord,
     detailsOpen, setDetailsOpen, toggleDetails,
     newOpen, setNewOpen, paletteOpen, setPaletteOpen, pendingSelect,

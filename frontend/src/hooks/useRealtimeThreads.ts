@@ -18,9 +18,12 @@ export function useRealtimeThreads(onThreadUpdate: () => void) {
   const onUpdateRef = useRef(onThreadUpdate);
   onUpdateRef.current = onThreadUpdate;
 
+  // Coalesce bursts (a broadcast or a reassign fires one event per thread) into one refetch.
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handler = useCallback(
     (_data: ThreadUpdatedEvent) => {
-      onUpdateRef.current();
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => { timer.current = null; onUpdateRef.current(); }, 1_000);
     },
     [],
   );

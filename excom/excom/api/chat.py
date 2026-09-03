@@ -82,7 +82,7 @@ def _check_manager_access() -> None:
 
 
 @frappe.whitelist()
-@user_rate_limit(limit=60, seconds=60)
+@user_rate_limit(limit=600, seconds=60)  # list polling + several tabs must never trip this; abuse guard only
 def get_threads(
     search: str = "",
     limit: int = 50,

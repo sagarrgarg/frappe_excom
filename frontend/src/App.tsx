@@ -1,7 +1,21 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { FrappeProvider } from "frappe-react-sdk";
+import { SWRConfig } from "swr";
 import { Toaster } from "sonner";
 import { resolveUiMode, applyDensity, getDensity, type UiMode } from "./lib/ui-flag";
+
+/**
+ * Retry policy for every SWR fetch: a 429 waits 20s (retrying sooner just extends the block),
+ * other 4xx never retry, 5xx/network back off 5s → 10s → 20s and stop after three tries.
+ */
+function retryPolicy(err: { httpStatus?: number } | undefined, _key: string, _cfg: unknown, revalidate: (o: { retryCount: number }) => void, { retryCount }: { retryCount: number }) {
+  const st = err?.httpStatus;
+  if (st === 429) { setTimeout(() => revalidate({ retryCount }), 20_000); return; }
+  if (st && st >= 400 && st < 500) return;
+  if (retryCount >= 3) return;
+  setTimeout(() => revalidate({ retryCount }), 5_000 * 2 ** retryCount);
+}
+
 
 const LegacyApp = lazy(() => import("./LegacyApp").then((m) => ({ default: m.LegacyApp })));
 const NextRouter = lazy(() => import("./routes").then((m) => ({ default: m.NextRouter })));
@@ -41,6 +55,7 @@ function App() {
       socketPort={getSocketPort()}
       siteName={getSiteName()}
     >
+      <SWRConfig value={{ onErrorRetry: retryPolicy, focusThrottleInterval: 15_000 }}>
       <Toaster
         richColors
         position="top-right"
@@ -49,6 +64,7 @@ function App() {
       <Suspense fallback={null}>
         {mode === "next" ? <NextRouter /> : <LegacyApp />}
       </Suspense>
+      </SWRConfig>
     </FrappeProvider>
   );
 }

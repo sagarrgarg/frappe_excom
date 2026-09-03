@@ -40,8 +40,8 @@ export function RecordPane() {
   const setTab = (t: Tab) => { const n = new URLSearchParams(sp); if (t === "chat") n.delete("tab"); else n.set("tab", t); setSp(n, { replace: true }); };
 
   // Deep link fallback: if the record isn't in the filtered list, try an unfiltered fetch once.
-  const { unifiedContacts: fallback, isLoading: fallbackLoading } = useThreads("", "", "", "", "", "", "", "");
-  const { unifiedContacts: fallbackArchived } = useThreads("", "", "", "", "", "", "", "", true);
+  const { unifiedContacts: fallback, isLoading: fallbackLoading } = useThreads("", "", "", "", "", "", "", "", false, !selected);
+  const { unifiedContacts: fallbackArchived } = useThreads("", "", "", "", "", "", "", "", true, !selected);
   const contact = selected || fallback.find((c) => c.id === selectedId) || fallbackArchived.find((c) => c.id === selectedId) || null;
 
   if (!contact) {

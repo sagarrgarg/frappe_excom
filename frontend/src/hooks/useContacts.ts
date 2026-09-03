@@ -17,6 +17,8 @@ export function useThreads(
   dateFrom: string = "",
   dateTo: string = "",
   archived: boolean = false,
+  /** false → no request at all (deep-link fallbacks that are not needed). */
+  enabled: boolean = true,
 ) {
   const params: Record<string, string | number> = { search, limit: 100, team };
   if (archived) params.archived = 1;
@@ -29,7 +31,7 @@ export function useThreads(
 
   const { data, error, isLoading, mutate } = useFrappeGetCall<{
     message: ExcomThread[];
-  }>("excom.excom.api.chat.get_threads", params);
+  }>(enabled ? "excom.excom.api.chat.get_threads" : (null as unknown as string), enabled ? params : undefined, undefined, { shouldRetryOnError: true, errorRetryCount: 3 });
 
   const threads = data?.message ?? [];
 
