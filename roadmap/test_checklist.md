@@ -1,0 +1,105 @@
+# Excom Functional Test Checklist (P2 §T2 — living document)
+
+Re-run every phase. First run: **2026-09-03** against `erpnextkgopl.local` (real data, read paths + reversible
+writes only — no outbound WhatsApp/email/broadcast sends). Results columns: ✅ pass · ❌ fail (fixed in commit) ·
+⏭ not run (reason) · 📝 gap ticketed.
+
+Legend for how a row was exercised: **B** = headless browser (gstack browse), **A** = API call with a real session,
+**S** = synthetic data script (created + deleted in the same run), **R** = code review.
+
+## UI parity — the 42 controls (old → new)
+
+| # | Control (legacy) | New location | Tier | How | Result |
+|---|---|---|---|---|---|
+| 1 | Search conversations | List › search box, `q:` free text | T1 | B | ✅ 48/48 "garg" matches DB |
+| 2 | Channel chips (All/WA/Email/IG/Calls) | `+ Filter › Channel`, `channel:` chip, Calls/Comments views | T2 | B | ✅ |
+| 3 | Account sub-filter | `+ Filter › Account`, `account:` chip | T2 | B | ✅ |
+| 4 | Tag filter | `+ Filter › Tag`, `tag:` chip (client-side AND) | T2 | B | ✅ |
+| 5 | Date filter presets + custom | `+ Filter › Date`, `after:`/`before:` chips | T2 | B | ✅ |
+| 6 | Team filter | `+ Filter › Team`, `team:` chip (`__general__` = unassigned) | T2 | B | ✅ |
+| 7 | Broadcast filter + status | `+ Filter › Broadcast / Delivery status` | T2 | B | ✅ |
+| 8 | Total / unread counters | Rail badge (unread), view count | T1 | B | ✅ |
+| 9 | New Chat | Rail **New**, phone FAB, ⌘N, ⌘K | T1 | B | ✅ Esc now closes (ISSUE-003) |
+| 10 | Subscriber Lists / Teams / Merge / Rules / Broadcasts / Analytics / Settings | Rail + avatar menu + phone More + ⌘K | T2/T3 | B | ✅ all 8 routes, 0 JS errors |
+| 11 | Report issue | Avatar menu, More | T3 | B | ✅ |
+| 12 | Thread list rows (avatar, name, channels, preview, tags, broadcast status, unread) | `ThreadRow` | T1 | B | ✅ |
+| 13 | Row context menu: read/unread, copy, spam, archive, delete (SM) | Row hover cluster + `⋯`; `e`/`a` keys; swipe on touch | T2 | B | ✅ |
+| 14 | Collapse thread list / details panel | Width decides; `⌘.` toggles details | — | B | ✅ |
+| 15 | Header: avatar, name, last seen, assignee | `RecordHeader` + `ContextStrip` | T1 | B | ✅ |
+| 16 | TagManager | `⋯ › Tags…` (Modal) | T3 | B | ✅ add + remove round-trip |
+| 17 | AI Active / Human badge | Composer notice + Take over | T1 | B | ✅ (no AI threads in data) |
+| 18 | Transfer | `⋯ › Transfer…` | T3 | B | ✅ dialog loads teams/members (not submitted) |
+| 19 | AI Assist | Record tab **AI**; `⋯ › AI assist` | T3 | B | ✅ suggestions/summary/insights render |
+| 20 | Channel tabs | Merged feed + channel filter chips + Group toggle | — | B | ✅ |
+| 21 | Account selector + "viewing via" banner | **Reply via ▾** | T1 | B | ✅ lists both accounts with identifiers |
+| 22 | Pinned messages bar | One-line strip, expands | T2 | B | ✅ across all identity threads (ISSUE-004) |
+| 23 | Message bubbles: text/image/video/audio/document/sticker/template/failed | `MessageBubble` | T1 | B+stress | ✅ |
+| 24 | Email card expand/reply/forward/attachments | `EmailMessageCard` (re-skinned) | T1 | B | ⏭ no email threads visible in data |
+| 25 | Internal note render | Amber note bubble | T1 | B | ✅ |
+| 26 | Reply-to quote | Bubble quote block + reply bar | T2 | B | ✅ |
+| 27 | Reactions bar + context menu react | Hover **React**, right-click menu | T2 | B+A | ✅ toggle adds/removes per user |
+| 28 | Pin/unpin | Hover **Pin**, context menu | T2 | B | ✅ |
+| 29 | Delivery icons + 10-min timer | Meta line | T1 | B | ✅ |
+| 30 | Failed message + Retry | Rose bubble + Retry | T1 | B | ✅ (failed sticker in data) |
+| 31 | Optimistic send | Feed | T1 | R | ⏭ no sends (real contacts) |
+| 32 | Compose email (to/cc/subject) | Reply via = Email → fields in place | T1 | B | ⏭ no email account thread in view |
+| 33 | Message / Note toggle | Composer radio | T1 | B | ✅ |
+| 34 | Attach / Image / Template / Sticker / Canned | Composer `+` menu, `/` shortcut | T2 | B | ✅ menu entries; pickers open |
+| 35 | Char limit counter | Composer | T2 | R | ✅ |
+| 36 | 24h window / template required | Reply via state + composer swap | T1 | B | ✅ "Template required" shown, send blocked with reason |
+| 37 | Identity panel (profile, channels, linked ERP, summary, transactions, quick actions) | Details pane / sheet | T1/T2 | B | ✅ |
+| 38 | Account switch from identity panel | Details › account → sets Reply via | T2 | B | ✅ |
+| 39 | Mobile: chats/calls/contacts tabs | Phone tabs (Today · Inbox · Pipeline · More) + Contacts page + Calls view | T1 | B | ✅ (Calls = saved view; call placement is Phase C) |
+| 40 | Settings sections (8) + Appearance | `/settings?section=` | T3 | B | ✅ |
+| 41 | Keyboard: ⌘K, ⌘N, j/k, ⏎, e, a, /, ⌘⏎, ⌘., g-chords | `useHotkeys` | T4 | B | ✅ j/j/⏎ opened 3rd row; ⌘K → Teams |
+| 42 | Archived threads (new) | View **Archived**, unarchive | T2 | B+A | ✅ |
+
+## Backend functional sweep
+
+| Area | Case | How | Result |
+|---|---|---|---|
+| WhatsApp | Inbound ingest creates identity + thread + message | S | ✅ |
+| WhatsApp | Replay of same `provider_message_id` → one message | S | ✅ second call returned "" and count stayed 1 |
+| WhatsApp | 24h window check per thread | A | ✅ |
+| WhatsApp | Template send / media send / outbound text | — | ⏭ real contacts — pilot (T1) covers |
+| Email | Gmail poll, send, signature, attachments | — | ⏭ no Gmail account authorised on this site |
+| Web chat | Config / session / message / poll / end | A(guest) | ✅ config 404s on bad account (was 500, ISSUE-006); session endpoints token-gated |
+| Identity | Merge re-parents threads + messages, marks source Merged | S | ❌ → ✅ ISSUE-007 |
+| Identity | Unmerge | R | 📝 no unmerge exists — P2 backlog (needs merge log) |
+| Threads | Assign, transfer, tags, pin, notes, archive/unarchive, spam | A/B | ✅ |
+| Threads | Visibility: non-manager reads only own-team/assigned threads | A | ❌ → ✅ ISSUE-002/002b (19 endpoints) |
+| Threads | Long thread: latest page first, `before` paging | S+B | ❌ → ✅ ISSUE-005 (2,000 msgs: 7–28 ms/page) |
+| Counters | `last_message_at` vs newest message; negative unread; unread without inbound | SQL | ✅ 0 / 0 / 0 |
+| Data | Orphan messages / threads without identity / duplicate provider ids | SQL | ✅ 0 / 0 / 0 |
+| Broadcasts | Wizard steps, list, detail, logs, metrics | B | ✅ (not submitted) |
+| Notifications | Push relay config | B | ⚠ 417 on this dev site (`push_relay_server_url` unset) — environment, not code |
+| Teams/Settings | Team CRUD gated to managers; canned; accounts | A/B | ✅ create_team 403 for Excom User |
+
+## Security (T5)
+
+| # | Check | Result |
+|---|---|---|
+| S1 | Rate limits keyed correctly | ❌ → ✅ ISSUE-001: `rate_limit(key="user")` was IP-keyed; now `user_rate_limit` per session user. Guest endpoints IP-limited (ISSUE-006). Inbound webhook + flow_endpoint intentionally unlimited (Meta bursts, HMAC-trusted). |
+| S2 | Webhook HMAC | ✅ valid accepted / invalid rejected. **Accept-on-missing-signature only when no account has `wa_app_secret`** (`utils/webhook.py:44-68`) — ticketed P3 §3.9: require secret on Active accounts. |
+| S3 | Replay idempotency | ✅ |
+| S4 | Permissions | ❌ → ✅ ISSUE-002/002b. `ignore_permissions` in API paths reviewed: all behind `_check_excom_access`/`_check_manager_access`. `record.get_notes` on Excom Settings readable by Excom User (feedback comments) — accepted. |
+| S5 | Guest endpoints | ✅ webchat session token required per call; unsubscribe token expiry-validated (400 on bad token); mobile.get_client_id public by design (PKCE client id). |
+| S6 | Token expiry monitor | ✅ `tasks/token_monitor.check_token_expiry` scheduled (hooks.py:198). |
+| S7 | Stored XSS | ✅ `sanitize_html` on ingest strips `onerror`; React renders content as text (`<img src="x">` shown literally, 0 img nodes, title unchanged); notes server-escaped; email bodies in `sandbox="allow-same-origin"` iframe (no scripts). |
+
+## Responsive / low-DPI (T3) — 2026-09-03, record page + inbox
+
+360 · 390 · 414 · 640 · 768 · 834 · 1024 · 1280 · 1366 · 1440 · 1920 @1×, 390 + 1366 @2×: no horizontal scroll, composer
+inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots: `.gstack/qa-reports/screenshots/matrix-*.png`.
+
+## Load / realtime (T4)
+
+- 2,000-message thread: `get_messages` 7–28 ms per 100; 500 rows 16 ms; first paint with 100 bubbles, "Load earlier" pages 100 at a time.
+- Realtime: socket events + 10 s poll (paused when tab hidden) + focus revalidate. Disconnect/reconnect and packet-loss runs: ⏭ needs a throttled real browser — pilot week.
+
+## Open / deferred
+
+- 📝 Unmerge (T6) — no API; needs a merge log. P2 backlog.
+- 📝 HMAC: enforce `wa_app_secret` on Active WhatsApp accounts (P3 §3.9).
+- 📝 Email + outbound WhatsApp paths — pilot week with real accounts.
+- 📝 E8: README claimed Instagram as a shipped channel; corrected to "planned" (no `channels/instagram` code).

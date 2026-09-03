@@ -4,7 +4,7 @@
 **Duration:** 8–12 days (T3/T5 may start during P1's tail)
 **Depends on:** P1 feature-complete behind the flag
 **Blocks:** P3 — CRM work must land on a proven base, not on an untested rewrite
-**Status:** Not started
+**Status:** In progress — T2 (automatable part), T3, T4 (thread size), T5, T6 run 2026-09-03; 7 defects fixed; see `roadmap/test_checklist.md`. T1 pilot + reconnect/packet-loss + email/outbound paths pending real users.
 
 ---
 
