@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM Flow Blueprint — One Intake, Typed Pipelines, One Handoff</title>
+<style>
+  :root {
+    --ink: #1a1f2b;
+    --ink-soft: #4a5264;
+    --ink-faint: #8a91a3;
+    --paper: #fafbfc;
+    --card: #ffffff;
+    --line: #e3e6ec;
+    --line-strong: #c9cdd8;
+    --spine: #2f3b52;
+
+    --c-dist: #2563a8;   --c-dist-bg: #eef4fb;
+    --c-ret: #0e7d6d;    --c-ret-bg: #eaf6f3;
+    --c-exp: #5b4ea8;    --c-exp-bg: #f1effa;
+    --c-oem: #a06510;    --c-oem-bg: #faf3e6;
+    --c-gift: #b0447a;   --c-gift-bg: #faeef4;
+    --c-onl: #5a6372;    --c-onl-bg: #f0f2f5;
+    --c-excom: #0f6b5c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.55;
+    font-size: 15px;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 48px 32px 96px; }
+
+  /* ---------- header ---------- */
+  header { margin-bottom: 40px; }
+  .doc-meta {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 10px;
+  }
+  h1 { font-size: 30px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 10px; }
+  .thesis { font-size: 17px; color: var(--ink-soft); max-width: 780px; }
+  .thesis b { color: var(--ink); }
+
+  h2 {
+    font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-soft); margin: 56px 0 6px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .h2-sub { color: var(--ink-faint); font-size: 14px; margin-bottom: 20px; max-width: 760px; }
+
+  /* ---------- layered flow map ---------- */
+  .map { display: flex; flex-direction: column; gap: 0; }
+  .layer {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .layer-label {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 12px;
+  }
+  .down-arrow {
+    text-align: center; color: var(--line-strong); font-size: 18px; line-height: 1;
+    padding: 6px 0;
+  }
+  .down-arrow span {
+    font-size: 11px; color: var(--ink-faint); font-family: ui-monospace, Menlo, monospace;
+    vertical-align: 3px; margin-left: 8px;
+  }
+
+  .src-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .src {
+    border: 1px solid var(--line); border-radius: 7px; padding: 7px 12px;
+    background: var(--paper); font-size: 13px; display: flex; align-items: center; gap: 8px;
+  }
+  .src .mech {
+    font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--ink-faint);
+    background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px;
+  }
+  .src.hot { border-color: #e5b96a; background: #fdf7ec; }
+  .src.hot .mech { border-color: #eeddb8; }
+
+  .spine-row { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; }
+  .spine-stage {
+    flex: 1; min-width: 130px; background: var(--spine); color: #fff;
+    padding: 10px 14px; position: relative; border-radius: 0;
+  }
+  .spine-stage:first-child { border-radius: 8px 0 0 8px; }
+  .spine-stage:last-child { border-radius: 0 8px 8px 0; }
+  .spine-stage + .spine-stage { border-left: 1px solid rgba(255,255,255,.18); }
+  .spine-stage .n {
+    font-family: ui-monospace, Menlo, monospace; font-size: 10px; opacity: .55;
+    display: block; margin-bottom: 2px;
+  }
+  .spine-stage .t { font-size: 13.5px; font-weight: 600; display: block; }
+  .spine-stage .d { font-size: 11.5px; opacity: .7; display: block; margin-top: 2px; }
+
+  .fork-note {
+    margin-top: 14px; font-size: 13px; color: var(--ink-soft);
+    background: var(--paper); border: 1px dashed var(--line-strong); border-radius: 8px;
+    padding: 10px 14px;
+  }
+  .fork-note code {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+    background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px;
+  }
+
+  .type-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .type-chip {
+    border-radius: 8px; padding: 10px 12px; font-size: 12.5px; font-weight: 600;
+    text-align: center; border: 1px solid;
+  }
+  @media (max-width: 900px) { .type-grid { grid-template-columns: repeat(3, 1fr); } }
+
+  .erp-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .erp-doc {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+    border: 1px solid var(--line); background: var(--paper); border-radius: 6px; padding: 6px 10px;
+  }
+
+  .excom-band {
+    margin-top: 10px; border: 1.5px solid var(--c-excom); border-radius: 10px;
+    background: #f0f8f6; padding: 14px 20px; display: flex; align-items: baseline; gap: 14px;
+    flex-wrap: wrap;
+  }
+  .excom-band .tag {
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--c-excom); font-weight: 700;
+  }
+  .excom-band .txt { font-size: 13.5px; color: var(--ink-soft); }
+
+  /* ---------- pipeline cards ---------- */
+  .pipes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .pipes { grid-template-columns: 1fr; } }
+  .pipe {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 22px; border-top: 3px solid var(--pc, var(--ink));
+  }
+  .pipe.wide { grid-column: 1 / -1; }
+  .pipe-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .pipe-head h3 { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+  .pipe-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge {
+    font-family: ui-monospace, Menlo, monospace; font-size: 10.5px;
+    border: 1px solid var(--line); background: var(--paper); border-radius: 5px;
+    padding: 2px 8px; color: var(--ink-soft); white-space: nowrap;
+  }
+  .pipe-why { font-size: 13px; color: var(--ink-faint); margin-bottom: 14px; }
+
+  .stages { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 2px; margin-bottom: 14px; }
+  .stg {
+    background: var(--pcbg, var(--paper)); color: var(--pc, var(--ink));
+    border: 1px solid; border-color: color-mix(in srgb, var(--pc) 30%, white);
+    border-radius: 6px; padding: 4px 10px; font-size: 12.5px; font-weight: 600;
+    white-space: nowrap;
+  }
+  .stg.terminal { background: var(--pc); color: #fff; border-color: var(--pc); }
+  .stg.internal { border-style: dashed; font-weight: 500; }
+  .arr { color: var(--line-strong); font-size: 13px; padding: 0 3px; }
+
+  .gates { list-style: none; margin-bottom: 12px; }
+  .gates li {
+    font-size: 13px; color: var(--ink-soft); padding: 3px 0 3px 22px; position: relative;
+  }
+  .gates li::before {
+    content: "⊘"; position: absolute; left: 2px; color: var(--pc); font-size: 13px;
+  }
+  .gates li b { color: var(--ink); font-weight: 600; }
+
+  .handoff {
+    font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 10px;
+    color: var(--ink-soft);
+  }
+  .handoff code {
+    font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px;
+  }
+  .handoff .hlbl {
+    font-family: ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-faint); margin-right: 6px;
+  }
+
+  .branch {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;
+  }
+  @media (max-width: 640px) { .branch { grid-template-columns: 1fr; } }
+  .branch-cell {
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--paper);
+  }
+  .branch-cell .bl {
+    font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--pc); margin-bottom: 6px;
+  }
+
+  /* ---------- tables ---------- */
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: 13.5px; }
+  th {
+    text-align: left; font-size: 11px; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 600; padding: 10px 14px; background: var(--paper);
+    border-bottom: 1px solid var(--line);
+  }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--ink-soft); }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; }
+  td code, li code {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px;
+  }
+  .sla { font-family: ui-monospace, Menlo, monospace; font-size: 12px; white-space: nowrap; }
+  .sla.hot { color: #b45309; font-weight: 700; }
+
+  /* ---------- rules ---------- */
+  .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 860px) { .rules { grid-template-columns: 1fr; } }
+  .rule {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px;
+  }
+  .rule h4 { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+  .rule h4 .rn {
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--ink-faint);
+    font-weight: 500; margin-right: 8px;
+  }
+  .rule p { font-size: 13px; color: var(--ink-soft); }
+
+  /* ---------- footprint / deferred ---------- */
+  .cols2 { display: grid; grid-template-columns: 1.2fr .8fr; gap: 24px; align-items: start; }
+  @media (max-width: 860px) { .cols2 { grid-template-columns: 1fr; } }
+  .deferred {
+    background: var(--card); border: 1px dashed var(--line-strong); border-radius: 10px; padding: 16px 18px;
+  }
+  .deferred h4 { font-size: 13px; font-weight: 700; margin-bottom: 8px; color: var(--ink-soft); }
+  .deferred ul { list-style: none; }
+  .deferred li { font-size: 13px; color: var(--ink-faint); padding: 3px 0 3px 20px; position: relative; }
+  .deferred li::before { content: "◦"; position: absolute; left: 4px; }
+  .deferred li b { color: var(--ink-soft); font-weight: 600; }
+
+  .open-q { counter-reset: q; }
+  .open-q .rule { border-left: 3px solid #d8b04a; }
+
+  footer {
+    margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-size: 12px; color: var(--ink-faint);
+    font-family: ui-monospace, Menlo, monospace;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="doc-meta">Design Artifact · CRM-FLOW-001 · 2026-09-02 · Aligns with HLD-002 lifecycle spine (stages 1–3)</div>
+  <h1>CRM Flow Blueprint</h1>
+  <p class="thesis">
+    <b>One intake mouth. One shared spine. Typed pipelines. One handoff.</b>
+    Every enquiry — IndiaMART, TradeIndia, Meta, website, cold call, exhibition, walk-in —
+    enters the same funnel mouth, is deduped against Omni Identity, gets classified into a
+    <b>customer type</b>, and then runs a pipeline <em>shaped for that type</em>: tight gates
+    where money and compliance are at stake, open configuration everywhere else.
+    Won deals exit through a single atomic handoff into ERPNext. Excom carries the
+    conversation across all of it and never changes owner.
+  </p>
+</header>
+
+<!-- ══════════════════════════ THE MAP ══════════════════════════ -->
+<h2>The Map</h2>
+<p class="h2-sub">Five layers. Leads fall down; only the conversation layer spans everything.</p>
+
+<div class="map">
+
+  <div class="layer">
+    <div class="layer-label">Layer 1 · Sources — where enquiries are born</div>
+    <div class="src-grid">
+      <div class="src hot">IndiaMART <span class="mech">push API · webhook</span></div>
+      <div class="src hot">TradeIndia <span class="mech">pull API · poller</span></div>
+      <div class="src">Meta lead ads <span class="mech">crm lead_syncing</span></div>
+      <div class="src">Meta messages / comments <span class="mech">excom → thread</span></div>
+      <div class="src">WhatsApp inbound <span class="mech">excom → thread</span></div>
+      <div class="src">Website <span class="mech">Web Form + UTM</span></div>
+      <div class="src">Cold calls <span class="mech">telecaller quick-create</span></div>
+      <div class="src">Exhibitions <span class="mech">bulk capture mode</span></div>
+      <div class="src">Physical visits <span class="mech">manual + geotag</span></div>
+    </div>
+    <div class="fork-note">
+      Amber sources are <b>shared-lead marketplaces</b> — the same buyer enquiry is sold to
+      several competing suppliers. The first vendor to respond usually wins the conversation.
+      Their SLA is minutes, not hours.
+    </div>
+  </div>
+
+  <div class="down-arrow">▼ <span>every source lands as CRM Lead (or attaches to an existing identity)</span></div>
+
+  <div class="layer">
+    <div class="layer-label">Layer 2 · Intake spine — identical for every lead, no exceptions</div>
+    <div class="spine-row">
+      <div class="spine-stage"><span class="n">S1</span><span class="t">Capture</span><span class="d">provenance stamped once, never overwritten</span></div>
+      <div class="spine-stage"><span class="n">S2</span><span class="t">Dedupe</span><span class="d">phone/email → Omni Identity match</span></div>
+      <div class="spine-stage"><span class="n">S3</span><span class="t">First Response</span><span class="d">per-source SLA timer</span></div>
+      <div class="spine-stage"><span class="n">S4</span><span class="t">Classify</span><span class="d">customer type + product + quantity signal</span></div>
+      <div class="spine-stage"><span class="n">S5</span><span class="t">Qualify</span><span class="d">per-type criteria → Deal, Junk, or Nurture</span></div>
+    </div>
+    <div class="fork-note">
+      <b>The classification gate:</b> a <code>CRM Lead</code> cannot convert to a
+      <code>CRM Deal</code> without <code>customer_type</code> set. The type chosen here
+      decides everything downstream — stage set, required fields, owner team, SLA profile.
+    </div>
+  </div>
+
+  <div class="down-arrow">▼ <span>customer_type routes the deal into its pipeline</span></div>
+
+  <div class="layer">
+    <div class="layer-label">Layer 3 · Typed pipelines — six shapes, detailed below</div>
+    <div class="type-grid">
+      <div class="type-chip" style="color:var(--c-dist); background:var(--c-dist-bg); border-color:#c8daf0;">Distributor</div>
+      <div class="type-chip" style="color:var(--c-ret); background:var(--c-ret-bg); border-color:#bfe3db;">Retailer</div>
+      <div class="type-chip" style="color:var(--c-exp); background:var(--c-exp-bg); border-color:#d4cff0;">Export / Importer</div>
+      <div class="type-chip" style="color:var(--c-oem); background:var(--c-oem-bg); border-color:#ecd9b0;">OEM: Private Label + Custom</div>
+      <div class="type-chip" style="color:var(--c-gift); background:var(--c-gift-bg); border-color:#eec6da;">Corporate Gifting</div>
+      <div class="type-chip" style="color:var(--c-onl); background:var(--c-onl-bg); border-color:#d5d9e0;">Online B2C (bypass)</div>
+    </div>
+  </div>
+
+  <div class="down-arrow">▼ <span>won → atomic conversion (HLD-002 §Stage 3) → CRM becomes read-only history</span></div>
+
+  <div class="layer">
+    <div class="layer-label">Layer 4 · ERPNext — system of record after the win</div>
+    <div class="erp-row">
+      <div class="erp-doc">Customer <span style="color:var(--ink-faint)">(group + territory + price list + credit limit)</span></div>
+      <div class="erp-doc">Outlet → distributor mapping</div>
+      <div class="erp-doc">Quotation / Pro Forma</div>
+      <div class="erp-doc">Sales Order</div>
+      <div class="erp-doc">Secondary Order (fieldforce)</div>
+    </div>
+  </div>
+
+  <div class="excom-band">
+    <span class="tag">Layer 0 · Excom — spans every layer</span>
+    <span class="txt">
+      Omni Identity is the join key from first IndiaMART ping to the hundredth repeat order.
+      Threads, calls, WhatsApp, email, Meta comments — all visible inside the CRM deal via the
+      embedded panel, all surviving the CRM→ERP handoff untouched.
+    </span>
+  </div>
+</div>
+
+<!-- ══════════════════════════ SOURCE CONTRACTS ══════════════════════════ -->
+<h2>Source Contracts</h2>
+<p class="h2-sub">Each source has a mechanism, a first-response SLA, and an expected type mix that pre-seeds classification.</p>
+
+<table>
+  <thead><tr><th>Source</th><th>Mechanism</th><th>First response</th><th>Likely types (pre-seed, not auto-set)</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>IndiaMART</td>
+      <td>Push API → whitelisted webhook → <code>CRM Lead</code></td>
+      <td class="sla hot">&lt; 5 min</td>
+      <td>Distributor, Retailer, Importer</td>
+      <td>Shared with competitors. Auto-ack on WhatsApp/email via excom the moment the lead lands, before a human touches it.</td>
+    </tr>
+    <tr>
+      <td>TradeIndia</td>
+      <td>Inquiry API → scheduled poller (5 min)</td>
+      <td class="sla hot">&lt; 15 min</td>
+      <td>Distributor, Importer</td>
+      <td>Pull-based; poller cadence bounds the SLA.</td>
+    </tr>
+    <tr>
+      <td>Meta lead ads</td>
+      <td>CRM <code>lead_syncing</code> (already in the fork's lineage)</td>
+      <td class="sla">&lt; 30 min</td>
+      <td>Gifting, Online, Retailer</td>
+      <td>Campaign id → provenance; ad set names the offer.</td>
+    </tr>
+    <tr>
+      <td>Meta msgs / comments</td>
+      <td>Excom thread first; promote to Lead on buying intent</td>
+      <td class="sla">&lt; 30 min</td>
+      <td>Online, Gifting</td>
+      <td>Not every DM is a lead — promotion is an agent action, one click from the thread.</td>
+    </tr>
+    <tr>
+      <td>Website</td>
+      <td><code>Web Form</code> → CRM public page, UTM captured</td>
+      <td class="sla">&lt; 1 h</td>
+      <td>All — form asks type directly</td>
+      <td>The one source where the buyer self-classifies. Trust but verify at S4.</td>
+    </tr>
+    <tr>
+      <td>Cold calls</td>
+      <td>Telecaller console — quick-create during excom call</td>
+      <td class="sla">n/a (outbound)</td>
+      <td>Distributor, Retailer</td>
+      <td>Call log auto-links; disposition drives Junk vs Lead.</td>
+    </tr>
+    <tr>
+      <td>Exhibitions</td>
+      <td>Bulk capture mode: name + phone + type guess + card photo, tagged <code>Exhibition:&lt;name&gt;</code></td>
+      <td class="sla">&lt; 48 h post-show</td>
+      <td>All — highest OEM/importer density</td>
+      <td>Post-show: excom broadcast to the whole batch, then triage replies. Speed of capture at the booth beats completeness.</td>
+    </tr>
+    <tr>
+      <td>Physical visits</td>
+      <td>Manual entry (geotagged when from field app)</td>
+      <td class="sla">same day</td>
+      <td>Retailer, Distributor</td>
+      <td>Field prospect path already defined in HLD-002 (Outlet status Prospect).</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ══════════════════════════ PIPELINES ══════════════════════════ -->
+<h2>The Six Pipelines</h2>
+<p class="h2-sub">
+  Solid chips are customer-facing stages. Dashed chips are internal gates (the customer is not waiting on themselves — you are).
+  ⊘ marks a hard gate: the deal cannot advance until it clears. Filled chip = terminal.
+</p>
+
+<div class="pipes">
+
+  <!-- DISTRIBUTOR -->
+  <div class="pipe" style="--pc: var(--c-dist); --pcbg: var(--c-dist-bg);">
+    <div class="pipe-head">
+      <h3>Distributor</h3>
+      <div class="pipe-meta">
+        <span class="badge">cycle 2–6 wk</span><span class="badge">owner: channel sales</span><span class="badge">deal SLA: touch every 3 d</span>
+      </div>
+    </div>
+    <p class="pipe-why">Highest-value relationship. The gate that matters is territory — one bad grant poisons a region.</p>
+    <div class="stages">
+      <span class="stg">Qualified</span><span class="arr">→</span>
+      <span class="stg internal">Territory Check</span><span class="arr">→</span>
+      <span class="stg">Pitch + Price Slab</span><span class="arr">→</span>
+      <span class="stg">Sample Kit</span><span class="arr">→</span>
+      <span class="stg">Negotiation</span><span class="arr">→</span>
+      <span class="stg">Agreement + Onboarding</span><span class="arr">→</span>
+      <span class="stg terminal">First Order · Won</span>
+    </div>
+    <ul class="gates">
+      <li><b>Territory gate:</b> no active distributor conflict on the proposed pin codes; overlap needs a named manager's override, logged.</li>
+      <li><b>Onboarding gate:</b> GST verified, signed agreement, security deposit received, credit limit approved — all four before Won.</li>
+    </ul>
+    <div class="handoff"><span class="hlbl">handoff</span><code>Customer</code> group=Distributor · territory · distributor price list · credit limit → fieldforce maps outlets under them</div>
+  </div>
+
+  <!-- RETAILER -->
+  <div class="pipe" style="--pc: var(--c-ret); --pcbg: var(--c-ret-bg);">
+    <div class="pipe-head">
+      <h3>Retailer</h3>
+      <div class="pipe-meta">
+        <span class="badge">cycle: days</span><span class="badge">owner: telecaller / field</span><span class="badge">lightest pipeline</span>
+      </div>
+    </div>
+    <p class="pipe-why">Not really one pipeline — a routing decision. The channel model (secondary sales, HLD A1) decides direct vs distributor.</p>
+    <div class="stages">
+      <span class="stg">Qualified</span><span class="arr">→</span>
+      <span class="stg internal">Territory Route</span><span class="arr">→</span>
+      <span class="arr" style="color:var(--ink-faint); font-size:12px;">branch:</span>
+    </div>
+    <div class="branch">
+      <div class="branch-cell">
+        <div class="bl">Territory covered by a distributor</div>
+        Hand off: create <code>Outlet</code> under the serving distributor, notify them via excom, close deal as <b>Won — Routed</b>. The distributor's SR picks them up on the beat.
+      </div>
+      <div class="branch-cell">
+        <div class="bl">Territory uncovered</div>
+        Serve direct: retail price list → first order → <b>Won — Direct</b>. Flag the pin code as distributor-gap intel for channel sales.
+      </div>
+    </div>
+    <ul class="gates">
+      <li><b>Channel-conflict gate:</b> a covered-territory retailer is never quietly sold direct — that undercuts the distributor you just onboarded.</li>
+    </ul>
+    <div class="handoff"><span class="hlbl">handoff</span><code>Outlet</code> + distributor mapping — or — <code>Customer</code> group=Retailer, retail price list</div>
+  </div>
+
+  <!-- EXPORT -->
+  <div class="pipe" style="--pc: var(--c-exp); --pcbg: var(--c-exp-bg);">
+    <div class="pipe-head">
+      <h3>Export / International Importer</h3>
+      <div class="pipe-meta">
+        <span class="badge">cycle 4–16 wk</span><span class="badge">owner: export desk</span><span class="badge">response &lt; 24 h (time zones)</span>
+      </div>
+    </div>
+    <p class="pipe-why">Compliance is a stage, not an afterthought — certifications differ per destination, and the compliance team talks through the same excom thread.</p>
+    <div class="stages">
+      <span class="stg">Qualified</span><span class="arr">→</span>
+      <span class="stg">Spec Confirmed</span><span class="arr">→</span>
+      <span class="stg internal">Compliance Check</span><span class="arr">→</span>
+      <span class="stg">Export Quote</span><span class="arr">→</span>
+      <span class="stg">Sample Shipment</span><span class="arr">→</span>
+      <span class="stg">Negotiation</span><span class="arr">→</span>
+      <span class="stg">Pro Forma</span><span class="arr">→</span>
+      <span class="stg terminal">Advance / LC · Won</span>
+    </div>
+    <ul class="gates">
+      <li><b>Compliance gate:</b> destination-country certifications confirmed feasible before any quote goes out.</li>
+      <li><b>Payment gate:</b> quote states Incoterms + currency; Won only on verified advance or LC draft accepted.</li>
+    </ul>
+    <div class="handoff"><span class="hlbl">handoff</span><code>Customer</code> multi-currency · payment terms · Incoterms default → <code>Quotation</code>/<code>Sales Order</code> in ERPNext Desk</div>
+  </div>
+
+  <!-- GIFTING -->
+  <div class="pipe" style="--pc: var(--c-gift); --pcbg: var(--c-gift-bg);">
+    <div class="pipe-head">
+      <h3>Corporate Gifting</h3>
+      <div class="pipe-meta">
+        <span class="badge">cycle 1–4 wk</span><span class="badge">owner: gifting desk</span><span class="badge">deadline-driven</span>
+      </div>
+    </div>
+    <p class="pipe-why">The event date is the boss. Every stage is reverse-scheduled from it; a deal that can't make the date is disqualified early, politely, with a next-occasion nudge.</p>
+    <div class="stages">
+      <span class="stg">Qualified <span style="font-weight:400">(event date + qty + budget)</span></span><span class="arr">→</span>
+      <span class="stg">Curation + Mockup</span><span class="arr">→</span>
+      <span class="stg">Quote</span><span class="arr">→</span>
+      <span class="stg">Approval</span><span class="arr">→</span>
+      <span class="stg">Advance</span><span class="arr">→</span>
+      <span class="stg terminal">In Production · Won</span>
+    </div>
+    <ul class="gates">
+      <li><b>Date-feasibility gate:</b> at Qualified, production lead time + logistics must fit before the event date, or the deal exits as <i>Lost — Timeline</i>.</li>
+      <li><b>Advance gate:</b> branding/customised production never starts before advance payment clears.</li>
+    </ul>
+    <div class="handoff"><span class="hlbl">handoff</span><code>Customer</code> group=Corporate · <code>Sales Order</code> with delivery date = event date − buffer. Seasonal: excom broadcast to past gifting customers 8 wk before Diwali / New Year.</div>
+  </div>
+
+  <!-- OEM (wide) -->
+  <div class="pipe wide" style="--pc: var(--c-oem); --pcbg: var(--c-oem-bg);">
+    <div class="pipe-head">
+      <h3>OEM — Private Label + Custom Designed <span style="font-size:12px; font-weight:500; color:var(--ink-faint);">(one pipeline, one branch field)</span></h3>
+      <div class="pipe-meta">
+        <span class="badge">cycle 6–20 wk</span><span class="badge">owner: OEM desk + production</span><span class="badge">design_by: customer | us</span>
+      </div>
+    </div>
+    <p class="pipe-why">
+      Private label ("put our brand on your product") and custom designed ("make this thing we specced / design it for us") share 80% of their flow.
+      One pipeline with a <code>design_by</code> branch keeps it tight; splitting them creates two half-maintained pipelines. The sampling loop is bounded — unbounded sampling is where OEM deals go to die.
+    </p>
+    <div class="stages">
+      <span class="stg">Qualified</span><span class="arr">→</span>
+      <span class="stg">NDA / Brief</span><span class="arr">→</span>
+      <span class="stg">Spec + Design <span style="font-weight:400">(theirs or ours)</span></span><span class="arr">→</span>
+      <span class="stg internal">Feasibility + Costing</span><span class="arr">→</span>
+      <span class="stg">Sampling Loop <span style="font-weight:400">(≤ 3 rounds)</span></span><span class="arr">→</span>
+      <span class="stg">Commercial Terms</span><span class="arr">→</span>
+      <span class="stg terminal">Contract / PO · Won</span>
+    </div>
+    <ul class="gates">
+      <li><b>Feasibility gate (internal):</b> production signs off MOQ, tooling cost, and lead time before the customer ever sees a price. A quote production can't honour is worse than a slow quote.</li>
+      <li><b>Sampling gate:</b> each round has written feedback; after round 3 the deal escalates to a call — approve, one paid round, or part ways.</li>
+      <li><b>Commercial gate:</b> tooling/plate charges and MOQ agreed in writing before contract.</li>
+    </ul>
+    <div class="handoff"><span class="hlbl">handoff</span><code>Customer</code> group=OEM · item codes created for the custom SKUs · <code>Sales Order</code> with tooling as a separate line</div>
+  </div>
+
+  <!-- ONLINE -->
+  <div class="pipe" style="--pc: var(--c-onl); --pcbg: var(--c-onl-bg);">
+    <div class="pipe-head">
+      <h3>Online B2C — the bypass</h3>
+      <div class="pipe-meta"><span class="badge">cycle: minutes</span><span class="badge">no deal created</span></div>
+    </div>
+    <p class="pipe-why">An individual buying one unit is not a pipeline — putting them in one buries the real deals. B2C enquiries skip CRM entirely.</p>
+    <div class="stages">
+      <span class="stg">Classified B2C</span><span class="arr">→</span>
+      <span class="stg">Route to store / order capture</span><span class="arr">→</span>
+      <span class="stg terminal">Excom thread only</span>
+    </div>
+    <ul class="gates">
+      <li><b>Promotion rule:</b> if a "B2C" buyer asks about bulk, dealership, or branding — one click promotes the thread to a typed Lead with provenance intact.</li>
+    </ul>
+    <div class="handoff"><span class="hlbl">handoff</span>Order via store/marketplace; identity + thread retained for support and repeat-purchase campaigns</div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════ RULES ══════════════════════════ -->
+<h2>Guardrails</h2>
+<p class="h2-sub">The rules that keep the funnel honest. Tight here, open everywhere else.</p>
+
+<div class="rules">
+  <div class="rule">
+    <h4><span class="rn">R1</span>Repeat enquiry ≠ new lead</h4>
+    <p>Dedupe (S2) matches phone/email against Omni Identity. An existing customer enquiring again opens their excom thread and pings the account owner — it never creates a duplicate lead. An open lead getting a second-source touch merges provenance into the existing lead (first touch wins, later touches logged).</p>
+  </div>
+  <div class="rule">
+    <h4><span class="rn">R2</span>Provenance is written once</h4>
+    <p><code>source · campaign · channel · first_touch_at · first_touch_by</code> stamp at capture and are immutable. Attribution must survive to retention (HLD-002), so nobody "corrects" the source after the deal wins.</p>
+  </div>
+  <div class="rule">
+    <h4><span class="rn">R3</span>No untyped deals</h4>
+    <p>Lead→Deal conversion requires <code>customer_type</code>. Kanban views, required fields, SLA profile, and owner team all key off it. "Unknown" is a lead state, never a deal state.</p>
+  </div>
+  <div class="rule">
+    <h4><span class="rn">R4</span>Assignment: sticky, then team</h4>
+    <p>Assignment Rules route by customer_type × territory. If the Omni Identity has a prior owner, they get it first (sticky); else round-robin within the type's team — mirroring excom Phase C call routing, so calls and deals land on the same human.</p>
+  </div>
+  <div class="rule">
+    <h4><span class="rn">R5</span>Won is atomic</h4>
+    <p>The conversion contract from HLD-002 §Stage 3 applies to every pipeline: Customer created/located, Omni Identity re-pointed with CRM links retained, provenance stamped, deal locked, system message posted to the thread. No half-converted deals.</p>
+  </div>
+  <div class="rule">
+    <h4><span class="rn">R6</span>Lost has a reason, always</h4>
+    <p>Closed-lost requires a reason from a short, per-type list (Price, Timeline, Territory conflict, Spec infeasible, Unresponsive, Chose competitor). Free-text is allowed <i>in addition</i>, never instead. This is the raw material for every future "why are we losing importers?" question.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════ FOOTPRINT ══════════════════════════ -->
+<h2>Build Footprint</h2>
+<p class="h2-sub">What this actually costs to build on the current stack — the fork + form scripts do the heavy lifting.</p>
+
+<div class="cols2">
+  <table>
+    <thead><tr><th>Piece</th><th>Implementation</th></tr></thead>
+    <tbody>
+      <tr><td>customer_type</td><td>One Select field on <code>CRM Lead</code> + <code>CRM Deal</code> (custom field, no fork change)</td></tr>
+      <tr><td>Typed stages</td><td>One superset of <code>CRM Deal Status</code> rows; per-type visibility + ordering via form scripts (the fork's extensible-tabs / hide machinery); one saved kanban view per type</td></tr>
+      <tr><td>Per-type fields</td><td>Form scripts show/require by type: <code>event_date</code> (gifting), <code>design_by</code> + <code>sample_round</code> (OEM), <code>incoterm</code> + <code>currency</code> (export), proposed pin codes (distributor)</td></tr>
+      <tr><td>IndiaMART</td><td>Whitelisted webhook endpoint → CRM Lead + auto-ack via excom (new, small)</td></tr>
+      <tr><td>TradeIndia</td><td>Scheduled poller, 5-min cadence (new, small)</td></tr>
+      <tr><td>Meta leads</td><td>CRM <code>lead_syncing</code> — configure, don't build</td></tr>
+      <tr><td>Dedupe / sticky</td><td>Excom Omni Identity — already exists; add the lead-capture lookup hook</td></tr>
+      <tr><td>Assignment</td><td>Core Frappe <code>Assignment Rule</code> — configuration</td></tr>
+      <tr><td>SLA timers</td><td>CRM's native SLA (<code>CRM Service Level Agreement</code>) per source/type — configuration</td></tr>
+      <tr><td>New doctypes</td><td><b>Zero.</b> If exhibitions outgrow tagging, a tiny <code>Exhibition</code> doctype later — not now</td></tr>
+    </tbody>
+  </table>
+
+  <div class="deferred">
+    <h4>Deliberately deferred — build when real usage demands</h4>
+    <ul>
+      <li><b>Lead scoring</b> — when volume exceeds what humans can triage</li>
+      <li><b>Auto-nurture drip sequences</b> — when unresponsive-lead volume justifies it</li>
+      <li><b>Quoting inside CRM</b> — ERPNext quotes are fine; revisit if agents context-switch constantly</li>
+      <li><b>Forecasting / weighted pipeline</b> — when management asks twice</li>
+      <li><b>WhatsApp chatbot qualification</b> — after Phase B AI layer proves itself</li>
+      <li><b>Distributor self-service portal</b> — a different product</li>
+      <li><b>Reverse-scheduling engine for gifting</b> — start with a form-script warning banner; automate when volume hurts</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ══════════════════════════ OPEN QUESTIONS ══════════════════════════ -->
+<h2>Open Decisions</h2>
+<p class="h2-sub">Flagged for discussion before build — each changes the flow above if answered differently.</p>
+
+<div class="rules open-q">
+  <div class="rule">
+    <h4><span class="rn">Q1</span>OEM merge</h4>
+    <p>This blueprint merges Private Label and Custom Designed into one pipeline with a <code>design_by</code> branch. Split only if the two are owned by different teams or priced by different logic.</p>
+  </div>
+  <div class="rule">
+    <h4><span class="rn">Q2</span>Retailer channel policy</h4>
+    <p>The covered-territory retailer routes to the distributor, never direct. Is that the actual commercial policy, or do some product lines sell direct-to-retail even in covered territories?</p>
+  </div>
+  <div class="rule">
+    <h4><span class="rn">Q3</span>Export quoting home</h4>
+    <p>HLD-002 A4 flags this: if export needs ERPNext-native quoting (items, taxes, currency) from day one, the Export Quote and Pro Forma stages live in ERPNext with the deal tracking status only. Confirm which side owns the quote document.</p>
+  </div>
+  <div class="rule">
+    <h4><span class="rn">Q4</span>IndiaMART subscription shape</h4>
+    <p>Direct enquiries and purchased Buy Leads have different intent quality. If both are in play, they should be distinct <code>CRM Lead Source</code> rows with different SLA and different junk expectations.</p>
+  </div>
+</div>
+
+<footer>
+  crm_flow_blueprint.html · roadmap/design · companion to HLD-002 (lifecycle spine) and the crm fork's extensible-form-tabs work · no external assets, opens offline
+</footer>
+
+</div>
+</body>
+</html>
