@@ -129,9 +129,7 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
       <div className={cn("t2-reveal absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-surface-hover rounded-md pl-1", selected && "bg-surface-active")} onClick={(e) => e.stopPropagation()}>
         {!coarse && (
           <>
-            {archived
-              ? <button type="button" title="Unarchive (e)" aria-label="Unarchive" className="size-7 rounded flex items-center justify-center text-ink-3 hover:text-ink-1 hover:bg-surface" onClick={() => actions.unarchive(c)}><ArchiveRestore className="size-4" /></button>
-              : <button type="button" title="Archive (e)" aria-label="Archive" className="size-7 rounded flex items-center justify-center text-ink-3 hover:text-ink-1 hover:bg-surface" onClick={() => actions.archive(c)}><Archive className="size-4" /></button>}
+            {/* Archive is deliberately not a hover button — it sat where people click to open the row. Use e, ⋯ or right-click. */}
             <button type="button" title="Assign to me (a)" aria-label="Assign to me" className="size-7 rounded flex items-center justify-center text-ink-3 hover:text-ink-1 hover:bg-surface" onClick={() => actions.assignToMe(c)}><UserPlus className="size-4" /></button>
             <button type="button" title={unread ? "Mark read" : "Mark unread"} aria-label="Toggle read" className="size-7 rounded flex items-center justify-center text-ink-3 hover:text-ink-1 hover:bg-surface" onClick={() => actions.toggleRead(c)}>{unread ? <Eye className="size-4" /> : <EyeOff className="size-4" />}</button>
           </>

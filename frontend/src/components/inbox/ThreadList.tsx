@@ -36,8 +36,12 @@ export function ThreadList({ className }: { className?: string }) {
 
   const actions: RowActions = useMemo(() => ({
     archive: async (c) => {
-      try { await forEachThread(c, (id) => archiveCall({ thread_id: id })); toast.success("Archived"); if (selectedId === c.id) closeRecord(); refresh(); }
-      catch { toast.error("Failed to archive"); }
+      try {
+        await forEachThread(c, (id) => archiveCall({ thread_id: id }));
+        if (selectedId === c.id) closeRecord();
+        refresh();
+        toast.success(`Archived ${c.contactName}`, { duration: 6000, action: { label: "Undo", onClick: async () => { try { await forEachThread(c, (id) => unarchiveCall({ thread_id: id })); refresh(); toast.success("Restored"); } catch { toast.error("Could not restore"); } } } });
+      } catch { toast.error("Failed to archive"); }
     },
     unarchive: async (c) => {
       try { await forEachThread(c, (id) => unarchiveCall({ thread_id: id })); toast.success("Reopened — back in the inbox"); refresh(); }
