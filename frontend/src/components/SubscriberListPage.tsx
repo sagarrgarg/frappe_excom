@@ -1,21 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useFrappePostCall } from "frappe-react-sdk";
-import {
-  ArrowLeft,
-  Plus,
-  Search,
-  Users,
-  Mail,
-  Phone,
-  UserMinus,
-  UserPlus,
-  Trash2,
-  Upload,
-  Radio,
-  ChevronDown,
-} from "lucide-react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { Plus, Search, Users, Mail, Phone, UserMinus, UserPlus, Trash2, Upload, Radio } from "lucide-react";
+import { Button, Input, Field, Select, Modal, EmptyState, Chip, Badge } from "./primitives";
+import { AdminPage, DataTable } from "./shell/AdminPage";
 import { toast } from "sonner";
 
 interface SubscriberList {
@@ -39,30 +26,6 @@ interface Subscriber {
   primary_whatsapp: string;
 }
 
-function StatBadge({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color: "zinc" | "green" | "red";
-}) {
-  const colorMap = {
-    zinc: "text-zinc-700",
-    green: "text-green-700",
-    red: "text-red-700",
-  };
-  return (
-    <div className="flex items-center gap-2">
-      <span className={`text-lg font-semibold ${colorMap[color]}`}>
-        {value}
-      </span>
-      <span className="text-xs text-zinc-600">{label}</span>
-    </div>
-  );
-}
-
 function CreateListDialog({
   onCreate,
   onClose,
@@ -74,46 +37,12 @@ function CreateListDialog({
   const [desc, setDesc] = useState("");
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-zinc-50 border border-zinc-300 rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold text-zinc-900 mb-3">
-          Create Subscriber List
-        </h2>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-zinc-600 mb-1 block">List Name</label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. VIP Customers"
-              className="bg-zinc-100 border-zinc-300 text-zinc-900"
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="text-xs text-zinc-600 mb-1 block">Description</label>
-            <Input
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              placeholder="Optional description"
-              className="bg-zinc-100 border-zinc-300 text-zinc-900"
-            />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" onClick={onClose} className="border-zinc-300 text-zinc-700">
-            Cancel
-          </Button>
-          <Button
-            onClick={() => name.trim() && onCreate(name.trim(), desc.trim())}
-            disabled={!name.trim()}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            Create
-          </Button>
-        </div>
+    <Modal open onOpenChange={(v) => !v && onClose()} title="Create subscriber list" footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!name.trim()} onClick={() => onCreate(name.trim(), desc.trim())}>Create</Button></>}>
+      <div className="space-y-3">
+        <Field label="List name" required><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. VIP customers" autoFocus /></Field>
+        <Field label="Description"><Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional" /></Field>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -158,130 +87,30 @@ function AddSubscriberDialog({
   }, [search, tab, searchIdentities]);
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-zinc-50 border border-zinc-300 rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold text-zinc-900 mb-1">Add Subscriber</h2>
-        <p className="text-xs text-zinc-600 mb-3">
-          Add to <span className="text-zinc-700">{listName}</span>
-        </p>
-
-        <div className="flex gap-1 mb-3 bg-zinc-100 rounded-lg p-1">
-          <button
-            onClick={() => setTab("search")}
-            className={`flex-1 px-3 py-1.5 text-xs rounded-md transition-colors ${
-              tab === "search" ? "bg-zinc-200 text-zinc-900" : "text-zinc-600 hover:text-zinc-900"
-            }`}
-          >
-            Search Identity
-          </button>
-          <button
-            onClick={() => setTab("manual")}
-            className={`flex-1 px-3 py-1.5 text-xs rounded-md transition-colors ${
-              tab === "manual" ? "bg-zinc-200 text-zinc-900" : "text-zinc-600 hover:text-zinc-900"
-            }`}
-          >
-            By Phone / Email
-          </button>
-        </div>
-
-        {tab === "search" ? (
-          <div>
-            <div className="relative mb-3">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
-              <Input
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setSelected(null); }}
-                placeholder="Search by name, email, phone..."
-                className="pl-9 bg-zinc-100 border-zinc-300 text-zinc-900"
-                autoFocus
-              />
-            </div>
-            <div className="max-h-52 overflow-y-auto space-y-1 mb-3">
-              {results.length === 0 ? (
-                <div className="text-xs text-zinc-600 text-center py-4">
-                  {search ? "No identities found" : "Type to search contacts..."}
-                </div>
-              ) : (
-                results.map((r) => (
-                  <button
-                    key={r.name}
-                    onClick={() => setSelected(r)}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors ${
-                      selected?.name === r.name
-                        ? "bg-blue-600/20 border border-blue-500/40"
-                        : "hover:bg-zinc-100 border border-transparent"
-                    }`}
-                  >
-                    <div className="text-sm text-zinc-900 font-medium">
-                      {r.display_name || r.name}
-                    </div>
-                    <div className="flex gap-3 mt-0.5">
-                      {r.primary_email && (
-                        <span className="text-[11px] text-zinc-600 flex items-center gap-1">
-                          <Mail className="w-3 h-3" /> {r.primary_email}
-                        </span>
-                      )}
-                      {r.primary_phone && (
-                        <span className="text-[11px] text-zinc-600 flex items-center gap-1">
-                          <Phone className="w-3 h-3" /> {r.primary_phone}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={onClose} className="border-zinc-300 text-zinc-700">
-                Cancel
-              </Button>
-              <Button
-                onClick={() => selected && onAddByIdentity(selected.name)}
-                disabled={!selected}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                Add
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div>
-            <div className="space-y-3 mb-4">
-              <div>
-                <label className="text-xs text-zinc-600 mb-1 block">Phone</label>
-                <Input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+91 98765 43210"
-                  className="bg-zinc-100 border-zinc-300 text-zinc-900"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-zinc-600 mb-1 block">Email</label>
-                <Input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
-                  className="bg-zinc-100 border-zinc-300 text-zinc-900"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={onClose} className="border-zinc-300 text-zinc-700">
-                Cancel
-              </Button>
-              <Button
-                onClick={() => (phone.trim() || email.trim()) && onAddByContact(phone.trim(), email.trim())}
-                disabled={!phone.trim() && !email.trim()}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                Add
-              </Button>
-            </div>
-          </div>
-        )}
+    <Modal open onOpenChange={(v) => !v && onClose()} title={`Add subscriber to ${listName}`}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button>{tab === "search" ? <Button variant="primary" disabled={!selected} onClick={() => selected && onAddByIdentity(selected.name)}>Add</Button> : <Button variant="primary" disabled={!phone.trim() && !email.trim()} onClick={() => onAddByContact(phone.trim(), email.trim())}>Add</Button>}</>}>
+      <div className="inline-flex rounded-md bg-surface-sunken p-0.5 mb-3" role="tablist">
+        {(["search", "manual"] as const).map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`h-7 px-3 rounded text-xs font-medium ${tab === t ? "bg-surface text-ink-1 shadow-ex" : "text-ink-3"}`}>{t === "search" ? "Search identity" : "By phone / email"}</button>)}
       </div>
-    </div>
+      {tab === "search" ? (
+        <div>
+          <div className="relative mb-2"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-ink-muted" /><Input value={search} onChange={(e) => { setSearch(e.target.value); setSelected(null); }} placeholder="Search by name, email, phone" className="pl-8" autoFocus /></div>
+          <div className="max-h-52 overflow-y-auto rounded-md border border-border divide-y divide-border">
+            {results.length === 0 ? <p className="text-xs text-ink-3 text-center py-4">{search ? "No identities found" : "Type to search contacts"}</p> : results.map((r) => (
+              <button key={r.name} type="button" onClick={() => setSelected(r)} className={`w-full text-left px-3 py-2 min-w-0 ${selected?.name === r.name ? "bg-crayon-blue-tint" : "hover:bg-surface-hover"}`}>
+                <div className="text-sm text-ink-1 font-medium truncate">{r.display_name || r.name}</div>
+                <div className="flex gap-3 mt-0.5 text-xs text-ink-3 min-w-0">{r.primary_email && <span className="inline-flex items-center gap-1 truncate"><Mail className="size-3" />{r.primary_email}</span>}{r.primary_phone && <span className="inline-flex items-center gap-1 shrink-0"><Phone className="size-3" />{r.primary_phone}</span>}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <Field label="Phone"><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" /></Field>
+          <Field label="Email"><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" /></Field>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -298,50 +127,14 @@ function ImportDialog({
   const [limit, setLimit] = useState(0);
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-zinc-50 border border-zinc-300 rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold text-zinc-900 mb-1">Import Subscribers</h2>
-        <p className="text-xs text-zinc-600 mb-3">
-          Bulk-add from ERPNext into <span className="text-zinc-700">{listName}</span>.
-          Omni Identities will be auto-created.
-        </p>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-zinc-600 mb-1 block">Source DocType</label>
-            <select
-              value={doctype}
-              onChange={(e) => setDoctype(e.target.value)}
-              className="w-full bg-zinc-100 border border-zinc-300 rounded-lg px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:border-zinc-300"
-            >
-              <option value="Customer">Customer</option>
-              <option value="Supplier">Supplier</option>
-              <option value="Lead">Lead</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-zinc-600 mb-1 block">Limit (0 = all)</label>
-            <Input
-              type="number"
-              value={limit}
-              onChange={(e) => setLimit(parseInt(e.target.value) || 0)}
-              className="bg-zinc-100 border-zinc-300 text-zinc-900"
-            />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" onClick={onClose} className="border-zinc-300 text-zinc-700">
-            Cancel
-          </Button>
-          <Button
-            onClick={() => onImport(doctype, {}, limit)}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Upload className="w-4 h-4 mr-1.5" />
-            Import
-          </Button>
-        </div>
+    <Modal open onOpenChange={(v) => !v && onClose()} title="Import subscribers" description={`Bulk-add from ERPNext into ${listName}. Omni Identities are auto-created.`}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onImport(doctype, {}, limit)}><Upload />Import</Button></>}>
+      <p className="text-xs text-ink-3 mb-3">Bulk-add from ERPNext into <span className="text-ink-1">{listName}</span>. Omni Identities are auto-created.</p>
+      <div className="space-y-3">
+        <Field label="Source DocType"><Select value={doctype} onChange={(e) => setDoctype(e.target.value)}><option value="Customer">Customer</option><option value="Supplier">Supplier</option><option value="Lead">Lead</option></Select></Field>
+        <Field label="Limit" hint="0 = all"><Input type="number" value={limit} onChange={(e) => setLimit(parseInt(e.target.value) || 0)} /></Field>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -356,8 +149,10 @@ function SubscriberDetailView({
   onBack,
   onRefresh,
   onBroadcast,
+  embedded,
 }: {
   list: SubscriberList;
+  embedded?: boolean;
   subscribers: Subscriber[];
   stats: { total: number; active: number; unsubscribed: number };
   searchQuery: string;
@@ -391,192 +186,40 @@ function SubscriberDetailView({
   );
 
   return (
-    <div className="h-full w-full bg-white flex flex-col">
-      <div className="shrink-0 px-4 py-3 border-b border-zinc-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onBack}
-              className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-lg font-semibold text-zinc-900">{list.list_name}</h1>
-              {list.description && (
-                <p className="text-xs text-zinc-600">{list.description}</p>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={() => setShowImportDialog(true)}
-              variant="outline"
-              className="text-sm border-zinc-300 text-zinc-700 hover:bg-zinc-100"
-            >
-              <Upload className="w-4 h-4 mr-1.5" />
-              Import
-            </Button>
-            <Button
-              onClick={() => setShowAddDialog(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-sm"
-            >
-              <Plus className="w-4 h-4 mr-1.5" />
-              Add
-            </Button>
-            <Button
-              onClick={() => {
-                if (onBroadcast) onBroadcast(list.name);
-              }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm"
-            >
-              <Radio className="w-4 h-4 mr-1.5" />
-              Broadcast
-            </Button>
-          </div>
+    <AdminPage title={list.list_name} icon={<Users />} onBack={onBack} embedded={embedded} bleed
+      actions={<><Button size="sm" onClick={() => setShowImportDialog(true)}><Upload /><span className="hidden tablet:inline">Import</span></Button><Button size="sm" variant="primary" onClick={() => setShowAddDialog(true)}><Plus />Add</Button>{onBroadcast && <Button size="sm" onClick={() => onBroadcast(list.name)}><Radio /><span className="hidden tablet:inline">Broadcast</span></Button>}</>}
+      toolbar={
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="relative flex-1 min-w-0"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-ink-muted" /><Input value={searchQuery} onChange={(e) => onSearchChange(e.target.value)} placeholder="Search by name, email or phone" className="pl-8 bg-surface" /></div>
+          <Select value={statusFilter} onChange={(e) => onStatusFilterChange(e.target.value)} className="w-[130px] shrink-0" aria-label="Status"><option value="">All status</option><option value="Subscribed">Subscribed</option><option value="Unsubscribed">Unsubscribed</option></Select>
         </div>
-
-        <div className="flex items-center gap-4 mt-4">
-          <StatBadge label="Total" value={stats.total} color="zinc" />
-          <StatBadge label="Active" value={stats.active} color="green" />
-          <StatBadge label="Unsubscribed" value={stats.unsubscribed} color="red" />
-        </div>
+      }
+    >
+      <div className="px-3 pt-2 flex items-center gap-4 text-xs text-ink-3 tabular-nums">
+        {list.description && <span className="truncate">{list.description}</span>}
+        <span className="ml-auto shrink-0"><b className="text-ink-1">{stats.total}</b> total</span><span className="shrink-0"><b className="text-crayon-green-text">{stats.active}</b> active</span><span className="shrink-0"><b className="text-crayon-rose-text">{stats.unsubscribed}</b> unsubscribed</span>
       </div>
-
-      <div className="px-4 py-2 border-b border-zinc-200 flex items-center gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search by name, email, or phone..."
-            className="pl-9 bg-zinc-50 border-zinc-300 text-zinc-900 placeholder:text-zinc-600"
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => onStatusFilterChange(e.target.value)}
-          className="bg-zinc-50 border border-zinc-300 rounded-lg px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:border-zinc-300"
-        >
-          <option value="">All Status</option>
-          <option value="Subscribed">Subscribed</option>
-          <option value="Unsubscribed">Unsubscribed</option>
-        </select>
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        {subscribers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-center">
-            <UserPlus className="w-12 h-12 text-zinc-500 mb-3" />
-            <p className="text-zinc-600 text-sm">No subscribers yet</p>
-            <p className="text-zinc-600 text-xs mt-1">
-              Add subscribers manually or import from ERPNext
-            </p>
-          </div>
-        ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-zinc-200 text-xs text-zinc-600 uppercase tracking-wider">
-                <th className="text-left px-4 py-2">Name</th>
-                <th className="text-left px-4 py-2">Email</th>
-                <th className="text-left px-4 py-2">Phone</th>
-                <th className="text-left px-4 py-2">Status</th>
-                <th className="text-left px-4 py-2">Subscribed</th>
-                <th className="text-right px-4 py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {subscribers.map((sub) => (
-                <tr
-                  key={sub.name}
-                  className="border-b border-zinc-200/50 hover:bg-zinc-50/50 transition-colors"
-                >
-                  <td className="px-4 py-2">
-                    <span className="text-sm text-zinc-900">
-                      {sub.display_name || "Unknown"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <span className="text-sm text-zinc-600 flex items-center gap-1.5">
-                      {sub.primary_email && (
-                        <>
-                          <Mail className="w-3.5 h-3.5" />
-                          {sub.primary_email}
-                        </>
-                      )}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <span className="text-sm text-zinc-600 flex items-center gap-1.5">
-                      {sub.primary_phone && (
-                        <>
-                          <Phone className="w-3.5 h-3.5" />
-                          {sub.primary_phone}
-                        </>
-                      )}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        sub.status === "Subscribed"
-                          ? "bg-green-500/10 text-green-700"
-                          : "bg-red-500/10 text-red-700"
-                      }`}
-                    >
-                      {sub.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-xs text-zinc-600">
-                    {sub.subscribed_on
-                      ? new Date(sub.subscribed_on).toLocaleDateString()
-                      : "\u2014"}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {sub.status === "Subscribed" ? (
-                        <button
-                          onClick={async () => {
-                            await unsubscribeCall({ subscriber_name: sub.name });
-                            toast.success("Unsubscribed");
-                            onRefresh();
-                          }}
-                          className="p-1.5 rounded hover:bg-zinc-100 text-zinc-600 hover:text-orange-700"
-                          title="Unsubscribe"
-                        >
-                          <UserMinus className="w-4 h-4" />
-                        </button>
-                      ) : (
-                        <button
-                          onClick={async () => {
-                            await resubscribeCall({ subscriber_name: sub.name });
-                            toast.success("Re-subscribed");
-                            onRefresh();
-                          }}
-                          className="p-1.5 rounded hover:bg-zinc-100 text-zinc-600 hover:text-green-700"
-                          title="Re-subscribe"
-                        >
-                          <UserPlus className="w-4 h-4" />
-                        </button>
-                      )}
-                      <button
-                        onClick={async () => {
-                          await removeSubscriber({ subscriber_name: sub.name });
-                          toast.success("Removed");
-                          onRefresh();
-                        }}
-                        className="p-1.5 rounded hover:bg-zinc-100 text-zinc-600 hover:text-red-700"
-                        title="Remove"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      <div className="mt-2">
+        <DataTable
+          rows={subscribers}
+          keyOf={(s) => s.name}
+          empty={<EmptyState icon={<UserPlus />} title="No subscribers yet" hint="Add subscribers manually or import from ERPNext." compact />}
+          columns={[
+            { key: "name", label: "Name", primary: true, render: (s) => <span className="text-ink-1">{s.display_name || "Unknown"}</span> },
+            { key: "email", label: "Email", render: (s) => s.primary_email ? <span className="inline-flex items-center gap-1.5 text-ink-3 min-w-0"><Mail className="size-3.5 shrink-0" /><span className="truncate">{s.primary_email}</span></span> : <span className="text-ink-muted">—</span> },
+            { key: "phone", label: "Phone", render: (s) => s.primary_phone ? <span className="inline-flex items-center gap-1.5 text-ink-3"><Phone className="size-3.5" />{s.primary_phone}</span> : <span className="text-ink-muted">—</span> },
+            { key: "status", label: "Status", render: (s) => <Chip size="sm" accent={s.status === "Subscribed" ? "green" : "rose"} label={s.status} /> },
+            { key: "since", label: "Since", render: (s) => <span className="text-xs text-ink-3">{s.subscribed_on ? new Date(s.subscribed_on).toLocaleDateString() : "—"}</span> },
+            { key: "actions", label: "", align: "right", render: (s) => (
+              <span className="inline-flex items-center gap-0.5">
+                {s.status === "Subscribed"
+                  ? <Button variant="ghost" size="icon-sm" title="Unsubscribe" aria-label="Unsubscribe" onClick={async () => { await unsubscribeCall({ subscriber_name: s.name }); toast.success("Unsubscribed"); onRefresh(); }}><UserMinus /></Button>
+                  : <Button variant="ghost" size="icon-sm" title="Re-subscribe" aria-label="Re-subscribe" onClick={async () => { await resubscribeCall({ subscriber_name: s.name }); toast.success("Re-subscribed"); onRefresh(); }}><UserPlus /></Button>}
+                <Button variant="ghost" size="icon-sm" title="Remove" aria-label="Remove" onClick={async () => { await removeSubscriber({ subscriber_name: s.name }); toast.success("Removed"); onRefresh(); }}><Trash2 /></Button>
+              </span>
+            ) },
+          ]}
+        />
       </div>
 
       {showAddDialog && (
@@ -633,16 +276,18 @@ function SubscriberDetailView({
           onClose={() => setShowImportDialog(false)}
         />
       )}
-    </div>
+    </AdminPage>
   );
 }
 
 export function SubscriberListPage({
   onNavigateBack,
   onNavigateToBroadcasts,
+  embedded,
 }: {
   onNavigateBack: () => void;
   onNavigateToBroadcasts?: () => void;
+  embedded?: boolean;
 }) {
   const [viewMode, setViewMode] = useState<"lists" | "detail">("lists");
   const [selectedList, setSelectedList] = useState<SubscriberList | null>(null);
@@ -730,82 +375,28 @@ export function SubscriberListPage({
         onBack={handleBackToLists}
         onRefresh={loadSubscribers}
         onBroadcast={onNavigateToBroadcasts ? () => onNavigateToBroadcasts() : undefined}
+        embedded={embedded}
       />
     );
   }
 
   return (
-    <div className="h-full w-full bg-white flex flex-col">
-      <div className="shrink-0 px-4 py-3 border-b border-zinc-200 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onNavigateBack}
-            className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <Users className="w-5 h-5 text-blue-700" />
-          <h1 className="text-lg font-semibold text-zinc-900">Subscriber Lists</h1>
+    <AdminPage title="Subscriber lists" icon={<Users />} onBack={onNavigateBack} embedded={embedded}
+      actions={<Button variant="primary" size="sm" onClick={() => setShowCreateDialog(true)}><Plus />New list</Button>}
+      toolbar={<div className="relative"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-ink-muted" /><Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search lists" className="pl-8 bg-surface" /></div>}>
+      {lists.length === 0 ? (
+        <EmptyState icon={<Users />} title="No subscriber lists yet" hint="Create a list to group contacts for broadcasts." />
+      ) : (
+        <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr))]">
+          {lists.map((list) => (
+            <button key={list.name} type="button" onClick={() => handleSelectList(list)} className="rounded-lg border border-border p-3 text-left hover:bg-surface-hover min-w-0">
+              <div className="flex items-center gap-2 min-w-0"><h3 className="text-sm font-medium text-ink-1 truncate flex-1">{list.list_name}</h3><Badge accent="green" count={list.active_subscribers} /></div>
+              {list.description && <p className="text-xs text-ink-3 line-clamp-2 mt-1">{list.description}</p>}
+              <p className="text-xs text-ink-3 mt-1.5 tabular-nums">{list.total_subscribers} total</p>
+            </button>
+          ))}
         </div>
-        <Button
-          onClick={() => setShowCreateDialog(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm"
-        >
-          <Plus className="w-4 h-4 mr-1.5" />
-          New List
-        </Button>
-      </div>
-
-      <div className="px-4 py-2 border-b border-zinc-200">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search lists..."
-            className="pl-9 bg-zinc-50 border-zinc-300 text-zinc-900 placeholder:text-zinc-600"
-          />
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4">
-        {lists.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-center">
-            <Users className="w-12 h-12 text-zinc-500 mb-3" />
-            <p className="text-zinc-600 text-sm">No subscriber lists yet</p>
-            <p className="text-zinc-600 text-xs mt-1">
-              Create a list to start grouping your contacts
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {lists.map((list) => (
-              <button
-                key={list.name}
-                onClick={() => handleSelectList(list)}
-                className="bg-zinc-50 border border-zinc-200 rounded-xl p-4 text-left hover:border-zinc-300 transition-colors group"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="font-medium text-zinc-900 group-hover:text-blue-700 transition-colors">
-                    {list.list_name}
-                  </h3>
-                  <span className="text-xs bg-blue-500/10 text-blue-700 px-2 py-0.5 rounded-full">
-                    {list.active_subscribers} active
-                  </span>
-                </div>
-                {list.description && (
-                  <p className="text-xs text-zinc-600 mb-3 line-clamp-2">
-                    {list.description}
-                  </p>
-                )}
-                <div className="flex items-center gap-3 text-xs text-zinc-600">
-                  <span>{list.total_subscribers} total</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
 
       {showCreateDialog && (
         <CreateListDialog
@@ -822,6 +413,6 @@ export function SubscriberListPage({
           onClose={() => setShowCreateDialog(false)}
         />
       )}
-    </div>
+    </AdminPage>
   );
 }

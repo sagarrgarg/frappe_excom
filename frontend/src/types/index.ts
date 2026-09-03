@@ -125,6 +125,12 @@ export interface UnifiedContact {
   channels: string[];
   tags?: ThreadTag[];
   broadcastDeliveryStatus?: string;
+  /** Additive fields used by the P1 tree (legacy ignores them). */
+  assignedToUser?: string;
+  assignedTeam?: string;
+  assignedTeamName?: string;
+  lastMessageDirection?: "Inbound" | "Outbound";
+  threads?: ExcomThread[];
 }
 
 export interface Conversation {

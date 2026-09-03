@@ -1,21 +1,9 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import {
-  ArrowLeft,
-  BarChart3,
-  TrendingUp,
-  MessageCircle,
-  DollarSign,
-  FileText,
-  Clock,
-  Users,
-  Activity,
-  RefreshCw,
-  Loader2,
-  ChevronDown,
-} from "lucide-react";
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
-import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
+import { BarChart3, TrendingUp, MessageCircle, DollarSign, Clock, Users, Activity, RefreshCw, Loader2 } from "lucide-react";
+import { useFrappeGetCall } from "frappe-react-sdk";
+import { Button, Select, SegmentedControl } from "./primitives";
+import { AdminPage } from "./shell/AdminPage";
+import { chartTheme } from "../lib/chart-theme";
 import { toast } from "sonner";
 import {
   AreaChart,
@@ -35,6 +23,7 @@ import {
 
 interface AnalyticsPageProps {
   onNavigateBack: () => void;
+  embedded?: boolean;
 }
 
 type AnalyticsTab = "overview" | "messaging" | "conversations" | "pricing";
@@ -47,15 +36,19 @@ const PERIOD_LABELS: Record<Period, string> = {
   "90": "90 Days",
 };
 
+/** Chart colours come from the token CSS variables (UX-001 §9.1: crayon palette, ≥2px strokes, no gradient fills). */
+const T = chartTheme();
 const CATEGORY_COLORS: Record<string, string> = {
-  MARKETING: "#8b5cf6",
-  UTILITY: "#3b82f6",
-  AUTHENTICATION: "#f59e0b",
-  SERVICE: "#10b981",
-  UNKNOWN: "#6b7280",
+  MARKETING: T.byName.violet,
+  UTILITY: T.byName.blue,
+  AUTHENTICATION: T.byName.amber,
+  SERVICE: T.byName.green,
+  UNKNOWN: T.axis,
 };
-
-const CHART_COLORS = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#06b6d4"];
+const CHART_COLORS = T.series;
+const TT = T.tooltip;
+const TICK = T.tick;
+const GRID = T.grid;
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -88,29 +81,22 @@ function StatCard({
   icon: React.FC<{ className?: string }>;
   color?: string;
 }) {
-  const colorMap: Record<string, string> = {
-    blue: "from-blue-500/20 to-blue-600/10 border-blue-500/30",
-    purple: "from-purple-500/20 to-purple-600/10 border-purple-500/30",
-    green: "from-emerald-500/20 to-emerald-600/10 border-emerald-500/30",
-    amber: "from-amber-500/20 to-amber-600/10 border-amber-500/30",
-    rose: "from-rose-500/20 to-rose-600/10 border-rose-500/30",
-  };
+  const iconTone: Record<string, string> = { blue: "text-crayon-blue-base", purple: "text-crayon-violet-base", green: "text-crayon-green-base", amber: "text-crayon-amber-base", rose: "text-crayon-rose-base" };
   return (
-    <div className={`rounded-xl border bg-gradient-to-br p-3 ${colorMap[color] || colorMap.blue}`}>
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className="w-4 h-4 text-zinc-600" />
-        <span className="text-xs text-zinc-600 font-medium">{label}</span>
+    <div className="rounded-lg border border-border bg-surface p-3 min-w-0">
+      <div className="flex items-center gap-2 mb-1.5 min-w-0">
+        <Icon className={`size-4 shrink-0 ${iconTone[color] || iconTone.blue}`} />
+        <span className="text-xs text-ink-3 truncate">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-zinc-900">{typeof value === "number" ? formatNumber(value) : value}</p>
-      {sub && <p className="text-xs text-zinc-600 mt-1">{sub}</p>}
+      <p className="text-lg text-ink-1 tabular-nums truncate">{typeof value === "number" ? formatNumber(value) : value}</p>
+      {sub && <p className="text-xs text-ink-3 mt-0.5 truncate">{sub}</p>}
     </div>
   );
 }
 
-export function AnalyticsPage({ onNavigateBack }: AnalyticsPageProps) {
+export function AnalyticsPage({ onNavigateBack, embedded }: AnalyticsPageProps) {
   const [activeTab, setActiveTab] = useState<AnalyticsTab>("overview");
   const [period, setPeriod] = useState<Period>("30");
-  const [showPeriodMenu, setShowPeriodMenu] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState("");
 
   const { data: accountsData } = useFrappeGetCall<{ message: any[] }>(
@@ -193,7 +179,7 @@ export function AnalyticsPage({ onNavigateBack }: AnalyticsPageProps) {
     return Object.entries(cats).map(([name, value]) => ({
       name: name.charAt(0) + name.slice(1).toLowerCase(),
       value: value as number,
-      fill: CATEGORY_COLORS[name] || "#6b7280",
+      fill: CATEGORY_COLORS[name] || T.axis,
     }));
   }, [overview]);
 
@@ -214,89 +200,31 @@ export function AnalyticsPage({ onNavigateBack }: AnalyticsPageProps) {
   ];
 
   return (
-    <div className="h-full w-full bg-white flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="shrink-0 border-b border-zinc-200 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={onNavigateBack} className="text-zinc-600 hover:text-zinc-900">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <h1 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-blue-700" />
-                Analytics
-              </h1>
-              <p className="text-xs text-zinc-600 mt-0.5">WhatsApp & platform metrics</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {accounts.length > 1 && (
-              <select
-                value={selectedAccount}
-                onChange={(e) => setSelectedAccount(e.target.value)}
-                className="bg-zinc-100 border border-zinc-300 rounded-lg px-3 py-1.5 text-sm text-zinc-900 focus:outline-none focus:border-blue-500"
-              >
-                {accounts.map((a: any) => (
-                  <option key={a.name} value={a.name}>{a.account_name || a.name}</option>
-                ))}
-              </select>
-            )}
-
-            <div className="relative">
-              <button
-                onClick={() => setShowPeriodMenu(!showPeriodMenu)}
-                className="flex items-center gap-1.5 bg-zinc-100 border border-zinc-300 rounded-lg px-3 py-1.5 text-sm text-zinc-900 hover:border-zinc-300"
-              >
-                {PERIOD_LABELS[period]}
-                <ChevronDown className="w-3.5 h-3.5 text-zinc-600" />
-              </button>
-              {showPeriodMenu && (
-                <div className="absolute right-0 top-full mt-1 bg-zinc-100 border border-zinc-300 rounded-lg shadow-xl z-50 py-1">
-                  {(Object.entries(PERIOD_LABELS) as [Period, string][]).map(([k, v]) => (
-                    <button
-                      key={k}
-                      onClick={() => { setPeriod(k); setShowPeriodMenu(false); }}
-                      className={`w-full px-3 py-1.5 text-sm text-left hover:bg-zinc-200 ${period === k ? "text-blue-700" : "text-zinc-700"}`}
-                    >
-                      {v}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <Button variant="ghost" size="icon" onClick={handleRefresh} className="text-zinc-600 hover:text-zinc-900" disabled={isLoading}>
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            </Button>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-1 mt-4">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === t.id
-                  ? "bg-blue-500/20 text-blue-700 border border-blue-500/40"
-                  : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
-              }`}
-            >
-              <t.icon className="w-3.5 h-3.5" />
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+    <AdminPage
+      title="Analytics"
+      icon={<BarChart3 />}
+      onBack={onNavigateBack}
+      embedded={embedded}
+      wide
+      actions={
+        <>
+          {accounts.length > 1 && (
+            <Select value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)} className="w-[150px] hidden tablet:block" aria-label="Account">
+              {accounts.map((a: any) => <option key={a.name} value={a.name}>{a.account_name || a.name}</option>)}
+            </Select>
+          )}
+          <Select value={period} onChange={(e) => setPeriod(e.target.value as Period)} className="w-[100px]" aria-label="Period">
+            {(Object.entries(PERIOD_LABELS) as [Period, string][]).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
+          <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isLoading} aria-label="Refresh">{isLoading ? <Loader2 className="animate-spin" /> : <RefreshCw />}</Button>
+        </>
+      }
+      toolbar={<SegmentedControl variant="segmented" value={activeTab} onChange={setActiveTab} segments={tabs.map((t) => ({ value: t.id, label: t.label, icon: <t.icon /> }))} />}
+    >
+      <div>
         {isLoading && !overview.messaging && !internal.messages_by_day ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 text-blue-700 animate-spin" />
+          <div className="flex items-center justify-center py-20 text-ink-3">
+            <Loader2 className="size-5 animate-spin" />
           </div>
         ) : (
           <>
@@ -332,7 +260,7 @@ export function AnalyticsPage({ onNavigateBack }: AnalyticsPageProps) {
           </>
         )}
       </div>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -349,7 +277,7 @@ function OverviewTab({
   return (
     <div className="space-y-4">
       {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
         <StatCard
           label="Messages Sent"
           value={overview?.messaging?.total_sent || 0}
@@ -381,33 +309,33 @@ function OverviewTab({
       </div>
 
       {/* Charts row 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title="Message Volume (Internal)" subtitle="Inbound vs Outbound">
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))]">
+        <ChartCard title="Message volume" subtitle="Inbound vs outbound" rows={internalDayData} columns={[{ key: "day", label: "Day" }, { key: "inbound", label: "In" }, { key: "outbound", label: "Out" }]}>
           {internalDayData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={240}>
               <AreaChart data={internalDayData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-                <XAxis dataKey="day" tick={{ fill: "#71717a", fontSize: 11 }} />
-                <YAxis tick={{ fill: "#71717a", fontSize: 11 }} />
-                <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, color: "#fff" }} />
-                <Area type="monotone" dataKey="inbound" stackId="1" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} name="Inbound" />
-                <Area type="monotone" dataKey="outbound" stackId="1" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.3} name="Outbound" />
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+                <XAxis dataKey="day" tick={TICK} />
+                <YAxis tick={TICK} />
+                <Tooltip contentStyle={TT} />
+                <Area type="monotone" dataKey="inbound" stackId="1" stroke={T.byName.blue} strokeWidth={2} fill={T.byName.blue} fillOpacity={0.15} name="Inbound" />
+                <Area type="monotone" dataKey="outbound" stackId="1" stroke={T.byName.violet} strokeWidth={2} fill={T.byName.violet} fillOpacity={0.15} name="Outbound" />
                 <Legend />
               </AreaChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
         </ChartCard>
 
-        <ChartCard title="Channel Distribution" subtitle="Messages by channel">
+        <ChartCard title="Channels" subtitle="Messages by channel" rows={channelPieData} columns={[{ key: "name", label: "Channel" }, { key: "value", label: "Messages" }]}>
           {channelPieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={240}>
               <PieChart>
-                <Pie data={channelPieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} dataKey="value" label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`}>
+                <Pie data={channelPieData} cx="50%" cy="50%" innerRadius={56} outerRadius={92} stroke={T.surface} strokeWidth={2} dataKey="value" label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`}>
                   {channelPieData.map((_: any, i: number) => (
                     <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, color: "#fff" }} />
+                <Tooltip contentStyle={TT} />
               </PieChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
@@ -415,31 +343,31 @@ function OverviewTab({
       </div>
 
       {/* Charts row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title="Conversation Categories" subtitle="From Meta Analytics">
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))]">
+        <ChartCard title="Conversation categories" subtitle="From Meta analytics" rows={categoryPieData} columns={[{ key: "name", label: "Category" }, { key: "value", label: "Count" }]}>
           {categoryPieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={240}>
               <PieChart>
-                <Pie data={categoryPieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} dataKey="value" label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`}>
+                <Pie data={categoryPieData} cx="50%" cy="50%" innerRadius={56} outerRadius={92} stroke={T.surface} strokeWidth={2} dataKey="value" label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`}>
                   {categoryPieData.map((entry: any, i: number) => (
                     <Cell key={i} fill={entry.fill} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, color: "#fff" }} />
+                <Tooltip contentStyle={TT} />
               </PieChart>
             </ResponsiveContainer>
           ) : <EmptyChart message="No Meta conversation data" />}
         </ChartCard>
 
-        <ChartCard title="Message Types" subtitle="Distribution by type">
+        <ChartCard title="Message types" rows={typeBarData} columns={[{ key: "type", label: "Type" }, { key: "count", label: "Count" }]}>
           {typeBarData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={240}>
               <BarChart data={typeBarData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-                <XAxis type="number" tick={{ fill: "#71717a", fontSize: 11 }} />
-                <YAxis type="category" dataKey="type" tick={{ fill: "#71717a", fontSize: 11 }} width={80} />
-                <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, color: "#fff" }} />
-                <Bar dataKey="count" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+                <XAxis type="number" tick={TICK} />
+                <YAxis type="category" dataKey="type" tick={TICK} width={80} />
+                <Tooltip contentStyle={TT} />
+                <Bar dataKey="count" fill={T.byName.blue} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
@@ -454,13 +382,13 @@ function OverviewTab({
               const maxCount = internal.agent_performance[0]?.messages_sent || 1;
               return (
                 <div key={i} className="flex items-center gap-3">
-                  <span className="text-xs text-zinc-600 w-40 truncate">{agent.agent}</span>
-                  <div className="flex-1 bg-zinc-100 rounded-full h-5 overflow-hidden">
+                  <span className="text-xs text-ink-3 w-40 truncate">{agent.agent}</span>
+                  <div className="flex-1 bg-surface-sunken rounded-full h-5 overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-end pr-2"
+                      className="h-full bg-crayon-blue-base/30 rounded-full flex items-center justify-end pr-2"
                       style={{ width: `${Math.max((agent.messages_sent / maxCount) * 100, 10)}%` }}
                     >
-                      <span className="text-[10px] text-zinc-900 font-medium">{agent.messages_sent}</span>
+                      <span className="text-xs text-ink-1 font-medium">{agent.messages_sent}</span>
                     </div>
                   </div>
                 </div>
@@ -477,39 +405,39 @@ function OverviewTab({
 function MessagingTab({ overview, internal, messagingChartData, internalDayData }: any) {
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
         <StatCard label="Total Sent" value={overview?.messaging?.total_sent || 0} icon={MessageCircle} color="blue" />
         <StatCard label="Total Delivered" value={overview?.messaging?.total_delivered || 0} icon={TrendingUp} color="green" />
         <StatCard label="Delivery Rate" value={`${overview?.messaging?.delivery_rate || 0}%`} icon={Activity} color="purple" />
         <StatCard label="New Contacts" value={internal?.new_contacts || 0} icon={Users} color="amber" />
       </div>
 
-      <ChartCard title="Meta Messaging Analytics" subtitle="Messages sent vs delivered (from Meta API)">
+      <ChartCard title="Meta messaging" subtitle="Sent vs delivered (Meta API)" rows={messagingChartData} columns={[{ key: "date", label: "Date" }, { key: "sent", label: "Sent" }, { key: "delivered", label: "Delivered" }]}>
         {messagingChartData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={320}>
+          <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={messagingChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-              <XAxis dataKey="date" tick={{ fill: "#71717a", fontSize: 11 }} />
-              <YAxis tick={{ fill: "#71717a", fontSize: 11 }} />
-              <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, color: "#fff" }} />
-              <Area type="monotone" dataKey="sent" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.2} name="Sent" />
-              <Area type="monotone" dataKey="delivered" stroke="#10b981" fill="#10b981" fillOpacity={0.2} name="Delivered" />
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+              <XAxis dataKey="date" tick={TICK} />
+              <YAxis tick={TICK} />
+              <Tooltip contentStyle={TT} />
+              <Area type="monotone" dataKey="sent" stroke={T.byName.blue} strokeWidth={2} fill={T.byName.blue} fillOpacity={0.15} name="Sent" />
+              <Area type="monotone" dataKey="delivered" stroke={T.byName.green} strokeWidth={2} fill={T.byName.green} fillOpacity={0.15} name="Delivered" />
               <Legend />
             </AreaChart>
           </ResponsiveContainer>
         ) : <EmptyChart message="No Meta messaging data available" />}
       </ChartCard>
 
-      <ChartCard title="Internal Message Volume" subtitle="Inbound vs Outbound from Excom DB">
+      <ChartCard title="Internal message volume" subtitle="Inbound vs outbound" rows={internalDayData} columns={[{ key: "day", label: "Day" }, { key: "inbound", label: "In" }, { key: "outbound", label: "Out" }]}>
         {internalDayData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={320}>
+          <ResponsiveContainer width="100%" height={280}>
             <BarChart data={internalDayData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-              <XAxis dataKey="day" tick={{ fill: "#71717a", fontSize: 11 }} />
-              <YAxis tick={{ fill: "#71717a", fontSize: 11 }} />
-              <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, color: "#fff" }} />
-              <Bar dataKey="inbound" fill="#3b82f6" name="Inbound" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="outbound" fill="#8b5cf6" name="Outbound" radius={[4, 4, 0, 0]} />
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+              <XAxis dataKey="day" tick={TICK} />
+              <YAxis tick={TICK} />
+              <Tooltip contentStyle={TT} />
+              <Bar dataKey="inbound" fill={T.byName.blue} name="Inbound" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="outbound" fill={T.byName.violet} name="Outbound" radius={[4, 4, 0, 0]} />
               <Legend />
             </BarChart>
           </ResponsiveContainer>
@@ -544,38 +472,38 @@ function ConversationsTab({ overview, internal, categoryPieData }: any) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
         <StatCard label="Total Conversations" value={overview?.conversations?.total || 0} icon={Users} color="purple" />
         <StatCard label="Total Cost" value={`$${overview?.conversations?.total_cost || 0}`} icon={DollarSign} color="amber" />
         <StatCard label="Active Threads" value={internal?.active_threads || 0} icon={Activity} color="green" />
         <StatCard label="Avg Response" value={formatDuration(internal?.avg_response_time_seconds || 0)} icon={Clock} color="blue" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title="Conversations by Category" subtitle="From Meta Analytics">
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))]">
+        <ChartCard title="Conversations by category" subtitle="From Meta analytics" rows={categoryPieData} columns={[{ key: "name", label: "Category" }, { key: "value", label: "Count" }]}>
           {categoryPieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={260}>
               <PieChart>
-                <Pie data={categoryPieData} cx="50%" cy="50%" innerRadius={70} outerRadius={110} dataKey="value" label={({ name, value }) => `${name}: ${value}`}>
+                <Pie data={categoryPieData} cx="50%" cy="50%" innerRadius={64} outerRadius={104} stroke={T.surface} strokeWidth={2} dataKey="value" label={({ name, value }) => `${name}: ${value}`}>
                   {categoryPieData.map((entry: any, i: number) => (
                     <Cell key={i} fill={entry.fill} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, color: "#fff" }} />
+                <Tooltip contentStyle={TT} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
           ) : <EmptyChart message="No conversation category data" />}
         </ChartCard>
 
-        <ChartCard title="Daily Conversations" subtitle="By category over time">
+        <ChartCard title="Daily conversations" subtitle="By category" rows={dailyConvData} columns={[{ key: "day", label: "Day" }, ...categories.map((c) => ({ key: c, label: c.charAt(0) + c.slice(1).toLowerCase() }))]}>
           {dailyConvData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={260}>
               <BarChart data={dailyConvData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-                <XAxis dataKey="day" tick={{ fill: "#71717a", fontSize: 11 }} />
-                <YAxis tick={{ fill: "#71717a", fontSize: 11 }} />
-                <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, color: "#fff" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+                <XAxis dataKey="day" tick={TICK} />
+                <YAxis tick={TICK} />
+                <Tooltip contentStyle={TT} />
                 {categories.map((cat, i) => (
                   <Bar key={cat} dataKey={cat} stackId="stack" fill={CATEGORY_COLORS[cat] || CHART_COLORS[i % CHART_COLORS.length]} name={cat.charAt(0) + cat.slice(1).toLowerCase()} />
                 ))}
@@ -591,12 +519,12 @@ function ConversationsTab({ overview, internal, categoryPieData }: any) {
         <ChartCard title="Category Breakdown" subtitle="Conversation counts by type">
           <div className="mt-3 space-y-2">
             {Object.entries(overview.conversations.by_category).map(([cat, count]: [string, any]) => (
-              <div key={cat} className="flex items-center justify-between py-2 px-3 rounded-lg bg-zinc-100/50">
+              <div key={cat} className="flex items-center justify-between py-2 px-3 rounded-lg bg-surface-sunken">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[cat] || "#6b7280" }} />
-                  <span className="text-sm text-zinc-700">{cat.charAt(0) + cat.slice(1).toLowerCase()}</span>
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[cat] || T.axis }} />
+                  <span className="text-sm text-ink-2">{cat.charAt(0) + cat.slice(1).toLowerCase()}</span>
                 </div>
-                <span className="text-sm font-medium text-zinc-900">{formatNumber(count)}</span>
+                <span className="text-sm font-medium text-ink-1">{formatNumber(count)}</span>
               </div>
             ))}
           </div>
@@ -637,7 +565,7 @@ function PricingTab({ overview }: any) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
         <StatCard label="Total Cost" value={`$${overview?.pricing?.total_cost || 0}`} icon={DollarSign} color="rose" />
         <StatCard label="Total Volume" value={overview?.pricing?.total_volume || 0} icon={MessageCircle} color="blue" />
         <StatCard
@@ -652,30 +580,30 @@ function PricingTab({ overview }: any) {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title="Daily Spending" subtitle="Cost over time">
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))]">
+        <ChartCard title="Daily spending" subtitle="Cost over time" rows={dailyPricing} columns={[{ key: "day", label: "Day" }, { key: "cost", label: "Cost", format: (v) => `$${Number(v).toFixed(2)}` }, { key: "volume", label: "Volume" }]}>
           {dailyPricing.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={dailyPricing}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-                <XAxis dataKey="day" tick={{ fill: "#71717a", fontSize: 11 }} />
-                <YAxis tick={{ fill: "#71717a", fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
-                <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, color: "#fff" }} formatter={(v) => [`$${Number(v).toFixed(2)}`, "Cost"]} />
-                <Area type="monotone" dataKey="cost" stroke="#ef4444" fill="#ef4444" fillOpacity={0.2} />
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+                <XAxis dataKey="day" tick={TICK} />
+                <YAxis tick={TICK} tickFormatter={(v) => `$${v}`} />
+                <Tooltip contentStyle={TT} formatter={(v) => [`$${Number(v).toFixed(2)}`, "Cost"]} />
+                <Area type="monotone" dataKey="cost" stroke={T.byName.rose} strokeWidth={2} fill={T.byName.rose} fillOpacity={0.15} />
               </AreaChart>
             </ResponsiveContainer>
           ) : <EmptyChart message="No pricing data available" />}
         </ChartCard>
 
-        <ChartCard title="Cost by Category" subtitle="Spending breakdown">
+        <ChartCard title="Cost by category" subtitle="Spending breakdown" rows={pricingByCategory} columns={[{ key: "name", label: "Category" }, { key: "cost", label: "Cost", format: (v) => `$${Number(v).toFixed(2)}` }, { key: "volume", label: "Volume" }]}>
           {pricingByCategory.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={260}>
               <BarChart data={pricingByCategory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-                <XAxis dataKey="name" tick={{ fill: "#71717a", fontSize: 10 }} angle={-20} textAnchor="end" height={60} />
-                <YAxis tick={{ fill: "#71717a", fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
-                <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, color: "#fff" }} />
-                <Bar dataKey="cost" fill="#f59e0b" name="Cost ($)" radius={[4, 4, 0, 0]} />
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+                <XAxis dataKey="name" tick={TICK} angle={-20} textAnchor="end" height={60} />
+                <YAxis tick={TICK} tickFormatter={(v) => `$${v}`} />
+                <Tooltip contentStyle={TT} />
+                <Bar dataKey="cost" fill={T.byName.amber} name="Cost ($)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : <EmptyChart message="No category pricing data" />}
@@ -685,16 +613,16 @@ function PricingTab({ overview }: any) {
       {pricingByCategory.length > 0 && (
         <ChartCard title="Pricing Breakdown" subtitle="Volume and cost by category">
           <div className="mt-3">
-            <div className="grid grid-cols-3 gap-2 text-xs text-zinc-600 font-medium px-3 py-1.5">
+            <div className="grid grid-cols-3 gap-2 text-xs text-ink-3 font-medium px-3 py-1.5">
               <span>Category</span>
               <span className="text-right">Volume</span>
               <span className="text-right">Cost</span>
             </div>
             {pricingByCategory.map((row) => (
-              <div key={row.name} className="grid grid-cols-3 gap-2 px-3 py-2 rounded-lg hover:bg-zinc-100/50">
-                <span className="text-sm text-zinc-700">{row.name}</span>
-                <span className="text-sm text-zinc-900 text-right">{formatNumber(row.volume)}</span>
-                <span className="text-sm text-zinc-900 text-right">${row.cost.toFixed(2)}</span>
+              <div key={row.name} className="grid grid-cols-3 gap-2 px-3 py-2 rounded-lg hover:bg-surface-sunken">
+                <span className="text-sm text-ink-2">{row.name}</span>
+                <span className="text-sm text-ink-1 text-right">{formatNumber(row.volume)}</span>
+                <span className="text-sm text-ink-1 text-right">${row.cost.toFixed(2)}</span>
               </div>
             ))}
           </div>
@@ -705,12 +633,25 @@ function PricingTab({ overview }: any) {
 }
 
 
-function ChartCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+/**
+ * ChartCard — chart from tablet up; below 640 a table of the same rows (UX-001 §9.1 "table fallback under 640").
+ * Pass `rows` + `columns` for the fallback; charts without tabular data render as-is.
+ */
+function ChartCard({ title, subtitle, children, rows, columns }: { title: string; subtitle?: string; children: React.ReactNode; rows?: Record<string, any>[]; columns?: { key: string; label: string; format?: (v: any) => string }[] }) {
+  const hasTable = Boolean(rows && rows.length && columns && columns.length);
   return (
-    <div className="bg-zinc-50/50 border border-zinc-200 rounded-xl p-4">
-      <h3 className="text-sm font-semibold text-zinc-900">{title}</h3>
-      {subtitle && <p className="text-xs text-zinc-600 mt-0.5 mb-3">{subtitle}</p>}
-      {children}
+    <div className="bg-surface border border-border rounded-lg p-3 min-w-0">
+      <h3 className="text-sm font-medium text-ink-1 truncate">{title}</h3>
+      {subtitle && <p className="text-xs text-ink-3 mt-0.5 mb-2 truncate">{subtitle}</p>}
+      <div className={hasTable ? "hidden tablet:block" : ""}>{children}</div>
+      {hasTable && (
+        <div className="tablet:hidden overflow-x-auto">
+          <table className="w-full text-xs tabular-nums">
+            <thead><tr className="text-ink-3 border-b border-border">{columns!.map((c) => <th key={c.key} className="text-left font-medium py-1 pr-2 whitespace-nowrap">{c.label}</th>)}</tr></thead>
+            <tbody>{rows!.slice(0, 30).map((r, i) => <tr key={i} className="border-b border-border">{columns!.map((c) => <td key={c.key} className="py-1 pr-2 text-ink-1 truncate max-w-[140px]">{c.format ? c.format(r[c.key]) : String(r[c.key] ?? "—")}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -718,7 +659,7 @@ function ChartCard({ title, subtitle, children }: { title: string; subtitle?: st
 
 function EmptyChart({ message = "No data available for this period" }: { message?: string }) {
   return (
-    <div className="flex items-center justify-center h-60 text-zinc-500">
+    <div className="flex items-center justify-center h-40 text-ink-3">
       <div className="text-center">
         <BarChart3 className="w-8 h-8 mx-auto mb-2 opacity-30" />
         <p className="text-xs">{message}</p>

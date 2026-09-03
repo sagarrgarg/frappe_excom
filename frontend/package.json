@@ -8,7 +8,10 @@
     "dev": "vite",
     "build": "vite build --base=/assets/excom/excom/ && yarn copy-html-entry",
     "preview": "vite preview",
-    "copy-html-entry": "cp ../excom/public/excom/index.html ../excom/www/excom.html"
+    "copy-html-entry": "cp ../excom/public/excom/index.html ../excom/www/excom.html",
+    "gates": "bash scripts/ui-gates.sh",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "reskin": "python3 scripts/reskin.py"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

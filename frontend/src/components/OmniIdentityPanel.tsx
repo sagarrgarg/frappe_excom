@@ -1,634 +1,204 @@
 import { useState } from "react";
-import {
-  Building2,
-  Mail,
-  Phone,
-  DollarSign,
-  Clock,
-  FileText,
-  User,
-  MessageCircle,
-  Instagram,
-  Shield,
-  ShieldAlert,
-  ArrowRight,
-  ExternalLink,
-  Link2,
-  Loader2,
-  Receipt,
-} from "lucide-react";
-import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
-import { Separator } from "./ui/separator";
+import { Building2, Mail, Phone, Clock, FileText, User, Shield, ShieldAlert, ExternalLink, Link2, Loader2, Receipt, CalendarPlus } from "lucide-react";
+import { Chip, Button, SegmentedControl, EmptyState, Avatar } from "./primitives";
+import type { Accent } from "./primitives/Chip";
 import { useLinkedEntities } from "../hooks/useLinkedEntities";
-import {
-  useConversationStats,
-  formatResponseTime,
-} from "../hooks/useConversationStats";
-import {
-  useRelatedDocuments,
-  getDocDate,
-  getDocPartyName,
-  type ERPDocument,
-} from "../hooks/useRelatedInvoices";
+import { useConversationStats, formatResponseTime } from "../hooks/useConversationStats";
+import { useRelatedDocuments, getDocDate, getDocPartyName, type ERPDocument } from "../hooks/useRelatedInvoices";
+import { channelMeta } from "../lib/channels";
+import { cn } from "./ui/utils";
 import type { Conversation } from "../types";
 
 interface OmniIdentityPanelProps {
   conversation: Conversation;
   onAccountSwitch?: (accountId: string) => void;
+  /** Rendered inside the P1 details pane: no outer width/border/header. */
+  embedded?: boolean;
 }
 
-const CHANNEL_ICONS: Record<string, React.ReactElement> = {
-  whatsapp: <MessageCircle className="w-4 h-4 text-green-700" />,
-  email: <Mail className="w-4 h-4 text-blue-700" />,
-  instagram: <Instagram className="w-4 h-4 text-pink-700" />,
-  calls: <Phone className="w-4 h-4 text-purple-700" />,
-};
+const ENTITY_ACCENT: Record<string, Accent> = { Lead: "amber", Opportunity: "violet", Customer: "green", Supplier: "sand", Contact: "teal" };
 
-const CHANNEL_LABELS: Record<string, string> = {
-  whatsapp: "WhatsApp",
-  email: "Email",
-  instagram: "Instagram",
-  calls: "Phone",
-};
-
-const ENTITY_COLORS: Record<string, string> = {
-  Lead: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
-  Customer: "bg-green-500/10 text-green-700 border-green-500/20",
-  Supplier: "bg-blue-500/10 text-blue-700 border-blue-500/20",
-  Contact: "bg-cyan-500/10 text-cyan-700 border-cyan-500/20",
-};
-
-function getFormUrl(doctype: string, docname: string): string {
-  const base = typeof window !== "undefined" ? window.location.origin : "";
+export function getFormUrl(doctype: string, docname: string): string {
   const slug = doctype.toLowerCase().replace(/\s+/g, "-");
-  return `${base}/app/${encodeURIComponent(slug)}/${encodeURIComponent(docname)}`;
+  return `${window.location.origin}/app/${encodeURIComponent(slug)}/${encodeURIComponent(docname)}`;
 }
 
-export function OmniIdentityPanel({
-  conversation,
-  onAccountSwitch,
-}: OmniIdentityPanelProps) {
+const DOC_SECTIONS: { key: keyof ReturnType<typeof useRelatedDocuments>["documents"]; label: string; doctype: string; accent: Accent }[] = [
+  { key: "quotations", label: "Quotations", doctype: "Quotation", accent: "violet" },
+  { key: "sales_orders", label: "Sales Orders", doctype: "Sales Order", accent: "teal" },
+  { key: "delivery_notes", label: "Delivery Notes", doctype: "Delivery Note", accent: "teal" },
+  { key: "sales_invoices", label: "Sales Invoices", doctype: "Sales Invoice", accent: "green" },
+  { key: "rfqs", label: "RFQs", doctype: "Request for Quotation", accent: "sand" },
+  { key: "purchase_orders", label: "Purchase Orders", doctype: "Purchase Order", accent: "sand" },
+  { key: "purchase_receipts", label: "Purchase Receipts", doctype: "Purchase Receipt", accent: "amber" },
+  { key: "purchase_invoices", label: "Purchase Invoices", doctype: "Purchase Invoice", accent: "blue" },
+];
+
+function docAccent(status: string): Accent {
+  if (["Completed", "Paid", "Delivered", "Submitted"].includes(status)) return "green";
+  if (["Overdue", "Cancelled"].includes(status)) return "rose";
+  if (status === "Draft") return "neutral";
+  return "amber";
+}
+
+/**
+ * Identity panel — sections: Contact, Channels, Linked ERP, Summary, Quick actions | Transactions.
+ * Re-skinned onto tokens; sections reused by the P1 DetailsDrawer (embedded) and the legacy tree.
+ */
+export function OmniIdentityPanel({ conversation, onAccountSwitch, embedded }: OmniIdentityPanelProps) {
   const { contactInfo } = conversation;
-  const [activeTab, setActiveTab] = useState<"profile" | "invoices">("profile");
-
-  const { linkedEntities, isLoading: linkedLoading } = useLinkedEntities(
-    conversation.id
-  );
-
-  const { stats, isLoading: statsLoading } = useConversationStats(
-    conversation.id
-  );
-
-  const { documents, isLoading: docsLoading } = useRelatedDocuments(
-    conversation.id
-  );
-
-  const allAccounts = [
-    conversation.activeAccount,
-    ...conversation.otherAccounts,
-  ];
-  const accountsByChannel = allAccounts.reduce((acc, account) => {
-    if (!acc[account.channel]) {
-      acc[account.channel] = [];
-    }
-    acc[account.channel].push(account);
-    return acc;
-  }, {} as Record<string, typeof allAccounts>);
-
-  const badgeClasses: Record<string, string> = {
-    indigo: "bg-indigo-500/20 text-indigo-700",
-    cyan: "bg-cyan-500/20 text-cyan-700",
-    teal: "bg-teal-500/20 text-teal-700",
-    green: "bg-green-500/20 text-green-700",
-    violet: "bg-violet-500/20 text-violet-700",
-    sky: "bg-sky-500/20 text-sky-700",
-    amber: "bg-amber-500/20 text-amber-700",
-    blue: "bg-blue-500/20 text-blue-700",
-  };
-
-  const docSections: { key: keyof typeof documents; label: string; icon: React.ReactElement; color: string; doctype: string }[] = [
-    { key: "quotations", label: "Quotations", icon: <FileText className="w-3.5 h-3.5 text-indigo-700" />, color: "indigo", doctype: "Quotation" },
-    { key: "sales_orders", label: "Sales Orders", icon: <FileText className="w-3.5 h-3.5 text-cyan-700" />, color: "cyan", doctype: "Sales Order" },
-    { key: "delivery_notes", label: "Delivery Notes", icon: <FileText className="w-3.5 h-3.5 text-teal-700" />, color: "teal", doctype: "Delivery Note" },
-    { key: "sales_invoices", label: "Sales Invoices", icon: <DollarSign className="w-3.5 h-3.5 text-green-700" />, color: "green", doctype: "Sales Invoice" },
-    { key: "rfqs", label: "RFQs", icon: <FileText className="w-3.5 h-3.5 text-violet-700" />, color: "violet", doctype: "Request for Quotation" },
-    { key: "purchase_orders", label: "Purchase Orders", icon: <FileText className="w-3.5 h-3.5 text-sky-700" />, color: "sky", doctype: "Purchase Order" },
-    { key: "purchase_receipts", label: "Purchase Receipts", icon: <Receipt className="w-3.5 h-3.5 text-amber-700" />, color: "amber", doctype: "Purchase Receipt" },
-    { key: "purchase_invoices", label: "Purchase Invoices", icon: <Receipt className="w-3.5 h-3.5 text-blue-700" />, color: "blue", doctype: "Purchase Invoice" },
-  ];
-
+  const [tab, setTab] = useState<"profile" | "invoices">("profile");
+  const { linkedEntities, isLoading: linkedLoading } = useLinkedEntities(conversation.id);
+  const { stats, isLoading: statsLoading } = useConversationStats(conversation.id);
+  const { documents, isLoading: docsLoading } = useRelatedDocuments(conversation.id);
+  const allAccounts = [conversation.activeAccount, ...conversation.otherAccounts].filter(Boolean);
+  const byChannel = allAccounts.reduce<Record<string, typeof allAccounts>>((acc, a) => { (acc[a.channel] ||= []).push(a); return acc; }, {});
   const totalDocs = Object.values(documents).reduce((s, arr) => s + arr.length, 0);
-  const hasDocs = totalDocs > 0;
 
-  return (
-    <div className="w-80 bg-gradient-to-b from-zinc-100 to-white border-l border-zinc-200 flex flex-col h-full shrink-0 overflow-hidden">
-      <div className="shrink-0 p-3 border-b border-zinc-200">
-        <h2 className="font-semibold text-zinc-900">Omni Identity</h2>
-        <p className="text-xs text-zinc-600 mt-1">Unified contact profile</p>
-      </div>
-
-      {/* Tab Header */}
-      <div className="shrink-0 flex border-b border-zinc-200">
-        <button
-          onClick={() => setActiveTab("profile")}
-          className={`flex-1 py-2.5 text-xs font-medium text-center transition-colors border-b-2 ${
-            activeTab === "profile"
-              ? "border-blue-500 text-zinc-900 bg-zinc-100/30"
-              : "border-transparent text-zinc-600 hover:text-zinc-900"
-          }`}
-        >
-          <User className="w-3.5 h-3.5 inline mr-1" />
-          Profile
-        </button>
-        <button
-          onClick={() => setActiveTab("invoices")}
-          className={`flex-1 py-2.5 text-xs font-medium text-center transition-colors border-b-2 ${
-            activeTab === "invoices"
-              ? "border-blue-500 text-zinc-900 bg-zinc-100/30"
-              : "border-transparent text-zinc-600 hover:text-zinc-900"
-          }`}
-        >
-          <Receipt className="w-3.5 h-3.5 inline mr-1" />
-          Transactions
-          {totalDocs > 0 && (
-            <Badge className="ml-1.5 text-[9px] px-1.5 h-4 bg-blue-500/20 text-blue-700 border-0">
-              {totalDocs}
-            </Badge>
-          )}
-        </button>
-      </div>
-
+  const body = (
+    <div className="flex flex-col min-h-0 h-full">
+      <SegmentedControl
+        value={tab}
+        onChange={setTab}
+        className="px-2 border-b border-border bg-surface"
+        segments={[{ value: "profile", label: "Profile", icon: <User /> }, { value: "invoices", label: "Transactions", icon: <Receipt />, count: totalDocs }]}
+      />
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {activeTab === "profile" ? (
-        <div className="p-3 space-y-4">
-          {/* Contact Card */}
-          <div className="bg-zinc-100/50 rounded-xl p-3 border border-zinc-300">
-            <div className="flex flex-col items-center text-center">
-              {conversation.contactAvatar ? (
-                <img
-                  src={conversation.contactAvatar}
-                  alt={conversation.contactName}
-                  className="w-20 h-20 rounded-full object-cover ring-4 ring-zinc-300 mb-3"
-                />
-              ) : (
-                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 ring-4 ring-zinc-300 mb-3 flex items-center justify-center text-white text-xl font-medium">
-                  {conversation.contactName
-                    .split(" ")
-                    .map((w) => w[0])
-                    .join("")
-                    .slice(0, 2)
-                    .toUpperCase()}
-                </div>
-              )}
-              <h3 className="font-semibold text-zinc-900 mb-1">
-                {conversation.contactName}
-              </h3>
-              {contactInfo.company && (
-                <p className="text-sm text-zinc-600 mb-3">
-                  {contactInfo.company}
-                </p>
-              )}
-              {contactInfo.erpEntity && (
-                <Badge
-                  className={`${
-                    ENTITY_COLORS[contactInfo.erpEntity.type] ||
-                    "bg-zinc-300/10 text-zinc-600 border-zinc-300/20"
-                  } border`}
-                >
-                  <User className="w-3 h-3 mr-1" />
-                  {contactInfo.erpEntity.type}: {contactInfo.erpEntity.id}
-                </Badge>
-              )}
+        {tab === "profile" ? (
+          <div className="p-3 space-y-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <Avatar name={conversation.contactName} src={conversation.contactAvatar} size={40} />
+              <div className="min-w-0">
+                <p className="text-md text-ink-1 truncate">{conversation.contactName}</p>
+                {contactInfo.company && <p className="text-xs text-ink-3 truncate">{contactInfo.company}</p>}
+              </div>
             </div>
-          </div>
 
-          {/* Assigned Team Member */}
-          {conversation.assignedTo && (
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium text-zinc-900 flex items-center gap-2">
-                <User className="w-4 h-4 text-green-700" />
-                Assigned Team Member
-              </h4>
-              <div className="bg-zinc-100/30 rounded-lg p-3">
-                <div className="flex items-center gap-3">
-                  {conversation.assignedTo.avatar ? (
-                    <img
-                      src={conversation.assignedTo.avatar}
-                      alt={conversation.assignedTo.name}
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-zinc-200 flex items-center justify-center text-zinc-900 text-sm font-medium">
-                      {conversation.assignedTo.name[0]}
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-sm font-medium text-zinc-900">
-                      {conversation.assignedTo.name}
-                    </p>
-                    <p className="text-xs text-zinc-600">Account Manager</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Active Channels & Accounts */}
-          <div className="space-y-3">
-            <div>
-              <h4 className="text-sm font-medium text-zinc-900 flex items-center gap-2">
-                <MessageCircle className="w-4 h-4 text-blue-700" />
-                Active Channels & Accounts
-              </h4>
-              <p className="text-[10px] text-zinc-600 mt-1 ml-6">
-                Click on any account with access to switch conversation threads
-              </p>
-            </div>
-            <div className="space-y-2">
-              {Object.entries(accountsByChannel).map(([channel, accounts]) => (
-                <div key={channel} className="bg-zinc-100/30 rounded-lg p-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    {CHANNEL_ICONS[channel]}
-                    <span className="text-sm font-medium text-zinc-900">
-                      {CHANNEL_LABELS[channel] || channel}
-                    </span>
-                    <Badge className="ml-auto text-[9px] px-1.5 h-4 bg-blue-500/20 text-blue-700 border-0">
-                      {accounts.length} account
-                      {accounts.length > 1 ? "s" : ""}
-                    </Badge>
-                  </div>
-                  <div className="space-y-1.5 pl-6">
-                    {accounts.map((account) => {
-                      const isActiveAccount =
-                        account.id === conversation.activeAccount.id;
-                      const canSwitch = account.hasAccess && !isActiveAccount;
-                      return (
-                        <button
-                          key={account.id}
-                          onClick={() =>
-                            canSwitch && onAccountSwitch?.(account.id)
-                          }
-                          disabled={!canSwitch}
-                          className={`group w-full flex items-center justify-between text-xs p-2 rounded transition-all ${
-                            isActiveAccount
-                              ? "bg-blue-500/10 border border-blue-500/30"
-                              : canSwitch
-                              ? "hover:bg-zinc-200/50 cursor-pointer"
-                              : "opacity-50 cursor-not-allowed"
-                          }`}
-                        >
-                          <div className="flex-1 min-w-0 text-left flex items-center gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <p className="text-zinc-700 font-medium truncate">
-                                  {account.name}
-                                </p>
-                                {isActiveAccount && (
-                                  <Badge className="text-[8px] px-1 h-3.5 bg-blue-500 text-white border-0">
-                                    ACTIVE
-                                  </Badge>
-                                )}
-                              </div>
-                              <p className="text-zinc-600 text-[10px] truncate">
-                                {account.identifier}
-                              </p>
-                            </div>
-                            {canSwitch && (
-                              <ArrowRight className="w-3.5 h-3.5 text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1 ml-2">
-                            {account.hasAccess ? (
-                              <Badge className="text-[9px] px-1.5 h-4 bg-green-500/20 text-green-700 border-0">
-                                <Shield className="w-2.5 h-2.5 mr-0.5" />
-                                Access
-                              </Badge>
-                            ) : (
-                              <Badge className="text-[9px] px-1.5 h-4 bg-orange-500/20 text-orange-700 border-0">
-                                <ShieldAlert className="w-2.5 h-2.5 mr-0.5" />
-                                No Access
-                              </Badge>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Contact Details */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium text-zinc-900 flex items-center gap-2">
-              <Mail className="w-4 h-4 text-blue-700" />
-              Contact Information
-            </h4>
-            <div className="bg-zinc-100/30 rounded-lg p-3 space-y-3">
-              <div className="flex items-start gap-3">
-                <Mail className="w-4 h-4 text-zinc-600 mt-0.5 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-zinc-600">Email</p>
-                  <p className="text-sm text-zinc-700 truncate">
-                    {contactInfo.email}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <Phone className="w-4 h-4 text-zinc-600 mt-0.5 shrink-0" />
-                <div className="flex-1">
-                  <p className="text-xs text-zinc-600">Phone</p>
-                  <p className="text-sm text-zinc-700">{contactInfo.phone}</p>
-                </div>
-              </div>
-              {contactInfo.company && (
-                <div className="flex items-start gap-3">
-                  <Building2 className="w-4 h-4 text-zinc-600 mt-0.5 shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-xs text-zinc-600">Company</p>
-                    <p className="text-sm text-zinc-700">
-                      {contactInfo.company}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Linked ERP Entities */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium text-zinc-900 flex items-center gap-2">
-              <Link2 className="w-4 h-4 text-purple-700" />
-              Linked ERP Entities
-            </h4>
-            {linkedLoading ? (
-              <div className="bg-zinc-100/30 rounded-lg p-3 flex items-center justify-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-zinc-600" />
-                <span className="text-xs text-zinc-600">Loading links…</span>
-              </div>
-            ) : linkedEntities.length === 0 ? (
-              <div className="bg-zinc-100/30 rounded-lg p-3 text-center">
-                <p className="text-xs text-zinc-600">
-                  No linked Lead, Customer, or Contact yet
-                </p>
-                <p className="text-[10px] text-zinc-500 mt-1">
-                  Link from Omni Identity form
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {linkedEntities.map((entity) => (
-                  <a
-                    key={`${entity.linked_doctype}-${entity.linked_name}`}
-                    href={getFormUrl(entity.linked_doctype, entity.linked_name)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group flex items-center gap-3 p-3 rounded-lg bg-zinc-100/30 border border-zinc-300 hover:border-blue-500/40 hover:bg-zinc-100/50 transition-all"
-                  >
-                    <div
-                      className={`flex-1 min-w-0 ${
-                        ENTITY_COLORS[entity.linked_doctype]
-                          ? ""
-                          : "bg-zinc-300/10 text-zinc-600 border-zinc-300/20"
-                      }`}
-                    >
-                      <Badge
-                        className={`text-[10px] px-2 h-5 border ${
-                          ENTITY_COLORS[entity.linked_doctype] ||
-                          "bg-zinc-300/10 text-zinc-600 border-zinc-300/20"
-                        }`}
-                      >
-                        {entity.linked_doctype}
-                      </Badge>
-                      <p className="text-sm font-medium text-zinc-900 truncate mt-1.5">
-                        {entity.title}
-                      </p>
-                      <p className="text-[10px] text-zinc-600 truncate">
-                        {entity.linked_name}
-                        {entity.role && entity.role !== "Unknown" && (
-                          <span className="ml-1">• {entity.role}</span>
-                        )}
-                      </p>
-                    </div>
-                    <ExternalLink className="w-4 h-4 text-zinc-600 group-hover:text-blue-700 shrink-0 transition-colors" />
-                  </a>
-                ))}
-              </div>
+            {conversation.assignedTo && (
+              <Section title="Assigned to">
+                <div className="flex items-center gap-2 min-w-0"><Avatar name={conversation.assignedTo.name} src={conversation.assignedTo.avatar} size={24} /><span className="text-sm text-ink-1 truncate">{conversation.assignedTo.name}</span></div>
+              </Section>
             )}
-          </div>
 
-          {/* Conversation Summary */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium text-zinc-900 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-orange-700" />
-              Conversation Summary
-            </h4>
-            <div className="bg-gradient-to-br from-zinc-100/50 to-zinc-50/50 rounded-lg p-3 border border-zinc-300">
-              {statsLoading ? (
-                <div className="flex items-center justify-center gap-2 py-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-zinc-600" />
-                  <span className="text-xs text-zinc-600">Loading stats…</span>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-zinc-600">
-                      Total Messages
-                    </span>
-                    <span className="font-medium text-zinc-900">
-                      {stats.total_messages}
-                    </span>
-                  </div>
-                  <Separator className="bg-zinc-200" />
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-zinc-600">
-                      Inbound / Outbound
-                    </span>
-                    <span className="font-medium text-zinc-900">
-                      {stats.inbound_count} / {stats.outbound_count}
-                    </span>
-                  </div>
-                  <Separator className="bg-zinc-200" />
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-zinc-600">
-                      Team Replied
-                    </span>
-                    <Badge
-                      className={`text-[10px] border ${
-                        stats.erp_users_replied
-                          ? "bg-green-500/10 text-green-700 border-green-500/20"
-                          : "bg-red-500/10 text-red-700 border-red-500/20"
-                      }`}
-                    >
-                      {stats.erp_users_replied ? "Yes" : "No"}
-                    </Badge>
-                  </div>
-                  <Separator className="bg-zinc-200" />
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-zinc-600">
-                      Avg Response Time
-                    </span>
-                    <span className="font-medium text-zinc-900">
-                      {formatResponseTime(stats.avg_response_time_seconds)}
-                    </span>
-                  </div>
-                  <Separator className="bg-zinc-200" />
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-zinc-600">Channels</span>
-                    <div className="flex gap-1 flex-wrap justify-end">
-                      {stats.channels.length > 0 ? (
-                        stats.channels.map((ch) => (
-                          <Badge
-                            key={ch}
-                            variant="outline"
-                            className="border-zinc-300 text-zinc-700 text-[10px]"
-                          >
-                            {ch}
-                          </Badge>
-                        ))
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="border-zinc-300 text-zinc-700"
-                        >
-                          {conversation.channel}
-                        </Badge>
-                      )}
+            <Section title="Channels & accounts" hint={onAccountSwitch ? "Pick an account to reply from it" : undefined}>
+              <div className="space-y-2">
+                {Object.entries(byChannel).map(([ch, accounts]) => {
+                  const m = channelMeta(ch);
+                  return (
+                    <div key={ch} className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-xs text-ink-2 mb-1"><m.icon className={cn("size-3.5", `text-crayon-${m.accent}-base`)} />{m.label}<span className="text-ink-3 tabular-nums ml-auto">{accounts.length}</span></div>
+                      <div className="space-y-1">
+                        {accounts.map((a) => {
+                          const active = a.id === conversation.activeAccount?.id;
+                          const canSwitch = Boolean(onAccountSwitch) && a.hasAccess && !active;
+                          return (
+                            <button key={a.id} type="button" disabled={!canSwitch} onClick={() => canSwitch && onAccountSwitch?.(a.id)}
+                              className={cn("w-full flex items-center gap-2 rounded-md px-2 h-9 text-left min-w-0 border", active ? "border-crayon-blue-base/40 bg-crayon-blue-tint" : canSwitch ? "border-transparent hover:bg-surface-hover" : "border-transparent opacity-70")}>
+                              <div className="flex-1 min-w-0"><p className="text-sm text-ink-1 truncate">{a.name}</p><p className="text-xs text-ink-3 truncate">{a.identifier}</p></div>
+                              {a.hasAccess ? <Shield className="size-3.5 text-crayon-green-base shrink-0" aria-label="Access" /> : <ShieldAlert className="size-3.5 text-crayon-amber-base shrink-0" aria-label="No access" />}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  );
+                })}
+              </div>
+            </Section>
+
+            <Section title="Contact">
+              <dl className="space-y-1.5 text-sm">
+                <Item icon={<Mail />} label="Email" value={contactInfo.email} href={contactInfo.email ? `mailto:${contactInfo.email}` : undefined} />
+                <Item icon={<Phone />} label="Phone" value={contactInfo.phone} href={contactInfo.phone ? `tel:${contactInfo.phone}` : undefined} />
+                {contactInfo.company && <Item icon={<Building2 />} label="Company" value={contactInfo.company} />}
+              </dl>
+            </Section>
+
+            <Section title="Linked ERP">
+              {linkedLoading ? <Loading /> : linkedEntities.length === 0 ? (
+                <p className="text-xs text-ink-3">No linked Lead, Customer or Contact. <a className="underline" href={getFormUrl("Omni Identity", conversation.id)} target="_blank" rel="noreferrer">Link in Desk</a>.</p>
+              ) : (
+                <div className="space-y-1">
+                  {linkedEntities.map((e) => (
+                    <a key={`${e.linked_doctype}-${e.linked_name}`} href={getFormUrl(e.linked_doctype, e.linked_name)} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-md px-2 h-10 hover:bg-surface-hover min-w-0 group">
+                      <Chip size="sm" accent={ENTITY_ACCENT[e.linked_doctype] || "neutral"} label={e.linked_doctype} />
+                      <div className="flex-1 min-w-0"><p className="text-sm text-ink-1 truncate">{e.title}</p><p className="text-xs text-ink-3 truncate">{e.linked_name}{e.role && e.role !== "Unknown" ? ` · ${e.role}` : ""}</p></div>
+                      <ExternalLink className="size-4 text-ink-muted group-hover:text-ink-2 shrink-0" />
+                    </a>
+                  ))}
                 </div>
               )}
-            </div>
-          </div>
+            </Section>
 
-          {/* Quick Actions */}
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium text-zinc-900 mb-3">
-              Quick Actions
-            </h4>
-            <Button
-              variant="outline"
-              className="w-full justify-start border-zinc-300 hover:bg-zinc-100"
-              onClick={() => {
-                const entity = linkedEntities[0];
-                if (entity) {
-                  window.open(getFormUrl(entity.linked_doctype, entity.linked_name), "_blank");
-                } else {
-                  window.open(getFormUrl("Omni Identity", conversation.id), "_blank");
-                }
-              }}
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              View in ERPNext
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start border-zinc-300 hover:bg-zinc-100"
-              onClick={() => {
-                const email = contactInfo.email;
-                if (email) {
-                  window.open(`mailto:${email}`, "_blank");
-                }
-              }}
-              disabled={!contactInfo.email}
-            >
-              <Mail className="w-4 h-4 mr-2" />
-              Send Email
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start border-zinc-300 hover:bg-zinc-100"
-              onClick={() => {
-                const base = window.location.origin;
-                const contact = linkedEntities.find((e) => e.linked_doctype === "Contact");
-                const params = contact
-                  ? `?party_type=Contact&party=${encodeURIComponent(contact.linked_name)}`
-                  : "";
-                window.open(`${base}/app/event/new${params}`, "_blank");
-              }}
-            >
-              <Clock className="w-4 h-4 mr-2" />
-              Schedule Meeting
-            </Button>
-          </div>
-        </div>
-        ) : (
-        <div className="p-3 space-y-5">
-          {docsLoading ? (
-            <div className="flex items-center justify-center gap-2 py-12">
-              <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
-              <span className="text-sm text-zinc-600">Loading transactions...</span>
-            </div>
-          ) : !hasDocs ? (
-            <div className="text-center py-12">
-              <div className="w-12 h-12 rounded-full bg-zinc-100/50 flex items-center justify-center mx-auto mb-3">
-                <Receipt className="w-6 h-6 text-zinc-500" />
+            <Section title="Summary">
+              {statsLoading ? <Loading /> : (
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
+                  <Stat label="Messages" value={String(stats.total_messages)} />
+                  <Stat label="In / Out" value={`${stats.inbound_count} / ${stats.outbound_count}`} />
+                  <Stat label="Team replied" value={stats.erp_users_replied ? "Yes" : "No"} accent={stats.erp_users_replied ? "green" : "rose"} />
+                  <Stat label="Avg response" value={formatResponseTime(stats.avg_response_time_seconds)} />
+                </dl>
+              )}
+            </Section>
+
+            <Section title="Quick actions">
+              <div className="grid grid-cols-1 gap-1.5">
+                <Button size="sm" className="justify-start" onClick={() => { const e = linkedEntities[0]; window.open(e ? getFormUrl(e.linked_doctype, e.linked_name) : getFormUrl("Omni Identity", conversation.id), "_blank"); }}><FileText />View in ERPNext</Button>
+                <Button size="sm" className="justify-start" disabled={!contactInfo.email} onClick={() => window.open(`mailto:${contactInfo.email}`, "_blank")}><Mail />Send email</Button>
+                <Button size="sm" className="justify-start" onClick={() => { const c = linkedEntities.find((e) => e.linked_doctype === "Contact"); window.open(`${window.location.origin}/app/event/new${c ? `?party_type=Contact&party=${encodeURIComponent(c.linked_name)}` : ""}`, "_blank"); }}><CalendarPlus />Schedule meeting</Button>
               </div>
-              <p className="text-sm text-zinc-600">No transactions found</p>
-              <p className="text-xs text-zinc-500 mt-1">
-                Link a Customer or Supplier to see documents
-              </p>
-            </div>
-          ) : (
-            docSections
-              .filter((sec) => documents[sec.key].length > 0)
-              .map((sec) => (
-                <div key={sec.key} className="space-y-2">
-                  <h4 className="text-xs font-medium text-zinc-900 flex items-center gap-2">
-                    {sec.icon}
-                    {sec.label}
-                    <Badge className={`ml-auto text-[9px] px-1.5 h-4 border-0 ${badgeClasses[sec.color] || ""}`}>
-                      {documents[sec.key].length}
-                    </Badge>
-                  </h4>
-                  <div className="space-y-1.5">
-                    {documents[sec.key].map((doc: ERPDocument) => (
-                      <a
-                        key={doc.name}
-                        href={getFormUrl(sec.doctype, doc.name)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group block p-2.5 rounded-lg bg-zinc-100/30 border border-zinc-300 hover:border-blue-500/40 hover:bg-zinc-100/50 transition-all"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[11px] font-medium text-zinc-900 truncate">{doc.name}</span>
-                          <Badge className={`text-[9px] px-1.5 h-4 border ${
-                            doc.status === "Completed" || doc.status === "Paid" || doc.status === "Delivered"
-                              ? "bg-green-500/10 text-green-700 border-green-500/20"
-                            : doc.status === "Overdue" || doc.status === "Cancelled"
-                              ? "bg-red-500/10 text-red-700 border-red-500/20"
-                            : doc.status === "Draft"
-                              ? "bg-zinc-300/10 text-zinc-600 border-zinc-300/20"
-                            : "bg-orange-500/10 text-orange-700 border-orange-500/20"
-                          }`}>
-                            {doc.status}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between text-[10px]">
-                          <span className="text-zinc-600">{getDocDate(doc)}</span>
-                          <span className="text-zinc-700 font-medium">
-                            {doc.currency} {(doc.grand_total || 0).toLocaleString()}
-                          </span>
-                        </div>
-                        {doc.outstanding_amount != null && doc.outstanding_amount > 0 && (
-                          <div className="text-[10px] text-orange-700 text-right mt-0.5">
-                            {doc.currency} {doc.outstanding_amount.toLocaleString()} due
-                          </div>
-                        )}
-                        {getDocPartyName(doc) && (
-                          <p className="text-[10px] text-zinc-600 mt-0.5 truncate">{getDocPartyName(doc)}</p>
-                        )}
+            </Section>
+          </div>
+        ) : (
+          <div className="p-3 space-y-4">
+            {docsLoading ? <Loading /> : totalDocs === 0 ? <EmptyState icon={<Receipt />} title="No transactions" hint="Link a Customer or Supplier to see documents." compact /> : (
+              DOC_SECTIONS.filter((s) => documents[s.key].length > 0).map((s) => (
+                <Section key={s.key} title={s.label} count={documents[s.key].length}>
+                  <div className="space-y-1">
+                    {documents[s.key].map((d: ERPDocument) => (
+                      <a key={d.name} href={getFormUrl(s.doctype, d.name)} target="_blank" rel="noreferrer" className="block rounded-md border border-border px-2 py-1.5 hover:bg-surface-hover min-w-0">
+                        <div className="flex items-center gap-2 min-w-0"><span className="text-sm text-ink-1 truncate">{d.name}</span><Chip size="sm" accent={docAccent(d.status)} label={d.status} className="ml-auto" /></div>
+                        <div className="flex items-center justify-between text-xs text-ink-3 tabular-nums mt-0.5"><span>{getDocDate(d)}</span><span className="text-ink-2">{d.currency} {(d.grand_total || 0).toLocaleString("en-IN")}</span></div>
+                        {d.outstanding_amount != null && d.outstanding_amount > 0 && <div className="text-xs text-crayon-amber-text text-right tabular-nums">{d.currency} {d.outstanding_amount.toLocaleString("en-IN")} due</div>}
+                        {getDocPartyName(d) && <p className="text-xs text-ink-3 truncate">{getDocPartyName(d)}</p>}
                       </a>
                     ))}
                   </div>
-                </div>
+                </Section>
               ))
-          )}
-        </div>
+            )}
+          </div>
         )}
       </div>
     </div>
   );
+
+  if (embedded) return body;
+  return (
+    <div className="w-80 bg-surface border-l border-border flex flex-col h-full shrink-0 overflow-hidden">
+      <div className="shrink-0 px-3 h-header-h flex items-center border-b border-border"><h2 className="text-md text-ink-1">Details</h2></div>
+      {body}
+    </div>
+  );
 }
+
+function Section({ title, hint, count, children }: { title: string; hint?: string; count?: number; children: React.ReactNode }) {
+  return (
+    <section className="min-w-0">
+      <h4 className="text-xs text-ink-3 mb-1.5 flex items-center gap-1.5">{title}{typeof count === "number" && <span className="tabular-nums">· {count}</span>}{hint && <span className="text-ink-muted font-normal truncate">— {hint}</span>}</h4>
+      {children}
+    </section>
+  );
+}
+function Item({ icon, label, value, href }: { icon: React.ReactNode; label: string; value?: string; href?: string }) {
+  return (
+    <div className="flex items-center gap-2 min-w-0 [&_svg]:size-4 [&_svg]:text-ink-muted [&_svg]:shrink-0">
+      {icon}<dt className="text-xs text-ink-3 w-14 shrink-0">{label}</dt>
+      <dd className="text-sm text-ink-1 truncate min-w-0">{href ? <a href={href} className="hover:underline">{value}</a> : value || "—"}</dd>
+    </div>
+  );
+}
+function Stat({ label, value, accent }: { label: string; value: string; accent?: Accent }) {
+  return <div className="min-w-0"><dt className="text-xs text-ink-3">{label}</dt><dd className={cn("text-sm tabular-nums truncate", accent ? `text-crayon-${accent}-text` : "text-ink-1")}>{value}</dd></div>;
+}
+function Loading() { return <div className="flex items-center gap-2 text-xs text-ink-3 py-2"><Loader2 className="size-4 animate-spin" />Loading…</div>; }

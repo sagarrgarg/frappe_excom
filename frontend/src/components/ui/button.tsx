@@ -4,17 +4,17 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "./utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-zinc-300/50",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-border-strong/50",
   {
     variants: {
       variant: {
-        default: "bg-zinc-50 text-zinc-900 hover:bg-zinc-200",
-        destructive: "bg-red-600 text-white hover:bg-red-700",
+        default: "bg-surface text-ink-1 hover:bg-surface-active",
+        destructive: "bg-crayon-rose-base text-white hover:bg-crayon-rose-text",
         outline:
-          "border border-zinc-300 bg-transparent text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900",
-        secondary: "bg-zinc-100 text-zinc-900 hover:bg-zinc-200",
-        ghost: "hover:bg-zinc-100 hover:text-zinc-900 text-zinc-600",
-        link: "text-blue-700 underline-offset-4 hover:underline",
+          "border border-border-strong bg-transparent text-ink-2 hover:bg-surface-sunken hover:text-ink-1",
+        secondary: "bg-surface-sunken text-ink-1 hover:bg-surface-active",
+        ghost: "hover:bg-surface-sunken hover:text-ink-1 text-ink-3",
+        link: "text-crayon-blue-text underline-offset-4 hover:underline",
       },
       size: {
         default: "h-9 px-3 py-2",

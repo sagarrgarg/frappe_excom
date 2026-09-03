@@ -588,6 +588,15 @@ export function LeftSidebar({
             <Bug className="w-4 h-4" />
             Report Issue
           </a>
+
+          {/* P1 parallel run: switch link (UX-001 §10.2). Legacy is otherwise frozen. */}
+          <a
+            href="?ui=next"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-blue-700 hover:bg-zinc-100 transition-colors"
+          >
+            <Settings className="w-4 h-4" />
+            Switch to the new UI
+          </a>
         </div>
 
         <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-lg p-3 border border-blue-500/20">

@@ -201,22 +201,22 @@ export function NewConversationDialog({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-ink-1/40 flex items-center justify-center z-50"
       onClick={onClose}
     >
       <div
-        className="bg-zinc-50 border border-zinc-300 rounded-xl w-full max-w-lg shadow-2xl"
+        className="bg-surface border border-border-strong rounded-xl w-full max-w-lg shadow-ex"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-zinc-200">
+        <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <Plus className="w-5 h-5 text-blue-700" />
-            <h2 className="text-lg font-semibold text-zinc-900">New Conversation</h2>
+            <Plus className="w-5 h-5 text-crayon-blue-text" />
+            <h2 className="text-lg font-semibold text-ink-1">New Conversation</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-surface-sunken text-ink-3 hover:text-ink-1 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -225,14 +225,14 @@ export function NewConversationDialog({
         <div className="p-4 space-y-5">
           {/* Channel Selection */}
           <div>
-            <label className="text-xs text-zinc-600 mb-2 block font-medium">Channel</label>
+            <label className="text-xs text-ink-3 mb-2 block font-medium">Channel</label>
             <div className="flex gap-2">
               <button
                 onClick={() => setChannel("whatsapp")}
                 className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
                   channel === "whatsapp"
-                    ? "bg-green-500/15 text-green-700 border-green-500/40"
-                    : "bg-zinc-100 text-zinc-600 border-zinc-300 hover:text-zinc-700"
+                    ? "bg-crayon-green-tint text-crayon-green-text border-crayon-green-base/40"
+                    : "bg-surface-sunken text-ink-3 border-border-strong hover:text-ink-2"
                 }`}
               >
                 <MessageCircle className="w-4 h-4" />
@@ -242,8 +242,8 @@ export function NewConversationDialog({
                 onClick={() => setChannel("email")}
                 className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
                   channel === "email"
-                    ? "bg-blue-500/15 text-blue-700 border-blue-500/40"
-                    : "bg-zinc-100 text-zinc-600 border-zinc-300 hover:text-zinc-700"
+                    ? "bg-crayon-blue-tint text-crayon-blue-text border-crayon-blue-base/40"
+                    : "bg-surface-sunken text-ink-3 border-border-strong hover:text-ink-2"
                 }`}
               >
                 <Mail className="w-4 h-4" />
@@ -254,16 +254,16 @@ export function NewConversationDialog({
 
           {/* Account Selection */}
           <div>
-            <label className="text-xs text-zinc-600 mb-1.5 block font-medium">
+            <label className="text-xs text-ink-3 mb-1.5 block font-medium">
               Send From Account
             </label>
             {loadingAccounts ? (
-              <div className="flex items-center gap-2 py-2 text-xs text-zinc-600">
+              <div className="flex items-center gap-2 py-2 text-xs text-ink-3">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 Loading accounts...
               </div>
             ) : accounts.length === 0 ? (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-xs text-red-700">
+              <div className="bg-crayon-rose-tint border border-crayon-rose-base/40 rounded-lg p-3 text-xs text-crayon-rose-text">
                 No {channel} accounts found. Create one in Excom Channel Account first.
               </div>
             ) : (
@@ -271,7 +271,7 @@ export function NewConversationDialog({
                 <select
                   value={selectedAccount}
                   onChange={(e) => setSelectedAccount(e.target.value)}
-                  className="w-full appearance-none bg-zinc-100 border border-zinc-300 rounded-lg px-3 py-2.5 text-sm text-zinc-900 focus:outline-none focus:border-zinc-300 pr-8"
+                  className="w-full appearance-none bg-surface-sunken border border-border-strong rounded-lg px-3 py-2.5 text-sm text-ink-1 focus:outline-none focus:border-border-strong pr-8"
                 >
                   {accounts.map((acc) => (
                     <option key={acc.name} value={acc.name}>
@@ -280,19 +280,19 @@ export function NewConversationDialog({
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600 pointer-events-none" />
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3 pointer-events-none" />
               </div>
             )}
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 bg-zinc-100/50 rounded-lg p-1">
+          <div className="flex gap-1 bg-surface-sunken rounded-lg p-1">
             <button
               onClick={() => { setTab("search"); setSelectedIdentity(null); }}
               className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-all ${
                 tab === "search"
-                  ? "bg-zinc-200 text-zinc-900"
-                  : "text-zinc-600 hover:text-zinc-700"
+                  ? "bg-surface-active text-ink-1"
+                  : "text-ink-3 hover:text-ink-2"
               }`}
             >
               <Search className="w-3 h-3 inline mr-1.5" />
@@ -302,8 +302,8 @@ export function NewConversationDialog({
               onClick={() => { setTab("create"); setSelectedIdentity(null); }}
               className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-all ${
                 tab === "create"
-                  ? "bg-zinc-200 text-zinc-900"
-                  : "text-zinc-600 hover:text-zinc-700"
+                  ? "bg-surface-active text-ink-1"
+                  : "text-ink-3 hover:text-ink-2"
               }`}
             >
               <Plus className="w-3 h-3 inline mr-1.5" />
@@ -315,29 +315,29 @@ export function NewConversationDialog({
           {tab === "search" && (
             <div className="space-y-3">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3" />
                 <Input
                   placeholder="Search by name, phone, email..."
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
-                  className="pl-10 bg-zinc-100 border-zinc-300 text-zinc-900"
+                  className="pl-10 bg-surface-sunken border-border-strong text-ink-1"
                   autoFocus
                 />
               </div>
 
-              <div className="max-h-56 overflow-y-auto space-y-1 rounded-lg border border-zinc-200">
+              <div className="max-h-56 overflow-y-auto space-y-1 rounded-lg border border-border">
                 {searching && (
                   <div className="flex items-center justify-center py-4">
-                    <Loader2 className="w-5 h-5 text-blue-700 animate-spin" />
+                    <Loader2 className="w-5 h-5 text-crayon-blue-text animate-spin" />
                   </div>
                 )}
                 {!searching && identities.length === 0 && searchText.trim() && (
-                  <div className="text-center py-4 text-sm text-zinc-600">
+                  <div className="text-center py-4 text-sm text-ink-3">
                     No identities found
                   </div>
                 )}
                 {!searching && identities.length === 0 && !searchText.trim() && (
-                  <div className="text-center py-4 text-sm text-zinc-600">
+                  <div className="text-center py-4 text-sm text-ink-3">
                     Start typing to search
                   </div>
                 )}
@@ -347,11 +347,11 @@ export function NewConversationDialog({
                     onClick={() => setSelectedIdentity(id)}
                     className={`w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors ${
                       selectedIdentity?.name === id.name
-                        ? "bg-blue-500/15 border-l-2 border-blue-500"
-                        : "hover:bg-zinc-100/70 border-l-2 border-transparent"
+                        ? "bg-crayon-blue-tint border-l-2 border-crayon-blue-base/40"
+                        : "hover:bg-surface-sunken border-l-2 border-transparent"
                     }`}
                   >
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-medium shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-crayon-blue-tint text-crayon-blue-text flex items-center justify-center text-white text-xs font-medium shrink-0">
                       {(id.display_name || id.name)
                         .split(" ")
                         .map((w: string) => w[0])
@@ -360,10 +360,10 @@ export function NewConversationDialog({
                         .toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-zinc-900 font-medium truncate">
+                      <p className="text-sm text-ink-1 font-medium truncate">
                         {id.display_name || id.name}
                       </p>
-                      <div className="flex items-center gap-3 text-[11px] text-zinc-600">
+                      <div className="flex items-center gap-3 text-xs text-ink-3">
                         {id.primary_phone && (
                           <span className="flex items-center gap-1">
                             <Phone className="w-3 h-3" />
@@ -383,13 +383,13 @@ export function NewConversationDialog({
               </div>
 
               {selectedIdentity && (
-                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 flex items-center gap-3">
-                  <User className="w-4 h-4 text-blue-700 shrink-0" />
+                <div className="bg-crayon-blue-tint border border-crayon-blue-base/40 rounded-lg p-3 flex items-center gap-3">
+                  <User className="w-4 h-4 text-crayon-blue-text shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-zinc-900 font-medium truncate">
+                    <p className="text-sm text-ink-1 font-medium truncate">
                       {selectedIdentity.display_name || selectedIdentity.name}
                     </p>
-                    <p className="text-[11px] text-zinc-600 truncate">
+                    <p className="text-xs text-ink-3 truncate">
                       {channel === "whatsapp"
                         ? selectedIdentity.primary_whatsapp || selectedIdentity.primary_phone || "No phone"
                         : selectedIdentity.primary_email || "No email"}
@@ -397,7 +397,7 @@ export function NewConversationDialog({
                   </div>
                   <button
                     onClick={() => setSelectedIdentity(null)}
-                    className="p-1 rounded hover:bg-zinc-200 text-zinc-600 hover:text-zinc-900"
+                    className="p-1 rounded hover:bg-surface-active text-ink-3 hover:text-ink-1"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -410,41 +410,41 @@ export function NewConversationDialog({
           {tab === "create" && (
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-zinc-600 mb-1 block">Name</label>
+                <label className="text-xs text-ink-3 mb-1 block">Name</label>
                 <Input
                   placeholder="Contact name"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  className="bg-zinc-100 border-zinc-300 text-zinc-900"
+                  className="bg-surface-sunken border-border-strong text-ink-1"
                   autoFocus
                 />
               </div>
               {channel === "whatsapp" && (
                 <div>
-                  <label className="text-xs text-zinc-600 mb-1 block">
-                    Phone Number <span className="text-red-700">*</span>
+                  <label className="text-xs text-ink-3 mb-1 block">
+                    Phone Number <span className="text-crayon-rose-text">*</span>
                   </label>
                   <Input
                     placeholder="+91 98765 43210"
                     value={newPhone}
                     onChange={(e) => setNewPhone(e.target.value)}
-                    className="bg-zinc-100 border-zinc-300 text-zinc-900"
+                    className="bg-surface-sunken border-border-strong text-ink-1"
                   />
-                  <p className="text-[10px] text-zinc-600 mt-1">
+                  <p className="text-xs text-ink-3 mt-1">
                     Include country code (e.g. +91)
                   </p>
                 </div>
               )}
               {channel === "email" && (
                 <div>
-                  <label className="text-xs text-zinc-600 mb-1 block">
-                    Email Address <span className="text-red-700">*</span>
+                  <label className="text-xs text-ink-3 mb-1 block">
+                    Email Address <span className="text-crayon-rose-text">*</span>
                   </label>
                   <Input
                     placeholder="contact@example.com"
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
-                    className="bg-zinc-100 border-zinc-300 text-zinc-900"
+                    className="bg-surface-sunken border-border-strong text-ink-1"
                   />
                 </div>
               )}
@@ -453,18 +453,18 @@ export function NewConversationDialog({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 p-4 border-t border-zinc-200">
+        <div className="flex justify-end gap-2 p-4 border-t border-border">
           <Button
             variant="outline"
             onClick={onClose}
-            className="border-zinc-300 text-zinc-700"
+            className="border-border-strong text-ink-2"
           >
             Cancel
           </Button>
           <Button
             disabled={!canSubmit || submitting}
             onClick={handleSubmit}
-            className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white min-w-28"
+            className="bg-crayon-blue-base hover:bg-crayon-blue-text text-white min-w-28"
           >
             {submitting ? (
               <Loader2 className="w-4 h-4 animate-spin" />

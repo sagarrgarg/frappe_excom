@@ -314,23 +314,23 @@ export function WhatsAppTemplatePicker({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-ink-1/40 flex items-center justify-center z-50"
       onClick={onClose}
     >
       <div
-        className="bg-zinc-50 border border-zinc-300 rounded-xl w-full max-w-lg shadow-2xl max-h-[85vh] flex flex-col"
+        className="bg-surface border border-border-strong rounded-xl w-full max-w-lg shadow-ex max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-4 border-b border-zinc-200 shrink-0">
+        <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-green-700" />
-            <h2 className="text-lg font-semibold text-zinc-900">
+            <FileText className="w-5 h-5 text-crayon-green-text" />
+            <h2 className="text-lg font-semibold text-ink-1">
               {step === "list" ? "WhatsApp Templates" : "Fill Variables"}
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-surface-sunken text-ink-3 hover:text-ink-1 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -338,10 +338,10 @@ export function WhatsAppTemplatePicker({
 
         {windowInfo && (
           <div
-            className={`shrink-0 px-5 py-2.5 text-xs flex items-center gap-2 border-b border-zinc-200 ${
+            className={`shrink-0 px-5 py-2.5 text-xs flex items-center gap-2 border-b border-border ${
               windowInfo.window_open
-                ? "bg-green-500/10 text-green-700"
-                : "bg-amber-500/10 text-amber-700"
+                ? "bg-crayon-green-tint text-crayon-green-text"
+                : "bg-crayon-amber-tint text-crayon-amber-text"
             }`}
           >
             {windowInfo.window_open ? (
@@ -374,37 +374,37 @@ export function WhatsAppTemplatePicker({
             <div className="p-4 space-y-3">
               {threadMetaLoading ? (
                 <div className="flex items-center justify-center py-10">
-                  <Loader2 className="w-6 h-6 text-green-700 animate-spin" />
+                  <Loader2 className="w-6 h-6 text-crayon-green-text animate-spin" />
                 </div>
               ) : !threadWaAccount ? (
-                <div className="text-center py-10 text-sm text-amber-700/90 px-2">
+                <div className="text-center py-10 text-sm text-crayon-amber-text/90 px-2">
                   This thread is not tied to a WhatsApp channel account, so templates cannot be
                   filtered. Open a WhatsApp conversation or check Excom Thread account linkage.
                 </div>
               ) : (
                 <>
-                  <p className="text-[11px] text-zinc-600">
+                  <p className="text-xs text-ink-3">
                     Showing templates linked to this conversation&apos;s phone number (WABA).
                   </p>
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3" />
                     <Input
                       placeholder="Search templates..."
                       value={searchText}
                       onChange={(e) => setSearchText(e.target.value)}
-                      className="pl-10 bg-zinc-100 border-zinc-300 text-zinc-900"
+                      className="pl-10 bg-surface-sunken border-border-strong text-ink-1"
                       autoFocus
                     />
                   </div>
 
                   {loading && (
                     <div className="flex items-center justify-center py-10">
-                      <Loader2 className="w-6 h-6 text-green-700 animate-spin" />
+                      <Loader2 className="w-6 h-6 text-crayon-green-text animate-spin" />
                     </div>
                   )}
 
                   {!loading && templates.length === 0 && (
-                    <div className="text-center py-10 text-sm text-zinc-600">
+                    <div className="text-center py-10 text-sm text-ink-3">
                       No approved templates for this WhatsApp number
                     </div>
                   )}
@@ -414,43 +414,43 @@ export function WhatsAppTemplatePicker({
                   <button
                     key={t.name}
                     onClick={() => handleSelectTemplate(t)}
-                    className="w-full text-left rounded-lg border border-zinc-200 p-3.5 hover:border-green-500/40 hover:bg-green-500/5 transition-all group"
+                    className="w-full text-left rounded-lg border border-border p-3.5 hover:border-crayon-green-base/40 hover:bg-crayon-green-tint transition-all group"
                   >
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-sm font-medium text-zinc-900 group-hover:text-green-700 transition-colors">
+                      <span className="text-sm font-medium text-ink-1 group-hover:text-crayon-green-text transition-colors">
                         {t.template_name}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-green-700 transition-colors" />
+                      <ChevronRight className="w-4 h-4 text-ink-3 group-hover:text-crayon-green-text transition-colors" />
                     </div>
-                    <p className="text-xs text-zinc-600 line-clamp-2 mb-2">
+                    <p className="text-xs text-ink-3 line-clamp-2 mb-2">
                       {t.template || "No preview available"}
                     </p>
-                    <div className="flex items-center gap-3 text-[10px] text-zinc-600">
-                      <span className="bg-zinc-100 px-1.5 py-0.5 rounded">{t.category}</span>
+                    <div className="flex items-center gap-3 text-xs text-ink-3">
+                      <span className="bg-surface-sunken px-1.5 py-0.5 rounded">{t.category}</span>
                       <span>{t.language_code}</span>
                       {((t.header_variable_count ?? 0) + (t.variable_count ?? 0)) > 0 && (
-                        <span className="text-blue-700">
+                        <span className="text-crayon-blue-text">
                           {(t.header_variable_count ?? 0) + (t.variable_count ?? 0)} variable
                           {(t.header_variable_count ?? 0) + (t.variable_count ?? 0) > 1 ? "s" : ""}
                         </span>
                       )}
                       {(t.header_type || "").toUpperCase() === "IMAGE" && (
-                        <span className="text-purple-700 flex items-center gap-0.5">
+                        <span className="text-crayon-violet-text flex items-center gap-0.5">
                           <ImageIcon className="w-3 h-3" /> Photo required
                         </span>
                       )}
                       {(t.header_type || "").toUpperCase() === "VIDEO" && (
-                        <span className="text-blue-700 flex items-center gap-0.5">
+                        <span className="text-crayon-blue-text flex items-center gap-0.5">
                           <Video className="w-3 h-3" /> Video required
                         </span>
                       )}
                       {(t.header_type || "").toUpperCase() === "DOCUMENT" && (
-                        <span className="text-orange-700 flex items-center gap-0.5">
+                        <span className="text-crayon-amber-text flex items-center gap-0.5">
                           <Paperclip className="w-3 h-3" /> PDF/Doc required
                         </span>
                       )}
                       {(t.header_type || "").toUpperCase() === "LOCATION" && (
-                        <span className="text-emerald-700 flex items-center gap-0.5">
+                        <span className="text-crayon-green-text flex items-center gap-0.5">
                           <MapPin className="w-3 h-3" /> Location
                         </span>
                       )}
@@ -467,26 +467,26 @@ export function WhatsAppTemplatePicker({
             <div className="p-4 space-y-3">
               <button
                 onClick={() => setStep("list")}
-                className="text-xs text-zinc-600 hover:text-zinc-900 transition-colors flex items-center gap-1"
+                className="text-xs text-ink-3 hover:text-ink-1 transition-colors flex items-center gap-1"
               >
                 <ChevronRight className="w-3 h-3 rotate-180" />
                 Back to templates
               </button>
 
-              <div className="bg-zinc-100/50 border border-zinc-300 rounded-lg p-3">
-                <p className="text-xs text-zinc-600 mb-1 font-medium">
+              <div className="bg-surface-sunken border border-border-strong rounded-lg p-3">
+                <p className="text-xs text-ink-3 mb-1 font-medium">
                   {selectedTemplate.template_name}
                 </p>
                 {getHeaderPreview() && (
-                  <p className="text-sm text-zinc-900 font-semibold mb-1">
+                  <p className="text-sm text-ink-1 font-semibold mb-1">
                     {getHeaderPreview()}
                   </p>
                 )}
-                <p className="text-sm text-zinc-700 leading-relaxed whitespace-pre-wrap">
+                <p className="text-sm text-ink-2 leading-relaxed whitespace-pre-wrap">
                   {getPreview()}
                 </p>
                 {selectedTemplate.footer && (
-                  <p className="text-[10px] text-zinc-600 mt-2 italic">
+                  <p className="text-xs text-ink-3 mt-2 italic">
                     {selectedTemplate.footer}
                   </p>
                 )}
@@ -496,51 +496,51 @@ export function WhatsAppTemplatePicker({
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     {htUpper === "IMAGE" ? (
-                      <ImageIcon className="w-4 h-4 text-purple-700" />
+                      <ImageIcon className="w-4 h-4 text-crayon-violet-text" />
                     ) : htUpper === "VIDEO" ? (
-                      <Video className="w-4 h-4 text-blue-700" />
+                      <Video className="w-4 h-4 text-crayon-blue-text" />
                     ) : (
-                      <Paperclip className="w-4 h-4 text-orange-700" />
+                      <Paperclip className="w-4 h-4 text-crayon-amber-text" />
                     )}
-                    <p className="text-xs text-zinc-600 font-medium">
+                    <p className="text-xs text-ink-3 font-medium">
                       {htUpper === "IMAGE"
                         ? "Attach Header Image"
                         : htUpper === "VIDEO"
                         ? "Attach Header Video"
                         : "Attach Header Document (PDF)"}
-                      <span className="text-red-700 ml-1">*</span>
+                      <span className="text-crayon-rose-text ml-1">*</span>
                     </p>
                   </div>
 
                   {headerMediaUrl ? (
-                    <div className="flex items-center gap-3 bg-zinc-100/70 border border-zinc-300 rounded-lg p-3">
+                    <div className="flex items-center gap-3 bg-surface-sunken border border-border-strong rounded-lg p-3">
                       {htUpper === "IMAGE" ? (
                         <img
                           src={headerMediaUrl}
                           alt="Header"
-                          className="w-14 h-14 rounded-lg object-cover border border-zinc-300"
+                          className="w-14 h-14 rounded-lg object-cover border border-border-strong"
                         />
                       ) : htUpper === "VIDEO" ? (
-                        <div className="w-14 h-14 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                          <Video className="w-6 h-6 text-blue-700" />
+                        <div className="w-14 h-14 rounded-lg bg-crayon-blue-tint border border-crayon-blue-base/40 flex items-center justify-center">
+                          <Video className="w-6 h-6 text-crayon-blue-text" />
                         </div>
                       ) : (
-                        <div className="w-14 h-14 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
-                          <FileText className="w-6 h-6 text-orange-700" />
+                        <div className="w-14 h-14 rounded-lg bg-crayon-amber-tint border border-crayon-amber-base/40 flex items-center justify-center">
+                          <FileText className="w-6 h-6 text-crayon-amber-text" />
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-zinc-900 font-medium truncate">
+                        <p className="text-sm text-ink-1 font-medium truncate">
                           {headerFileName}
                         </p>
-                        <p className="text-[10px] text-green-700">Uploaded</p>
+                        <p className="text-xs text-crayon-green-text">Uploaded</p>
                       </div>
                       <button
                         onClick={() => {
                           setHeaderMediaUrl("");
                           setHeaderFileName("");
                         }}
-                        className="p-1.5 rounded-lg hover:bg-zinc-200 text-zinc-600 hover:text-red-700 transition-colors shrink-0"
+                        className="p-1.5 rounded-lg hover:bg-surface-active text-ink-3 hover:text-crayon-rose-text transition-colors shrink-0"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -549,14 +549,14 @@ export function WhatsAppTemplatePicker({
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploading}
-                      className="w-full border-2 border-dashed border-zinc-300 hover:border-zinc-300 rounded-lg p-3 flex flex-col items-center gap-2 transition-colors group"
+                      className="w-full border-2 border-dashed border-border-strong hover:border-border-strong rounded-lg p-3 flex flex-col items-center gap-2 transition-colors group"
                     >
                       {uploading ? (
-                        <Loader2 className="w-6 h-6 text-blue-700 animate-spin" />
+                        <Loader2 className="w-6 h-6 text-crayon-blue-text animate-spin" />
                       ) : (
-                        <Upload className="w-6 h-6 text-zinc-600 group-hover:text-zinc-700 transition-colors" />
+                        <Upload className="w-6 h-6 text-ink-3 group-hover:text-ink-2 transition-colors" />
                       )}
-                      <span className="text-xs text-zinc-600 group-hover:text-zinc-700 transition-colors">
+                      <span className="text-xs text-ink-3 group-hover:text-ink-2 transition-colors">
                         {uploading
                           ? "Uploading..."
                           : htUpper === "IMAGE"
@@ -573,47 +573,47 @@ export function WhatsAppTemplatePicker({
               {needsLocation && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-emerald-700" />
-                    <p className="text-xs text-zinc-600 font-medium">
-                      Location Header<span className="text-red-700 ml-1">*</span>
+                    <MapPin className="w-4 h-4 text-crayon-green-text" />
+                    <p className="text-xs text-ink-3 font-medium">
+                      Location Header<span className="text-crayon-rose-text ml-1">*</span>
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] text-zinc-600 mb-0.5 block">Latitude</label>
+                      <label className="text-xs text-ink-3 mb-0.5 block">Latitude</label>
                       <Input
                         placeholder="e.g. 37.4421"
                         value={headerLocation.latitude}
                         onChange={(e) => setHeaderLocation((p) => ({ ...p, latitude: e.target.value }))}
-                        className="bg-zinc-100 border-zinc-300 text-zinc-900"
+                        className="bg-surface-sunken border-border-strong text-ink-1"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-zinc-600 mb-0.5 block">Longitude</label>
+                      <label className="text-xs text-ink-3 mb-0.5 block">Longitude</label>
                       <Input
                         placeholder="e.g. -122.1615"
                         value={headerLocation.longitude}
                         onChange={(e) => setHeaderLocation((p) => ({ ...p, longitude: e.target.value }))}
-                        className="bg-zinc-100 border-zinc-300 text-zinc-900"
+                        className="bg-surface-sunken border-border-strong text-ink-1"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="text-[10px] text-zinc-600 mb-0.5 block">Location Name</label>
+                    <label className="text-xs text-ink-3 mb-0.5 block">Location Name</label>
                     <Input
                       placeholder="e.g. Philz Coffee"
                       value={headerLocation.name}
                       onChange={(e) => setHeaderLocation((p) => ({ ...p, name: e.target.value }))}
-                      className="bg-zinc-100 border-zinc-300 text-zinc-900"
+                      className="bg-surface-sunken border-border-strong text-ink-1"
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] text-zinc-600 mb-0.5 block">Address</label>
+                    <label className="text-xs text-ink-3 mb-0.5 block">Address</label>
                     <Input
                       placeholder="e.g. 101 Forest Ave, Palo Alto, CA"
                       value={headerLocation.address}
                       onChange={(e) => setHeaderLocation((p) => ({ ...p, address: e.target.value }))}
-                      className="bg-zinc-100 border-zinc-300 text-zinc-900"
+                      className="bg-surface-sunken border-border-strong text-ink-1"
                     />
                   </div>
                 </div>
@@ -621,9 +621,9 @@ export function WhatsAppTemplatePicker({
 
               {hVar + bVar > 0 && (
                 <div className="space-y-3">
-                  <p className="text-xs text-zinc-600 font-medium">Template variables</p>
+                  <p className="text-xs text-ink-3 font-medium">Template variables</p>
                   {hVar > 0 && (
-                    <p className="text-[10px] text-zinc-600">Header (filled first for Meta)</p>
+                    <p className="text-xs text-ink-3">Header (filled first for Meta)</p>
                   )}
                   {variables.slice(0, hVar + bVar).map((val, idx) => {
                     const isHeader = idx < hVar;
@@ -637,7 +637,7 @@ export function WhatsAppTemplatePicker({
                       : labels[bodyIdx] || `{{${bodyIdx + 1}}}`;
                     return (
                       <div key={idx}>
-                        <label className="text-xs text-zinc-600 mb-1 block">
+                        <label className="text-xs text-ink-3 mb-1 block">
                           {isHeader ? `Header · ${labelHint}` : `Body · ${labelHint}`}
                         </label>
                         <Input
@@ -648,7 +648,7 @@ export function WhatsAppTemplatePicker({
                             next[idx] = e.target.value;
                             setVariables(next);
                           }}
-                          className="bg-zinc-100 border-zinc-300 text-zinc-900"
+                          className="bg-surface-sunken border-border-strong text-ink-1"
                           autoFocus={idx === 0 && !needsMedia}
                         />
                       </div>
@@ -659,11 +659,11 @@ export function WhatsAppTemplatePicker({
 
               {dynBtns.length > 0 && (
                 <div className="space-y-3">
-                  <p className="text-xs text-zinc-600 font-medium">Dynamic link buttons</p>
+                  <p className="text-xs text-ink-3 font-medium">Dynamic link buttons</p>
                   {dynBtns.map((btn, idx) => (
                     <div key={idx}>
-                      <label className="text-xs text-zinc-600 mb-1 block">
-                        {btn.button_label} — <span className="text-zinc-500">{btn.website_url}</span>
+                      <label className="text-xs text-ink-3 mb-1 block">
+                        {btn.button_label} — <span className="text-ink-3">{btn.website_url}</span>
                       </label>
                       <Input
                         placeholder={btn.example_url || "URL suffix"}
@@ -673,7 +673,7 @@ export function WhatsAppTemplatePicker({
                           next[idx] = e.target.value;
                           setButtonUrls(next);
                         }}
-                        className="bg-zinc-100 border-zinc-300 text-zinc-900"
+                        className="bg-surface-sunken border-border-strong text-ink-1"
                       />
                     </div>
                   ))}
@@ -684,18 +684,18 @@ export function WhatsAppTemplatePicker({
         </div>
 
         {step === "fill" && (
-          <div className="flex justify-end gap-2 p-4 border-t border-zinc-200 shrink-0">
+          <div className="flex justify-end gap-2 p-4 border-t border-border shrink-0">
             <Button
               variant="outline"
               onClick={() => setStep("list")}
-              className="border-zinc-300 text-zinc-700"
+              className="border-border-strong text-ink-2"
             >
               Back
             </Button>
             <Button
               disabled={!canSend}
               onClick={handleSend}
-              className="bg-green-600 hover:bg-green-700 text-white min-w-28"
+              className="bg-crayon-green-base hover:bg-crayon-green-text text-white min-w-28"
             >
               {sending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

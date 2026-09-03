@@ -5,7 +5,7 @@
 **Duration:** 16–24 days
 **Depends on:** nothing — no backend work required
 **Blocks:** P2 (testing), P3 §3.10 (CRM surfaces reuse this shell)
-**Status:** Not started
+**Status:** Implemented 2026-09-03 and the default tree (W1–W13); legacy reachable via `?ui=legacy` until P2 sign-off deletes it (W12 step 2)
 
 ---
 

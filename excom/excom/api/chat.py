@@ -68,9 +68,11 @@ def get_threads(
     account: str = "",
     date_from: str = "",
     date_to: str = "",
+    archived: int = 0,
 ):
     """
     Inbox query: returns threads ordered by last_message_at.
+    archived=1 returns Closed (archived) threads instead of open ones.
     Enriches each thread with contact data from Omni Identity and User.
 
     Channel/account filtering:
@@ -94,7 +96,7 @@ def get_threads(
     limit = int(limit)
     offset = int(offset)
 
-    conditions = "t.status NOT IN ('Closed', 'Spam')"
+    conditions = "t.status = 'Closed'" if int(archived or 0) else "t.status NOT IN ('Closed', 'Spam')"
     params: dict = {"limit": limit, "offset": offset, "current_user": frappe.session.user}
 
     if search:
@@ -2010,6 +2012,17 @@ def archive_thread(thread_id: str = "") -> dict:
 
     frappe.db.commit()
     return {"success": True, "status": "Closed"}
+
+
+@frappe.whitelist()
+def unarchive_thread(thread_id: str = "") -> dict:
+    """Reopen an archived (Closed) thread."""
+    _check_excom_access()
+    if not thread_id:
+        frappe.throw(_("thread_id is required"))
+    frappe.db.set_value("Excom Thread", thread_id, "status", "Open")
+    frappe.db.commit()
+    return {"ok": True}
 
 
 @frappe.whitelist()

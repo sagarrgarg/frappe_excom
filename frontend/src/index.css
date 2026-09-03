@@ -1,4 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
+@import "./styles/tokens.css";
 
 @tailwind base;
 @tailwind components;
@@ -25,30 +26,58 @@ html {
 body {
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     sans-serif;
-  background-color: #ffffff;
-  color: #18181b;
+  font-size: 13px;
+  line-height: 18px;
+  background-color: var(--ex-surface);
+  color: var(--ex-ink-1);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Low-DPI protections (UX-001 §2.3) */
+.tabular { font-variant-numeric: tabular-nums; }
+kbd, .tabular-nums, table, [data-counter] { font-variant-numeric: tabular-nums; }
+
+/* Focus ring on tokens — visible for keyboard, quiet for mouse. */
+:focus-visible {
+  outline: 2px solid var(--ex-blue-base);
+  outline-offset: 1px;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--ex-border-strong); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ex-ink-muted); }
 
-::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
-  border-radius: 3px;
-}
+.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.safe-area-top { padding-top: env(safe-area-inset-top); }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #a1a1aa;
+/* Horizontal chip rows: scroll, never wrap; fade mask on both edges (§2.5 rule 2). */
+.chip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, transparent, black 8px, black calc(100% - 8px), transparent);
+  mask-image: linear-gradient(to right, transparent, black 8px, black calc(100% - 8px), transparent);
 }
+.chip-row::-webkit-scrollbar { display: none; }
+.chip-row > * { flex-shrink: 0; }
 
-.safe-area-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
+/* T2 reveal: hover on pointer devices, focus-within always, always-visible on touch. */
+.t2-reveal { opacity: 0; transition: opacity 120ms; }
+.t2-host:hover .t2-reveal,
+.t2-host:focus-within .t2-reveal,
+.t2-host[data-open="true"] .t2-reveal { opacity: 1; }
+/* Elements the reveal covers (row time/badge) fade out so nothing overlaps. */
+@media (pointer: fine) {
+  .t2-host:hover .t2-hide, .t2-host:focus-within .t2-hide { opacity: 0; }
+}
+@media (pointer: coarse) { .t2-reveal { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

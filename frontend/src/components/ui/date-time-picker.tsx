@@ -124,13 +124,13 @@ export function DateTimePicker({
         <button
           type="button"
           className={cn(
-            "flex items-center gap-2 w-full bg-zinc-100 border border-zinc-300 rounded-lg px-3 py-2.5 text-sm text-left transition-colors",
-            "hover:border-zinc-300 focus:outline-none focus:border-zinc-300 focus:ring-1 focus:ring-zinc-300/30",
-            selected ? "text-zinc-900" : "text-zinc-600",
+            "flex items-center gap-2 w-full bg-surface-sunken border border-border-strong rounded-lg px-3 py-2.5 text-sm text-left transition-colors",
+            "hover:border-border-strong focus:outline-none focus:border-border-strong focus:ring-1 focus:ring-border-strong/30",
+            selected ? "text-ink-1" : "text-ink-3",
             className
           )}
         >
-          <CalendarDays className="w-4 h-4 shrink-0 text-zinc-600" />
+          <CalendarDays className="w-4 h-4 shrink-0 text-ink-3" />
           <span className="flex-1 truncate">
             {selected
               ? format(selected, "MMM d, yyyy · h:mm a")
@@ -139,7 +139,7 @@ export function DateTimePicker({
           {selected && (
             <span
               role="button"
-              className="text-zinc-600 hover:text-zinc-700 transition-colors"
+              className="text-ink-3 hover:text-ink-2 transition-colors"
               onClick={(e) => {
                 e.stopPropagation();
                 handleClear();
@@ -152,7 +152,7 @@ export function DateTimePicker({
       </PopoverTrigger>
 
       <PopoverContent align="start" sideOffset={6} className="w-auto p-0">
-        <div className="flex divide-x divide-zinc-200/60">
+        <div className="flex divide-x divide-border">
           {/* Calendar */}
           <div className="p-3 w-72">
             {/* Month nav */}
@@ -160,17 +160,17 @@ export function DateTimePicker({
               <button
                 type="button"
                 onClick={() => setViewMonth(subMonths(viewMonth, 1))}
-                className="p-1 rounded-md hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors"
+                className="p-1 rounded-md hover:bg-surface-sunken text-ink-3 hover:text-ink-1 transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-sm font-medium text-zinc-900">
+              <span className="text-sm font-medium text-ink-1">
                 {format(viewMonth, "MMMM yyyy")}
               </span>
               <button
                 type="button"
                 onClick={() => setViewMonth(addMonths(viewMonth, 1))}
-                className="p-1 rounded-md hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors"
+                className="p-1 rounded-md hover:bg-surface-sunken text-ink-3 hover:text-ink-1 transition-colors"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -181,7 +181,7 @@ export function DateTimePicker({
               {DAY_LABELS.map((d) => (
                 <div
                   key={d}
-                  className="text-center text-xs text-zinc-600 font-medium py-1"
+                  className="text-center text-xs text-ink-3 font-medium py-1"
                 >
                   {d}
                 </div>
@@ -205,12 +205,12 @@ export function DateTimePicker({
                     className={cn(
                       "h-8 w-8 mx-auto rounded-lg text-xs flex items-center justify-center transition-all",
                       disabled && "opacity-25 cursor-not-allowed",
-                      !disabled && !isSelected && "hover:bg-zinc-200/60",
-                      !inMonth && "text-zinc-500",
-                      inMonth && !isSelected && "text-zinc-700",
-                      isToday && !isSelected && "ring-1 ring-zinc-300 text-zinc-900 font-medium",
+                      !disabled && !isSelected && "hover:bg-surface-active",
+                      !inMonth && "text-ink-3",
+                      inMonth && !isSelected && "text-ink-2",
+                      isToday && !isSelected && "ring-1 ring-border-strong text-ink-1 font-medium",
                       isSelected &&
-                        "bg-blue-600 text-white font-semibold ring-0 hover:bg-blue-500"
+                        "bg-crayon-blue-base text-white font-semibold ring-0 hover:bg-crayon-blue-base"
                     )}
                   >
                     {day.getDate()}
@@ -223,13 +223,13 @@ export function DateTimePicker({
           {/* Time */}
           <div className="w-28 flex flex-col">
             <div className="flex items-center gap-1.5 px-3 pt-3 pb-2">
-              <Clock className="w-3.5 h-3.5 text-zinc-600" />
-              <span className="text-xs font-medium text-zinc-600 uppercase tracking-wide">
+              <Clock className="w-3.5 h-3.5 text-ink-3" />
+              <span className="text-xs font-medium text-ink-3">
                 Time
               </span>
             </div>
 
-            <div className="flex flex-1 divide-x divide-zinc-200/60 min-h-0">
+            <div className="flex flex-1 divide-x divide-border min-h-0">
               {/* Hour column */}
               <div
                 ref={hourRef}
@@ -245,8 +245,8 @@ export function DateTimePicker({
                     className={cn(
                       "w-full text-center text-xs py-1.5 rounded-md transition-colors",
                       h === hour
-                        ? "bg-blue-600 text-white font-semibold"
-                        : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                        ? "bg-crayon-blue-base text-white font-semibold"
+                        : "text-ink-3 hover:bg-surface-sunken hover:text-ink-1"
                     )}
                   >
                     {pad(h)}
@@ -268,8 +268,8 @@ export function DateTimePicker({
                     className={cn(
                       "w-full text-center text-xs py-1.5 rounded-md transition-colors",
                       m === minute
-                        ? "bg-blue-600 text-white font-semibold"
-                        : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                        ? "bg-crayon-blue-base text-white font-semibold"
+                        : "text-ink-3 hover:bg-surface-sunken hover:text-ink-1"
                     )}
                   >
                     {pad(m)}
@@ -279,7 +279,7 @@ export function DateTimePicker({
             </div>
 
             <div className="px-2 py-2 text-center">
-              <span className="text-base font-mono text-zinc-900">
+              <span className="text-base font-mono text-ink-1">
                 {pad(hour)}:{pad(minute)}
               </span>
             </div>
@@ -287,11 +287,11 @@ export function DateTimePicker({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-zinc-300/60 px-3 py-2.5">
+        <div className="flex items-center justify-between border-t border-border-strong px-3 py-2.5">
           <button
             type="button"
             onClick={handleClear}
-            className="text-xs text-zinc-600 hover:text-zinc-700 transition-colors"
+            className="text-xs text-ink-3 hover:text-ink-2 transition-colors"
           >
             Clear
           </button>
@@ -305,7 +305,7 @@ export function DateTimePicker({
                 setMinute(roundToNearest5(now.getMinutes()));
                 setViewMonth(now);
               }}
-              className="text-xs text-zinc-600 hover:text-zinc-900 px-2 py-1 rounded-md hover:bg-zinc-100 transition-colors"
+              className="text-xs text-ink-3 hover:text-ink-1 px-2 py-1 rounded-md hover:bg-surface-sunken transition-colors"
             >
               Now
             </button>
@@ -316,8 +316,8 @@ export function DateTimePicker({
               className={cn(
                 "text-xs font-medium px-3 py-1 rounded-md transition-colors",
                 pickedDate
-                  ? "bg-blue-600 text-white hover:bg-blue-500"
-                  : "bg-zinc-100 text-zinc-500 cursor-not-allowed"
+                  ? "bg-crayon-blue-base text-white hover:bg-crayon-blue-base"
+                  : "bg-surface-sunken text-ink-3 cursor-not-allowed"
               )}
             >
               Confirm

@@ -1,17 +1,8 @@
-import {
-  X,
-  Sparkles,
-  ArrowRight,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  Loader2,
-  ExternalLink,
-} from "lucide-react";
-import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
-import { Separator } from "./ui/separator";
+import { X, Sparkles, ArrowRight, CheckCircle2, Clock, AlertCircle, Loader2, ExternalLink, RefreshCw } from "lucide-react";
+import { Button, Chip, EmptyState } from "./primitives";
+import type { Accent } from "./primitives/Chip";
 import { useAISuggestions } from "../hooks/useAISuggestions";
+import { cn } from "./ui/utils";
 
 interface AIAssistantDrawerProps {
   isOpen: boolean;
@@ -19,231 +10,82 @@ interface AIAssistantDrawerProps {
   contactName: string;
   threadId?: string;
   onUseSuggestion?: (text: string) => void;
+  /** Rendered as a tab in the P1 details pane (no fixed overlay). */
+  embedded?: boolean;
 }
 
-const PRIORITY_COLORS: Record<string, string> = {
-  high: "bg-red-500/10 text-red-700 border-red-500/20",
-  medium: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
-  low: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+const PRIORITY: Record<string, { accent: Accent; icon: React.FC<{ className?: string }> }> = {
+  high: { accent: "rose", icon: AlertCircle }, medium: { accent: "amber", icon: Clock }, low: { accent: "blue", icon: CheckCircle2 },
 };
 
-const PRIORITY_ICONS: Record<string, React.FC<{ className?: string }>> = {
-  high: AlertCircle,
-  medium: Clock,
-  low: CheckCircle2,
-};
-
-export function AIAssistantDrawer({
-  isOpen,
-  onClose,
-  contactName,
-  threadId,
-  onUseSuggestion,
-}: AIAssistantDrawerProps) {
-  const { suggestions, isLoading, refresh } = useAISuggestions(
-    isOpen ? threadId || null : null,
-  );
-
+/** AI assist — T3. Suggested replies, summary, next actions, insights. Violet = AI/automated (UX-001 §2.2). */
+export function AIAssistantDrawer({ isOpen, onClose, contactName, threadId, onUseSuggestion, embedded }: AIAssistantDrawerProps) {
+  const { suggestions, isLoading, refresh } = useAISuggestions(isOpen ? threadId || null : null);
   if (!isOpen) return null;
-
   const { suggested_replies, summary, next_actions, insights } = suggestions;
 
-  return (
-    <div className="fixed inset-y-0 right-0 w-96 bg-gradient-to-b from-zinc-100 via-zinc-50 to-white border-l border-zinc-200 shadow-2xl z-50 flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="shrink-0 p-3 border-b border-zinc-200 bg-gradient-to-r from-blue-500/10 to-purple-500/10">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-zinc-900" />
-            </div>
-            <h2 className="font-semibold text-zinc-900">AI Assistant</h2>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="text-zinc-600 hover:text-zinc-900"
-          >
-            <X className="w-5 h-5" />
-          </Button>
+  const body = (
+    <div className="flex flex-col h-full min-h-0">
+      {!embedded && (
+        <div className="shrink-0 h-header-h px-3 flex items-center gap-2 border-b border-border">
+          <Sparkles className="size-4 text-crayon-violet-base" /><h2 className="text-md text-ink-1 truncate flex-1">AI assistant</h2>
+          <Button variant="ghost" size="icon" aria-label="Close" onClick={onClose}><X /></Button>
         </div>
-        <p className="text-xs text-zinc-600">
-          Intelligent suggestions for {contactName}
-        </p>
-      </div>
-
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-64">
-            <Loader2 className="w-8 h-8 text-blue-700 animate-spin" />
-          </div>
-        ) : (
-          <div className="p-3 space-y-4">
-            {/* Suggested Replies */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-blue-700" />
-                <h3 className="text-sm font-medium text-zinc-900">
-                  Suggested Replies
-                </h3>
-              </div>
-              {suggested_replies.length > 0 ? (
-                <div className="space-y-2">
-                  {suggested_replies.map((reply, index) => (
-                    <button
-                      key={index}
-                      onClick={() => onUseSuggestion?.(reply.text)}
-                      className="w-full text-left p-3 bg-zinc-100/50 hover:bg-zinc-100 rounded-lg border border-zinc-300 hover:border-blue-500/50 transition-all group"
-                    >
-                      <p className="text-sm text-zinc-700 mb-2">{reply.text}</p>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-zinc-600">Click to use</span>
-                        <ArrowRight className="w-3 h-3 text-zinc-600 group-hover:text-blue-700 transition-colors" />
-                      </div>
+      )}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
+        {isLoading ? <div className="flex justify-center py-10 text-ink-3"><Loader2 className="size-5 animate-spin" /></div> : (
+          <>
+            <Block title="Suggested replies">
+              {suggested_replies.length === 0 ? <p className="text-xs text-ink-3">No suggestions yet for {contactName}.</p> : (
+                <div className="space-y-1.5">
+                  {suggested_replies.map((r, i) => (
+                    <button key={i} type="button" onClick={() => onUseSuggestion?.(r.text)} className="w-full text-left rounded-md border border-border bg-crayon-violet-tint/60 px-2.5 py-2 hover:border-crayon-violet-base/60 group min-w-0">
+                      <p className="text-sm text-ink-1 break-words">{r.text}</p>
+                      {onUseSuggestion && <span className="text-xs text-ink-3 inline-flex items-center gap-1 mt-1">Use <ArrowRight className="size-3" /></span>}
                     </button>
                   ))}
                 </div>
-              ) : (
-                <p className="text-xs text-zinc-600">No suggestions available yet</p>
               )}
-            </div>
-
-            <Separator className="bg-zinc-100" />
-
-            {/* Conversation Summary */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-700" />
-                <h3 className="text-sm font-medium text-zinc-900">
-                  Conversation Summary
-                </h3>
-              </div>
-              <div className="bg-gradient-to-br from-purple-500/5 to-blue-500/5 rounded-lg p-3 border border-purple-500/20">
-                <p className="text-sm text-zinc-700 leading-relaxed">
-                  {summary.text || "No summary available"}
-                </p>
-                <div className="mt-3 flex items-center gap-2">
-                  <Badge
-                    variant="outline"
-                    className="border-purple-500/30 text-purple-700 text-xs"
-                  >
-                    {summary.sentiment}
-                  </Badge>
-                  {summary.updated_at && (
-                    <span className="text-xs text-zinc-600">
-                      Updated {new Date(summary.updated_at).toLocaleTimeString()}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <Separator className="bg-zinc-100" />
-
-            {/* Next Actions */}
+            </Block>
+            <Block title="Summary">
+              <p className="text-sm text-ink-1 break-words">{summary.text || "No summary available"}</p>
+              <div className="flex items-center gap-2 mt-1.5"><Chip size="sm" accent="violet" label={summary.sentiment} />{summary.updated_at && <span className="text-xs text-ink-3 tabular-nums">{new Date(summary.updated_at).toLocaleTimeString()}</span>}</div>
+            </Block>
             {next_actions.length > 0 && (
-              <>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-700" />
-                    <h3 className="text-sm font-medium text-zinc-900">
-                      Recommended Actions
-                    </h3>
-                  </div>
-                  <div className="space-y-3">
-                    {next_actions.map((item, index) => {
-                      const PriorityIcon =
-                        PRIORITY_ICONS[item.priority] || CheckCircle2;
-                      return (
-                        <div
-                          key={index}
-                          className="bg-zinc-100/50 rounded-lg p-3 border border-zinc-300 hover:border-zinc-300 transition-all"
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="w-8 h-8 bg-zinc-200/50 rounded-lg flex items-center justify-center flex-shrink-0">
-                              <PriorityIcon className="w-4 h-4 text-zinc-600" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm text-zinc-900 mb-2">{item.action}</p>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <Badge
-                                  className={`${
-                                    PRIORITY_COLORS[item.priority] || ""
-                                  } border text-xs`}
-                                >
-                                  {item.priority}
-                                </Badge>
-                                {item.due && (
-                                  <span className="text-xs text-zinc-600">
-                                    Due: {item.due}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="flex-shrink-0 text-blue-700 hover:text-blue-700 hover:bg-blue-500/10"
-                              onClick={() => {
-                                const match = item.action.match(/Lead\s+(.+)/);
-                                if (match) {
-                                  window.open(`/app/lead/${encodeURIComponent(match[1])}`, "_blank");
-                                }
-                              }}
-                            >
-                              <ExternalLink className="w-3 h-3 mr-1" />
-                              Start
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+              <Block title="Recommended actions">
+                <div className="space-y-1.5">
+                  {next_actions.map((a, i) => {
+                    const p = PRIORITY[a.priority] || PRIORITY.low;
+                    return (
+                      <div key={i} className="flex items-start gap-2 rounded-md border border-border px-2.5 py-2 min-w-0">
+                        <p.icon className={cn("size-4 mt-0.5 shrink-0", `text-crayon-${p.accent}-base`)} />
+                        <div className="flex-1 min-w-0"><p className="text-sm text-ink-1 break-words">{a.action}</p><div className="flex items-center gap-2 mt-0.5"><Chip size="sm" accent={p.accent} label={a.priority} />{a.due && <span className="text-xs text-ink-3">Due {a.due}</span>}</div></div>
+                        <Button size="icon-sm" variant="ghost" aria-label="Open" onClick={() => { const m = a.action.match(/Lead\s+(.+)/); if (m) window.open(`/app/lead/${encodeURIComponent(m[1])}`, "_blank"); }}><ExternalLink /></Button>
+                      </div>
+                    );
+                  })}
                 </div>
-                <Separator className="bg-zinc-100" />
-              </>
+              </Block>
             )}
-
-            {/* AI Insights */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-orange-700" />
-                <h3 className="text-sm font-medium text-zinc-900">Quick Insights</h3>
-              </div>
-              <div className="space-y-2">
-                <div className="bg-gradient-to-r from-orange-500/5 to-yellow-500/5 rounded-lg p-3 border border-orange-500/20">
-                  <p className="text-xs text-zinc-600 mb-1">Response Pattern</p>
-                  <p className="text-sm text-zinc-700">{insights.response_pattern}</p>
-                </div>
-                <div className="bg-gradient-to-r from-green-500/5 to-emerald-500/5 rounded-lg p-3 border border-green-500/20">
-                  <p className="text-xs text-zinc-600 mb-1">Engagement Level</p>
-                  <p className="text-sm text-zinc-700">
-                    {insights.engagement_rate > 0
-                      ? `${Math.round(insights.engagement_rate * 100)}% reply ratio`
-                      : "No engagement data"}
-                  </p>
-                </div>
-                <div className="bg-gradient-to-r from-blue-500/5 to-cyan-500/5 rounded-lg p-3 border border-blue-500/20">
-                  <p className="text-xs text-zinc-600 mb-1">Best Contact Time</p>
-                  <p className="text-sm text-zinc-700">{insights.best_contact_time}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+            <Block title="Insights">
+              <dl className="grid grid-cols-1 gap-1.5 text-sm">
+                <div><dt className="text-xs text-ink-3">Response pattern</dt><dd className="text-ink-1">{insights.response_pattern}</dd></div>
+                <div><dt className="text-xs text-ink-3">Engagement</dt><dd className="text-ink-1 tabular-nums">{insights.engagement_rate > 0 ? `${Math.round(insights.engagement_rate * 100)}% reply ratio` : "No engagement data"}</dd></div>
+                <div><dt className="text-xs text-ink-3">Best contact time</dt><dd className="text-ink-1">{insights.best_contact_time}</dd></div>
+              </dl>
+            </Block>
+            {!threadId && <EmptyState icon={<Sparkles />} title="No thread selected" compact />}
+          </>
         )}
       </div>
-
-      {/* Footer */}
-      <div className="shrink-0 p-3 border-t border-zinc-200 bg-zinc-50/50">
-        <Button
-          onClick={() => refresh()}
-          className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white"
-        >
-          <Sparkles className="w-4 h-4 mr-2" />
-          Generate More Suggestions
-        </Button>
-      </div>
+      <div className="shrink-0 border-t border-border p-2"><Button className="w-full" onClick={() => refresh()}><RefreshCw />Regenerate</Button></div>
     </div>
   );
+
+  if (embedded) return body;
+  return <div className="fixed inset-y-0 right-0 w-96 max-w-[100vw] bg-surface border-l border-border shadow-ex z-50 flex flex-col overflow-hidden">{body}</div>;
+}
+
+function Block({ title, children }: { title: string; children: React.ReactNode }) {
+  return <section className="min-w-0"><h3 className="text-xs text-ink-3 mb-1.5 flex items-center gap-1.5"><Sparkles className="size-3.5 text-crayon-violet-base" />{title}</h3>{children}</section>;
 }

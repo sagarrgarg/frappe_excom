@@ -12,10 +12,10 @@ interface CannedResponsePopoverProps {
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  General: "bg-zinc-300/10 text-zinc-600 border-zinc-300/20",
-  Sales: "bg-green-500/10 text-green-700 border-green-500/20",
-  Support: "bg-blue-500/10 text-blue-700 border-blue-500/20",
-  Billing: "bg-orange-500/10 text-orange-700 border-orange-500/20",
+  General: "bg-surface-active text-ink-3 border-border-strong",
+  Sales: "bg-crayon-green-tint text-crayon-green-text border-crayon-green-base/40",
+  Support: "bg-crayon-blue-tint text-crayon-blue-text border-crayon-blue-base/40",
+  Billing: "bg-crayon-amber-tint text-crayon-amber-text border-crayon-amber-base/40",
 };
 
 export function CannedResponsePopover({
@@ -76,14 +76,14 @@ export function CannedResponsePopover({
 
   return (
     <div className="absolute bottom-full left-0 right-0 mb-2 z-50">
-      <div className="bg-zinc-50 border border-zinc-300 rounded-xl shadow-2xl overflow-hidden max-h-72">
-        <div className="px-3 py-2 border-b border-zinc-200 flex items-center gap-2">
-          <Zap className="w-3.5 h-3.5 text-yellow-700" />
-          <span className="text-xs font-medium text-zinc-700">
+      <div className="bg-surface border border-border-strong rounded-xl shadow-ex overflow-hidden max-h-72">
+        <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+          <Zap className="w-3.5 h-3.5 text-crayon-amber-text" />
+          <span className="text-xs font-medium text-ink-2">
             Canned Responses
           </span>
           {searchText && (
-            <span className="text-[10px] text-zinc-600 ml-auto">
+            <span className="text-xs text-ink-3 ml-auto">
               /{searchText}
             </span>
           )}
@@ -92,12 +92,12 @@ export function CannedResponsePopover({
         <div ref={listRef} className="max-h-56 overflow-y-auto">
           {isLoading ? (
             <div className="flex items-center justify-center py-4">
-              <Loader2 className="w-5 h-5 text-zinc-600 animate-spin" />
+              <Loader2 className="w-5 h-5 text-ink-3 animate-spin" />
             </div>
           ) : responses.length === 0 ? (
             <div className="py-4 text-center">
-              <p className="text-xs text-zinc-600">No matching responses</p>
-              <p className="text-[10px] text-zinc-500 mt-1">
+              <p className="text-xs text-ink-3">No matching responses</p>
+              <p className="text-xs text-ink-3 mt-1">
                 Create one in Excom Canned Response
               </p>
             </div>
@@ -106,21 +106,21 @@ export function CannedResponsePopover({
               <button
                 key={response.name}
                 onClick={() => onSelect(response.content)}
-                className={`w-full text-left px-3 py-2.5 transition-colors border-b border-zinc-200/50 last:border-0 ${
+                className={`w-full text-left px-3 py-2.5 transition-colors border-b border-border last:border-0 ${
                   index === activeIndex
-                    ? "bg-blue-500/10"
-                    : "hover:bg-zinc-100/50"
+                    ? "bg-crayon-blue-tint"
+                    : "hover:bg-surface-sunken"
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-medium text-zinc-900 truncate">
+                  <span className="text-xs font-medium text-ink-1 truncate">
                     {response.title}
                   </span>
-                  <span className="text-[10px] text-zinc-600 font-mono">
+                  <span className="text-xs text-ink-3 font-mono">
                     /{response.shortcode}
                   </span>
                   <Badge
-                    className={`ml-auto text-[9px] px-1.5 h-4 border ${
+                    className={`ml-auto text-xs px-1.5 h-4 border ${
                       CATEGORY_COLORS[response.category] ||
                       CATEGORY_COLORS.General
                     }`}
@@ -128,7 +128,7 @@ export function CannedResponsePopover({
                     {response.category}
                   </Badge>
                 </div>
-                <p className="text-[11px] text-zinc-600 line-clamp-2 leading-relaxed">
+                <p className="text-xs text-ink-3 line-clamp-2 leading-relaxed">
                   {response.content}
                 </p>
               </button>
@@ -136,8 +136,8 @@ export function CannedResponsePopover({
           )}
         </div>
 
-        <div className="px-3 py-1.5 border-t border-zinc-200 bg-zinc-50/80">
-          <span className="text-[10px] text-zinc-500">
+        <div className="px-3 py-1.5 border-t border-border bg-surface">
+          <span className="text-xs text-ink-3">
             ↑↓ navigate · Enter select · Esc close
           </span>
         </div>

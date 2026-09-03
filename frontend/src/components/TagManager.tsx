@@ -1,131 +1,56 @@
 import { useState } from "react";
 import { Tag, Plus, X } from "lucide-react";
 import { useTags, useThreadTags } from "../hooks/useTags";
-import { Button } from "./ui/button";
+import { Button, Chip, Input, Badge } from "./primitives";
 
 interface TagManagerProps {
   threadId: string;
+  /** Render the editor body inline (inside a Modal) instead of a popover button. */
+  inline?: boolean;
+  onChanged?: () => void;
 }
 
-export function TagManager({ threadId }: TagManagerProps) {
+/** Tag editor — lives in `⋯ → Tags…` (T3) in the P1 tree; popover button in legacy. */
+export function TagManager({ threadId, inline, onChanged }: TagManagerProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [newTagInput, setNewTagInput] = useState("");
+  const [input, setInput] = useState("");
   const { tags: allTags } = useTags();
   const { threadTags, addTag, removeTag } = useThreadTags(threadId);
+  const applied = new Set(threadTags.map((t) => t.tag));
+  const available = allTags.filter((t) => !applied.has(t.name));
 
-  const appliedTagNames = new Set(threadTags.map((t) => t.tag));
-  const availableTags = allTags.filter((t) => !appliedTagNames.has(t.name));
+  const add = async (name: string) => { await addTag(name); setInput(""); onChanged?.(); };
+  const remove = async (name: string) => { await removeTag(name); onChanged?.(); };
 
-  const handleAddTag = async (tagName: string) => {
-    await addTag(tagName);
-    setNewTagInput("");
-  };
+  const body = (
+    <div className="space-y-3 min-w-0">
+      <div>
+        <p className="text-xs text-ink-3 mb-1.5">Applied</p>
+        {threadTags.length === 0 ? <p className="text-xs text-ink-muted">No tags</p> : (
+          <div className="flex flex-wrap gap-1.5">{threadTags.map((t) => <Chip key={t.tag} label={t.tag_name} dotColor={t.color} onRemove={() => remove(t.tag)} />)}</div>
+        )}
+      </div>
+      {available.length > 0 && (
+        <div>
+          <p className="text-xs text-ink-3 mb-1.5">Available</p>
+          <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">{available.map((t) => <Chip key={t.name} icon={<Plus />} label={t.tag_name} dotColor={t.color} onClick={() => add(t.name)} />)}</div>
+        </div>
+      )}
+      <form className="flex items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); if (input.trim()) add(input.trim()); }}>
+        <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="New tag…" />
+        <Button type="submit" size="icon" variant="primary" disabled={!input.trim()} aria-label="Create tag"><Plus /></Button>
+      </form>
+    </div>
+  );
 
-  const handleCreateAndAdd = async () => {
-    const name = newTagInput.trim();
-    if (!name) return;
-    await addTag(name);
-    setNewTagInput("");
-  };
-
+  if (inline) return body;
   return (
     <div className="relative">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 transition-colors"
-      >
-        <Tag className="w-3.5 h-3.5" />
-        Tags
-        {threadTags.length > 0 && (
-          <span className="bg-blue-500/20 text-blue-700 text-[10px] px-1.5 rounded-full">
-            {threadTags.length}
-          </span>
-        )}
-      </button>
-
+      <Button variant="ghost" size="sm" onClick={() => setIsOpen((v) => !v)}><Tag />Tags{threadTags.length > 0 && <Badge count={threadTags.length} />}</Button>
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 z-50 w-64 bg-zinc-100 border border-zinc-300 rounded-lg shadow-xl">
-          <div className="p-3 border-b border-zinc-300">
-            <h4 className="text-xs font-medium text-zinc-700 mb-2">Applied Tags</h4>
-            {threadTags.length === 0 ? (
-              <p className="text-[10px] text-zinc-600">No tags</p>
-            ) : (
-              <div className="flex flex-wrap gap-1">
-                {threadTags.map((tag) => (
-                  <span
-                    key={tag.tag}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs"
-                    style={{
-                      backgroundColor: `${tag.color}20`,
-                      color: tag.color,
-                      border: `1px solid ${tag.color}40`,
-                    }}
-                  >
-                    {tag.tag_name}
-                    <button
-                      onClick={() => removeTag(tag.tag)}
-                      className="hover:opacity-70"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="p-3">
-            <h4 className="text-xs font-medium text-zinc-700 mb-2">Available Tags</h4>
-            {availableTags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mb-2 max-h-32 overflow-y-auto">
-                {availableTags.map((tag) => (
-                  <button
-                    key={tag.name}
-                    onClick={() => handleAddTag(tag.name)}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs hover:opacity-80 transition-opacity"
-                    style={{
-                      backgroundColor: `${tag.color}15`,
-                      color: tag.color,
-                      border: `1px solid ${tag.color}30`,
-                    }}
-                  >
-                    <Plus className="w-3 h-3" />
-                    {tag.tag_name}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="flex items-center gap-2 mt-2">
-              <input
-                type="text"
-                value={newTagInput}
-                onChange={(e) => setNewTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCreateAndAdd();
-                }}
-                placeholder="New tag name..."
-                className="flex-1 px-2 py-1 text-xs bg-zinc-50 border border-zinc-300 rounded text-zinc-900 placeholder:text-zinc-600 focus:outline-none focus:border-blue-500"
-              />
-              <Button
-                size="sm"
-                onClick={handleCreateAndAdd}
-                disabled={!newTagInput.trim()}
-                className="h-6 px-2 text-xs"
-              >
-                <Plus className="w-3 h-3" />
-              </Button>
-            </div>
-          </div>
-
-          <div className="px-3 pb-2">
-            <button
-              onClick={() => setIsOpen(false)}
-              className="w-full text-center text-[10px] text-zinc-600 hover:text-zinc-700 py-1"
-            >
-              Close
-            </button>
-          </div>
+        <div className="absolute right-0 top-full mt-1 z-50 w-72 bg-surface border border-border rounded-lg shadow-ex p-3">
+          {body}
+          <div className="flex justify-end mt-2"><Button size="sm" variant="ghost" onClick={() => setIsOpen(false)}><X />Close</Button></div>
         </div>
       )}
     </div>

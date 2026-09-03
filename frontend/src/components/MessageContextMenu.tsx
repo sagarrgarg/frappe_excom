@@ -77,7 +77,7 @@ export function MessageContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 bg-zinc-100 border border-zinc-300 rounded-lg shadow-xl py-1 min-w-[180px]"
+      className="fixed z-50 bg-surface-sunken border border-border-strong rounded-lg shadow-ex py-1 min-w-[180px]"
       style={{
         left: Math.min(position.x, window.innerWidth - 220),
         top: Math.min(position.y, window.innerHeight - 300),
@@ -90,7 +90,7 @@ export function MessageContextMenu({
               <button
                 key={emoji}
                 onClick={() => handleReaction(emoji)}
-                className="w-9 h-9 flex items-center justify-center rounded-md hover:bg-zinc-200 text-lg transition-colors"
+                className="w-9 h-9 flex items-center justify-center rounded-md hover:bg-surface-active text-lg transition-colors"
               >
                 {emoji}
               </button>
@@ -101,31 +101,31 @@ export function MessageContextMenu({
         <>
           <button
             onClick={() => setShowEmojiPicker(true)}
-            className="w-full px-3 py-2 text-left text-sm text-zinc-900 hover:bg-zinc-200 flex items-center gap-2 transition-colors"
+            className="w-full px-3 py-2 text-left text-sm text-ink-1 hover:bg-surface-active flex items-center gap-2 transition-colors"
           >
-            <SmilePlus className="w-4 h-4 text-zinc-600" />
+            <SmilePlus className="w-4 h-4 text-ink-3" />
             React
           </button>
           <button
             onClick={handleReply}
-            className="w-full px-3 py-2 text-left text-sm text-zinc-900 hover:bg-zinc-200 flex items-center gap-2 transition-colors"
+            className="w-full px-3 py-2 text-left text-sm text-ink-1 hover:bg-surface-active flex items-center gap-2 transition-colors"
           >
-            <Reply className="w-4 h-4 text-zinc-600" />
+            <Reply className="w-4 h-4 text-ink-3" />
             Reply
           </button>
-          <div className="border-t border-zinc-300 my-1" />
+          <div className="border-t border-border-strong my-1" />
           <button
             onClick={handlePin}
-            className="w-full px-3 py-2 text-left text-sm text-zinc-900 hover:bg-zinc-200 flex items-center gap-2 transition-colors"
+            className="w-full px-3 py-2 text-left text-sm text-ink-1 hover:bg-surface-active flex items-center gap-2 transition-colors"
           >
             {message.isPinned ? (
               <>
-                <PinOff className="w-4 h-4 text-zinc-600" />
+                <PinOff className="w-4 h-4 text-ink-3" />
                 Unpin
               </>
             ) : (
               <>
-                <Pin className="w-4 h-4 text-zinc-600" />
+                <Pin className="w-4 h-4 text-ink-3" />
                 Pin
               </>
             )}
@@ -163,11 +163,11 @@ export function ReactionBar({ reactions, messageId, onRefresh }: ReactionBarProp
         <button
           key={emoji}
           onClick={() => handleToggle(emoji)}
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-zinc-200/50 hover:bg-zinc-200 border border-zinc-300/50 text-xs transition-colors"
+          className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-surface-active hover:bg-surface-active border border-border-strong text-xs transition-colors"
           title={users.join(", ")}
         >
           <span>{emoji}</span>
-          <span className="text-zinc-600">{users.length}</span>
+          <span className="text-ink-3">{users.length}</span>
         </button>
       ))}
     </div>

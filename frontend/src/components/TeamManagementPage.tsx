@@ -1,515 +1,113 @@
 import { useState, useEffect, useCallback } from "react";
-import { useFrappePostCall, useFrappeGetCall } from "frappe-react-sdk";
-import {
-  ArrowLeft,
-  Plus,
-  Search,
-  Users,
-  Shield,
-  UserPlus,
-  Trash2,
-  Crown,
-  Lock,
-} from "lucide-react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { Plus, Search, Users, Shield, UserPlus, Trash2, Crown, Lock } from "lucide-react";
 import { toast } from "sonner";
+import { Button, Input, Field, Select, Modal, EmptyState, Avatar, Chip, Badge } from "./primitives";
+import { AdminPage, DataTable } from "./shell/AdminPage";
 
-interface Team {
-  name: string;
-  team_name: string;
-  description: string;
-  member_count: number;
-}
+interface Team { name: string; team_name: string; description: string; member_count: number }
+interface TeamMember { user: string; role: string; full_name: string; user_image: string }
+interface UserOption { name: string; full_name: string; user_image: string }
 
-interface TeamMember {
-  user: string;
-  role: string;
-  full_name: string;
-  user_image: string;
-}
-
-function CreateTeamDialog({
-  onCreate,
-  onClose,
-}: {
-  onCreate: (name: string, desc: string) => void;
-  onClose: () => void;
-}) {
-  const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
-
+function CreateTeamDialog({ open, onOpenChange, onCreate }: { open: boolean; onOpenChange: (v: boolean) => void; onCreate: (name: string, desc: string) => void }) {
+  const [name, setName] = useState(""); const [desc, setDesc] = useState("");
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-zinc-50 border border-zinc-300 rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold text-zinc-900 mb-3">Create Team</h2>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-zinc-600 mb-1 block">Team Name</label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Sales Team"
-              className="bg-zinc-100 border-zinc-300 text-zinc-900"
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="text-xs text-zinc-600 mb-1 block">Description</label>
-            <Input
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              placeholder="Optional description"
-              className="bg-zinc-100 border-zinc-300 text-zinc-900"
-            />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" onClick={onClose} className="border-zinc-300 text-zinc-700">
-            Cancel
-          </Button>
-          <Button
-            onClick={() => name.trim() && onCreate(name.trim(), desc.trim())}
-            disabled={!name.trim()}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            Create
-          </Button>
-        </div>
+    <Modal open={open} onOpenChange={onOpenChange} title="Create team" footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={!name.trim()} onClick={() => onCreate(name.trim(), desc.trim())}>Create</Button></>}>
+      <div className="space-y-3">
+        <Field label="Team name" required><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Sales" autoFocus /></Field>
+        <Field label="Description"><Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional" /></Field>
       </div>
-    </div>
+    </Modal>
   );
 }
 
-interface UserOption {
-  name: string;
-  full_name: string;
-  user_image: string;
-}
-
-function AddMemberDialog({
-  teamName,
-  onAdd,
-  onClose,
-}: {
-  teamName: string;
-  onAdd: (user: string, role: string) => void;
-  onClose: () => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [role, setRole] = useState("Member");
-  const [selectedUser, setSelectedUser] = useState<UserOption | null>(null);
-  const [users, setUsers] = useState<UserOption[]>([]);
-  const [showDropdown, setShowDropdown] = useState(false);
-
+function AddMemberDialog({ open, onOpenChange, teamName, onAdd }: { open: boolean; onOpenChange: (v: boolean) => void; teamName: string; onAdd: (user: string, role: string) => void }) {
+  const [search, setSearch] = useState(""); const [role, setRole] = useState("Member");
+  const [selected, setSelected] = useState<UserOption | null>(null); const [users, setUsers] = useState<UserOption[]>([]);
   const { call: searchUsers } = useFrappePostCall("excom.excom.api.teams.search_users");
-
   useEffect(() => {
-    const timer = setTimeout(async () => {
-      try {
-        const res = await searchUsers({ search, limit: 15 });
-        setUsers((res as any)?.message || []);
-      } catch {
-        setUsers([]);
-      }
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  const handleSelect = (user: UserOption) => {
-    setSelectedUser(user);
-    setSearch("");
-    setShowDropdown(false);
-  };
-
+    if (!open) return;
+    const t = setTimeout(async () => { try { const res = await searchUsers({ search, limit: 15 }); setUsers((res as any)?.message || []); } catch { setUsers([]); } }, 200);
+    return () => clearTimeout(t);
+  }, [search, open, searchUsers]);
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-zinc-50 border border-zinc-300 rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold text-zinc-900 mb-1">Add Member</h2>
-        <p className="text-xs text-zinc-600 mb-3">
-          Add a user to <span className="text-zinc-700">{teamName}</span>
-        </p>
-        <div className="space-y-3">
-          <div className="relative">
-            <label className="text-xs text-zinc-600 mb-1 block">User</label>
-
-            {selectedUser ? (
-              <div className="flex items-center gap-3 bg-zinc-100 border border-zinc-300 rounded-lg px-3 py-2">
-                {selectedUser.user_image ? (
-                  <img
-                    src={selectedUser.user_image}
-                    className="w-6 h-6 rounded-full object-cover"
-                    alt=""
-                  />
-                ) : (
-                  <div className="w-6 h-6 rounded-full bg-zinc-300 flex items-center justify-center text-[10px] text-zinc-700">
-                    {(selectedUser.full_name || selectedUser.name).charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm text-zinc-900">{selectedUser.full_name || selectedUser.name}</span>
-                  <span className="text-xs text-zinc-600 ml-2">{selectedUser.name}</span>
-                </div>
-                <button
-                  onClick={() => setSelectedUser(null)}
-                  className="text-zinc-600 hover:text-zinc-700"
-                >
-                  <Search className="w-3.5 h-3.5" />
-                </button>
+    <Modal open={open} onOpenChange={onOpenChange} title={`Add member to ${teamName}`} footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={!selected} onClick={() => selected && onAdd(selected.name, role)}>Add</Button></>}>
+      <div className="space-y-3">
+        <Field label="User" required>
+          {selected ? (
+            <div className="flex items-center gap-2 rounded-md border border-border px-2 h-9 min-w-0"><Avatar name={selected.full_name || selected.name} src={selected.user_image} size={24} /><span className="text-sm text-ink-1 truncate flex-1">{selected.full_name || selected.name}</span><span className="text-xs text-ink-3 truncate">{selected.name}</span><Button variant="ghost" size="icon-sm" aria-label="Change" onClick={() => setSelected(null)}><Search /></Button></div>
+          ) : (
+            <>
+              <div className="relative"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-ink-muted" /><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name or email" className="pl-8" autoFocus /></div>
+              <div className="mt-1 max-h-52 overflow-y-auto rounded-md border border-border divide-y divide-border">
+                {users.length === 0 ? <p className="px-3 py-2 text-xs text-ink-3 text-center">{search ? "No users found" : "Type to search"}</p> : users.map((u) => (
+                  <button key={u.name} type="button" onClick={() => setSelected(u)} className="w-full flex items-center gap-2 px-2 h-10 hover:bg-surface-hover text-left min-w-0"><Avatar name={u.full_name || u.name} src={u.user_image} size={24} /><span className="min-w-0"><span className="block text-sm text-ink-1 truncate">{u.full_name || u.name}</span><span className="block text-xs text-ink-3 truncate">{u.name}</span></span></button>
+                ))}
               </div>
-            ) : (
-              <>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
-                  <Input
-                    value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
-                      setShowDropdown(true);
-                    }}
-                    onFocus={() => setShowDropdown(true)}
-                    placeholder="Search by name or email..."
-                    className="bg-zinc-100 border-zinc-300 text-zinc-900 pl-10"
-                    autoFocus
-                  />
-                </div>
-
-                {showDropdown && (
-                  <div className="absolute left-0 right-0 mt-1 bg-zinc-100 border border-zinc-300 rounded-lg shadow-xl z-10 max-h-52 overflow-y-auto">
-                    {users.length === 0 ? (
-                      <div className="px-3 py-2 text-xs text-zinc-600 text-center">
-                        {search ? "No users found" : "Type to search users..."}
-                      </div>
-                    ) : (
-                      users.map((u) => (
-                        <button
-                          key={u.name}
-                          onClick={() => handleSelect(u)}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-zinc-200/50 transition-colors text-left"
-                        >
-                          {u.user_image ? (
-                            <img
-                              src={u.user_image}
-                              className="w-7 h-7 rounded-full object-cover shrink-0"
-                              alt=""
-                            />
-                          ) : (
-                            <div className="w-7 h-7 rounded-full bg-zinc-300 flex items-center justify-center text-xs text-zinc-700 shrink-0">
-                              {(u.full_name || u.name).charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <p className="text-sm text-zinc-900 truncate">{u.full_name || u.name}</p>
-                            <p className="text-[11px] text-zinc-600 truncate">{u.name}</p>
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-          <div>
-            <label className="text-xs text-zinc-600 mb-1 block">Role</label>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="w-full bg-zinc-100 border border-zinc-300 rounded-lg px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:border-zinc-300"
-            >
-              <option value="Member">Member</option>
-              <option value="Manager">Manager</option>
-            </select>
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" onClick={onClose} className="border-zinc-300 text-zinc-700">
-            Cancel
-          </Button>
-          <Button
-            onClick={() => selectedUser && onAdd(selectedUser.name, role)}
-            disabled={!selectedUser}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            Add
-          </Button>
-        </div>
+            </>
+          )}
+        </Field>
+        <Field label="Role"><Select value={role} onChange={(e) => setRole(e.target.value)}><option value="Member">Member</option><option value="Manager">Manager</option></Select></Field>
       </div>
-    </div>
+    </Modal>
   );
 }
 
-function TeamDetailView({
-  team,
-  onBack,
-}: {
-  team: Team;
-  onBack: () => void;
-}) {
+function TeamDetailView({ team, onBack, embedded }: { team: Team; onBack: () => void; embedded?: boolean }) {
   const [members, setMembers] = useState<TeamMember[]>([]);
-  const [showAddDialog, setShowAddDialog] = useState(false);
-
+  const [showAdd, setShowAdd] = useState(false);
   const { call: fetchMembers } = useFrappePostCall("excom.excom.api.teams.get_team_members");
   const { call: addMember } = useFrappePostCall("excom.excom.api.teams.add_team_member");
   const { call: removeMember } = useFrappePostCall("excom.excom.api.teams.remove_team_member");
-
-  const loadMembers = useCallback(async () => {
-    try {
-      const res = await fetchMembers({ team: team.name });
-      setMembers((res as any)?.message || []);
-    } catch {
-      toast.error("Failed to load members");
-    }
-  }, [fetchMembers, team.name]);
-
-  useEffect(() => {
-    loadMembers();
-  }, [loadMembers]);
+  const load = useCallback(async () => { try { const res = await fetchMembers({ team: team.name }); setMembers((res as any)?.message || []); } catch { toast.error("Failed to load members"); } }, [fetchMembers, team.name]);
+  useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="h-full w-full bg-white flex flex-col">
-      <div className="shrink-0 px-4 py-3 border-b border-zinc-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onBack}
-              className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-lg font-semibold text-zinc-900">{team.team_name}</h1>
-              {team.description && (
-                <p className="text-xs text-zinc-600">{team.description}</p>
-              )}
-            </div>
-          </div>
-          <Button
-            onClick={() => setShowAddDialog(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-sm"
-          >
-            <UserPlus className="w-4 h-4 mr-1.5" />
-            Add Member
-          </Button>
-        </div>
-        <div className="flex items-center gap-2 mt-3">
-          <span className="text-lg font-semibold text-zinc-700">{members.length}</span>
-          <span className="text-xs text-zinc-600">members</span>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        {members.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-center">
-            <Users className="w-12 h-12 text-zinc-500 mb-3" />
-            <p className="text-zinc-600 text-sm">No members yet</p>
-          </div>
-        ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-zinc-200 text-xs text-zinc-600 uppercase tracking-wider">
-                <th className="text-left px-4 py-2">User</th>
-                <th className="text-left px-4 py-2">Role</th>
-                <th className="text-right px-4 py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.map((m) => (
-                <tr
-                  key={m.user}
-                  className="border-b border-zinc-200/50 hover:bg-zinc-50/50 transition-colors"
-                >
-                  <td className="px-4 py-2">
-                    <div className="flex items-center gap-3">
-                      {m.user_image ? (
-                        <img
-                          src={m.user_image}
-                          className="w-8 h-8 rounded-full object-cover"
-                          alt=""
-                        />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-zinc-200 flex items-center justify-center text-xs text-zinc-700">
-                          {(m.full_name || m.user).charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-sm text-zinc-900">{m.full_name || m.user}</p>
-                        <p className="text-xs text-zinc-600">{m.user}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        m.role === "Manager"
-                          ? "bg-amber-500/10 text-amber-700"
-                          : "bg-zinc-200/50 text-zinc-700"
-                      }`}
-                    >
-                      {m.role === "Manager" && <Crown className="w-3 h-3 inline mr-1" />}
-                      {m.role}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <button
-                      onClick={async () => {
-                        await removeMember({ team: team.name, user: m.user });
-                        toast.success("Member removed");
-                        loadMembers();
-                      }}
-                      className="p-1.5 rounded hover:bg-zinc-100 text-zinc-600 hover:text-red-700"
-                      title="Remove"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {showAddDialog && (
-        <AddMemberDialog
-          teamName={team.team_name}
-          onAdd={async (user, role) => {
-            try {
-              await addMember({ team: team.name, user, role });
-              toast.success("Member added");
-              setShowAddDialog(false);
-              loadMembers();
-            } catch {
-              toast.error("Failed to add member");
-            }
-          }}
-          onClose={() => setShowAddDialog(false)}
-        />
-      )}
-    </div>
+    <AdminPage title={team.team_name} icon={<Shield />} onBack={onBack} embedded={embedded} bleed actions={<><Badge count={members.length} accent="neutral" /><Button variant="primary" size="sm" onClick={() => setShowAdd(true)}><UserPlus />Add</Button></>}>
+      {team.description && <p className="text-xs text-ink-3 px-3 pt-2">{team.description}</p>}
+      <DataTable
+        rows={members}
+        keyOf={(m) => m.user}
+        empty={<EmptyState icon={<Users />} title="No members yet" compact />}
+        columns={[
+          { key: "user", label: "User", primary: true, render: (m) => <span className="inline-flex items-center gap-2 min-w-0"><Avatar name={m.full_name || m.user} src={m.user_image} size={24} /><span className="min-w-0"><span className="block text-sm text-ink-1 truncate">{m.full_name || m.user}</span><span className="block text-xs text-ink-3 truncate">{m.user}</span></span></span> },
+          { key: "role", label: "Role", render: (m) => <Chip size="sm" accent={m.role === "Manager" ? "amber" : "neutral"} icon={m.role === "Manager" ? <Crown /> : undefined} label={m.role} /> },
+          { key: "actions", label: "", align: "right", render: (m) => <Button variant="ghost" size="icon-sm" aria-label="Remove" title="Remove" onClick={async (e) => { e.stopPropagation(); await removeMember({ team: team.name, user: m.user }); toast.success("Member removed"); load(); }}><Trash2 /></Button> },
+        ]}
+      />
+      <AddMemberDialog open={showAdd} onOpenChange={setShowAdd} teamName={team.team_name} onAdd={async (user, role) => { try { await addMember({ team: team.name, user, role }); toast.success("Member added"); setShowAdd(false); load(); } catch { toast.error("Failed to add member"); } }} />
+    </AdminPage>
   );
 }
 
-export function TeamManagementPage({
-  onNavigateBack,
-}: {
-  onNavigateBack: () => void;
-}) {
+/** Teams — avatar menu page (T3). Card grid with minmax columns. */
+export function TeamManagementPage({ onNavigateBack, embedded }: { onNavigateBack: () => void; embedded?: boolean }) {
   const [teams, setTeams] = useState<Team[]>([]);
-  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-
+  const [selected, setSelected] = useState<Team | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
   const { call: fetchTeams } = useFrappePostCall("excom.excom.api.teams.get_all_teams");
   const { call: createTeam } = useFrappePostCall("excom.excom.api.teams.create_team");
+  const load = useCallback(async () => { try { const res = await fetchTeams({}); setTeams((res as any)?.message || []); } catch { toast.error("Failed to load teams"); } }, [fetchTeams]);
+  useEffect(() => { load(); }, [load]);
 
-  const loadTeams = useCallback(async () => {
-    try {
-      const res = await fetchTeams({});
-      setTeams((res as any)?.message || []);
-    } catch {
-      toast.error("Failed to load teams");
-    }
-  }, [fetchTeams]);
-
-  useEffect(() => {
-    loadTeams();
-  }, [loadTeams]);
-
-  if (selectedTeam) {
-    return (
-      <TeamDetailView
-        team={selectedTeam}
-        onBack={() => {
-          setSelectedTeam(null);
-          loadTeams();
-        }}
-      />
-    );
-  }
+  if (selected) return <TeamDetailView team={selected} embedded={embedded} onBack={() => { setSelected(null); load(); }} />;
 
   return (
-    <div className="h-full w-full bg-white flex flex-col">
-      <div className="shrink-0 px-4 py-3 border-b border-zinc-200 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onNavigateBack}
-            className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <Shield className="w-5 h-5 text-blue-700" />
-          <h1 className="text-lg font-semibold text-zinc-900">Teams</h1>
+    <AdminPage title="Teams" icon={<Shield />} onBack={onNavigateBack} embedded={embedded} actions={<Button variant="primary" size="sm" onClick={() => setShowCreate(true)}><Plus />New team</Button>}>
+      {teams.length === 0 ? <EmptyState icon={<Shield />} title="No teams yet" hint="Teams decide who sees which conversations." /> : (
+        <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr))]">
+          {teams.map((t) => {
+            const general = t.name === "General";
+            return (
+              <button key={t.name} type="button" onClick={() => setSelected(t)} className="rounded-lg border border-border p-3 text-left hover:bg-surface-hover min-w-0">
+                <div className="flex items-center gap-2 min-w-0"><h3 className="text-sm font-medium text-ink-1 truncate flex-1">{t.team_name}</h3>{general && <Lock className="size-3.5 text-crayon-amber-text shrink-0" aria-label="System team" />}<Badge accent="blue" count={t.member_count} /></div>
+                {t.description && <p className="text-xs text-ink-3 line-clamp-2 mt-1">{t.description}</p>}
+              </button>
+            );
+          })}
         </div>
-        <Button
-          onClick={() => setShowCreateDialog(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm"
-        >
-          <Plus className="w-4 h-4 mr-1.5" />
-          New Team
-        </Button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4">
-        {teams.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-center">
-            <Shield className="w-12 h-12 text-zinc-500 mb-3" />
-            <p className="text-zinc-600 text-sm">No teams yet</p>
-            <p className="text-zinc-600 text-xs mt-1">
-              Create teams to organize conversation access
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {teams.map((team) => {
-              const isGeneral = team.name === "General";
-              return (
-                <button
-                  key={team.name}
-                  onClick={() => setSelectedTeam(team)}
-                  className={`bg-zinc-50 border rounded-xl p-4 text-left hover:border-zinc-300 transition-colors group ${
-                    isGeneral ? "border-amber-800/40" : "border-zinc-200"
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-medium text-zinc-900 group-hover:text-blue-700 transition-colors">
-                        {team.team_name}
-                      </h3>
-                      {isGeneral && (
-                        <span title="System team — cannot be deleted">
-                          <Lock className="w-3.5 h-3.5 text-amber-700" />
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-xs bg-blue-500/10 text-blue-700 px-2 py-0.5 rounded-full">
-                      {team.member_count} members
-                    </span>
-                  </div>
-                  {team.description && (
-                    <p className="text-xs text-zinc-600 line-clamp-2">{team.description}</p>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {showCreateDialog && (
-        <CreateTeamDialog
-          onCreate={async (name, desc) => {
-            try {
-              await createTeam({ team_name: name, description: desc });
-              toast.success("Team created");
-              setShowCreateDialog(false);
-              loadTeams();
-            } catch {
-              toast.error("Failed to create team");
-            }
-          }}
-          onClose={() => setShowCreateDialog(false)}
-        />
       )}
-    </div>
+      <CreateTeamDialog open={showCreate} onOpenChange={setShowCreate} onCreate={async (name, desc) => { try { await createTeam({ team_name: name, description: desc }); toast.success("Team created"); setShowCreate(false); load(); } catch { toast.error("Failed to create team"); } }} />
+    </AdminPage>
   );
 }

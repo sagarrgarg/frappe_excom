@@ -16,8 +16,10 @@ export function useThreads(
   account: string = "",
   dateFrom: string = "",
   dateTo: string = "",
+  archived: boolean = false,
 ) {
   const params: Record<string, string | number> = { search, limit: 100, team };
+  if (archived) params.archived = 1;
   if (broadcast) params.broadcast = broadcast;
   if (broadcastStatus) params.broadcast_status = broadcastStatus;
   if (channel && channel !== "all") params.channel = channel;
@@ -98,6 +100,11 @@ export function useThreads(
           channels,
           tags: uniqueTags.length > 0 ? uniqueTags : undefined,
           broadcastDeliveryStatus: latestThread.broadcast_delivery_status || undefined,
+          assignedToUser: latestThread.assigned_to || undefined,
+          assignedTeam: latestThread.assigned_team || undefined,
+          assignedTeamName: latestThread.assigned_team_name || undefined,
+          lastMessageDirection: latestThread.last_message_direction,
+          threads: sortedThreads,
         };
 
         return contact;

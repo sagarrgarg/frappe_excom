@@ -1,0 +1,65 @@
+/*
+ * Excom design tokens — UX-001 §2 ("light crayon on chalk").
+ * Single source of truth for colour, type, spacing. Tailwind aliases read these
+ * (see tailwind.config.js). Components must not use raw hex — CI gate W13.
+ */
+:root {
+  /* Neutrals (chalk) */
+  --ex-surface: #ffffff;
+  --ex-surface-sunken: #f6f7f9;
+  --ex-surface-hover: #eff1f4;
+  --ex-surface-active: #e7eaef;
+  --ex-border: #e3e6ea;
+  --ex-border-strong: #cdd3da;
+  --ex-ink-1: #1b2129;
+  --ex-ink-2: #4b5563;
+  --ex-ink-3: #6b7480;
+  --ex-ink-muted: #98a1ac; /* icons ≥16px only — fails AA as text */
+
+  /* Crayon accents: tint / base / text (text ≥4.5:1 on tint) */
+  --ex-blue-tint: #edf1fc;   --ex-blue-base: #6e8fe8;   --ex-blue-text: #2c4fa8;
+  --ex-green-tint: #e9f6f0;  --ex-green-base: #3fa37a;  --ex-green-text: #226b4e;
+  --ex-amber-tint: #fbf2e4;  --ex-amber-base: #d99a3e;  --ex-amber-text: #8a5b18;
+  --ex-rose-tint: #fbeceb;   --ex-rose-base: #d9645f;   --ex-rose-text: #97302d;
+  --ex-violet-tint: #f1effb; --ex-violet-base: #8a7cd8; --ex-violet-text: #52459c;
+  --ex-teal-tint: #e8f4f6;   --ex-teal-base: #3e9aa8;   --ex-teal-text: #1f5f69;
+  --ex-plum-tint: #faeef5;   --ex-plum-base: #c86ba0;   --ex-plum-text: #8a3f6a;
+  --ex-sand-tint: #f5f2e6;   --ex-sand-base: #9a8a4e;   --ex-sand-text: #5f5426;
+
+  /* Elevation — border + surface, Slack-style. Only shadow allowed. */
+  --ex-shadow: 0 1px 2px rgba(27, 33, 41, 0.06);
+
+  /* Density (row heights only — never type size). */
+  --ex-row-list: 56px;
+  --ex-row-dense: 36px;
+  --ex-hit-min: 32px;
+  --ex-header-h: 48px;
+  --ex-context-h: 28px;
+  --ex-tabs-h: 36px;
+  --ex-rail-w: 56px;
+  --ex-list-w: 320px;
+  --ex-details-w: 300px;
+}
+
+:root[data-density="compact"] {
+  --ex-row-list: 48px;
+  --ex-row-dense: 32px;
+}
+
+/* Touch: coarse pointer or phone width → 44px targets, taller rows. */
+@media (pointer: coarse), (max-width: 639px) {
+  :root {
+    --ex-row-list: 68px;
+    --ex-row-dense: 44px;
+    --ex-hit-min: 44px;
+    --ex-header-h: 52px;
+  }
+  :root[data-density="compact"] {
+    --ex-row-list: 60px;
+    --ex-row-dense: 40px;
+  }
+}
+
+@media (min-width: 1440px) {
+  :root { --ex-list-w: 360px; }
+}
