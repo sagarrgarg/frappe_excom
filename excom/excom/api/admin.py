@@ -91,7 +91,7 @@ def get_schema(doctype: str) -> dict:
         if df.fieldtype in ("Section Break", "Tab Break"):
             if cur["fields"]:
                 sections.append(cur)
-            cur = {"label": df.label or "", "fields": []}
+            cur = {"label": df.label or "", "fields": [], "depends_on": df.depends_on or "", "collapsible": int(df.collapsible or 0)}
             continue
         if df.fieldtype in _LAYOUT or df.fieldname in _SKIP_FIELDS or df.hidden:
             continue

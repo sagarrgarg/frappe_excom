@@ -9,7 +9,7 @@ import { deskUrl } from "../../hooks/useRecordLinks";
 import { serverMessage } from "./util";
 import { EmbedPanel } from "./EmbedPanel";
 
-interface Schema { doctype: string; title_field: string; single: boolean; read_only: boolean; needs_name?: boolean; sections: { label: string; fields: AdminField[] }[]; list_fields: string[]; list_labels: Record<string, string>; list_types: Record<string, string> }
+interface Schema { doctype: string; title_field: string; single: boolean; read_only: boolean; needs_name?: boolean; sections: { label: string; fields: AdminField[]; depends_on?: string; collapsible?: number }[]; list_fields: string[]; list_labels: Record<string, string>; list_types: Record<string, string> }
 type Doc = Record<string, unknown>;
 
 /** Depends-on evaluation for the simple `eval:doc.x == 'y'` / `fieldname` forms Excom uses. */
@@ -71,6 +71,7 @@ export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraAction
           <Field label="Name" required hint="This doctype is named by you; pick something readable."><Input value={String(draft.__newname ?? "")} onChange={(e) => setDraft((d) => ({ ...d, __newname: e.target.value }))} autoFocus /></Field>
         )}
         {schema.sections.map((s, i) => {
+          if (s.depends_on && !visible({ depends_on: s.depends_on } as AdminField, doc)) return null;
           const fields = s.fields.filter((f) => visible(f, doc));
           if (!fields.length) return null;
           return (
