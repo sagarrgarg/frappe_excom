@@ -209,7 +209,6 @@ def enable_asset(name: str, asset_type: str, asset_id: str, enable: int = 1) -> 
 		if not src_name:
 			src.source_name = f"Meta · {row.asset_name}"[:140]
 			src.source_type = "Meta Lead Ads"
-			src.mode = "Both"
 			src.pull_frequency = "Every 15 Minutes"
 			src.sla_first_response = 3600
 			src.company = conn.company

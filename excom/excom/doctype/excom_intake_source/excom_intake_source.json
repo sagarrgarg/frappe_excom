@@ -43,7 +43,8 @@
    "fieldtype": "Link",
    "label": "Channel Account",
    "options": "Excom Channel Account",
-   "description": "Which WhatsApp number / inbox auto-acks"
+   "description": "WhatsApp account used for the auto-acknowledgement.",
+   "depends_on": "eval:![\"Exhibition\",\"Manual\"].includes(doc.source_type)"
   },
   {
    "fieldname": "cb1",
@@ -54,27 +55,33 @@
    "fieldname": "mode",
    "fieldtype": "Select",
    "label": "Mode",
-   "options": "Push\nPull\nBoth",
-   "default": "Pull"
+   "options": "\nPush\nPull\nBoth",
+   "default": "Pull",
+   "read_only": 1,
+   "description": "Derived from the source type: Website = your site posts to Excom's webhook \u00b7 TradeIndia = Excom polls \u00b7 IndiaMART and Meta = poll (authoritative) + push accelerator.",
+   "depends_on": "eval:![\"Exhibition\",\"Manual\"].includes(doc.source_type)"
   },
   {
    "fieldname": "pull_frequency",
    "fieldtype": "Select",
-   "label": "Pull Frequency",
+   "label": "Pull Every",
    "options": "Every 5 Minutes\nEvery 15 Minutes\nHourly\nDaily",
-   "default": "Every 15 Minutes"
+   "default": "Every 15 Minutes",
+   "depends_on": "eval:[\"IndiaMART\",\"TradeIndia\",\"Meta Lead Ads\"].includes(doc.source_type)"
   },
   {
    "fieldname": "last_synced_at",
    "fieldtype": "Datetime",
    "label": "Last Synced At",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:[\"IndiaMART\",\"TradeIndia\",\"Meta Lead Ads\"].includes(doc.source_type)"
   },
   {
    "fieldname": "last_success_at",
    "fieldtype": "Datetime",
    "label": "Last Success At",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:[\"IndiaMART\",\"TradeIndia\",\"Meta Lead Ads\"].includes(doc.source_type)"
   },
   {
    "fieldname": "default_lead_owner",
@@ -93,28 +100,34 @@
    "fieldtype": "Link",
    "label": "Auto Ack Template",
    "options": "WhatsApp Templates",
-   "description": "Approved utility template; marketplace sources only"
+   "description": "Approved utility template; marketplace sources only",
+   "depends_on": "eval:![\"Exhibition\",\"Manual\"].includes(doc.source_type)"
   },
   {
    "fieldname": "sec_cred",
    "fieldtype": "Section Break",
-   "label": "Credentials"
+   "label": "Vendor API (Excom polls)",
+   "depends_on": "eval:[\"IndiaMART\",\"TradeIndia\",\"Meta Lead Ads\"].includes(doc.source_type)"
   },
   {
    "fieldname": "api_url",
    "fieldtype": "Data",
-   "label": "Api Url",
-   "description": "Vendor endpoint (TradeIndia shows it in the seller panel)"
+   "label": "API URL",
+   "description": "TradeIndia: the URL from 'My Inquiry API'.",
+   "depends_on": "eval:doc.source_type==\"TradeIndia\""
   },
   {
    "fieldname": "api_key",
    "fieldtype": "Password",
-   "label": "Api Key"
+   "label": "API Key",
+   "depends_on": "eval:[\"IndiaMART\",\"TradeIndia\"].includes(doc.source_type)",
+   "description": "IndiaMART: CRM key \u00b7 TradeIndia: key."
   },
   {
    "fieldname": "api_secret",
    "fieldtype": "Password",
-   "label": "Api Secret"
+   "label": "API Secret",
+   "depends_on": "eval:doc.source_type==\"TradeIndia\""
   },
   {
    "fieldname": "cb2",
@@ -124,47 +137,55 @@
   {
    "fieldname": "user_id",
    "fieldtype": "Data",
-   "label": "User Id"
+   "label": "User ID",
+   "depends_on": "eval:doc.source_type==\"TradeIndia\""
   },
   {
    "fieldname": "profile_id",
    "fieldtype": "Data",
-   "label": "Profile Id"
+   "label": "Profile ID",
+   "depends_on": "eval:doc.source_type==\"TradeIndia\""
   },
   {
    "fieldname": "access_token",
    "fieldtype": "Password",
-   "label": "Access Token",
-   "description": "Meta Page access token"
+   "label": "Page Access Token",
+   "description": "Set automatically when enabled from Meta Business.",
+   "depends_on": "eval:doc.source_type==\"Meta Lead Ads\""
   },
   {
    "fieldname": "page_id",
    "fieldtype": "Data",
-   "label": "Page Id",
-   "description": "Meta Page id"
+   "label": "Page ID",
+   "description": "Meta Page id",
+   "depends_on": "eval:doc.source_type==\"Meta Lead Ads\""
   },
   {
    "fieldname": "form_id",
    "fieldtype": "Data",
-   "label": "Form Id",
-   "description": "Meta lead form id (reconciliation poll)"
+   "label": "Form ID",
+   "description": "Meta lead form id (reconciliation poll)",
+   "depends_on": "eval:doc.source_type==\"Meta Lead Ads\""
   },
   {
    "fieldname": "sec_push",
    "fieldtype": "Section Break",
-   "label": "Push / Website"
+   "label": "Incoming webhook (they post to Excom)",
+   "depends_on": "eval:[\"Website\",\"IndiaMART\"].includes(doc.source_type)"
   },
   {
    "fieldname": "push_token",
    "fieldtype": "Password",
    "label": "Push Token",
-   "description": "Unguessable per-source token for push endpoints and website forms"
+   "description": "Generate from the embed panel below; goes in the form / webhook URL.",
+   "depends_on": "eval:[\"Website\",\"IndiaMART\"].includes(doc.source_type)"
   },
   {
    "fieldname": "allowed_origins",
    "fieldtype": "Small Text",
    "label": "Allowed Origins",
-   "description": "One origin per line, e.g. https://www.example.com"
+   "description": "One per line, e.g. https://www.yoursite.com \u2014 required for browser forms.",
+   "depends_on": "eval:doc.source_type==\"Website\""
   },
   {
    "fieldname": "cb3",
@@ -174,25 +195,29 @@
   {
    "fieldname": "allowed_ips",
    "fieldtype": "Small Text",
-   "label": "Allowed Ips",
-   "description": "Optional CIDR allowlist, one per line"
+   "label": "Allowed IPs",
+   "description": "Optional CIDR list for server-to-server callers (IndiaMART push, form builders).",
+   "depends_on": "eval:[\"Website\",\"IndiaMART\"].includes(doc.source_type)"
   },
   {
    "fieldname": "captcha_secret",
    "fieldtype": "Password",
    "label": "Captcha Secret",
-   "description": "Optional Turnstile/hCaptcha secret"
+   "description": "Turnstile / hCaptcha secret; leave empty to skip.",
+   "depends_on": "eval:doc.source_type==\"Website\""
   },
   {
    "fieldname": "min_fill_seconds",
    "fieldtype": "Int",
    "label": "Min Fill Seconds",
-   "default": "3"
+   "default": "3",
+   "depends_on": "eval:doc.source_type==\"Website\"",
+   "description": "Submissions faster than this are dropped as bots."
   },
   {
    "fieldname": "sec_map",
    "fieldtype": "Section Break",
-   "label": "Field map"
+   "label": "Field map (vendor key \u2192 lead field)"
   },
   {
    "fieldname": "field_map",
