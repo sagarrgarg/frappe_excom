@@ -28,7 +28,22 @@ ADMIN_DOCTYPES: dict[str, dict] = {
     "Excom Thread Transfer Log": {"title": "thread", "read_only": True},
     "Excom Stage Change Log": {"title": "ref_name", "read_only": True},
     "Excom Notification Log": {"title": "name", "read_only": True},
+    # Frappe's own auto-assignment engine, scoped to the doctypes Excom drives.
+    "Assignment Rule": {"title": "name", "scope_field": "document_type"},
 }
+
+
+def excom_related_doctypes() -> list[str]:
+    """Excom module doctypes + the CRM records Excom creates (via the gateway, never named here)."""
+    from excom.excom.services.crm_gateway import crm_doctypes
+    # Only records people actually get assigned to — not logs, settings, tokens or messages.
+    own = ["Excom Thread", "Excom Intake Log", "Excom Broadcast", "Omni Identity"]
+    return sorted(set(own) | set(crm_doctypes()) | {"Contact"})
+
+
+def _scope_filters(cfg: dict) -> dict | None:
+    f = cfg.get("scope_field")
+    return {f: ["in", excom_related_doctypes()]} if f else None
 
 _LAYOUT = {"Section Break", "Column Break", "Tab Break", "HTML", "Button", "Fold", "Heading"}
 _SKIP_FIELDS = {"amended_from"}
@@ -85,11 +100,18 @@ def get_schema(doctype: str) -> dict:
     list_fields = [f for s in sections for f in s["fields"] if f["in_list_view"] and f["fieldtype"] not in ("Table", "Table MultiSelect", "Password", "Attach", "Code", "JSON", "Text Editor")]
     if not list_fields:
         list_fields = [f for s in sections for f in s["fields"] if f["fieldtype"] in ("Data", "Select", "Link", "Check", "Int", "Datetime", "Date")][:5]
+    if cfg.get("scope_field"):
+        for sec in sections:
+            for f in sec["fields"]:
+                if f["fieldname"] == cfg["scope_field"]:
+                    f["link_filters"] = {"name": ["in", excom_related_doctypes()]}
+                    f["description"] = (f.get("description") or "") + " Only Excom-related doctypes are offered here."
     return {
         "doctype": doctype,
         "title_field": cfg.get("title") or meta.get_title_field() or "name",
         "single": bool(cfg.get("single") or meta.issingle),
         "read_only": bool(cfg.get("read_only")),
+        "needs_name": (meta.autoname or "").lower() == "prompt",
         "sections": sections,
         "list_fields": [f["fieldname"] for f in list_fields],
         "list_labels": {f["fieldname"]: f["label"] for f in list_fields},
@@ -107,11 +129,12 @@ def list_docs(doctype: str, q: str = "", limit: int = 200, order_by: str = "modi
     if cfg.get("title") and cfg["title"] not in fields:
         fields.append(cfg["title"])
     or_filters = None
+    filters = _scope_filters(cfg)
     if q:
         meta = frappe.get_meta(doctype)
         searchable = [f for f in fields if f != "modified" and (meta.get_field(f) is None or meta.get_field(f).fieldtype in ("Data", "Link", "Select", "Small Text"))]
         or_filters = [[doctype, f, "like", f"%{q}%"] for f in searchable]
-    return frappe.get_all(doctype, fields=fields, or_filters=or_filters, limit=min(int(limit), 1000), order_by=order_by)
+    return frappe.get_all(doctype, fields=fields, filters=filters, or_filters=or_filters, limit=min(int(limit), 1000), order_by=order_by)
 
 
 def _mask_passwords(doc: dict, meta) -> dict:
@@ -129,6 +152,7 @@ def get_doc(doctype: str, name: str = "") -> dict:
         doc = frappe.get_single(doctype)
     else:
         doc = frappe.get_doc(doctype, name)
+        _assert_in_scope(cfg, doc)
     d = doc.as_dict()
     for k in list(d.keys()):
         if isinstance(d[k], list):
@@ -149,6 +173,8 @@ def save_doc(doctype: str, values: str | dict, name: str = "") -> dict:
         doc = frappe.get_doc(doctype, name)
     else:
         doc = frappe.new_doc(doctype)
+        if values.get("__newname"):
+            doc.__newname = values["__newname"]  # doctypes with autoname = Prompt
     for df in meta.fields:
         if df.fieldtype in _LAYOUT or df.fieldname not in values:
             continue
@@ -163,14 +189,22 @@ def save_doc(doctype: str, values: str | dict, name: str = "") -> dict:
                 doc.append(df.fieldname, {k: vv for k, vv in (row or {}).items() if k not in ("name", "idx", "parent", "parenttype", "parentfield", "creation", "modified", "owner", "modified_by")})
             continue
         doc.set(df.fieldname, v)
+    _assert_in_scope(cfg, doc)
     doc.save(ignore_permissions=True)
     frappe.db.commit()
     return {"name": doc.name}
 
 
+def _assert_in_scope(cfg: dict, doc) -> None:
+    f = cfg.get("scope_field")
+    if f and doc.get(f) not in excom_related_doctypes():
+        frappe.throw(_("{0} is outside Excom's scope — manage it in Desk").format(doc.get(f) or doc.name), frappe.PermissionError)
+
+
 @frappe.whitelist()
 def delete_doc(doctype: str, name: str) -> dict:
-    _assert_allowed(doctype, write=True)
+    cfg = _assert_allowed(doctype, write=True)
+    _assert_in_scope(cfg, frappe.get_doc(doctype, name))
     frappe.delete_doc(doctype, name, ignore_permissions=True)
     frappe.db.commit()
     return {"ok": True}
@@ -367,6 +401,7 @@ def get_admin_overview() -> dict:
         "stickers": frappe.db.count("Excom Sticker", {"enabled": 1}),
         "notifications": frappe.db.count("Excom Notification", {"disabled": 0}),
         "intake_sources": frappe.db.count("Excom Intake Source", {"enabled": 1}),
+        "assignment_rules": frappe.db.count("Assignment Rule", {"disabled": 0, "document_type": ["in", excom_related_doctypes()]}),
         "unassigned": frappe.db.count("Excom Thread", {"status": ["!=", "Closed"], "assigned_to": ["is", "not set"]}),
         "disabled_owner_threads": int(disabled_owners or 0),
     }

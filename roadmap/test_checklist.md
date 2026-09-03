@@ -165,3 +165,4 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 | Record header ≥ 720 px wide: Transfer / Tags / Assign / Classify / Promote / Convert / Quote / Close as icon buttons; the rest under ⋯; narrower → all under ⋯ | S | ✅ |
 | Right-click on an inbox row or the record header opens Excom's own menu (same items as ⋯); long-press on touch (700 ms) does the same | S | ✅ code; long-press per Radix ContextMenu |
 | Hold Ctrl / ⌘ and hover: rows, header actions, rail items and message meta show a detail panel (full contact, record, owner, exact times, what a button does) | S | ✅ code |
+| Admin → Auto-assignment rules: Frappe Assignment Rule CRUD scoped to Excom-related doctypes (Excom Thread / Intake Log / Broadcast / Omni Identity / Lead / Opportunity / Prospect / Customer / Contact); HD Ticket rules hidden and unreadable; scope change blocked; Prompt-named docs get a Name field | S | ✅ synthetic rule created / read / deleted |

@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
-import { Shield, Users, Radio, Tag, MessageSquare, Smile, FileText, Bell, Inbox, Settings, History, GitMerge, ListChecks, Cog, RefreshCw, LayoutGrid, AlertTriangle } from "lucide-react";
+import { Shield, Users, Radio, Tag, MessageSquare, Smile, FileText, Bell, Inbox, Settings, History, GitMerge, ListChecks, Cog, RefreshCw, LayoutGrid, AlertTriangle, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPage } from "../shell/AdminPage";
 import { Button, Select } from "../primitives";
@@ -30,6 +30,7 @@ const SECTIONS: Section[] = [
   { id: "stickers", label: "Stickers", icon: <Smile />, group: "Content", render: () => <DocAdmin doctype="Excom Sticker" hint="WebP stickers uploaded to the WhatsApp account's media library." /> },
   { id: "signatures", label: "Email signatures", icon: <FileText />, group: "Content", render: () => <DocAdmin doctype="Excom Email Signature" /> },
   { id: "notifications", label: "Notification rules", icon: <Bell />, group: "Automation", render: () => <DocAdmin doctype="Excom Notification" hint="Send a WhatsApp/email when a document event happens (e.g. Sales Invoice submitted)." /> },
+  { id: "assignment", label: "Auto-assignment rules", icon: <UserCheck />, group: "Automation", render: () => <DocAdmin doctype="Assignment Rule" hint="ERPNext's own Assignment Rules, limited to Excom doctypes (threads, leads, opportunities, contacts…). Round-robin, load-balancing or by field, with conditions and working days." /> },
   { id: "subscribers", label: "Subscriber lists", icon: <ListChecks />, group: "Lists", to: "/subscribers" },
   { id: "rules", label: "Subscriber rules", icon: <Cog />, group: "Lists", to: "/rules" },
   { id: "merge", label: "Merge suggestions", icon: <GitMerge />, group: "Lists", to: "/merge" },
@@ -46,7 +47,7 @@ function Overview({ go }: { go: (id: string) => void }) {
   const cards: { id: string; label: string; value: number | undefined; warn?: boolean }[] = [
     { id: "teams", label: "Teams", value: m.teams }, { id: "users", label: "Excom users", value: m.users }, { id: "accounts", label: "Active accounts", value: m.accounts },
     { id: "templates", label: "WhatsApp templates", value: m.templates }, { id: "canned", label: "Canned responses", value: m.canned }, { id: "tags", label: "Tags", value: m.tags },
-    { id: "stickers", label: "Stickers", value: m.stickers }, { id: "notifications", label: "Notification rules", value: m.notifications }, { id: "intake", label: "Intake sources", value: m.intake_sources },
+    { id: "stickers", label: "Stickers", value: m.stickers }, { id: "notifications", label: "Notification rules", value: m.notifications }, { id: "assignment", label: "Auto-assignment rules", value: m.assignment_rules }, { id: "intake", label: "Intake sources", value: m.intake_sources },
     { id: "users", label: "Chats owned by disabled users", value: m.disabled_owner_threads, warn: (m.disabled_owner_threads || 0) > 0 },
   ];
   return (

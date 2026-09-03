@@ -9,7 +9,7 @@ import { cn } from "../ui/utils";
  * Link field picker — searches the target doctype through frappe.desk.search.search_link (same as Desk),
  * so a Link field can only hold a value that exists (no more "Could not find Salutation: m").
  */
-export function LinkField({ doctype, value, onChange, disabled, placeholder }: { doctype: string; value: string; onChange: (v: string) => void; disabled?: boolean; placeholder?: string }) {
+export function LinkField({ doctype, value, onChange, disabled, placeholder, filters }: { doctype: string; value: string; onChange: (v: string) => void; disabled?: boolean; placeholder?: string; filters?: Record<string, unknown> }) {
   const [text, setText] = useState(value);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -22,7 +22,7 @@ export function LinkField({ doctype, value, onChange, disabled, placeholder }: {
   }, [value]);
   const { data, isLoading } = useFrappeGetCall<{ message: { value: string; description?: string; label?: string }[] }>(
     open && doctype ? "frappe.desk.search.search_link" : (null as unknown as string),
-    open && doctype ? { doctype, txt: q, page_length: 20 } : undefined,
+    open && doctype ? { doctype, txt: q, page_length: 20, ...(filters ? { filters: JSON.stringify(filters) } : {}) } : undefined,
     undefined,
     { revalidateOnFocus: false, keepPreviousData: true }
   );

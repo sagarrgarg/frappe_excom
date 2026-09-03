@@ -9,7 +9,7 @@ const EMPTY_COLOR = "#" + "0".repeat(6);
 
 export interface AdminField {
   fieldname: string; label: string; fieldtype: string; options?: string; reqd: number; read_only: number;
-  description?: string; default?: string | null; in_list_view: number; depends_on?: string; hidden: number; child_fields?: AdminField[];
+  description?: string; default?: string | null; in_list_view: number; depends_on?: string; hidden: number; child_fields?: AdminField[]; link_filters?: Record<string, unknown>;
 }
 
 async function uploadFile(file: File): Promise<string> {
@@ -39,7 +39,7 @@ export function FieldControl({ f, value, onChange, disabled }: { f: AdminField; 
     case "Int": case "Float": case "Currency": case "Percent": case "Duration": return <Input type="number" {...common} onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))} className="tabular-nums" />;
     case "Color": return <div className="flex items-center gap-2"><input type="color" value={String(v || EMPTY_COLOR)} disabled={ro} onChange={(e) => onChange(e.target.value)} className="h-8 w-10 rounded border border-border bg-surface p-0.5" /><Input {...common} onChange={(e) => onChange(e.target.value)} className="w-32 font-mono" /></div>;
     case "Password": return <Input type="password" autoComplete="new-password" disabled={ro} value={v === "__SET__" ? "" : String(v ?? "")} placeholder={v === "__SET__" ? "•••••••• (set — leave blank to keep)" : "Not set"} onChange={(e) => onChange(e.target.value)} />;
-    case "Link": return <LinkField doctype={f.options || ""} value={v == null ? "" : String(v)} disabled={ro} onChange={onChange} />;
+    case "Link": return <LinkField doctype={f.options || ""} value={v == null ? "" : String(v)} disabled={ro} onChange={onChange} filters={f.link_filters} />;
     case "Dynamic Link": return <Input {...common} onChange={(e) => onChange(e.target.value)} placeholder={f.options} />;
     case "Attach": case "Attach Image": return <AttachControl value={String(v || "")} onChange={onChange} disabled={ro} />;
     case "Table": case "Table MultiSelect": return <ChildTable f={f} rows={Array.isArray(v) ? (v as Record<string, unknown>[]) : []} onChange={onChange} disabled={ro} />;
