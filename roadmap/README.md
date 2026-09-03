@@ -24,9 +24,9 @@ A/B/C above are the original feature roadmap. The programme now running is the f
 
 | Phase | Name | Effort | Status |
 |---|---|---|---|
-| **P1** | **UI Change** | **16-24 days** | Not Started |
-| **P2** | **Excom Testing** | **8-12 days** | Not Started |
-| **P3** | **Native CRM Connection (v15)** | **18-26 days** | Not Started |
+| ~~P1~~ | ~~UI Change~~ | ~~16-24 days~~ | DONE 2026-09-03 (default tree; legacy deleted) |
+| **P2** | **Excom Testing** | **8-12 days** | Automated part DONE; pilot with real users pending |
+| **P3** | **Native CRM Connection (v15)** | **18-26 days** | Built; Frappe CRM migration rehearsed, production run + vendor keys pending |
 | **P4** | **Owning the Spine** | **6-9 days** | Not Started |
 | **P5** | **Frappe CRM Harvest** | unscheduled | Parked by design |
 
