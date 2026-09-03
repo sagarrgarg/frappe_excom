@@ -30,7 +30,10 @@
   "push_notification_api_secret",
   "push_config_section",
   "push_config",
-  "vapid_public_key"
+  "vapid_public_key",
+  "crm_tab",
+  "crm_sla_escalation",
+  "crm_go_live_date"
  ],
  "fields": [
   {
@@ -201,6 +204,25 @@
    "hidden": 1,
    "label": "VAPID Public Key",
    "read_only": 1
+  },
+  {
+   "fieldname": "crm_tab",
+   "fieldtype": "Tab Break",
+   "label": "CRM"
+  },
+  {
+   "fieldname": "crm_sla_escalation",
+   "fieldtype": "Select",
+   "label": "SLA Escalation",
+   "options": "Off\nIn-app only\nFull ladder",
+   "default": "In-app only",
+   "description": "Full ladder adds WhatsApp to the owner (+30 min), manager alert (+2 h) and return-to-queue (+1 day). Applies only to records created after the P3 go-live date."
+  },
+  {
+   "fieldname": "crm_go_live_date",
+   "fieldtype": "Date",
+   "label": "CRM Go-live Date",
+   "description": "SLA and guardrails ignore records created before this date."
   }
  ],
  "index_web_pages_for_search": 1,

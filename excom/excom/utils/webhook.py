@@ -41,63 +41,50 @@ def get():
 	return Response(hub_challenge, status=200)
 
 
-def _verify_hmac_signature() -> bool:
-	"""Validate X-Hub-Signature-256 header against stored app secrets.
+def _candidate_secrets() -> list[str]:
+	"""App secrets that may sign traffic to this endpoint: WhatsApp accounts + Meta lead-ad sources."""
+	out = []
+	for acc_name in frappe.get_all("Excom Channel Account", filters={"channel": "whatsapp", "status": "Active"}, pluck="name"):
+		try:
+			secret = frappe.get_doc("Excom Channel Account", acc_name).get_password("wa_app_secret", raise_exception=False)
+			if secret:
+				out.append(secret)
+		except Exception:
+			pass
+	if frappe.db.exists("DocType", "Excom Intake Source"):
+		for src_name in frappe.get_all("Excom Intake Source", filters={"source_type": "Meta Lead Ads", "enabled": 1}, pluck="name"):
+			try:
+				secret = frappe.get_doc("Excom Intake Source", src_name).get_password("api_secret", raise_exception=False)
+				if secret:
+					out.append(secret)
+			except Exception:
+				pass
+	return out
 
-	Returns True if signature is valid or no app secrets are configured
-	(graceful degradation for accounts that haven't set the secret yet).
+
+def _verify_hmac_signature() -> bool:
+	"""Validate X-Hub-Signature-256 against every configured Meta app secret.
+
+	P3 §3.9 S2: once ANY secret is configured, unsigned requests are rejected. Only a site with no
+	secret anywhere still accepts unsigned traffic, and every such acceptance is logged.
 	"""
 	signature_header = frappe.request.headers.get("X-Hub-Signature-256", "")
+	secrets = _candidate_secrets()
 	if not signature_header:
-		secrets = frappe.get_all(
-			"Excom Channel Account",
-			filters={"channel": "whatsapp", "status": "Active"},
-			pluck="name",
-		)
-		has_any_secret = False
-		for acc_name in secrets:
-			try:
-				secret = frappe.get_doc("Excom Channel Account", acc_name).get_password("wa_app_secret")
-				if secret:
-					has_any_secret = True
-					break
-			except frappe.AuthenticationError:
-				pass
-		if has_any_secret:
+		if secrets:
 			return False
+		frappe.log_error(title="Excom: webhook accepted WITHOUT signature (no app secret configured)", message=frappe.request.path)
 		return True
 
 	raw_payload = frappe.request.get_data(as_text=False)
-
-	accounts = frappe.get_all(
-		"Excom Channel Account",
-		filters={"channel": "whatsapp", "status": "Active"},
-		pluck="name",
-	)
-
 	expected_prefix = "sha256="
 	if not signature_header.startswith(expected_prefix):
 		return False
-
 	provided_sig = signature_header[len(expected_prefix):]
-
-	for acc_name in accounts:
-		try:
-			app_secret = frappe.get_doc("Excom Channel Account", acc_name).get_password("wa_app_secret")
-		except frappe.AuthenticationError:
-			continue
-		if not app_secret:
-			continue
-
-		expected_sig = hmac.new(
-			app_secret.encode("utf-8"),
-			raw_payload,
-			hashlib.sha256,
-		).hexdigest()
-
+	for secret in secrets:
+		expected_sig = hmac.new(secret.encode("utf-8"), raw_payload, hashlib.sha256).hexdigest()
 		if hmac.compare_digest(provided_sig, expected_sig):
 			return True
-
 	return False
 
 
@@ -139,60 +126,59 @@ def post():
 
 def _process_webhook_payload(data_str: str):
 	"""
-	Background job: parse and process a Meta webhook payload.
-
-	Called from the enqueue in post(). Receives the raw payload as a JSON
-	string so it can be safely serialized across the job queue boundary.
+	Background job: parse a Meta webhook payload and dispatch each change by `field`
+	(P3 §3.7). One Meta URL carries WhatsApp messages, lead ads, IG/Messenger and Page
+	comments; a handler exception must never drop the sibling changes.
 	"""
 	data = json.loads(data_str)
+	entries = data.get("entry") or []
+	if isinstance(entries, dict):
+		entries = [entries]
+	for entry in entries:
+		for change in entry.get("changes") or []:
+			field = change.get("field") or "messages"
+			handler = FIELD_HANDLERS.get(field)
+			if not handler:
+				_log_unhandled(field, change)
+				continue
+			try:
+				handler(change, entry)
+			except Exception:
+				frappe.log_error(title=f"Excom webhook handler failed: {field}", message=frappe.get_traceback())
 
-	messages = []
-	phone_id = None
-	try:
-		messages = data["entry"][0]["changes"][0]["value"].get("messages", [])
-		phone_id = (
-			data.get("entry", [{}])[0]
-			.get("changes", [{}])[0]
-			.get("value", {})
-			.get("metadata", {})
-			.get("phone_number_id")
-		)
-	except (KeyError, IndexError):
-		try:
-			messages = data["entry"]["changes"][0]["value"].get("messages", [])
-		except (KeyError, IndexError, TypeError):
-			pass
 
-	sender_profile_name = next(
-		(
-			contact.get("profile", {}).get("name")
-			for entry in data.get("entry", [])
-			for change in entry.get("changes", [])
-			for contact in change.get("value", {}).get("contacts", [])
-		),
-		None,
-	)
-
+def _handle_messages(change: dict, entry: dict) -> None:
+	"""Existing WhatsApp path: messages + status updates."""
+	value = change.get("value") or {}
+	phone_id = (value.get("metadata") or {}).get("phone_number_id")
 	channel_account = get_channel_account(phone_id) if phone_id else None
 	if not channel_account:
 		return
-
 	account_name = channel_account.name
-
+	sender_profile_name = next((c.get("profile", {}).get("name") for c in value.get("contacts", [])), None)
+	messages = value.get("messages", [])
 	if messages:
 		for message in messages:
 			_process_inbound_message(message, sender_profile_name, channel_account, account_name)
 	else:
-		changes = None
-		try:
-			changes = data["entry"][0]["changes"][0]
-		except (KeyError, IndexError):
-			try:
-				changes = data["entry"]["changes"][0]
-			except (KeyError, IndexError, TypeError):
-				pass
-		if changes:
-			_process_status_update(changes)
+		_process_status_update(change)
+
+
+def _handle_leadgen(change: dict, entry: dict) -> None:
+	from excom.excom.intake.adapters.meta import handle_leadgen
+	handle_leadgen(change)
+
+
+def _log_unhandled(field: str, change: dict) -> None:
+	"""feed/comments/mentions/messaging arrive here until their handlers exist (UX-001 Comments view)."""
+	frappe.log_error(title=f"Excom webhook: unhandled field '{field}'", message=json.dumps(change)[:2000])
+
+
+FIELD_HANDLERS = {
+	"messages": _handle_messages,
+	"message_template_status_update": lambda change, entry: _process_status_update(change),
+	"leadgen": _handle_leadgen,
+}
 
 
 def _process_inbound_message(message, sender_profile_name, channel_account, account_name):

@@ -1,0 +1,46 @@
+{
+ "doctype": "DocType",
+ "name": "Excom Intake Field Map",
+ "module": "Excom",
+ "custom": 0,
+ "engine": "InnoDB",
+ "editable_grid": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "fields": [
+  {
+   "fieldname": "source_key",
+   "fieldtype": "Data",
+   "label": "Source Key",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "target_fieldname",
+   "fieldtype": "Data",
+   "label": "Target Fieldname",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Lead fieldname (gateway vocabulary: name, email, phone, company_name, message, city, state, country, customer_type, \u2026)"
+  },
+  {
+   "fieldname": "transform",
+   "fieldtype": "Select",
+   "label": "Transform",
+   "options": "\nstrip\nlower\nphone_e164\nfirst_word\nlast_words\nyes_no",
+   "in_list_view": 1
+  }
+ ],
+ "field_order": [
+  "source_key",
+  "target_fieldname",
+  "transform"
+ ],
+ "creation": "2026-09-03 12:00:00.000000",
+ "modified": "2026-09-03 12:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "idx": 0,
+ "istable": 1,
+ "permissions": []
+}

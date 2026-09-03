@@ -1,0 +1,36 @@
+# Every native (ERPNext/Frappe) CRM dependency excom relies on — RES-001 §4.2.
+# Adding a line here is a deliberate decision. Only crm_gateway.py / crm_compat.py may reference these doctypes.
+doctypes:
+  Lead: {use: system of record for enquiries, since: P3}
+  Opportunity: {use: typed pipelines; owns items[], sales_stage, probability, first_response_time}
+  Opportunity Item: {use: pipeline value}
+  Prospect: {use: account container (identity link only)}
+  Customer: {use: conversion target; provenance copied on Won}
+  Contact: {use: identity reverse lookup (existing)}
+  Party Link: {use: identity merge (existing)}
+  Quotation: {use: read-only from excom; created via native make_quotation}
+  Company: {use: hard boundary; stamped from channel account / intake source}
+  Territory: {use: gates + user permissions}
+  Sales Stage: {use: native funnel reporting, written via map_stage_to_sales_stage}
+  Opportunity Lost Reason: {use: loss handling}
+  Incoterm: {use: export pipeline field}
+  Lead Source: {use: v15 attribution target (via crm_compat)}
+  Campaign: {use: v15 attribution target (via crm_compat)}
+  UTM Source: {use: v16 attribution target (via crm_compat)}
+  UTM Campaign: {use: v16 attribution target (via crm_compat)}
+  UTM Medium: {use: v16 attribution target (via crm_compat)}
+  Assignment Rule: {use: routing per pipeline (frappe core)}
+  ToDo: {use: tasks + assignment (frappe core)}
+helpers:
+  erpnext.crm.doctype.lead.lead.make_opportunity: Lead → Opportunity
+  erpnext.crm.doctype.lead.lead.make_customer: Lead → Customer
+  erpnext.crm.doctype.lead.lead.make_quotation: Lead → Quotation
+  erpnext.crm.doctype.opportunity.opportunity.make_quotation: Opportunity → Quotation
+native_fields_reused:
+  Lead: [lead_name, company_name, email_id, mobile_no, whatsapp_no, company, territory, country, state, city, request_type, qualification_status, qualified_by, qualified_on, lead_owner, industry, market_segment, annual_revenue, no_of_employees, job_title, status, unsubscribed]
+  Opportunity: [opportunity_from, party_name, customer_name, opportunity_type, status, sales_stage, probability, expected_closing, currency, conversion_rate, opportunity_amount, items, territory, customer_group, contact_person, first_response_time, competitors, lost_reasons, order_lost_reason, opportunity_owner, company, country, state, city]
+excom_custom_fields:
+  Lead: [customer_type, omni_identity, first_touch_at, first_touch_channel, first_touch_by, source_reference, intake_source, exhibition, auto_ack_sent_at, intake_stage]
+  Opportunity: [customer_type, pipeline_stage, omni_identity, stage_entered_at, next_action_at, gate_flags, event_date, design_by, sample_round, incoterm, proposed_pincodes]
+  Prospect: [customer_type, omni_identity]
+  Customer: [customer_type, first_touch_at, first_touch_channel, source_reference]

@@ -57,10 +57,14 @@ def after_install():
 	seed_roles()
 	seed_channels()
 	seed_general_team()
+	from excom.setup.crm_schema import apply as apply_crm_schema
+	apply_crm_schema()
 
 
 def after_migrate():
 	"""Called after every bench migrate. Ensures seed data is intact."""
+	from excom.setup.crm_schema import apply as apply_crm_schema
+	apply_crm_schema()
 	seed_roles()
 	seed_channels()
 	seed_general_team()

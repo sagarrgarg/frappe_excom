@@ -1,0 +1,276 @@
+{
+ "doctype": "DocType",
+ "name": "Excom Intake Source",
+ "module": "Excom",
+ "custom": 0,
+ "engine": "InnoDB",
+ "editable_grid": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "fields": [
+  {
+   "fieldname": "source_name",
+   "fieldtype": "Data",
+   "label": "Source Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "source_type",
+   "fieldtype": "Select",
+   "label": "Source Type",
+   "options": "Website\nIndiaMART\nTradeIndia\nMeta Lead Ads\nExhibition\nManual",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "channel_account",
+   "fieldtype": "Link",
+   "label": "Channel Account",
+   "options": "Excom Channel Account",
+   "description": "Which WhatsApp number / inbox auto-acks"
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break",
+   "label": "Cb1"
+  },
+  {
+   "fieldname": "mode",
+   "fieldtype": "Select",
+   "label": "Mode",
+   "options": "Push\nPull\nBoth",
+   "default": "Pull"
+  },
+  {
+   "fieldname": "pull_frequency",
+   "fieldtype": "Select",
+   "label": "Pull Frequency",
+   "options": "Every 5 Minutes\nEvery 15 Minutes\nHourly\nDaily",
+   "default": "Every 15 Minutes"
+  },
+  {
+   "fieldname": "last_synced_at",
+   "fieldtype": "Datetime",
+   "label": "Last Synced At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_success_at",
+   "fieldtype": "Datetime",
+   "label": "Last Success At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "default_lead_owner",
+   "fieldtype": "Link",
+   "label": "Default Lead Owner",
+   "options": "User"
+  },
+  {
+   "fieldname": "sla_first_response",
+   "fieldtype": "Duration",
+   "label": "Sla First Response",
+   "description": "5 min IndiaMART \u00b7 15 min TradeIndia \u00b7 30 min Meta \u00b7 1 h web"
+  },
+  {
+   "fieldname": "auto_ack_template",
+   "fieldtype": "Link",
+   "label": "Auto Ack Template",
+   "options": "WhatsApp Templates",
+   "description": "Approved utility template; marketplace sources only"
+  },
+  {
+   "fieldname": "sec_cred",
+   "fieldtype": "Section Break",
+   "label": "Credentials"
+  },
+  {
+   "fieldname": "api_url",
+   "fieldtype": "Data",
+   "label": "Api Url",
+   "description": "Vendor endpoint (TradeIndia shows it in the seller panel)"
+  },
+  {
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "Api Key"
+  },
+  {
+   "fieldname": "api_secret",
+   "fieldtype": "Password",
+   "label": "Api Secret"
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break",
+   "label": "Cb2"
+  },
+  {
+   "fieldname": "user_id",
+   "fieldtype": "Data",
+   "label": "User Id"
+  },
+  {
+   "fieldname": "profile_id",
+   "fieldtype": "Data",
+   "label": "Profile Id"
+  },
+  {
+   "fieldname": "access_token",
+   "fieldtype": "Password",
+   "label": "Access Token",
+   "description": "Meta Page access token"
+  },
+  {
+   "fieldname": "page_id",
+   "fieldtype": "Data",
+   "label": "Page Id",
+   "description": "Meta Page id"
+  },
+  {
+   "fieldname": "form_id",
+   "fieldtype": "Data",
+   "label": "Form Id",
+   "description": "Meta lead form id (reconciliation poll)"
+  },
+  {
+   "fieldname": "sec_push",
+   "fieldtype": "Section Break",
+   "label": "Push / Website"
+  },
+  {
+   "fieldname": "push_token",
+   "fieldtype": "Password",
+   "label": "Push Token",
+   "description": "Unguessable per-source token for push endpoints and website forms"
+  },
+  {
+   "fieldname": "allowed_origins",
+   "fieldtype": "Small Text",
+   "label": "Allowed Origins",
+   "description": "One origin per line, e.g. https://www.example.com"
+  },
+  {
+   "fieldname": "cb3",
+   "fieldtype": "Column Break",
+   "label": "Cb3"
+  },
+  {
+   "fieldname": "allowed_ips",
+   "fieldtype": "Small Text",
+   "label": "Allowed Ips",
+   "description": "Optional CIDR allowlist, one per line"
+  },
+  {
+   "fieldname": "captcha_secret",
+   "fieldtype": "Password",
+   "label": "Captcha Secret",
+   "description": "Optional Turnstile/hCaptcha secret"
+  },
+  {
+   "fieldname": "min_fill_seconds",
+   "fieldtype": "Int",
+   "label": "Min Fill Seconds",
+   "default": "3"
+  },
+  {
+   "fieldname": "sec_map",
+   "fieldtype": "Section Break",
+   "label": "Field map"
+  },
+  {
+   "fieldname": "field_map",
+   "fieldtype": "Table",
+   "label": "Field Map",
+   "options": "Excom Intake Field Map"
+  }
+ ],
+ "field_order": [
+  "source_name",
+  "source_type",
+  "enabled",
+  "company",
+  "channel_account",
+  "cb1",
+  "mode",
+  "pull_frequency",
+  "last_synced_at",
+  "last_success_at",
+  "default_lead_owner",
+  "sla_first_response",
+  "auto_ack_template",
+  "sec_cred",
+  "api_url",
+  "api_key",
+  "api_secret",
+  "cb2",
+  "user_id",
+  "profile_id",
+  "access_token",
+  "page_id",
+  "form_id",
+  "sec_push",
+  "push_token",
+  "allowed_origins",
+  "cb3",
+  "allowed_ips",
+  "captcha_secret",
+  "min_fill_seconds",
+  "sec_map",
+  "field_map"
+ ],
+ "creation": "2026-09-03 12:00:00.000000",
+ "modified": "2026-09-03 12:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "idx": 0,
+ "autoname": "field:source_name",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "print": 1,
+   "email": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1
+  },
+  {
+   "role": "Excom Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "print": 1,
+   "email": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1
+  },
+  {
+   "role": "Excom User",
+   "read": 1,
+   "report": 1
+  }
+ ],
+ "track_changes": 1
+}

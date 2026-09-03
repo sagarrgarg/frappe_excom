@@ -11,7 +11,8 @@
     "copy-html-entry": "cp ../excom/public/excom/index.html ../excom/www/excom.html",
     "gates": "bash scripts/ui-gates.sh",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "reskin": "python3 scripts/reskin.py"
+    "reskin": "python3 scripts/reskin.py",
+    "crm-gates": "bash scripts/crm-gates.sh"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

@@ -1,0 +1,154 @@
+{
+ "doctype": "DocType",
+ "name": "Excom Intake Log",
+ "module": "Excom",
+ "custom": 0,
+ "engine": "InnoDB",
+ "editable_grid": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "fields": [
+  {
+   "fieldname": "source",
+   "fieldtype": "Link",
+   "label": "Source",
+   "options": "Excom Intake Source",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "dedupe_key",
+   "fieldtype": "Data",
+   "label": "Dedupe Key",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "IndiaMART UNIQUE_QUERY_ID \u00b7 Meta leadgen_id \u00b7 TradeIndia inquiry id \u00b7 website submission_id"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Received\nProcessed\nDuplicate\nFailed\nIgnored",
+   "default": "Received",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break",
+   "label": "Cb1"
+  },
+  {
+   "fieldname": "lead_doctype",
+   "fieldtype": "Link",
+   "label": "Lead Doctype",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "lead",
+   "fieldtype": "Dynamic Link",
+   "label": "Lead",
+   "options": "lead_doctype",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "omni_identity",
+   "fieldtype": "Link",
+   "label": "Omni Identity",
+   "options": "Omni Identity"
+  },
+  {
+   "fieldname": "thread",
+   "fieldtype": "Link",
+   "label": "Thread",
+   "options": "Excom Thread"
+  },
+  {
+   "fieldname": "received_at",
+   "fieldtype": "Datetime",
+   "label": "Received At"
+  },
+  {
+   "fieldname": "processed_at",
+   "fieldtype": "Datetime",
+   "label": "Processed At"
+  },
+  {
+   "fieldname": "sec_raw",
+   "fieldtype": "Section Break",
+   "label": "Payload"
+  },
+  {
+   "fieldname": "raw_payload",
+   "fieldtype": "Long Text",
+   "label": "Raw Payload"
+  },
+  {
+   "fieldname": "mapped_payload",
+   "fieldtype": "Long Text",
+   "label": "Mapped Payload",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Long Text",
+   "label": "Error"
+  }
+ ],
+ "field_order": [
+  "source",
+  "dedupe_key",
+  "status",
+  "cb1",
+  "lead_doctype",
+  "lead",
+  "omni_identity",
+  "thread",
+  "received_at",
+  "processed_at",
+  "sec_raw",
+  "raw_payload",
+  "mapped_payload",
+  "error"
+ ],
+ "creation": "2026-09-03 12:00:00.000000",
+ "modified": "2026-09-03 12:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "idx": 0,
+ "autoname": "hash",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "print": 1,
+   "email": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1
+  },
+  {
+   "role": "Excom Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "print": 1,
+   "email": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1
+  },
+  {
+   "role": "Excom User",
+   "read": 1,
+   "report": 1
+  }
+ ],
+ "track_changes": 0,
+ "in_create": 0
+}

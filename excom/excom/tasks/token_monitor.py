@@ -12,6 +12,7 @@ def check_token_expiry() -> None:
     - WhatsApp accounts: wa_token presence (WhatsApp system tokens
       are long-lived but can be revoked)
     """
+    _check_intake_sources()
     _check_email_token_expiry()
     _check_whatsapp_token_health()
 
@@ -107,3 +108,16 @@ def _get_admin_users() -> list[str]:
     users.discard("Administrator")
     users.discard("Guest")
     return [u for u in users if frappe.db.get_value("User", u, "enabled")]
+
+
+def _check_intake_sources() -> None:
+    """P3 S8: stale pulls (3× frequency) and IndiaMART CRM keys idle >12 days (expire at ~15)."""
+    try:
+        from excom.excom.tasks.intake import stale_source_alarm
+        from frappe.utils import now_datetime, get_datetime
+        stale_source_alarm()
+        for s in frappe.get_all("Excom Intake Source", filters={"enabled": 1, "source_type": "IndiaMART"}, fields=["name", "last_success_at"]):
+            if s.last_success_at and (now_datetime() - get_datetime(s.last_success_at)).days >= 12:
+                frappe.log_error(title=f"Excom: IndiaMART key on {s.name} idle 12+ days — it expires at ~15", message=str(s.last_success_at))
+    except Exception:
+        frappe.log_error(title="Excom: intake source check failed", message=frappe.get_traceback())

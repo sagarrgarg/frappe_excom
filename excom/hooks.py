@@ -164,6 +164,17 @@ doc_events = {
 		"after_insert": "excom.excom.services.identity_hooks.on_entity_created",
 	},
 	"Lead": {
+		"after_insert": [
+			"excom.excom.services.identity_hooks.on_entity_created",
+			"excom.excom.services.crm_flow.on_lead_created",
+		],
+		"on_update": "excom.excom.services.crm_flow.on_lead_updated",
+	},
+	"Opportunity": {
+		"after_insert": "excom.excom.services.crm_flow.on_opportunity_created",
+		"on_update": "excom.excom.services.crm_flow.on_opportunity_updated",
+	},
+	"Prospect": {
 		"after_insert": "excom.excom.services.identity_hooks.on_entity_created",
 	},
 	"Contact": {
@@ -187,6 +198,7 @@ scheduler_events = {
 		"excom.excom.services.delivery_watchdog.check_stale_messages",
 	],
 	"hourly": [
+		"excom.excom.tasks.crm_sla.check_crm_sla",
 		"excom.excom.utils.trigger_whatsapp_notifications_hourly",
 		"excom.excom.utils.trigger_whatsapp_notifications_hourly_long",
 	],
@@ -196,7 +208,13 @@ scheduler_events = {
 		"excom.excom.tasks.cleanup.cleanup_stale_identities",
 		"excom.excom.services.identity_hooks.scan_merge_suggestions",
 		"excom.excom.tasks.token_monitor.check_token_expiry",
+		"excom.excom.tasks.guardrails.assert_native_crm_only",
+		"excom.excom.tasks.intake.purge_old_payloads",
+		"excom.excom.tasks.intake.reconcile_meta_leads",
 	],
+	"cron": {
+		"*/5 * * * *": ["excom.excom.tasks.intake.pull_due_sources"],
+	},
 	"daily_maintenance": [
 		"excom.excom.scheduler.daily.sync_invalid_tokens",
 	],

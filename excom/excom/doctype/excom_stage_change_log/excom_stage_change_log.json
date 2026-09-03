@@ -1,0 +1,122 @@
+{
+ "doctype": "DocType",
+ "name": "Excom Stage Change Log",
+ "module": "Excom",
+ "custom": 0,
+ "engine": "InnoDB",
+ "editable_grid": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "fields": [
+  {
+   "fieldname": "ref_doctype",
+   "fieldtype": "Link",
+   "label": "Ref Doctype",
+   "options": "DocType",
+   "reqd": 1
+  },
+  {
+   "fieldname": "ref_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Ref Name",
+   "options": "ref_doctype",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break",
+   "label": "Cb1"
+  },
+  {
+   "fieldname": "from_stage",
+   "fieldtype": "Data",
+   "label": "From",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "to_stage",
+   "fieldtype": "Data",
+   "label": "To",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Datetime",
+   "label": "From Date"
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Datetime",
+   "label": "To Date",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "duration",
+   "fieldtype": "Duration",
+   "label": "Duration",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "log_owner",
+   "fieldtype": "Link",
+   "label": "Log Owner",
+   "options": "User"
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note"
+  }
+ ],
+ "field_order": [
+  "ref_doctype",
+  "ref_name",
+  "cb1",
+  "from_stage",
+  "to_stage",
+  "from_date",
+  "to_date",
+  "duration",
+  "log_owner",
+  "note"
+ ],
+ "creation": "2026-09-03 12:00:00.000000",
+ "modified": "2026-09-03 12:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "idx": 0,
+ "autoname": "hash",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "print": 1,
+   "email": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1
+  },
+  {
+   "role": "Excom Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "print": 1,
+   "email": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1
+  },
+  {
+   "role": "Excom User",
+   "read": 1,
+   "report": 1
+  }
+ ]
+}
