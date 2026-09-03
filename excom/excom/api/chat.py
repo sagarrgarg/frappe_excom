@@ -1011,7 +1011,7 @@ def send_internal_note(thread_id: str, content: str):
 @frappe.whitelist()
 def pin_message(message_name: str):
     """Pin a message. Sets is_pinned=1 and pinned_by to current user."""
-    _check_excom_access()
+    _check_thread_access(frappe.db.get_value("Excom Message", message_name, "thread"))
     if not frappe.db.exists("Excom Message", message_name):
         frappe.throw(_("Message not found"))
     frappe.db.set_value("Excom Message", message_name, {
@@ -1028,7 +1028,7 @@ def pin_message(message_name: str):
 @frappe.whitelist()
 def unpin_message(message_name: str):
     """Unpin a message."""
-    _check_excom_access()
+    _check_thread_access(frappe.db.get_value("Excom Message", message_name, "thread"))
     if not frappe.db.exists("Excom Message", message_name):
         frappe.throw(_("Message not found"))
     frappe.db.set_value("Excom Message", message_name, {
@@ -1067,7 +1067,7 @@ def toggle_reaction(message_name: str, emoji: str):
     Toggle the current user's reaction on a message.
     Reactions stored as JSON: {"emoji": ["user1", "user2"]}.
     """
-    _check_excom_access()
+    _check_thread_access(frappe.db.get_value("Excom Message", message_name, "thread"))
     if not frappe.db.exists("Excom Message", message_name):
         frappe.throw(_("Message not found"))
 
@@ -1462,6 +1462,7 @@ def get_whatsapp_templates(search: str = "", whatsapp_account: str = "") -> list
     When ``whatsapp_account`` is set, only templates linked to that
     ``Excom Channel Account`` (primary or child table) are returned.
     """
+    _check_excom_access()
     from excom.excom.whatsapp_template_utils import (
         body_variable_slot_count,
         get_body_variable_samples,
@@ -1555,6 +1556,7 @@ def get_whatsapp_templates(search: str = "", whatsapp_account: str = "") -> list
 @frappe.whitelist()
 def get_subscriber_variable_fields() -> list:
     """Return Omni Identity fields available for per-subscriber variable mapping."""
+    _check_excom_access()
     return [
         {"value": "subscriber.display_name", "label": "Display Name"},
         {"value": "subscriber.primary_phone", "label": "Phone"},
@@ -1767,6 +1769,7 @@ def check_24h_window(thread_id: str) -> dict:
     Returns:
         {"window_open": bool, "last_inbound_at": str or None, "hours_remaining": float or 0}
     """
+    _check_thread_access(thread_id)
     last_inbound = frappe.db.get_value("Excom Thread", thread_id, "last_inbound_at")
     if not last_inbound:
         return {"window_open": False, "last_inbound_at": None, "hours_remaining": 0}
@@ -1990,7 +1993,7 @@ def retry_message(message_name: str = "") -> dict:
     Re-sends via the original provider and updates the same Excom Message record
     instead of creating a duplicate.
     """
-    _check_thread_access(thread_id)
+    _check_thread_access(frappe.db.get_value("Excom Message", message_name, "thread"))
 
     if not message_name:
         frappe.throw(_("message_name is required"))
