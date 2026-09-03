@@ -54,12 +54,15 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
   const taRef = useRef<HTMLTextAreaElement>(null);
   const stickerBtn = useRef<HTMLButtonElement>(null);
   const isWhatsApp = via?.channel === "whatsapp";
+  const isMetaDm = via?.channel === "instagram" || via?.channel === "messenger";
   const isEmail = via?.channel === "email";
   const threadId = via?.id || "";
 
-  const { window: win } = useWindowStatus(threadId, isWhatsApp);
+  const { window: win } = useWindowStatus(threadId, isWhatsApp || isMetaDm);
   const templateRequired = isWhatsApp && win !== null && !win.window_open && !note;
-  const blocked = !via || !via.hasAccess;
+  // Instagram / Messenger have no templates: outside the window only a HUMAN_AGENT-tagged reply (if approved) can go.
+  const dmWindowClosed = isMetaDm && win !== null && !win.window_open && !win.human_agent_ok && !note;
+  const blocked = !via || !via.hasAccess || dmWindowClosed;
 
   const { call: sendMessage, loading: sending } = useFrappePostCall("excom.excom.api.chat.send_message");
   const { call: sendNote, loading: sendingNote } = useFrappePostCall("excom.excom.api.chat.send_internal_note");
@@ -137,6 +140,7 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
   const placeholder = note ? "Write an internal note — only your team sees this"
     : blocked ? "No access to this account — pick another in Reply via"
     : templateRequired ? "Session closed — send an approved template to reopen"
+    : dmWindowClosed ? "Reply window closed — the customer must message first (24h rule)"
     : isEmail ? "Write your email…"
     : `Message ${via?.identifier || contact.contactName}  ·  / for canned responses`;
 

@@ -45,7 +45,7 @@ def reconcile(src) -> dict:
 	"""Nightly: /{form_id}/leads?filtering=[time_created > watermark], paginated."""
 	if not src.form_id:
 		return {"skipped": "no form_id"}
-	since = int(get_datetime(src.last_success_at).timestamp()) if src.last_success_at else 0
+	since = int(get_datetime(src.last_success_at).timestamp()) - 600 if src.last_success_at else 0  # 10-min overlap; dedupe by leadgen_id
 	url = f"{GRAPH}/{src.form_id}/leads"
 	params = {"access_token": _token(src), "fields": "id,created_time,field_data,ad_id,form_id,campaign_name", "limit": 100, "filtering": f'[{{"field":"time_created","operator":"GREATER_THAN","value":{since}}}]'}
 	n = dup = pages = 0

@@ -1800,7 +1800,11 @@ def check_24h_window(thread_id: str) -> dict:
         {"window_open": bool, "last_inbound_at": str or None, "hours_remaining": float or 0}
     """
     _check_thread_access(thread_id)
-    last_inbound = frappe.db.get_value("Excom Thread", thread_id, "last_inbound_at")
+    thread = frappe.db.get_value("Excom Thread", thread_id, ["last_inbound_at", "channel", "account"], as_dict=True)
+    if thread and thread.channel in ("instagram", "messenger"):
+        from excom.excom.channels.meta_dm.service import window_status
+        return window_status(thread)
+    last_inbound = thread.last_inbound_at if thread else None
     if not last_inbound:
         return {"window_open": False, "last_inbound_at": None, "hours_remaining": 0}
 

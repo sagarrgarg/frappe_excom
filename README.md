@@ -1,10 +1,10 @@
 # Excom
 
-Omnichannel communication platform for Frappe/ERPNext. Brings WhatsApp and Email (Instagram planned) into a single real-time inbox with unified contact identity, team assignment, and full ERP context.
+Omnichannel communication platform for Frappe/ERPNext. Brings WhatsApp, Email, Instagram DMs and Messenger into a single real-time inbox with unified contact identity, team assignment, and full ERP context.
 
 ## What It Does
 
-- **Unified Inbox** — All channels in one place. WhatsApp and Email (via Gmail API), with a single conversation timeline per contact. Instagram DMs are planned.
+- **Unified Inbox** — All channels in one place. WhatsApp, Email (via Gmail API), Instagram DMs and Facebook Messenger (Graph API, polled every minute), with a single conversation timeline per contact.
 - **Omni Identity** — Automatically links phone, email, and WhatsApp to one contact profile tied to ERPNext Customer/Lead/Supplier.
 - **Team Assignment** — Route conversations to teams, transfer between agents, claim from the general queue.
 - **Broadcast Messaging** — Send bulk WhatsApp templates and emails to subscriber lists with delivery tracking.
@@ -19,7 +19,7 @@ Omnichannel communication platform for Frappe/ERPNext. Brings WhatsApp and Email
 | Frontend | React 18, TypeScript, Tailwind CSS, frappe-react-sdk |
 | Database | MariaDB (via Frappe ORM) |
 | Realtime | Frappe Socket.IO |
-| External APIs | Gmail API (OAuth2), WhatsApp Cloud API (Instagram Graph API planned) |
+| External APIs | Gmail API (OAuth2), WhatsApp Cloud API, Meta Graph API (Instagram / Messenger / Lead Ads) |
 
 ## Installation
 
@@ -66,7 +66,7 @@ After installation, configure your channel accounts in the Excom settings:
 
 1. **WhatsApp** — Add your WhatsApp Business API credentials (Phone Number ID, Business ID, Access Token, App Secret for webhook HMAC validation)
 2. **Email** — Connect Gmail accounts via OAuth2 (Connected App setup)
-3. **Instagram** — planned; no adapter yet
+3. **Instagram / Messenger** — Graph API polling (`channels/meta_dm/service.py`); webhook `messaging[]` as accelerator; 24h reply window, HUMAN_AGENT tag optional
 
 Access the inbox at `https://your-site.com/excom`.
 

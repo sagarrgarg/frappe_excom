@@ -24,6 +24,20 @@ CHANNELS = [
 		"description": "Email channel integrated via Gmail API (OAuth2). Bodies stored in Gmail, only metadata synced.",
 	},
 	{
+		"name": "instagram",
+		"channel_label": "Instagram",
+		"allows_multiple_accounts": 1,
+		"is_enabled": 1,
+		"description": "Instagram DMs via the Graph API (polled every minute; webhook as accelerator).",
+	},
+	{
+		"name": "messenger",
+		"channel_label": "Messenger",
+		"allows_multiple_accounts": 1,
+		"is_enabled": 1,
+		"description": "Facebook Messenger via the Graph API (polled every minute; webhook as accelerator).",
+	},
+	{
 		"name": "webchat",
 		"channel_label": "Web Chat",
 		"allows_multiple_accounts": 1,

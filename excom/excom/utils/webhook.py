@@ -134,7 +134,14 @@ def _process_webhook_payload(data_str: str):
 	entries = data.get("entry") or []
 	if isinstance(entries, dict):
 		entries = [entries]
+	obj = data.get("object") or ""
 	for entry in entries:
+		if entry.get("messaging"):
+			try:
+				from excom.excom.channels.meta_dm.service import handle_messaging
+				handle_messaging(entry, obj)
+			except Exception:
+				frappe.log_error(title="Excom webhook handler failed: messaging", message=frappe.get_traceback())
 		for change in entry.get("changes") or []:
 			field = change.get("field") or "messages"
 			handler = FIELD_HANDLERS.get(field)

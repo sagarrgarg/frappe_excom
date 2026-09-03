@@ -34,6 +34,13 @@ export function ReplyVia({ accounts, value, onChange, window: win, optedOut, onC
         ? <span className="inline-flex items-center gap-1 text-xs text-ink-3 tabular-nums"><Clock className="size-3.5" />window {formatRemaining(win.hours_remaining)}</span>
         : <Chip size="sm" accent="amber" label="Template required" title="The 24h session is closed. Send an approved template to reopen it." />;
     }
+    if ((value.channel === "instagram" || value.channel === "messenger") && win) {
+      return win.window_open
+        ? <span className="inline-flex items-center gap-1 text-xs text-ink-3 tabular-nums"><Clock className="size-3.5" />window {formatRemaining(win.hours_remaining)}</span>
+        : win.human_agent_ok
+          ? <Chip size="sm" accent="amber" label="Human-agent reply" title="Outside 24h; the reply goes with the HUMAN_AGENT tag (7-day limit)." />
+          : <Chip size="sm" accent="rose" label="Window closed" title="Meta allows replies only within 24h of the customer's last message." />;
+    }
     return null;
   })();
 

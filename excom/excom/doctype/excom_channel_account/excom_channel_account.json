@@ -41,6 +41,15 @@
   "column_break_email_sync",
   "email_label_filter",
   "email_poll_interval_minutes",
+  "meta_dm_section",
+  "meta_page_id",
+  "meta_ig_user_id",
+  "meta_page_token",
+  "meta_dm_cb",
+  "meta_api_version",
+  "meta_poll_interval_minutes",
+  "meta_human_agent_tag",
+  "meta_last_polled_at",
   "webchat_section",
   "webchat_widget_title",
   "webchat_welcome_message",
@@ -311,6 +320,60 @@
    "fieldtype": "Int",
    "label": "Poll Interval (minutes)",
    "description": "How often to check for new emails (minimum 1)"
+  },
+  {
+   "fieldname": "meta_dm_section",
+   "fieldtype": "Section Break",
+   "label": "Instagram / Messenger (Graph API)",
+   "depends_on": "eval:['instagram','messenger'].includes(doc.channel)",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "meta_page_id",
+   "fieldtype": "Data",
+   "label": "Facebook Page ID",
+   "description": "The Page connected to the Instagram account (Messenger and Instagram both send through /{page_id}/messages)."
+  },
+  {
+   "fieldname": "meta_ig_user_id",
+   "fieldtype": "Data",
+   "label": "Instagram Business Account ID",
+   "description": "Only for Instagram accounts; used to recognise our own messages."
+  },
+  {
+   "fieldname": "meta_page_token",
+   "fieldtype": "Password",
+   "label": "Page Access Token",
+   "description": "Long-lived page token with pages_messaging / instagram_manage_messages."
+  },
+  {
+   "fieldname": "meta_dm_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "meta_api_version",
+   "fieldtype": "Data",
+   "label": "Graph API Version",
+   "default": "v21.0"
+  },
+  {
+   "fieldname": "meta_poll_interval_minutes",
+   "fieldtype": "Int",
+   "label": "Poll Every (minutes)",
+   "default": "1",
+   "description": "Polling is the source of truth; the webhook only speeds it up."
+  },
+  {
+   "fieldname": "meta_human_agent_tag",
+   "fieldtype": "Check",
+   "label": "HUMAN_AGENT tag approved",
+   "description": "Lets agents reply up to 7 days after the last customer message (needs Meta app permission)."
+  },
+  {
+   "fieldname": "meta_last_polled_at",
+   "fieldtype": "Datetime",
+   "label": "Last Polled At",
+   "read_only": 1
   },
   {
    "depends_on": "eval:doc.channel=='webchat'",

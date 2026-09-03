@@ -69,6 +69,7 @@ def ingest_inbound_message(
     media_file: str = "",
     reply_to_provider_id: str = "",
     provider_timestamp: str = "",
+    channel_user_id: str = "",
 ) -> str:
     """
     Full inbound message ingestion pipeline.
@@ -89,7 +90,7 @@ def ingest_inbound_message(
     identity_name = resolve_identity(
         phone=phone,
         channel=channel,
-        channel_user_id=phone,
+        channel_user_id=channel_user_id or phone,  # PSID / IGSID for Meta DMs, phone for WhatsApp
         display_name=display_name,
     )
 
@@ -245,6 +246,15 @@ def send_outbound_message(
         provider_message_id = f"wc-agent-{secrets.token_hex(8)}"
         delivery_status = "Delivered"
 
+    elif thread.channel in ("instagram", "messenger"):
+        from excom.excom.channels.meta_dm import service as meta_dm
+        account = frappe.get_doc(account_doctype, account_name)
+        to_id = meta_dm.recipient_id(identity, thread.channel)
+        if media_file:
+            result = meta_dm.send_media(account, to_id, message_type, media_file, content_text, thread=thread)
+        else:
+            result = meta_dm.send_text(account, to_id, content_text, thread=thread)
+        provider_message_id = result.get("provider_message_id", "")
     elif thread.channel == "whatsapp":
         to_number = identity.primary_whatsapp or identity.primary_phone
         if not to_number:

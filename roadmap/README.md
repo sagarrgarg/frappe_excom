@@ -1,6 +1,6 @@
 # Excom Implementation Roadmap
 
-Phases 0-3 built the working product — WhatsApp and Email channels (Instagram planned, no adapter yet), real-time inbox, Omni Identity, and basic frontend. The remaining work is deliberately minimal: ship security, add AI, then grow based on real usage.
+Phases 0-3 built the working product — WhatsApp and Email channels (Instagram and Messenger DMs via the Graph API (polled)), real-time inbox, Omni Identity, and basic frontend. The remaining work is deliberately minimal: ship security, add AI, then grow based on real usage.
 
 ---
 

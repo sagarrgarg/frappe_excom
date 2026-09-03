@@ -1,6 +1,7 @@
 import { useFrappeGetCall } from "frappe-react-sdk";
 
 export interface WindowInfo {
+  human_agent_ok?: boolean;
   window_open: boolean;
   last_inbound_at: string | null;
   hours_remaining: number;

@@ -185,3 +185,12 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 | Same suite against shadow `Excom Lead` | S | ✅ 9/9 after moving classification into the gateway |
 | Live v16 scratch bench | S | ⏭ needs ~15 GB free disk |
 | **Defect (P0)**: P3 custom field `Customer.customer_type` shadowed ERPNext's native field → every Customer save failed validation ("cannot be Individual") | P0 | ✅ fixed 2026-09-03: patch `fix_customer_type_clobber` removes the custom field, ours is now `excom_customer_type`; `crm_schema.apply()` refuses to shadow native fields; found by the P4 v16 diff |
+
+## Instagram / Messenger via Graph API (2026-09-03)
+
+| Case | Sev | Result |
+|---|---|---|
+| Conversation payload → thread per IGSID/PSID, identity keyed by the platform id, image attachment → Image message, own messages skipped, second ingest is a no-op | S | ✅ test_meta_dm |
+| 24h window: open → RESPONSE send; closed → refused; closed + HUMAN_AGENT approved → MESSAGE_TAG/HUMAN_AGENT | S | ✅ |
+| Webhook `entry.messaging[]` accelerator ingests, echoes skipped | S | ✅ |
+| Live poll against a real page | S | ⏭ needs page id + token on an Instagram / Messenger channel account |

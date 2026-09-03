@@ -196,6 +196,7 @@ scheduler_events = {
 		"excom.excom.channels.email.inbound.poll_all_email_accounts",
 		"excom.excom.services.broadcast_schedule.process_due_scheduled_broadcasts",
 		"excom.excom.services.delivery_watchdog.check_stale_messages",
+		"excom.excom.channels.meta_dm.service.poll_all",
 	],
 	"hourly": [
 		"excom.excom.tasks.crm_sla.check_crm_sla",
