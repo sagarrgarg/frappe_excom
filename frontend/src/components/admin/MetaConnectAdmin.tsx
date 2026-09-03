@@ -18,6 +18,7 @@ const WHAT: Record<Asset["asset_type"], string> = { Page: "Messenger inbox for t
 export function MetaConnectAdmin() {
   const { data, isLoading, mutate } = useFrappeGetCall<{ message: Conn[] }>("excom.excom.api.meta.get_connections", undefined, "admin-meta", { revalidateOnFocus: false });
   const { data: hook } = useFrappeGetCall<{ message: { url: string } }>("excom.excom.api.meta.webhook_url", undefined, "admin-meta-hook", { revalidateOnFocus: false });
+  const { data: urls } = useFrappeGetCall<{ message: Record<string, string> }>("excom.excom.api.meta.app_urls", undefined, "admin-meta-urls", { revalidateOnFocus: false });
   const { data: sch } = useSchema("Excom Meta Connection");
   const { call: discover, loading: discovering } = useFrappePostCall("excom.excom.api.meta.discover");
   const { call: enable } = useFrappePostCall("excom.excom.api.meta.enable_asset");
@@ -37,6 +38,16 @@ export function MetaConnectAdmin() {
       </div>
       <p className="px-3 py-1.5 text-xs text-ink-3 border-b border-border bg-surface-sunken">Create a Business Manager <b>system user</b>, assign it the pages, Instagram accounts and WhatsApp accounts, generate a token with the scopes listed on the form, paste it here, then <b>Discover</b>. Enabling an asset creates or updates the matching channel account / intake source and subscribes the page to the webhook (polling works even if that fails).</p>
       <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
+        {urls?.message && (
+          <section className="rounded-lg border border-border p-3 min-w-0">
+            <h4 className="text-xs font-medium text-ink-3 uppercase tracking-wide mb-2">Values for developers.facebook.com → your app</h4>
+            <dl className="grid gap-x-4 gap-y-1 text-xs [grid-template-columns:max-content_1fr]">
+              {([["App domain (Settings → Basic)", urls.message.app_domain], ["Privacy Policy URL", urls.message.privacy_policy_url], ["Terms of Service URL", urls.message.terms_url], ["User data deletion → Data deletion instructions URL", urls.message.data_deletion_url], ["User data deletion → Data deletion callback URL", urls.message.data_deletion_callback_url], ["Webhooks → Callback URL (WhatsApp, Messenger, Instagram, Page leadgen)", urls.message.webhook_callback_url], ["Webhooks → Verify token", "the Webhook Verify Token on the connection below"]] as [string, string][]).map(([k, v]) => (
+                <><dt key={k + "k"} className="text-ink-3">{k}</dt><dd key={k + "v"} className="min-w-0 flex items-center gap-1"><code className="text-ink-1 truncate">{v}</code>{v.startsWith("http") && <button type="button" className="text-ink-3 hover:text-ink-1 shrink-0" onClick={() => navigator.clipboard?.writeText(v).then(() => toast.success("Copied"))}><Copy className="size-3.5" /></button>}</dd></>
+              ))}
+            </dl>
+          </section>
+        )}
         {conns.length === 0 && <EmptyState icon={<Facebook />} title="No Meta connection yet" hint="One connection per Business Manager." action={<Button size="sm" variant="primary" onClick={() => setEdit("")}>New connection</Button>} />}
         {conns.map((c) => (
           <section key={c.name} className="rounded-lg border border-border min-w-0">

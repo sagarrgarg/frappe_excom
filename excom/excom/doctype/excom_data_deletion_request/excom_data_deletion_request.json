@@ -1,0 +1,87 @@
+{
+ "doctype": "DocType",
+ "name": "Excom Data Deletion Request",
+ "module": "Excom",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "fields": [
+  {
+   "fieldname": "platform",
+   "fieldtype": "Select",
+   "label": "Platform",
+   "options": "Facebook\nInstagram\nWhatsApp\nOther",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "platform_user_id",
+   "fieldtype": "Data",
+   "label": "Platform User ID",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "confirmation_code",
+   "fieldtype": "Data",
+   "label": "Confirmation Code",
+   "unique": 1,
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Received\nCompleted\nNothing to delete\nFailed",
+   "default": "Received",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "requested_at",
+   "fieldtype": "Datetime",
+   "label": "Requested At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "completed_at",
+   "fieldtype": "Datetime",
+   "label": "Completed At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "details",
+   "fieldtype": "Small Text",
+   "label": "What was deleted",
+   "read_only": 1
+  }
+ ],
+ "field_order": [
+  "platform",
+  "platform_user_id",
+  "confirmation_code",
+  "status",
+  "requested_at",
+  "completed_at",
+  "details"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "creation": "2026-09-04 00:00:00",
+ "modified": "2026-09-04 00:00:00",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "idx": 0,
+ "docstatus": 0,
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Excom Manager",
+   "read": 1
+  }
+ ]
+}

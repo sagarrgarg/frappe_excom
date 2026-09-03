@@ -1,0 +1,38 @@
+{% extends "templates/web.html" %}
+{% block page_content %}
+<article style="max-width:760px;margin:0 auto;line-height:1.6">
+<h1>Privacy Policy — {{ company }} customer messaging</h1>
+<p><small>Effective 2026-09-04 · applies to WhatsApp, Instagram, Facebook Messenger, Meta lead forms, email and web chat conversations with {{ company }}.</small></p>
+
+<h2>Who we are</h2>
+<p>{{ company }} operates this site ({{ site }}). We use Meta Platforms' Business tools (WhatsApp Business Platform, Instagram Messaging, Messenger Platform and Meta Lead Ads) to talk to customers and prospects who contact us or submit a lead form.</p>
+
+<h2>What we collect</h2>
+<ul>
+<li>Your name / profile name, phone number, email address and the platform identifier Meta assigns to you (for example a Page-scoped or Instagram-scoped id).</li>
+<li>The content of messages you send us and we send you, including attachments, and message delivery status.</li>
+<li>Lead form answers you submit on Facebook or Instagram (name, phone, email, company, city and any custom questions).</li>
+<li>Technical details needed to route the conversation: timestamps, the page or number you contacted, campaign or form name.</li>
+</ul>
+
+<h2>Why we use it</h2>
+<ul>
+<li>To answer your enquiry, quote, take orders and provide support.</li>
+<li>To keep one conversation history per contact across channels so you do not repeat yourself.</li>
+<li>To record the enquiry as a lead or customer in our ERP for follow-up and accounting.</li>
+</ul>
+<p>We do not sell personal data. We do not use Meta data for advertising audiences or profiling beyond serving your enquiry.</p>
+
+<h2>Retention</h2>
+<p>Conversation history is retained as part of our customer records. Raw lead-form and webhook payloads are purged automatically after 90 days. Data received from Meta is deleted on request (see below).</p>
+
+<h2>Sharing</h2>
+<p>Data stays in our self-hosted ERP. It is shared only with the platform you contacted us on (Meta / WhatsApp) to deliver replies, and with our staff handling your enquiry.</p>
+
+<h2>Your rights</h2>
+<p>You can ask what we hold, ask us to correct it, or ask us to delete data we received from Meta. Write to <a href="mailto:{{ contact_email }}">{{ contact_email or "our contact address" }}</a>, or use the deletion instructions at <a href="{{ site }}/excom-data-deletion">{{ site }}/excom-data-deletion</a>.</p>
+
+<h2>Contact</h2>
+<p>{{ company }} · <a href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
+</article>
+{% endblock %}

@@ -118,14 +118,25 @@ def discover(name: str) -> dict:
 						found.append({"asset_type": "WhatsApp Number", "asset_id": n["id"], "asset_name": f"{n.get('verified_name') or ''} {n.get('display_phone_number') or ''}".strip(), "page_id": waba["id"], "extra": {"waba_id": waba["id"], "waba_name": waba.get("name"), "quality": n.get("quality_rating")}})
 			except frappe.ValidationError:
 				pass
-	# merge into the child table, keeping enabled/link state
+	# Merge into the child table. Rows Meta did not return this time are KEPT (manually added numbers, assets the
+	# token cannot see yet) and flagged, never dropped — enabling/disabling is the only thing that changes state.
 	existing = {(a.asset_type, a.asset_id): a for a in conn.assets}
-	conn.assets = []
+	returned = {(f["asset_type"], f["asset_id"]) for f in found}
+	rows = []
 	for f in found:
 		old = existing.get((f["asset_type"], f["asset_id"]))
 		row = {"asset_type": f["asset_type"], "asset_id": f["asset_id"], "asset_name": f["asset_name"], "page_id": f["page_id"], "extra": json.dumps(f["extra"], default=str)}
 		if old:
 			row.update({"enabled": old.enabled, "linked_doctype": old.linked_doctype, "linked_name": old.linked_name})
+		rows.append(row)
+	for key, old in existing.items():
+		if key in returned:
+			continue
+		extra = json.loads(old.extra or "{}") if old.extra else {}
+		extra["not_returned_by_meta"] = True
+		rows.append({"asset_type": old.asset_type, "asset_id": old.asset_id, "asset_name": old.asset_name, "page_id": old.page_id, "enabled": old.enabled, "linked_doctype": old.linked_doctype, "linked_name": old.linked_name, "extra": json.dumps(extra, default=str)})
+	conn.assets = []
+	for row in rows:
 		conn.append("assets", row)
 	conn.last_synced_at = now_datetime()
 	conn.flags.ignore_permissions = True

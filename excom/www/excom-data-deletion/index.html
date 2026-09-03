@@ -1,0 +1,24 @@
+{% extends "templates/web.html" %}
+{% block page_content %}
+<article style="max-width:760px;margin:0 auto;line-height:1.6">
+<h1>Delete the data {{ company }} received from Meta</h1>
+{% if code %}
+  {% if request %}
+  <div style="border:1px solid #ccc;border-radius:8px;padding:12px;margin:12px 0">
+    <p><b>Request {{ code }}</b> · {{ request.platform }}</p>
+    <p>Status: <b>{{ request.status }}</b></p>
+    <p>Received {{ request.requested_at }}{% if request.completed_at %} · completed {{ request.completed_at }}{% endif %}</p>
+  </div>
+  {% else %}
+  <p>No request found for code <b>{{ code }}</b>.</p>
+  {% endif %}
+{% endif %}
+<h2>How to request deletion</h2>
+<ol>
+<li><b>From Facebook / Instagram:</b> Settings &amp; privacy → Settings → Apps and websites → find <b>{{ company }}</b> → Remove. Meta then sends us a deletion request automatically; you receive a confirmation code and can check its status on this page.</li>
+<li><b>From WhatsApp or any channel:</b> message us "delete my data", or email <a href="mailto:{{ contact_email }}">{{ contact_email }}</a> from the address or number you contacted us with.</li>
+</ol>
+<h2>What gets deleted</h2>
+<p>The messages, attachments and profile details we received through that platform for your account, and the platform identifier. Invoices, orders and other records we are legally required to keep are retained under our <a href="{{ site }}/excom-privacy">Privacy Policy</a>.</p>
+</article>
+{% endblock %}

@@ -81,6 +81,14 @@ class TestMetaConnect(FrappeTestCase):
 		mc.discover(self.name)
 		conn = frappe.get_doc("Excom Meta Connection", self.name)
 		self.assertTrue(all(a.enabled for a in conn.assets))
+		# a manually added row that Meta does not return survives discovery, flagged
+		conn.append("assets", {"asset_type": "WhatsApp Number", "asset_id": "777", "asset_name": "Manual number", "page_id": "444", "extra": "{}"})
+		conn.save(ignore_permissions=True)
+		mc.discover(self.name)
+		conn = frappe.get_doc("Excom Meta Connection", self.name)
+		manual = next(a for a in conn.assets if a.asset_id == "777")
+		self.assertTrue(__import__("json").loads(manual.extra).get("not_returned_by_meta"))
+		self.assertEqual(len(conn.assets), 5)
 		e2 = mc.enable_asset(self.name, "Page", "111")
 		self.assertEqual(e2["linked_name"], acc.name)
 		# disable → account inactive, source disabled
@@ -91,3 +99,26 @@ class TestMetaConnect(FrappeTestCase):
 		# token debug
 		d = mc.debug_token(self.name)
 		self.assertTrue(d["is_valid"]); self.assertEqual(frappe.db.get_value("Excom Meta Connection", self.name, "token_valid"), 1)
+
+
+class TestDataDeletion(FrappeTestCase):
+	def test_signed_request_and_deletion(self):
+		import base64, hashlib, hmac, json as _json
+		from excom.excom.api import meta as api
+		from excom.excom.services.thread_service import ingest_inbound_message
+		frappe.set_user("Administrator")
+		# synthetic instagram account + one message from platform user 999777
+		acc = frappe.get_doc({"doctype": "Excom Channel Account", "account_name": "QA IG Del", "channel": "instagram", "status": "Active", "meta_page_id": "1", "meta_ig_user_id": "2"}).insert(ignore_permissions=True)
+		ingest_inbound_message(phone="", channel="instagram", account=acc.name, provider_message_id="m_del_1", content_text="hi", display_name="qa_del", channel_user_id="999777")
+		self.assertTrue(frappe.db.exists("Omni Identity Channel", {"channel_user_id": "999777"}))
+		payload = _json.dumps({"algorithm": "HMAC-SHA256", "user_id": "999777", "issued_at": 1}).encode()
+		b64 = lambda b: base64.urlsafe_b64encode(b).decode().rstrip("=")
+		sig = hmac.new(b"qa-app-secret", b64(payload).encode(), hashlib.sha256).digest()
+		signed = f"{b64(sig)}.{b64(payload)}"
+		self.assertIsNone(api.parse_signed_request(signed, ["wrong"]))
+		self.assertEqual(api.parse_signed_request(signed, ["wrong", "qa-app-secret"])["user_id"], "999777")
+		d = api.delete_platform_user_data("999777")
+		self.assertEqual(d["channels"], 1); self.assertEqual(d["messages"], 1); self.assertEqual(d["threads"], 1)
+		self.assertFalse(frappe.db.exists("Omni Identity Channel", {"channel_user_id": "999777"}))
+		self.assertFalse(frappe.db.exists("Excom Message", {"provider_message_id": "m_del_1"}))
+		frappe.delete_doc("Excom Channel Account", acc.name, force=True, ignore_permissions=True); frappe.db.commit()

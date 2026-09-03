@@ -55,6 +55,8 @@ def _candidate_secrets() -> list[str]:
 		out.extend(app_secrets())
 	except Exception:
 		pass
+	# a secret that cannot be decrypted (e.g. a restored backup with another encryption key) must not leak a msgprint
+	frappe.local.message_log = []
 	if frappe.db.exists("DocType", "Excom Intake Source"):
 		for src_name in frappe.get_all("Excom Intake Source", filters={"source_type": "Meta Lead Ads", "enabled": 1}, pluck="name"):
 			try:
@@ -63,6 +65,7 @@ def _candidate_secrets() -> list[str]:
 					out.append(secret)
 			except Exception:
 				pass
+	frappe.local.message_log = []
 	return out
 
 
