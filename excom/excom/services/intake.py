@@ -146,9 +146,21 @@ def map_payload(source, raw: dict) -> dict:
 
 
 def process_log(log_name: str, force: bool = False) -> None:
+	# Guest endpoints enqueue this; the worker inherits Guest and cannot create Leads. Ingestion is a system action.
+	if frappe.session.user == "Guest":
+		frappe.set_user("Administrator")
 	log = frappe.get_doc("Excom Intake Log", log_name)
 	if log.status == "Processed" and not force:
 		return
+	# Claim atomically: two workers (webhook retry + poll) must never process the same log at once.
+	claimed = frappe.db.sql(
+		"UPDATE `tabExcom Intake Log` SET status = 'Processing' WHERE name = %s AND status IN ('Received', 'Failed') " + ("" if not force else "OR name = %s AND status = 'Processed'"),
+		(log_name,) if not force else (log_name, log_name),
+	)
+	frappe.db.commit()
+	if not frappe.db.get_value("Excom Intake Log", log_name, "status") == "Processing":
+		return
+	log.reload()
 	source = frappe.get_doc("Excom Intake Source", log.source)
 	try:
 		raw = json.loads(log.raw_payload or "{}")
@@ -231,7 +243,7 @@ def ingest(source, dedupe_key: str, raw: dict, received_at=None, sync: bool = Fa
 	name, is_new = record(source, dedupe_key, raw, received_at)
 	if not is_new:
 		st = frappe.db.get_value("Excom Intake Log", name, "status")
-		if st in ("Processed", "Duplicate", "Ignored"):
+		if st != "Failed":  # Received / Processing / Processed / Duplicate / Ignored → already handled or in flight
 			return {"log": name, "duplicate": True}
 	if sync:
 		process_log(name)

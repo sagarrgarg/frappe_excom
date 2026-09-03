@@ -133,3 +133,60 @@ def indiamart_push(token: str = ""):
 
 	r = push(src, payload)
 	return {"ok": True, "ref": r["log"]}
+
+
+# ─── generic token webhook (form builders, partners, server-to-server) ────────
+
+def _webhook_dedupe_key(src_name: str, body: dict, raw_text: str) -> str:
+	"""Prefer an id the sender gives us; otherwise hash the payload so a retry never creates a second lead."""
+	import hashlib
+	for k in ("submission_id", "id", "entry_id", "response_id", "event_id", "uuid"):
+		v = body.get(k) if isinstance(body, dict) else None
+		if v:
+			return f"web:{src_name}:{str(v)[:80]}"
+	return f"web:{src_name}:sha1:{hashlib.sha1((raw_text or json.dumps(body, sort_keys=True, default=str)).encode()).hexdigest()}"
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST", "OPTIONS"])
+@rate_limit(limit=60, seconds=60)
+def website_webhook(token: str = ""):
+	"""
+	Token-in-URL webhook for any website form / form builder / partner system:
+
+	    POST /api/method/excom.excom.api.intake.website_webhook?token=<push_token>
+	    Content-Type: application/json   (or form-encoded)
+	    {"name": "...", "email": "...", "phone": "...", "message": "...", "company": "...", "city": "...", "submission_id": "..."}
+
+	Also accepts the token in header X-Excom-Token or body field `token`. Keys are mapped through the
+	source's Field Map (defaults: name, email, phone, message, company, city, country, page_url, utm).
+	Restrictions: token, optional Origin allowlist (browser callers), optional IP allowlist (servers),
+	60 req/min per IP, idempotent by submission_id / id / payload hash. Response never reveals whether a
+	token exists (generic 401).
+	"""
+	if frappe.request.method == "OPTIONS":
+		origin = frappe.get_request_header("Origin") or ""
+		if origin:
+			_cors(origin)
+		return {"ok": True}
+	# Frappe drops query args for JSON bodies, so read ?token= straight from the request too.
+	tok = token or (frappe.request.args.get("token") if frappe.request else "") or frappe.local.form_dict.get("token") or frappe.get_request_header("X-Excom-Token") or ""
+	src = _source_by_token(tok, "Website")
+	if not src:
+		frappe.throw(_("Unknown source"), frappe.AuthenticationError)
+	origin = frappe.get_request_header("Origin") or ""
+	if origin and not _origin_ok(src, origin):
+		frappe.throw(_("Origin not allowed"), frappe.PermissionError)
+	if not _ip_ok(src):
+		frappe.throw(_("IP not allowed"), frappe.PermissionError)
+	if origin:
+		_cors(origin)
+	raw_text = frappe.request.get_data(as_text=True) or ""
+	try:
+		body = json.loads(raw_text) if raw_text.strip().startswith("{") else dict(frappe.local.form_dict)
+	except ValueError:
+		body = dict(frappe.local.form_dict)
+	body = {k: v for k, v in body.items() if k not in ("cmd", "token")}
+	if body.get("website") or body.get("_hp"):  # honeypot
+		return {"ok": True, "ref": "hp"}
+	r = ingest(src, _webhook_dedupe_key(src.name, body, raw_text if raw_text.strip().startswith("{") else ""), body)
+	return {"ok": True, "ref": r["log"], "duplicate": r["duplicate"]}

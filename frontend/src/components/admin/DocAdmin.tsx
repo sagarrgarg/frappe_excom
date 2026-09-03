@@ -7,6 +7,7 @@ import { DataTable } from "../shell/AdminPage";
 import { FieldControl, type AdminField } from "./FieldControl";
 import { deskUrl } from "../../hooks/useRecordLinks";
 import { serverMessage } from "./util";
+import { EmbedPanel } from "./EmbedPanel";
 
 interface Schema { doctype: string; title_field: string; single: boolean; read_only: boolean; needs_name?: boolean; sections: { label: string; fields: AdminField[] }[]; list_fields: string[]; list_labels: Record<string, string>; list_types: Record<string, string> }
 type Doc = Record<string, unknown>;
@@ -87,6 +88,7 @@ export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraAction
             </section>
           );
         })}
+        <EmbedPanel doctype={doctype} name={name} channel={String(doc.channel ?? "")} sourceType={String(doc.source_type ?? "")} />
       </div>
     </div>
   );

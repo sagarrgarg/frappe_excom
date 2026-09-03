@@ -203,3 +203,10 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 | Enable Page → Messenger account (page token) · Instagram → Instagram account · Lead Form → Intake Source pulling with the page token · WhatsApp Number → WhatsApp account with system token / app secret / verify token; enabling twice reuses; disable → Inactive / enabled=0 | S | ✅ |
 | Webhook: verify token and HMAC app secret from the connection accepted | S | ✅ code (`_candidate_secrets`, GET verify) |
 | Live discovery against a real Business Manager | S | ⏭ needs a system-user token |
+
+## Website token webhook + embed code (2026-09-04)
+
+| Case | Sev | Result |
+|---|---|---|
+| `website_webhook?token=…` JSON → Intake Log Processed + Lead; same `submission_id` → duplicate; form-encoded without id → hash dedupe (second call duplicate); wrong token → 401; disallowed Origin → 403 | S | ✅ HTTP-level run on the dev site (synthetic source, cleaned) |
+| Admin → web chat account shows the script tag with Copy; Website source shows token, endpoints, HTML / JS / curl, Generate / Regenerate token | S | ✅ |

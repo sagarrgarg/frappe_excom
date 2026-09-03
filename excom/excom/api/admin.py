@@ -439,3 +439,83 @@ def get_audit(limit: int = 200) -> list:
             pass
         out.append({"id": r.name, "doctype": r.ref_doctype, "docname": r.docname, "by": frappe.utils.get_fullname(r.owner), "user": r.owner, "at": str(r.creation), "changes": changed})
     return out
+
+
+# ─── embed snippets (web chat widget, website form / webhook) ────────────────
+
+@frappe.whitelist()
+def get_embed(doctype: str, name: str) -> dict:
+	"""Copy-paste code for a web chat account or a Website intake source. Manager only (reveals the token)."""
+	_check_manager_access()
+	site = frappe.utils.get_url()
+	if doctype == "Excom Channel Account":
+		acc = frappe.get_doc(doctype, name)
+		if acc.channel != "webchat":
+			return {"kind": "none"}
+		return {
+			"kind": "webchat",
+			"site": site,
+			"script": f'<script src="{site}/assets/excom/widget/excom-chat.js" data-account="{acc.name}" data-site="{site}" defer></script>',
+			"notes": "Paste before </body> on every page. The widget opens in a shadow DOM, so your CSS is untouched. Title, colour, position and pre-chat fields come from this account.",
+		}
+	if doctype == "Excom Intake Source":
+		src = frappe.get_doc(doctype, name)
+		if src.source_type != "Website":
+			return {"kind": "none"}
+		token = src.get_password("push_token", raise_exception=False) or ""
+		form_url = f"{site}/api/method/excom.excom.api.intake.submit_enquiry"
+		hook_url = f"{site}/api/method/excom.excom.api.intake.website_webhook?token={token or '<token>'}"
+		html = f"""<form id="excom-enquiry">
+  <input name="name" placeholder="Your name" required>
+  <input name="email" type="email" placeholder="Email">
+  <input name="phone" type="tel" placeholder="Phone" required>
+  <textarea name="message" placeholder="What do you need?"></textarea>
+  <input name="website" style="display:none" tabindex="-1" autocomplete="off">  <!-- honeypot, leave empty -->
+  <button type="submit">Send</button>
+</form>
+<script>
+(function () {{
+  var f = document.getElementById("excom-enquiry"), started = Date.now() / 1000;
+  f.addEventListener("submit", async function (e) {{
+    e.preventDefault();
+    var d = new FormData(f);
+    d.append("source_token", "{token or '<token>'}");
+    d.append("submission_id", (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())));
+    d.append("started_at", String(started));
+    d.append("page_url", location.href);
+    var r = await fetch("{form_url}", {{ method: "POST", body: d }});
+    var j = await r.json();
+    if (r.ok && j.message && j.message.ok) {{ f.innerHTML = "<p>Thanks — we will get back to you shortly.</p>"; }}
+    else {{ alert("Could not send. Please try again."); }}
+  }});
+}})();
+</script>"""
+		js = f"""await fetch("{form_url}", {{
+  method: "POST",
+  headers: {{ "Content-Type": "application/json" }},
+  body: JSON.stringify({{ source_token: "{token or '<token>'}", submission_id: crypto.randomUUID(), name, email, phone, message, page_url: location.href, utm: {{ utm_source: "google", utm_campaign: "diwali" }} }})
+}});"""
+		curl = f"""curl -X POST "{hook_url}" \
+  -H "Content-Type: application/json" \
+  -d '{{"submission_id": "abc-123", "name": "Ravi Kumar", "phone": "+919900000000", "email": "ravi@example.com", "message": "Need 500 boxes", "company": "Ravi Traders", "city": "Agra"}}'"""
+		return {
+			"kind": "website", "site": site, "token": token, "has_token": bool(token),
+			"form_endpoint": form_url, "webhook_endpoint": hook_url,
+			"html": html, "js": js, "curl": curl,
+			"origins": src.allowed_origins or "", "ips": src.allowed_ips or "",
+			"notes": "Browser forms: add the site origin (https://yoursite.com) to Allowed Origins. Servers / form builders (Zapier, Tally, Elementor webhooks): use the webhook URL with the token and optionally list their IPs. Extra keys are mapped through this source's Field Map.",
+		}
+	return {"kind": "none"}
+
+
+@frappe.whitelist()
+def regenerate_source_token(name: str) -> dict:
+	"""New push token for a Website / IndiaMART push source. Old token stops working immediately."""
+	_check_manager_access()
+	import secrets
+	src = frappe.get_doc("Excom Intake Source", name)
+	src.push_token = secrets.token_hex(24)
+	src.flags.ignore_permissions = True
+	src.save()
+	frappe.db.commit()
+	return {"ok": True}

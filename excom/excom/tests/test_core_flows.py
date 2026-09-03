@@ -232,3 +232,27 @@ class TestManifest(_Base):
 		from excom.excom.services.crm_manifest import check
 		r = check()
 		self.assertTrue(r["ok"], "\n".join(r["problems"]))
+
+
+class TestWebhookHelpers(_Base):
+	def test_dedupe_key_prefers_ids_then_hash(self):
+		from excom.excom.api.intake import _webhook_dedupe_key
+		self.assertEqual(_webhook_dedupe_key("S", {"submission_id": "abc"}, ""), "web:S:abc")
+		self.assertEqual(_webhook_dedupe_key("S", {"entry_id": "77"}, ""), "web:S:77")
+		a = _webhook_dedupe_key("S", {"name": "x", "phone": "1"}, "")
+		b = _webhook_dedupe_key("S", {"phone": "1", "name": "x"}, "")
+		self.assertEqual(a, b); self.assertTrue(a.startswith("web:S:sha1:"))
+
+	def test_embed_snippets(self):
+		from excom.excom.api.admin import get_embed, regenerate_source_token
+		company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
+		src = frappe.get_doc({"doctype": "Excom Intake Source", "source_name": "QA Embed Site", "source_type": "Website", "enabled": 1, "company": company, "mode": "Push", "sla_first_response": 3600}).insert(ignore_permissions=True)
+		e = get_embed("Excom Intake Source", src.name)
+		self.assertEqual(e["kind"], "website"); self.assertFalse(e["has_token"]); self.assertIn("submit_enquiry", e["form_endpoint"])
+		regenerate_source_token(src.name)
+		e = get_embed("Excom Intake Source", src.name)
+		self.assertTrue(e["has_token"]); self.assertIn(e["token"], e["webhook_endpoint"]); self.assertIn(e["token"], e["html"])
+		wc = frappe.get_all("Excom Channel Account", filters={"channel": "webchat"}, pluck="name", limit=1)
+		if wc:
+			w = get_embed("Excom Channel Account", wc[0])
+			self.assertEqual(w["kind"], "webchat"); self.assertIn("excom-chat.js", w["script"]); self.assertIn(f'data-account="{wc[0]}"', w["script"])
