@@ -12,6 +12,9 @@ import { NotesTab } from "./NotesTab";
 import { ActivityTab } from "./ActivityTab";
 import { TransferDialog } from "./TransferDialog";
 import { AIAssistantDrawer } from "../AIAssistantDrawer";
+import { DetailsTab } from "../crm/DetailsTab";
+import { useIdentityRecords, useCrmActions, useCrmOptions } from "../../hooks/useCrm";
+import { UserPlus2, ArrowUpRight, Tags } from "lucide-react";
 import { SegmentedControl, EmptyState, Button, Modal, type MenuGroup } from "../primitives";
 import { TagManager } from "../TagManager";
 import { useInbox } from "../shell/InboxProvider";
@@ -59,6 +62,11 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
   const { messages, isLoading, refresh, autoClaimed, error: feedError, failedThreads, canLoadOlder, loadOlder, loadingOlder } = useIdentityMessages(contact);
   const { record } = useRecordRef(contact.id, contact.contactName);
   const { open: openTasks } = useTasks(record);
+  const { records: crmRecords, primary: crmPrimary, refresh: refreshCrm } = useIdentityRecords(contact.id);
+  const crmOpts = useCrmOptions();
+  const crm = useCrmActions(() => { refreshCrm(); refreshThreads(); });
+  const [classifyOpen, setClassifyOpen] = useState(false);
+  const [classifyType, setClassifyType] = useState("");
   const threadIds = useMemo(() => contact.allAccounts.map((a: Account) => a.id), [contact.allAccounts]);
 
   // Reply via: ?via=<threadId> → last inbound message's thread → first account.
@@ -127,6 +135,13 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
       { id: "details", label: "Details", icon: <PanelRight />, shortcut: "⌘.", onSelect: () => setDetailsOpen(true) },
     ],
     [
+      ...(!crmPrimary ? [{ id: "promote", label: "Promote to Lead", icon: <UserPlus2 />, onSelect: async () => { const r = await crm.promoteThread(via?.id || contact.activeAccountId); if (r) setTab("details"); } }] : []),
+      ...(crmPrimary?.doctype === "Lead" ? [{ id: "classify", label: crmPrimary.customer_type ? `Classify (${crmPrimary.customer_type})` : "Classify lead…", icon: <Tags />, onSelect: () => setClassifyOpen(true) }] : []),
+      ...(crmPrimary?.doctype === "Lead" && crmPrimary.customer_type ? [{ id: "convert", label: "Convert to Opportunity", icon: <ArrowUpRight />, onSelect: async () => { await crm.convert(crmPrimary, "Opportunity"); setTab("details"); } }] : []),
+      ...(crmPrimary?.doctype === "Lead" && crmPrimary.customer_type === "Online B2C" ? [{ id: "tocust", label: "Convert to Customer", icon: <ArrowUpRight />, onSelect: async () => { await crm.convert(crmPrimary, "Customer"); } }] : []),
+      ...(crmPrimary?.doctype === "Opportunity" ? [{ id: "quote", label: "Create Quotation (Desk)", icon: <ArrowUpRight />, onSelect: async () => { const r: any = await crm.convert(crmPrimary, "Quotation"); if (r?.message?.ref) window.open(deskUrl(r.message.ref.doctype, r.message.ref.name), "_blank"); } }] : []),
+    ],
+    [
       { id: "read", label: unread ? "Mark as read" : "Mark as unread", icon: unread ? <EyeOff /> : <Eye />, onSelect: async () => { await all((id) => (unread ? markRead : markUnread)({ thread_id: id })); refreshThreads(); } },
       { id: "copy", label: "Copy contact", icon: <Copy />, onSelect: () => navigator.clipboard?.writeText(contact.contactInfo.phone || contact.contactInfo.email || contact.contactName).then(() => toast.success("Copied")) },
       { id: "desk", label: "Open in Desk", icon: <ExternalLink />, onSelect: () => window.open(record ? deskUrl(record.doctype, record.name) : deskUrl("Omni Identity", contact.id), "_blank") },
@@ -146,14 +161,14 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
     { value: "notes" as Tab, label: "Notes", icon: <StickyNote /> },
     { value: "activity" as Tab, label: "Activity", icon: <History /> },
     { value: "ai" as Tab, label: "AI", icon: <Sparkles /> },
-    { value: "details" as Tab, label: "Details", icon: <Lock />, disabled: true, hint: "Schema-driven fields arrive in P3" },
+    { value: "details" as Tab, label: "Details", icon: crmPrimary ? <Tags /> : <Lock />, disabled: false, hint: crmPrimary ? `${crmPrimary.doctype} ${crmPrimary.name}` : "No CRM record yet — Promote to Lead from ⋯" },
   ];
   const effectiveTab: Tab = tab;
 
   return (
     <section aria-label={`Conversation with ${contact.contactName}`} className="flex-1 min-w-0 min-h-0 flex flex-col bg-surface">
       <RecordHeader contact={contact} record={record} showBack={drill} onBack={closeRecord} menuGroups={menuGroups} onToggleDetails={toggleDetails} detailsToggleVisible={!wide} />
-      <ContextStrip contact={contact} record={record} />
+      <ContextStrip contact={contact} record={record} crm={crmPrimary} onStage={crmPrimary?.doctype === "Opportunity" ? () => setTab("details") : undefined} />
       <SegmentedControl<Tab> ariaLabel="Record sections" className="px-2 border-b border-border bg-surface" value={effectiveTab} onChange={setTab} segments={segments} />
 
       {effectiveTab === "chat" && (
@@ -183,9 +198,16 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
       {effectiveTab === "tasks" && <div className="flex-1 min-h-0"><TasksTab record={record} /></div>}
       {effectiveTab === "notes" && <div className="flex-1 min-h-0"><NotesTab record={record} /></div>}
       {effectiveTab === "activity" && <div className="flex-1 min-h-0 overflow-y-auto"><ActivityTab record={record} threadIds={threadIds} messages={messages} /></div>}
+      {effectiveTab === "details" && <div className="flex-1 min-h-0"><DetailsTab refr={crmPrimary ? { doctype: crmPrimary.doctype, name: crmPrimary.name } : null} onChanged={refreshCrm} /></div>}
       {effectiveTab === "ai" && <div className="flex-1 min-h-0"><AIAssistantDrawer isOpen onClose={() => setTab("chat")} contactName={contact.contactName} threadId={via?.id || contact.activeAccountId} embedded onUseSuggestion={(t) => { setTab("chat"); setPendingText(t); }} /></div>}
 
       <TransferDialog open={transferOpen} onOpenChange={setTransferOpen} threadIds={threadIds} onDone={refreshThreads} />
+      <Modal open={classifyOpen} onOpenChange={setClassifyOpen} title="Classify lead" description="Sets customer_type; pipelines and gates follow the type."
+        footer={<><Button variant="ghost" onClick={() => setClassifyOpen(false)}>Cancel</Button><Button variant="primary" disabled={!classifyType} onClick={async () => { if (crmPrimary) await crm.classifyLead(crmPrimary.name, classifyType); setClassifyOpen(false); }}>Classify</Button></>}>
+        <div className="grid gap-2 [grid-template-columns:repeat(2,minmax(0,1fr))]">
+          {crmOpts.customer_types.map((t) => <button key={t} type="button" onClick={() => setClassifyType(t)} className={`h-10 rounded-md border text-sm ${classifyType === t ? "border-crayon-blue-base bg-crayon-blue-tint text-crayon-blue-text" : "border-border text-ink-2 hover:bg-surface-hover"}`}>{t}</button>)}
+        </div>
+      </Modal>
       <Modal open={tagsOpen} onOpenChange={setTagsOpen} title="Tags" description="Tags apply to the active reply-via thread.">
         <TagManager threadId={via?.id || contact.activeAccountId} inline onChanged={refreshThreads} />
       </Modal>

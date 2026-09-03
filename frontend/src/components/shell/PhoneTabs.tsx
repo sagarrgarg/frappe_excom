@@ -9,10 +9,10 @@ export function PhoneTabs() {
   const { totalUnread, setNewOpen } = useInbox();
   const location = useLocation();
   const inboxActive = location.pathname.startsWith("/inbox") || location.pathname.startsWith("/t/");
-  const tabs = [
-    { to: "/today", label: "Today", icon: <Sun />, flagged: true },
+  const tabs: { to: string; label: string; icon: React.ReactNode; badge?: number; flagged?: boolean }[] = [
+    { to: "/today", label: "Today", icon: <Sun /> },
     { to: "/inbox", label: "Inbox", icon: <Inbox />, badge: totalUnread },
-    { to: "/pipeline", label: "Pipeline", icon: <KanbanSquare />, flagged: true },
+    { to: "/pipeline", label: "Pipeline", icon: <KanbanSquare /> },
     { to: "/more", label: "More", icon: <MoreHorizontal /> },
   ];
   return (

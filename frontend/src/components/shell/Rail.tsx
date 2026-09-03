@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Plus, Sun, Inbox, KanbanSquare, Users, Radio, BarChart3, Building2, ChevronsUpDown,
-  Shield, GitMerge, ListChecks, Cog, Settings, Rows3, LogOut, Bug, Sparkles, ArrowLeftRight, Keyboard,
+  Shield, GitMerge, ListChecks, Cog, Settings, Rows3, LogOut, Bug, Sparkles, ArrowLeftRight, Keyboard, ListTodo,
 } from "lucide-react";
 import { cn } from "../ui/utils";
 import { Avatar, Badge, Menu, menuItemClass, Kbd } from "../primitives";
@@ -41,9 +41,10 @@ export function Rail() {
   useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
 
   const items: RailItem[] = [
-    { to: "/today", label: "Today", icon: <Sun />, flagged: true },
+    { to: "/today", label: "Today", icon: <Sun /> },
     { to: "/inbox", label: "Inbox", icon: <Inbox />, badge: totalUnread },
-    { to: "/pipeline", label: "Pipeline", icon: <KanbanSquare />, flagged: true },
+    { to: "/intake", label: "Intake", icon: <ListTodo /> },
+    { to: "/pipeline", label: "Pipeline", icon: <KanbanSquare /> },
     { to: "/contacts", label: "Contacts", icon: <Users /> },
   ];
   const secondary: RailItem[] = [

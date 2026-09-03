@@ -5,6 +5,9 @@ import { InboxProvider } from "../components/shell/InboxProvider";
 import { InboxRoute } from "./inbox";
 import { appBasename } from "../lib/ui-flag";
 import { FlaggedRoute } from "./flagged";
+const TodayRoute = lazy(() => import("./crm").then((m) => ({ default: m.TodayRoute })));
+const IntakeRoute = lazy(() => import("./crm").then((m) => ({ default: m.IntakeRoute })));
+const PipelineRoute = lazy(() => import("./crm").then((m) => ({ default: m.PipelineRoute })));
 
 const BroadcastsRoute = lazy(() => import("./pages").then((m) => ({ default: m.BroadcastsRoute })));
 const AnalyticsRoute = lazy(() => import("./pages").then((m) => ({ default: m.AnalyticsRoute })));
@@ -35,9 +38,10 @@ export function NextRouter() {
           <Route index element={<Navigate to="/inbox" replace />} />
           <Route path="/inbox/:view?" element={<InboxRoute />} />
           <Route path="/t/:recordId" element={<InboxRoute />} />
-          <Route path="/today" element={<FlaggedRoute name="Today" />} />
-          <Route path="/pipeline" element={<FlaggedRoute name="Pipeline" />} />
-          <Route path="/intake" element={<FlaggedRoute name="Intake" />} />
+          <Route path="/today" element={L(<TodayRoute />)} />
+          <Route path="/pipeline" element={L(<PipelineRoute />)} />
+          <Route path="/intake" element={L(<IntakeRoute />)} />
+          <Route path="/p3" element={<FlaggedRoute name="P3 placeholder" />} />
           <Route path="/contacts" element={L(<ContactsRoute />)} />
           <Route path="/broadcasts" element={L(<BroadcastsRoute />)} />
           <Route path="/analytics" element={L(<AnalyticsRoute />)} />

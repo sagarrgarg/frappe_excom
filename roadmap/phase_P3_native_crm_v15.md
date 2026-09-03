@@ -5,7 +5,7 @@
 **Duration:** 18–26 days
 **Depends on:** P2 signed off
 **Blocks:** P4 (needs the gateway seam it creates)
-**Status:** Not started
+**Status:** Built 2026-09-03 (3.1–3.11) on the P1 shell; pending: CRM Lead→native migration decision, ERPNext CRM Settings bridge off + `crm` uninstall (E5), Meta App Review (`leads_retrieval`), vendor keys on Intake Sources, assignment-rule users (`crm_schema.ensure_assignment_rules`)
 
 ---
 

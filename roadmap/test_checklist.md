@@ -103,3 +103,23 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 - 📝 HMAC: enforce `wa_app_secret` on Active WhatsApp accounts (P3 §3.9).
 - 📝 Email + outbound WhatsApp paths — pilot week with real accounts.
 - 📝 E8: README claimed Instagram as a shipped channel; corrected to "planned" (no `channels/instagram` code).
+
+
+## P3 — Native CRM (first run 2026-09-03, synthetic data, cleaned up)
+
+| Case | How | Result |
+|---|---|---|
+| Intake → Lead with provenance (`first_touch_*`, `source_reference`, `company`, `intake_source`), attribution via `set_attribution` (Lead Source + Campaign on v15), identity link both ways, thread on the auto-ack account, 5 system messages | S | ✅ |
+| Replay: same `dedupe_key` twice → one log row, one Lead | S | ✅ (unique index) |
+| Re-touch: existing open Lead reused, no duplicate (R1) | S | ✅ |
+| R3: Opportunity from unclassified Lead refused server-side | S+B | ✅ |
+| Classify → Convert → Opportunity carries `customer_type`/`omni_identity`, Lead status → Opportunity, link retained | S+B | ✅ |
+| Gates evaluated per type; blocked stage refused with the failing gate named; override path (managers, reason logged) | S+B | ✅ (`p3-gate-blocked.png`) |
+| advance_stage writes `pipeline_stage`, `stage_entered_at`, mapped `sales_stage`/`probability`, Excom Stage Change Log rows, thread system message | S+B | ✅ |
+| Details tab renders from `get_field_schema` (10 sections) — E2 | B | ✅ (`p3-details-opp.png`) |
+| Today / Intake / Pipeline pages at 1366 + 390; pipeline board per type, phone list | B | ✅ (`p3-pipeline-export-1366.png`) |
+| Webhook dispatch: leadgen + feed + messages in one payload → each handled/logged, none 500 | S | ✅ |
+| HMAC: unsigned rejected once any secret exists (WA accounts or Meta sources); degraded acceptance logged | R | ✅ |
+| Guardrails G1–G6 | S | ⚠ site: bridge enabled, `crm_deal` fields present, `crm` installed — awaiting decision |
+| SLA ladder fenced to post-go-live records, in-app only by default | S | ✅ (0 escalations on legacy data after fence; an unfenced dry run touched 80 legacy leads and was fully reverted) |
+| IndiaMART / TradeIndia / Meta live pulls, auto-ack send, website form from a real origin | — | ⏭ need vendor keys + a registered source |
