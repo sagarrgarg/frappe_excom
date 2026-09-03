@@ -1,18 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import {
-  X,
-  Search,
-  MessageCircle,
-  Mail,
-  Phone,
-  User,
-  Loader2,
-  Plus,
-  ChevronDown,
-} from "lucide-react";
+import { X, Search, MessageCircle, Mail, Phone, User, Loader2, Plus } from "lucide-react";
 import { useFrappePostCall } from "frappe-react-sdk";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { Button, Input, Modal, Select, Avatar } from "./primitives";
 import { toast } from "sonner";
 
 interface NewConversationDialogProps {
@@ -200,29 +189,19 @@ export function NewConversationDialog({
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-ink-1/40 flex items-center justify-center z-50"
-      onClick={onClose}
+    <Modal
+      open
+      onOpenChange={(v) => !v && onClose()}
+      title="New conversation"
+      width="max-w-lg"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={!canSubmit || submitting} onClick={handleSubmit}>{submitting ? <Loader2 className="animate-spin" /> : <MessageCircle />}Start chat</Button>
+        </>
+      }
     >
-      <div
-        className="bg-surface border border-border-strong rounded-xl w-full max-w-lg shadow-ex"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Plus className="w-5 h-5 text-crayon-blue-text" />
-            <h2 className="text-lg font-semibold text-ink-1">New Conversation</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-surface-sunken text-ink-3 hover:text-ink-1 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-4 space-y-5">
+        <div className="space-y-4">
           {/* Channel Selection */}
           <div>
             <label className="text-xs text-ink-3 mb-2 block font-medium">Channel</label>
@@ -267,21 +246,14 @@ export function NewConversationDialog({
                 No {channel} accounts found. Create one in Excom Channel Account first.
               </div>
             ) : (
-              <div className="relative">
-                <select
-                  value={selectedAccount}
-                  onChange={(e) => setSelectedAccount(e.target.value)}
-                  className="w-full appearance-none bg-surface-sunken border border-border-strong rounded-lg px-3 py-2.5 text-sm text-ink-1 focus:outline-none focus:border-border-strong pr-8"
-                >
-                  {accounts.map((acc) => (
-                    <option key={acc.name} value={acc.name}>
-                      {getAccountLabel(acc)}
-                      {acc.is_default_outgoing ? " (default)" : ""}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3 pointer-events-none" />
-              </div>
+              <Select value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)}>
+                {accounts.map((acc) => (
+                  <option key={acc.name} value={acc.name}>
+                    {getAccountLabel(acc)}
+                    {acc.is_default_outgoing ? " (default)" : ""}
+                  </option>
+                ))}
+              </Select>
             )}
           </div>
 
@@ -351,14 +323,7 @@ export function NewConversationDialog({
                         : "hover:bg-surface-sunken border-l-2 border-transparent"
                     }`}
                   >
-                    <div className="w-8 h-8 rounded-full bg-crayon-blue-tint text-crayon-blue-text flex items-center justify-center text-white text-xs font-medium shrink-0">
-                      {(id.display_name || id.name)
-                        .split(" ")
-                        .map((w: string) => w[0])
-                        .join("")
-                        .slice(0, 2)
-                        .toUpperCase()}
-                    </div>
+                    <Avatar name={id.display_name || id.name} size={32} />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm text-ink-1 font-medium truncate">
                         {id.display_name || id.name}
@@ -452,31 +417,6 @@ export function NewConversationDialog({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-2 p-4 border-t border-border">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="border-border-strong text-ink-2"
-          >
-            Cancel
-          </Button>
-          <Button
-            disabled={!canSubmit || submitting}
-            onClick={handleSubmit}
-            className="bg-crayon-blue-base hover:bg-crayon-blue-text text-white min-w-28"
-          >
-            {submitting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                <MessageCircle className="w-4 h-4 mr-1.5" />
-                Start Chat
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
