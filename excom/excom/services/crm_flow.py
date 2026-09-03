@@ -28,6 +28,12 @@ def resolve_or_create_lead(identity: str, channel: str, payload: dict, ignore_pe
 		# a re-touch on an open record: keep provenance, just return it
 		return best, False
 	payload = dict(payload or {})
+	# Same person already has a Lead we don't know about (Desk, import, migration)? Attach instead of
+	# tripping ERPNext's one-Lead-per-email rule.
+	known = gw.find_lead_by_contact(payload.get("email"), payload.get("phone"))
+	if known:
+		gw.link_identity(known, identity)
+		return known, False
 	payload.setdefault("first_touch_channel", channel)
 	r = gw.create_lead(payload, ignore_permissions=ignore_permissions)
 	gw.link_identity(r, identity)

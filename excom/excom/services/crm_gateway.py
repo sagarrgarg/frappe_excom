@@ -449,3 +449,19 @@ def reopen_record(ref) -> str | None:
 		frappe.db.set_value(OPPORTUNITY, ref.name, "status", "Open", update_modified=True)
 		return "Open"
 	return None
+
+
+def find_lead_by_contact(email: str | None, phone: str | None):
+	"""An open Lead that already carries this email or phone (created in Desk, by import, or by the
+	Frappe CRM migration) — ERPNext allows one Lead per email, so intake must attach, not insert."""
+	if email:
+		n = frappe.db.get_value(LEAD, {"email_id": email.strip().lower(), "status": ["not in", ["Converted", "Do Not Contact"]]}, "name")
+		if n:
+			return frappe._dict(doctype=LEAD, name=n)
+	if phone:
+		digits = "".join(ch for ch in str(phone) if ch.isdigit())[-10:]
+		if len(digits) == 10:
+			n = frappe.db.get_value(LEAD, {"mobile_no": ["like", f"%{digits}"], "status": ["not in", ["Converted", "Do Not Contact"]]}, "name")
+			if n:
+				return frappe._dict(doctype=LEAD, name=n)
+	return None

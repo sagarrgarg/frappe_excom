@@ -36,7 +36,8 @@ def _cleanup():
 			frappe.db.delete("Comment", {"reference_doctype": "Excom Thread", "reference_name": t}); frappe.delete_doc("Excom Thread", t, force=True, ignore_permissions=True)
 		frappe.db.delete("Omni Identity Link", {"parent": oi}); frappe.db.delete("Omni Identity Channel", {"parent": oi}); frappe.db.delete("Omni Identity Alias", {"parent": oi})
 		frappe.delete_doc("Omni Identity", oi, force=True, ignore_permissions=True)
-	for l in frappe.get_all("Lead", {"first_name": ["like", "QA %"]}, pluck="name"):
+	qa_leads = set(frappe.get_all("Lead", {"first_name": ["like", "QA %"]}, pluck="name")) | set(frappe.get_all("Lead", {"lead_name": ["like", "QA %"]}, pluck="name")) | set(frappe.get_all("Lead", {"email_id": ["like", "qa.%@example.com"]}, pluck="name"))
+	for l in qa_leads:
 		frappe.db.delete("ToDo", {"reference_name": l}); frappe.db.delete("Comment", {"reference_doctype": "Lead", "reference_name": l}); frappe.db.delete("Excom Stage Change Log", {"ref_name": l})
 		for c in frappe.get_all("Dynamic Link", {"link_name": l, "link_doctype": "Lead", "parenttype": "Contact"}, pluck="parent"):
 			frappe.db.delete("Dynamic Link", {"parent": c}); frappe.delete_doc("Contact", c, force=True, ignore_permissions=True)
