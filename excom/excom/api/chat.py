@@ -49,6 +49,32 @@ def _check_excom_access() -> None:
 MANAGER_ROLES = {"System Manager", "Excom Manager"}
 
 
+def _user_can_access_thread(thread_id: str) -> bool:
+    """Same visibility rule as get_threads: managers see all; others see threads in their
+    teams, directly assigned to them, or unassigned (General) if they belong to General."""
+    if not thread_id:
+        return False
+    if MANAGER_ROLES & set(frappe.get_roles(frappe.session.user)):
+        return True
+    row = frappe.db.get_value("Excom Thread", thread_id, ["assigned_to", "assigned_team"], as_dict=True)
+    if not row:
+        return False
+    if row.assigned_to == frappe.session.user:
+        return True
+    from excom.excom.doctype.excom_team.excom_team import get_user_teams
+    teams = set(get_user_teams())
+    if row.assigned_team:
+        return row.assigned_team in teams
+    return "General" in teams
+
+
+def _check_thread_access(thread_id: str) -> None:
+    """Throw PermissionError unless the current user may see this thread (S4)."""
+    _check_excom_access()
+    if not _user_can_access_thread(thread_id):
+        frappe.throw(_("You do not have access to this conversation"), frappe.PermissionError)
+
+
 def _check_manager_access() -> None:
     """Block users without Excom Manager or System Manager role."""
     if not MANAGER_ROLES.intersection(frappe.get_roles(frappe.session.user)):
@@ -288,7 +314,7 @@ def _enrich_tags(threads: list):
 @user_rate_limit(limit=300, seconds=60)
 def get_messages(thread_id: str, limit: int = 50, before: str = ""):
     """Load messages for a thread, ordered chronologically."""
-    _check_excom_access()
+    _check_thread_access(thread_id)
     limit = int(limit)
     params = {"thread": thread_id, "limit": limit}
 
@@ -366,7 +392,7 @@ def send_message(thread_id: str, message: str = "", message_type: str = "Text",
         reply_to: Excom Message name being replied to
         sticker_name: Excom Sticker name (for Sticker type)
     """
-    _check_excom_access()
+    _check_thread_access(thread_id)
     message = _sanitize_message(message, thread_id)
 
     if message_type == "Sticker" and sticker_name:
@@ -433,7 +459,7 @@ def get_stickers(pack: str = ""):
 @frappe.whitelist()
 def mark_read(thread_id: str):
     """Reset unread count for a thread."""
-    _check_excom_access()
+    _check_thread_access(thread_id)
     frappe.db.set_value("Excom Thread", thread_id, "unread_count", 0)
     return {"success": True}
 
@@ -441,7 +467,7 @@ def mark_read(thread_id: str):
 @frappe.whitelist()
 def mark_unread(thread_id: str):
     """Mark a thread as unread by setting unread_count to 1 if currently zero."""
-    _check_excom_access()
+    _check_thread_access(thread_id)
     current = frappe.db.get_value("Excom Thread", thread_id, "unread_count") or 0
     if current == 0:
         frappe.db.set_value("Excom Thread", thread_id, "unread_count", 1)
@@ -704,7 +730,7 @@ def assign_thread(thread_id: str, user: str = ""):
     Assign a thread to the current user or a specified user.
     Used by the "Take Over" button.
     """
-    _check_excom_access()
+    _check_thread_access(thread_id)
     if not user:
         user = frappe.session.user
 
@@ -725,7 +751,7 @@ def transfer_thread(thread_id: str, target_team: str, target_user: str = "", not
     user within the target team.  Otherwise, assigned_to is cleared so
     any member of the target team can pick it up.
     """
-    _check_excom_access()
+    _check_thread_access(thread_id)
     thread = frappe.db.get_value(
         "Excom Thread", thread_id, ["assigned_team", "display_name"], as_dict=True
     )
@@ -774,7 +800,7 @@ def claim_thread(thread_id: str, team: str = "") -> dict:
     Sets assigned_team to the provided team (or user's first team)
     and assigned_to to the current user.
     """
-    _check_excom_access()
+    _check_thread_access(thread_id)
     if not team:
         from excom.excom.doctype.excom_team.excom_team import get_user_teams
         user_teams = get_user_teams()
@@ -805,7 +831,7 @@ def claim_thread(thread_id: str, team: str = "") -> dict:
 @frappe.whitelist()
 def get_transfer_history(thread_id: str) -> list:
     """Return the transfer log for a thread."""
-    _check_excom_access()
+    _check_thread_access(thread_id)
     return frappe.db.sql(
         """
         SELECT tl.from_team, tl.to_team, tl.transferred_by, tl.note,
@@ -936,7 +962,7 @@ def send_internal_note(thread_id: str, content: str):
         thread_id: Excom Thread name
         content: Note text
     """
-    _check_excom_access()
+    _check_thread_access(thread_id)
     if not content or not content.strip():
         frappe.throw(_("Note content cannot be empty"))
 
@@ -1015,7 +1041,7 @@ def unpin_message(message_name: str):
 @frappe.whitelist()
 def get_pinned_messages(thread_id: str):
     """Return all pinned messages for a thread."""
-    _check_excom_access()
+    _check_thread_access(thread_id)
     return frappe.db.sql(
         """
         SELECT m.name, m.content_text, m.direction, m.creation,
@@ -1083,7 +1109,7 @@ def get_tags():
 @frappe.whitelist()
 def add_thread_tag(thread_id: str, tag_name: str):
     """Add a tag to a thread. Creates the Excom Tag if it doesn't exist."""
-    _check_excom_access()
+    _check_thread_access(thread_id)
     if not frappe.db.exists("Excom Thread", thread_id):
         frappe.throw(_("Thread not found"))
 
@@ -1112,7 +1138,7 @@ def add_thread_tag(thread_id: str, tag_name: str):
 @frappe.whitelist()
 def remove_thread_tag(thread_id: str, tag_name: str):
     """Remove a tag from a thread."""
-    _check_excom_access()
+    _check_thread_access(thread_id)
     if not frappe.db.exists("Excom Thread", thread_id):
         frappe.throw(_("Thread not found"))
 
@@ -1125,7 +1151,7 @@ def remove_thread_tag(thread_id: str, tag_name: str):
 @frappe.whitelist()
 def get_thread_tags(thread_id: str):
     """Return tags for a specific thread."""
-    _check_excom_access()
+    _check_thread_access(thread_id)
     return frappe.db.sql(
         """
         SELECT tt.tag, t.color, t.tag_name
@@ -1409,7 +1435,7 @@ def initiate_outbound(
 @frappe.whitelist()
 def get_thread_channel_account(thread_id: str) -> dict:
     """Return channel account linked to a thread (for template filtering)."""
-    _check_excom_access()
+    _check_thread_access(thread_id)
     row = frappe.db.get_value(
         "Excom Thread",
         thread_id,
@@ -1561,7 +1587,7 @@ def send_template_to_thread(
         button_urls: JSON array of suffix strings for each dynamic URL button, in order
         header_location: JSON object ``{"latitude","longitude","name","address"}`` for LOCATION headers
     """
-    _check_excom_access()
+    _check_thread_access(thread_id)
 
     thread = frappe.db.get_value(
         "Excom Thread", thread_id,
@@ -1960,7 +1986,7 @@ def retry_message(message_name: str = "") -> dict:
     Re-sends via the original provider and updates the same Excom Message record
     instead of creating a duplicate.
     """
-    _check_excom_access()
+    _check_thread_access(thread_id)
 
     if not message_name:
         frappe.throw(_("message_name is required"))
@@ -1977,7 +2003,7 @@ def mark_spam(thread_id: str = "", omni_identity: str = "") -> dict:
     Sets thread status to Spam and flags the Omni Identity so future
     messages from this sender are auto-filtered.
     """
-    _check_excom_access()
+    _check_thread_access(thread_id)
 
     if not thread_id:
         frappe.throw(_("thread_id is required"))
@@ -2000,7 +2026,7 @@ def mark_spam(thread_id: str = "", omni_identity: str = "") -> dict:
 @frappe.whitelist()
 def archive_thread(thread_id: str = "") -> dict:
     """Archive a thread — hides it from active inbox without deleting."""
-    _check_excom_access()
+    _check_thread_access(thread_id)
 
     if not thread_id:
         frappe.throw(_("thread_id is required"))
@@ -2017,7 +2043,7 @@ def archive_thread(thread_id: str = "") -> dict:
 @frappe.whitelist()
 def unarchive_thread(thread_id: str = "") -> dict:
     """Reopen an archived (Closed) thread."""
-    _check_excom_access()
+    _check_thread_access(thread_id)
     if not thread_id:
         frappe.throw(_("thread_id is required"))
     frappe.db.set_value("Excom Thread", thread_id, "status", "Open")
