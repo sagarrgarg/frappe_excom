@@ -194,3 +194,12 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 | 24h window: open → RESPONSE send; closed → refused; closed + HUMAN_AGENT approved → MESSAGE_TAG/HUMAN_AGENT | S | ✅ |
 | Webhook `entry.messaging[]` accelerator ingests, echoes skipped | S | ✅ |
 | Live poll against a real page | S | ⏭ needs page id + token on an Instagram / Messenger channel account |
+
+## Meta Business connection (2026-09-03)
+
+| Case | Sev | Result |
+|---|---|---|
+| Discover from Graph payloads → Page, Instagram, Lead Form, WhatsApp Number rows; re-discover keeps enabled/link state | S | ✅ test_meta_connect (mocked Graph) |
+| Enable Page → Messenger account (page token) · Instagram → Instagram account · Lead Form → Intake Source pulling with the page token · WhatsApp Number → WhatsApp account with system token / app secret / verify token; enabling twice reuses; disable → Inactive / enabled=0 | S | ✅ |
+| Webhook: verify token and HMAC app secret from the connection accepted | S | ✅ code (`_candidate_secrets`, GET verify) |
+| Live discovery against a real Business Manager | S | ⏭ needs a system-user token |

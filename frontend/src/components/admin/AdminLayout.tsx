@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
-import { Shield, Users, Radio, Tag, MessageSquare, Smile, FileText, Bell, Inbox, Settings, History, GitMerge, ListChecks, Cog, RefreshCw, LayoutGrid, AlertTriangle, UserCheck } from "lucide-react";
+import { Shield, Users, Radio, Tag, MessageSquare, Smile, FileText, Bell, Inbox, Settings, History, GitMerge, ListChecks, Cog, RefreshCw, LayoutGrid, AlertTriangle, UserCheck, Facebook } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPage } from "../shell/AdminPage";
 import { Button, Select } from "../primitives";
@@ -10,6 +10,7 @@ import { TeamsAdmin } from "./TeamsAdmin";
 import { UsersAdmin } from "./UsersAdmin";
 import { DocAdmin } from "./DocAdmin";
 import { AuditAdmin } from "./AuditAdmin";
+import { MetaConnectAdmin } from "./MetaConnectAdmin";
 import { serverMessage } from "./util";
 
 interface Section { id: string; label: string; icon: React.ReactNode; group: "People" | "Channels" | "Content" | "Automation" | "System" | "Lists"; render?: () => React.ReactNode; to?: string; hint?: string }
@@ -23,6 +24,7 @@ const SECTIONS: Section[] = [
   { id: "overview", label: "Overview", icon: <LayoutGrid />, group: "System" },
   { id: "teams", label: "Teams", icon: <Shield />, group: "People", render: () => <TeamsAdmin /> },
   { id: "users", label: "Users & roles", icon: <Users />, group: "People", render: () => <UsersAdmin /> },
+  { id: "meta", label: "Meta Business", icon: <Facebook />, group: "Channels", render: () => <MetaConnectAdmin /> },
   { id: "accounts", label: "Channel accounts", icon: <Radio />, group: "Channels", render: () => <DocAdmin doctype="Excom Channel Account" hint="WhatsApp Cloud API, Gmail and web-chat accounts. Tokens are write-only here; leave a password field blank to keep it." /> },
   { id: "templates", label: "WhatsApp templates", icon: <FileText />, group: "Channels", render: () => <DocAdmin doctype="WhatsApp Templates" headerAction={<SyncTemplates />} hint="Approved templates are pulled from Meta. Create or edit here to submit a new one." /> },
   { id: "intake", label: "Intake sources", icon: <Inbox />, group: "Channels", render: () => <DocAdmin doctype="Excom Intake Source" hint="IndiaMART / TradeIndia / Meta Lead Ads / website forms → Leads." /> },

@@ -1,0 +1,80 @@
+{
+ "doctype": "DocType",
+ "name": "Excom Meta Asset",
+ "module": "Excom",
+ "engine": "InnoDB",
+ "fields": [
+  {
+   "fieldname": "asset_type",
+   "fieldtype": "Select",
+   "label": "Type",
+   "options": "Page\nInstagram\nLead Form\nWhatsApp Number",
+   "in_list_view": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "asset_id",
+   "fieldtype": "Data",
+   "label": "Asset ID",
+   "in_list_view": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "asset_name",
+   "fieldtype": "Data",
+   "label": "Name",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "page_id",
+   "fieldtype": "Data",
+   "label": "Page ID",
+   "description": "Owning page (for Instagram accounts and lead forms)"
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled in Excom",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "linked_doctype",
+   "fieldtype": "Data",
+   "label": "Linked Doctype",
+   "read_only": 1
+  },
+  {
+   "fieldname": "linked_name",
+   "fieldtype": "Data",
+   "label": "Linked Record",
+   "read_only": 1
+  },
+  {
+   "fieldname": "extra",
+   "fieldtype": "Small Text",
+   "label": "Details (JSON)",
+   "read_only": 1
+  }
+ ],
+ "field_order": [
+  "asset_type",
+  "asset_id",
+  "asset_name",
+  "page_id",
+  "enabled",
+  "linked_doctype",
+  "linked_name",
+  "extra"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "creation": "2026-09-03 00:00:00",
+ "modified": "2026-09-03 00:00:00",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "idx": 0,
+ "docstatus": 0,
+ "editable_grid": 1,
+ "istable": 1,
+ "permissions": []
+}

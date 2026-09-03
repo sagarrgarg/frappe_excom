@@ -9,7 +9,7 @@ import unittest
 import frappe
 
 
-def run(module: str = "excom.excom.tests.test_core_flows,excom.excom.tests.test_gateway_contract,excom.excom.tests.test_meta_dm", pattern: str = "", backend: str = ""):
+def run(module: str = "excom.excom.tests.test_core_flows,excom.excom.tests.test_gateway_contract,excom.excom.tests.test_meta_dm,excom.excom.tests.test_meta_connect", pattern: str = "", backend: str = ""):
 	if backend:
 		import os
 		os.environ["EXCOM_CRM_BACKEND"] = backend

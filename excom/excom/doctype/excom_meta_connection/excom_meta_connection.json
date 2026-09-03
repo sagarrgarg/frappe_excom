@@ -1,0 +1,153 @@
+{
+ "doctype": "DocType",
+ "name": "Excom Meta Connection",
+ "module": "Excom",
+ "engine": "InnoDB",
+ "fields": [
+  {
+   "fieldname": "connection_name",
+   "fieldtype": "Data",
+   "label": "Connection Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "business_id",
+   "fieldtype": "Data",
+   "label": "Business Manager ID",
+   "description": "Meta Business Portfolio id (Business Settings \u2192 Business info)."
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "description": "Stamped on channel accounts and intake sources created from this connection."
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Active\nInactive",
+   "default": "Active",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "app_id",
+   "fieldtype": "Data",
+   "label": "Meta App ID"
+  },
+  {
+   "fieldname": "app_secret",
+   "fieldtype": "Password",
+   "label": "Meta App Secret",
+   "description": "Signs webhooks (X-Hub-Signature-256) for pages, Instagram and lead forms."
+  },
+  {
+   "fieldname": "api_version",
+   "fieldtype": "Data",
+   "label": "Graph API Version",
+   "default": "v21.0"
+  },
+  {
+   "fieldname": "webhook_verify_token",
+   "fieldtype": "Data",
+   "label": "Webhook Verify Token",
+   "description": "Paste the same value in the Meta app's webhook settings."
+  },
+  {
+   "fieldname": "sec_token",
+   "fieldtype": "Section Break",
+   "label": "Access"
+  },
+  {
+   "fieldname": "system_user_token",
+   "fieldtype": "Password",
+   "label": "System User Token",
+   "description": "Business Settings \u2192 Users \u2192 System users \u2192 Generate token with pages_show_list, pages_messaging, pages_read_engagement, instagram_basic, instagram_manage_messages, leads_retrieval, whatsapp_business_management, business_management. Never expires."
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "token_scopes",
+   "fieldtype": "Small Text",
+   "label": "Token Scopes (from /debug_token)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "token_valid",
+   "fieldtype": "Check",
+   "label": "Token Valid",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_synced_at",
+   "fieldtype": "Datetime",
+   "label": "Last Discovery",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_assets",
+   "fieldtype": "Section Break",
+   "label": "Discovered Assets"
+  },
+  {
+   "fieldname": "assets",
+   "fieldtype": "Table",
+   "label": "Assets",
+   "options": "Excom Meta Asset"
+  }
+ ],
+ "field_order": [
+  "connection_name",
+  "business_id",
+  "company",
+  "status",
+  "cb_1",
+  "app_id",
+  "app_secret",
+  "api_version",
+  "webhook_verify_token",
+  "sec_token",
+  "system_user_token",
+  "cb_2",
+  "token_scopes",
+  "token_valid",
+  "last_synced_at",
+  "sec_assets",
+  "assets"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "creation": "2026-09-03 00:00:00",
+ "modified": "2026-09-03 00:00:00",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "idx": 0,
+ "docstatus": 0,
+ "editable_grid": 1,
+ "autoname": "field:connection_name",
+ "track_changes": 1,
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Excom Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ]
+}

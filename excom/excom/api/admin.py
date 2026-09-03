@@ -30,6 +30,7 @@ ADMIN_DOCTYPES: dict[str, dict] = {
     "Excom Notification Log": {"title": "name", "read_only": True},
     # Frappe's own auto-assignment engine, scoped to the doctypes Excom drives.
     "Assignment Rule": {"title": "name", "scope_field": "document_type"},
+    "Excom Meta Connection": {"title": "connection_name"},
 }
 
 

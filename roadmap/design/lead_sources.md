@@ -20,6 +20,10 @@ Admin → Channels → **Intake sources** holds one row per source with mode, cr
 | **Facebook Messenger DMs** | same as Instagram (`platform=messenger`, object `page`) | same | `pages_messaging` | same | same | Built; needs page id + page token on a Messenger channel account. |
 | **Justdial / Amazon Business / Alibaba / 99acres-style marketplaces** | not built | would be a new adapter under `excom/excom/intake/adapters/` following the IndiaMART shape (pull with overlap, `ingest(src, "<vendor>:<id>", row)`) | — | — | — | Each is ~50 lines once the vendor's API doc is in hand. |
 
+## Meta in one place — Admin → Channels → Meta Business
+One **Excom Meta Connection** per Business Manager: app id + app secret (signs webhooks), a **system-user token** (never expires; scopes `pages_show_list pages_messaging pages_read_engagement instagram_basic instagram_manage_messages leads_retrieval whatsapp_business_management business_management`), webhook verify token, company.
+**Discover** lists what that token can see — Facebook pages (+ the Instagram account behind each), lead forms per page, WhatsApp numbers per WABA — and **Enable** on a row creates or updates the right record: Page → Messenger channel account · Instagram → Instagram channel account · Lead Form → Intake Source (Meta Lead Ads, pull every 15 min + webhook) · WhatsApp Number → WhatsApp channel account (system token, app secret, verify token). Enabling also subscribes the page to the app's webhook; polling is unaffected if that fails. Disable sets the record Inactive without deleting history. A short-lived user token can be exchanged for a 60-day one from the same screen; system-user tokens are recommended instead.
+
 ## Choosing the mode per source
 - **Vendor offers an inquiry API** → Pull with an overlap window; it is authoritative and self-healing. Add their push URL only as an accelerator (IndiaMART).
 - **Vendor only pushes** (webhooks) → require a per-source token in the URL or body, verify HMAC when the vendor signs, allowlist their IPs when they publish them, and schedule a reconcile if any list endpoint exists (Meta).

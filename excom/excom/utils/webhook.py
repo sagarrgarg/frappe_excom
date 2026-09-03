@@ -31,9 +31,8 @@ def get():
 	if not verify_token:
 		return Response("Missing verify token", status=403)
 
-	match = frappe.db.exists(
-		"Excom Channel Account",
-		{"wa_webhook_verify_token": verify_token},
+	match = frappe.db.exists("Excom Channel Account", {"wa_webhook_verify_token": verify_token}) or (
+		frappe.db.exists("DocType", "Excom Meta Connection") and frappe.db.exists("Excom Meta Connection", {"webhook_verify_token": verify_token})
 	)
 	if not match:
 		return Response("No matching account", status=403)
@@ -51,6 +50,11 @@ def _candidate_secrets() -> list[str]:
 				out.append(secret)
 		except Exception:
 			pass
+	try:
+		from excom.excom.services.meta_connect import app_secrets
+		out.extend(app_secrets())
+	except Exception:
+		pass
 	if frappe.db.exists("DocType", "Excom Intake Source"):
 		for src_name in frappe.get_all("Excom Intake Source", filters={"source_type": "Meta Lead Ads", "enabled": 1}, pluck="name"):
 			try:
