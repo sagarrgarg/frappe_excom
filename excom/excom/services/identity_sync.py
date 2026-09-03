@@ -128,6 +128,19 @@ def sync_single_customer(
 
     phone, email = _extract_contact_details(contacts, customer_name, "Customer")
 
+    existing = _find_existing_identity(phone, email)
+    if existing:
+        links = [("Customer", customer_name, "Primary Contact")]
+        if linked_supplier and not _is_already_linked("Supplier", linked_supplier):
+            links.append(("Supplier", linked_supplier, "Primary Contact"))
+            processed.add(_entity_key("Supplier", linked_supplier))
+        for contact in contacts:
+            if not _is_already_linked("Contact", contact.name):
+                links.append(("Contact", contact.name, "Primary Contact"))
+                processed.add(_entity_key("Contact", contact.name))
+        processed.add(_entity_key("Customer", customer_name))
+        return _attach_to_existing(existing, links, phone, email)
+
     identity = frappe.get_doc({
         "doctype": "Omni Identity",
         "display_name": customer.customer_name or customer_name,
@@ -185,6 +198,16 @@ def sync_single_supplier(
     supplier = frappe.get_cached_doc("Supplier", supplier_name)
     contacts = _get_contacts_for_party("Supplier", supplier_name)
     phone, email = _extract_contact_details(contacts, supplier_name, "Supplier")
+
+    existing = _find_existing_identity(phone, email)
+    if existing:
+        links = [("Supplier", supplier_name, "Primary Contact")]
+        for contact in contacts:
+            if not _is_already_linked("Contact", contact.name):
+                links.append(("Contact", contact.name, "Primary Contact"))
+                processed.add(_entity_key("Contact", contact.name))
+        processed.add(_entity_key("Supplier", supplier_name))
+        return _attach_to_existing(existing, links, phone, email)
 
     identity = frappe.get_doc({
         "doctype": "Omni Identity",
@@ -244,6 +267,16 @@ def sync_single_lead(
     phone = lead.mobile_no or lead.phone or ""
     email = lead.email_id or ""
     display = lead.lead_name or lead.company_name or email or phone or "Unknown"
+
+    existing = _find_existing_identity(phone, email)
+    if existing:
+        links = [("Lead", lead_name, "Decision Maker")]
+        for contact in _get_contacts_for_party("Lead", lead_name):
+            if not _is_already_linked("Contact", contact.name):
+                links.append(("Contact", contact.name, "Primary Contact"))
+                processed.add(_entity_key("Contact", contact.name))
+        processed.add(_entity_key("Lead", lead_name))
+        return _attach_to_existing(existing, links, phone, email)
 
     identity = frappe.get_doc({
         "doctype": "Omni Identity",
@@ -334,6 +367,16 @@ def sync_single_contact(
                 processed.add(_entity_key("Contact", contact_name))
                 return oi_doc.name
 
+    existing = _find_existing_identity(phone, email)
+    if existing:
+        links = [("Contact", contact_name, "Primary Contact")]
+        for dl in parent_links:
+            if dl.link_doctype in ("Customer", "Supplier", "Lead") and not _is_already_linked(dl.link_doctype, dl.link_name):
+                links.append((dl.link_doctype, dl.link_name, "Primary Contact"))
+                processed.add(_entity_key(dl.link_doctype, dl.link_name))
+        processed.add(_entity_key("Contact", contact_name))
+        return _attach_to_existing(existing, links, phone, email)
+
     display = contact.first_name or email or phone or "Unknown"
     identity = frappe.get_doc({
         "doctype": "Omni Identity",
@@ -364,6 +407,51 @@ def sync_single_contact(
     identity.insert(ignore_permissions=True)
     processed.add(_entity_key("Contact", contact_name))
     return identity.name
+
+
+def _find_existing_identity(phone: str = "", email: str = "") -> Optional[str]:
+    """
+    Resolve-before-create: an Active master identity with the same normalized phone/WhatsApp,
+    email, or alias. Without this, every new Lead/Contact minted its own identity and one
+    person ended up with three (P3 QA).
+    """
+    from excom.excom.doctype.omni_identity.omni_identity import normalize_phone, normalize_email
+
+    norm_phone = normalize_phone(phone) if phone else ""
+    norm_email = normalize_email(email) if email else ""
+    if norm_phone and len(norm_phone) >= 8:
+        for f in ("normalized_phone", "primary_whatsapp"):
+            name = frappe.db.get_value("Omni Identity", {f: norm_phone, "status": ["!=", "Merged"]}, "name", order_by="is_master desc, creation asc")
+            if name:
+                return name
+        alias = frappe.db.get_value("Omni Identity Alias", {"alias_value_normalized": norm_phone}, "parent")
+        if alias and frappe.db.get_value("Omni Identity", alias, "status") != "Merged":
+            return alias
+    if norm_email:
+        name = frappe.db.get_value("Omni Identity", {"normalized_email": norm_email, "status": ["!=", "Merged"]}, "name", order_by="is_master desc, creation asc")
+        if name:
+            return name
+        alias = frappe.db.get_value("Omni Identity Alias", {"alias_value_normalized": norm_email}, "parent")
+        if alias and frappe.db.get_value("Omni Identity", alias, "status") != "Merged":
+            return alias
+    return None
+
+
+def _attach_to_existing(identity_name: str, links: list, phone: str = "", email: str = "") -> str:
+    """Add entity links to an existing identity (deduped), filling missing phone/email."""
+    oi = frappe.get_doc("Omni Identity", identity_name)
+    have = {(l.linked_doctype, l.linked_name) for l in oi.get("linked_entities", [])}
+    for dt, name, role in links:
+        if (dt, name) not in have:
+            oi.append("linked_entities", {"linked_doctype": dt, "linked_name": name, "role": role})
+    if not oi.primary_phone and phone:
+        oi.primary_phone = phone
+        oi.primary_whatsapp = _digits_only(phone)
+    if not oi.primary_email and email:
+        oi.primary_email = email
+    oi.flags.ignore_validate = True
+    oi.save(ignore_permissions=True)
+    return oi.name
 
 
 # ---------------------------------------------------------------------------
