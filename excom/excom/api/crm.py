@@ -230,12 +230,36 @@ def set_next_action(doctype: str, name: str, next_action_at: str) -> dict:
 
 # ─── lists ────────────────────────────────────────────────────────────────────
 
+def lead_visibility(user: str | None = None) -> list | None:
+	"""Who may see which unassigned leads (mirrors channel-account team visibility):
+	- System Manager / Excom Manager: everything (None = no extra filter).
+	- Manager of an Excom Team: leads they own + leads from intake sources allowed to their teams
+	  (or sources with no team restriction) + leads with no source at all (migrated / manual).
+	- Team member: only leads assigned to them.
+	Returned as OR-filters for frappe.get_list."""
+	user = user or frappe.session.user
+	roles = set(frappe.get_roles(user))
+	if roles & {"System Manager", "Excom Manager"}:
+		return None
+	managed = frappe.get_all("Excom Team Member", filters={"parenttype": "Excom Team", "user": user, "role": "Manager"}, pluck="parent")
+	if not managed:
+		return [["lead_owner", "=", user]]
+	restricted = {r.parent for r in frappe.get_all("Excom Account Team", filters={"parenttype": "Excom Intake Source"}, fields=["parent"])}
+	open_sources = [n for n in frappe.get_all("Excom Intake Source", pluck="name") if n not in restricted]
+	mine = frappe.get_all("Excom Account Team", filters={"parenttype": "Excom Intake Source", "team": ["in", managed]}, pluck="parent")
+	visible_sources = list(set(open_sources) | set(mine))
+	ors = [["lead_owner", "=", user], ["intake_source", "is", "not set"]]
+	if visible_sources:
+		ors.append(["intake_source", "in", visible_sources])
+	return ors
+
+
 @frappe.whitelist()
 @user_rate_limit(limit=120, seconds=60)
 def get_intake_queue(filters: str | dict | None = None) -> list:
 	_check_excom_access()
 	f = json.loads(filters) if isinstance(filters, str) else (filters or {})
-	rows = gw.list_intake(f)
+	rows = gw.list_intake(f, or_filters=lead_visibility())
 	_join_threads(rows)
 	# SLA state: first response target from the intake source
 	sla = {s.name: s.sla_first_response for s in frappe.get_all("Excom Intake Source", fields=["name", "sla_first_response"])}
@@ -286,7 +310,7 @@ def get_today() -> dict:
 	overdue = [a for a in actions if a.get("next_action_at") and a["next_action_at"] < now]
 	due_today = [a for a in actions if a.get("next_action_at") and a["next_action_at"] >= now and str(a["next_action_at"])[:10] == today]
 	intake = [r for r in get_intake_queue({}) if r.get("_sla_breached")]
-	unassigned = [r for r in gw.list_intake({}) if not r.get("lead_owner")][:50]
+	unassigned = [r for r in gw.list_intake({}, or_filters=lead_visibility()) if not r.get("lead_owner")][:50]
 	_join_threads(unassigned)
 	return {"overdue": overdue, "sla": intake[:50], "today": due_today, "unassigned": unassigned}
 
@@ -335,3 +359,21 @@ def get_records_for_identity(omni_identity: str) -> list:
 def get_options() -> dict:
 	_check_excom_access()
 	return {"customer_types": gw.CUSTOMER_TYPES, "pipelines": gw.PIPELINES, "stages": {k: {"sales_stage": v["sales_stage"], "probability": v["probability"]} for k, v in gw.STAGES.items()}, "intake_stages": gw.INTAKE_STAGES}
+
+
+@frappe.whitelist()
+def create_lead_manual(name: str, phone: str = "", email: str = "", company_name: str = "", customer_type: str = "", intake_source: str = "", notes: str = "") -> dict:
+	"""A lead typed in by an agent (walk-in, call, exhibition): identity + native Lead through the gateway,
+	then the record pane opens so 'Start conversation' is one click away."""
+	_check_excom_access()
+	from excom.excom.doctype.omni_identity.omni_identity import resolve_identity
+	from excom.excom.services.crm_flow import resolve_or_create_lead
+	from excom.excom.services.intake import normalize_phone
+	if not (name or phone or email):
+		frappe.throw(_("Give at least a name, phone or email"))
+	phone_n = normalize_phone(phone) if phone else ""
+	identity = resolve_identity(phone=phone_n, email=email or "", channel="", channel_user_id="", display_name=name or "")  # no channel row: nobody has messaged yet
+	payload = {"name": name, "phone": phone_n, "email": email or None, "company_name": company_name or None, "customer_type": customer_type or "", "intake_source": intake_source or None, "owner": frappe.session.user, "first_touch_channel": "Manual", "first_touch_by": frappe.session.user, "source": "Organic Manual", "notes": notes or None}
+	r, created = resolve_or_create_lead(identity, "Manual", payload, ignore_permissions=True)
+	frappe.db.commit()
+	return {"identity": identity, "ref": {"doctype": r.doctype, "name": r.name}, "created": created}

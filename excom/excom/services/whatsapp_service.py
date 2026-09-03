@@ -311,3 +311,25 @@ def _call_api(account, payload: dict) -> dict:
 def _clean_phone(number: str) -> str:
     """Strip non-digit characters for the API payload."""
     return re.sub(r"[^\d]", "", number)
+
+
+def fetch_phone_profile(account) -> dict:
+	"""GET /{phone_id}?fields=display_phone_number,verified_name → stored on the account so the UI can show a real number."""
+	creds = _resolve_credentials(account)
+	token, base_url, version, phone_id = (creds["token"], creds["base_url"], creds["version"], creds["phone_id"]) if isinstance(creds, dict) else creds
+	resp = http_requests.get(f"{base_url}/{version}/{phone_id}", params={"fields": "display_phone_number,verified_name,quality_rating"}, headers={"Authorization": f"Bearer {token}"}, timeout=20)
+	data = resp.json() if resp.content else {}
+	if resp.status_code != 200:
+		raise ExcomProviderError(f"WhatsApp phone profile ({resp.status_code}): {(data.get('error') or {}).get('message') or resp.text[:200]}")
+	frappe.db.set_value("Excom Channel Account", account.name, {"wa_display_phone": data.get("display_phone_number") or "", "wa_verified_name": data.get("verified_name") or ""}, update_modified=False)
+	return data
+
+
+def sync_phone_profiles() -> None:
+	"""Scheduler daily: keep display numbers fresh for every active WhatsApp account."""
+	for name in frappe.get_all("Excom Channel Account", filters={"channel": "whatsapp", "status": "Active"}, pluck="name"):
+		try:
+			fetch_phone_profile(frappe.get_doc("Excom Channel Account", name))
+		except Exception:
+			frappe.log_error(title=f"Excom: phone profile sync failed {name}", message=frappe.get_traceback())
+	frappe.db.commit()

@@ -256,3 +256,34 @@ class TestWebhookHelpers(_Base):
 		if wc:
 			w = get_embed("Excom Channel Account", wc[0])
 			self.assertEqual(w["kind"], "webchat"); self.assertIn("excom-chat.js", w["script"]); self.assertIn(f'data-account="{wc[0]}"', w["script"])
+
+
+class TestLeadVisibility(_Base):
+	"""Source → team managers until assigned; members only their own; Excom Managers everything."""
+
+	def test_visibility_filters(self):
+		from excom.excom.api.crm import lead_visibility, create_lead_manual
+		company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
+		mgr = _mk_user("qa.core.mgr@example.com"); mem = _mk_user("qa.core.mem@example.com")
+		team = frappe.get_doc({"doctype": "Excom Team", "team_name": "QA Vis Team", "members": [{"user": mgr, "role": "Manager"}, {"user": mem, "role": "Member"}]}).insert(ignore_permissions=True)
+		other = frappe.get_doc({"doctype": "Excom Team", "team_name": "QA Vis Other"}).insert(ignore_permissions=True)
+		src_team = frappe.get_doc({"doctype": "Excom Intake Source", "source_name": "QA Vis Source", "source_type": "Website", "enabled": 1, "company": company, "mode": "Push", "sla_first_response": 3600, "allowed_teams": [{"team": team.name}]}).insert(ignore_permissions=True)
+		src_other = frappe.get_doc({"doctype": "Excom Intake Source", "source_name": "QA Vis Foreign", "source_type": "Website", "enabled": 1, "company": company, "mode": "Push", "sla_first_response": 3600, "allowed_teams": [{"team": other.name}]}).insert(ignore_permissions=True)
+		frappe.db.commit()
+		# Excom Manager / System Manager → no filter
+		self.assertIsNone(lead_visibility("Administrator"))
+		# member → only own
+		self.assertEqual(lead_visibility(mem), [["lead_owner", "=", mem]])
+		# team manager → own + no-source + sources for their team (not the foreign one)
+		ors = lead_visibility(mgr)
+		self.assertIn(["lead_owner", "=", mgr], ors); self.assertIn(["intake_source", "is", "not set"], ors)
+		src_list = next(o for o in ors if o[0] == "intake_source" and o[1] == "in")[2]
+		self.assertIn(src_team.name, src_list); self.assertNotIn(src_other.name, src_list)
+		# manual lead creation goes through the gateway and links an identity
+		r = create_lead_manual("QA Vis Person", phone="9900000798", company_name="QA Vis Co", customer_type="Distributor", intake_source=src_team.name)
+		self.assertTrue(r["created"]); self.assertEqual(r["ref"]["doctype"], "Lead")
+		self.assertEqual(frappe.db.get_value("Lead", r["ref"]["name"], ["intake_source", "customer_type", "mobile_no"]), (src_team.name, "Distributor", "+919900000798"))
+		self.assertTrue(frappe.db.exists("Omni Identity Link", {"parent": r["identity"], "linked_doctype": "Lead", "linked_name": r["ref"]["name"]}))
+		r2 = create_lead_manual("QA Vis Person", phone="9900000798")
+		self.assertFalse(r2["created"]); self.assertEqual(r2["ref"]["name"], r["ref"]["name"])
+		for t in (team.name, other.name): frappe.delete_doc("Excom Team", t, force=True, ignore_permissions=True)

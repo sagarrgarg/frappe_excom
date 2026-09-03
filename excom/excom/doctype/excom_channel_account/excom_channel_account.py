@@ -8,6 +8,13 @@ class ExcomChannelAccount(Document):
 		self.ensure_single_default()
 		if self.channel == "email":
 			self._sync_email_authorized()
+		if self.channel == "whatsapp" and self.wa_phone_id and not self.wa_display_phone and self.get_password("wa_token", raise_exception=False):
+			# ask Meta for the real number once; never blocks the save
+			try:
+				from excom.excom.services.whatsapp_service import fetch_phone_profile
+				fetch_phone_profile(self)
+			except Exception:
+				frappe.log_error(title=f"Excom: phone profile fetch failed {self.name}", message=frappe.get_traceback())
 
 	def _has_own_refresh_token(self) -> bool:
 		"""True if this account holds its own (per-mailbox) refresh token."""

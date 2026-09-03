@@ -19,6 +19,8 @@
   "wa_version",
   "column_break_wa",
   "wa_phone_id",
+  "wa_display_phone",
+  "wa_verified_name",
   "wa_app_id",
   "wa_business_id",
   "wa_webhook_verify_token",
@@ -158,6 +160,20 @@
    "label": "Phone Number ID",
    "mandatory_depends_on": "eval:doc.channel=='whatsapp'",
    "unique": 1
+  },
+  {
+   "fieldname": "wa_display_phone",
+   "fieldtype": "Data",
+   "label": "Phone Number",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "Fetched from Meta (display_phone_number)."
+  },
+  {
+   "fieldname": "wa_verified_name",
+   "fieldtype": "Data",
+   "label": "Verified Business Name",
+   "read_only": 1
   },
   {
    "depends_on": "eval:doc.channel=='whatsapp'",

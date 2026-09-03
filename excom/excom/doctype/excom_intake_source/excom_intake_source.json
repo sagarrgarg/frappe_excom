@@ -199,6 +199,18 @@
    "fieldtype": "Table",
    "label": "Field Map",
    "options": "Excom Intake Field Map"
+  },
+  {
+   "fieldname": "visibility_section",
+   "fieldtype": "Section Break",
+   "label": "Team Visibility"
+  },
+  {
+   "fieldname": "allowed_teams",
+   "fieldtype": "Table",
+   "label": "Allowed Teams",
+   "options": "Excom Account Team",
+   "description": "Unassigned leads from this source are visible to managers of these teams (all managers when empty). Once assigned, the owner sees them too. Members see only leads assigned to them."
   }
  ],
  "field_order": [
@@ -233,7 +245,9 @@
   "captcha_secret",
   "min_fill_seconds",
   "sec_map",
-  "field_map"
+  "field_map",
+  "visibility_section",
+  "allowed_teams"
  ],
  "creation": "2026-09-03 12:00:00.000000",
  "modified": "2026-09-03 12:00:00.000000",

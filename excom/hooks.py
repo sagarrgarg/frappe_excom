@@ -204,6 +204,7 @@ scheduler_events = {
 		"excom.excom.utils.trigger_whatsapp_notifications_hourly_long",
 	],
 	"daily": [
+		"excom.excom.services.whatsapp_service.sync_phone_profiles",
 		"excom.excom.utils.trigger_whatsapp_notifications_daily",
 		"excom.excom.utils.trigger_whatsapp_notifications_daily_long",
 		"excom.excom.tasks.cleanup.cleanup_stale_identities",

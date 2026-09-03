@@ -47,7 +47,7 @@ export function ReplyVia({ accounts, value, onChange, window: win, optedOut, onC
   return (
     <div className="flex items-center gap-2 min-w-0">
       <Menu.Root modal={false}>
-        <Menu.Trigger asChild>
+        <Menu.Trigger asChild data-detail={value ? `${ch ? ch.label : "Reply via"} · ${value.name} | ${value.identifier || "no number / address on this account"} | Hold Ctrl and click the number in the menu to copy` : undefined}>
           <button
             type="button"
             className={cn("inline-flex items-center gap-1.5 h-7 pl-1.5 pr-1 rounded-md text-sm font-medium text-ink-1 hover:bg-surface-hover min-w-0 max-w-full", ch && `border border-transparent`)}
@@ -70,7 +70,7 @@ export function ReplyVia({ accounts, value, onChange, window: win, optedOut, onC
                   {g.list.map((a) => (
                     <Menu.Item key={a.id} disabled={!a.hasAccess} onSelect={() => onChange(a)} className={cn(menuItemClass, value?.id === a.id && "bg-surface-active")}>
                       <span className="truncate flex-1">{a.name}</span>
-                      <span className="text-xs text-ink-3 truncate max-w-[45%]">{a.identifier}</span>
+                      <span className="text-xs text-ink-3 truncate max-w-[45%]" title="Click to copy" onClick={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); e.stopPropagation(); navigator.clipboard?.writeText(a.identifier || ""); } }}>{a.identifier}</span>
                       {!a.hasAccess && <Lock className="size-3.5" />}
                     </Menu.Item>
                   ))}

@@ -31,7 +31,7 @@ interface RailItem {
 const RAIL_EXPLAIN: Record<string, string> = {
   "/today": "Your day: overdue follow-ups, SLA breaches, unanswered chats.",
   "/inbox": "Every conversation across WhatsApp, email and web chat, one row per contact.",
-  "/intake": "New leads not yet qualified — respond, classify, convert.",
+  "/intake": "Leads: new and unqualified, newest first — open one to classify, convert or start a conversation. Managers see their teams' sources; members see leads assigned to them.",
   "/pipeline": "Open opportunities by stage, per customer type.",
   "/contacts": "Everyone you have talked to, with their ERP record.",
   "/broadcasts": "Template sends to subscriber lists, with delivery logs.",
@@ -55,7 +55,7 @@ export function Rail() {
   const items: RailItem[] = [
     { to: "/today", label: "Today", icon: <Sun /> },
     { to: "/inbox", label: "Inbox", icon: <Inbox />, badge: totalUnread },
-    { to: "/intake", label: "Intake", icon: <ListTodo /> },
+    { to: "/intake", label: "Leads", icon: <ListTodo /> },
     { to: "/pipeline", label: "Pipeline", icon: <KanbanSquare /> },
     { to: "/contacts", label: "Contacts", icon: <Users /> },
   ];

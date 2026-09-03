@@ -184,8 +184,7 @@ export function NewConversationDialog({
           (channel === "email" && newEmail.trim()))));
 
   const getAccountLabel = (acc: ChannelAccount): string => {
-    const identifier =
-      acc.channel === "email" ? acc.email_address : acc.wa_phone_id;
+    const identifier = (acc as ChannelAccount & { identifier?: string; wa_display_phone?: string }).identifier || acc.email_address || (acc as ChannelAccount & { wa_display_phone?: string }).wa_display_phone || acc.wa_phone_id;
     return identifier
       ? `${acc.account_name} (${identifier})`
       : acc.account_name;

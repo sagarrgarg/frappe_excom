@@ -1359,13 +1359,15 @@ def get_channel_accounts(channel: str = "") -> list:
         fields=[
             "name", "account_name", "channel",
             "is_default_incoming", "is_default_outgoing",
-            "wa_phone_id", "email_address",
+            "wa_phone_id", "wa_display_phone", "email_address",
         ],
         order_by="is_default_outgoing desc, account_name asc",
     )
 
     user_roles = set(frappe.get_roles(frappe.session.user))
     if user_roles & {"System Manager", "Excom Manager"}:
+        for a in accounts:
+            a["identifier"] = a.get("wa_display_phone") or a.get("email_address") or a.get("wa_phone_id") or ""
         return accounts
 
     from excom.excom.doctype.excom_team.excom_team import get_user_teams_with_ancestors

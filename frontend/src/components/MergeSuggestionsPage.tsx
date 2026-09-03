@@ -6,8 +6,8 @@ import { Button, Chip, EmptyState, Badge } from "./primitives";
 import { AdminPage } from "./shell/AdminPage";
 
 interface Suggestion {
-  source_name: string; source_display_name: string; source_phone: string; source_email: string; source_whatsapp: string;
-  target_name: string; target_display_name: string; target_phone: string; target_email: string; target_whatsapp: string;
+  source_name: string; source_display_name: string; source_phone: string; source_email: string; source_whatsapp: string; source_kinds?: { doctype: string; name: string; customer_type?: string }[];
+  target_name: string; target_display_name: string; target_phone: string; target_email: string; target_whatsapp: string; target_kinds?: { doctype: string; name: string; customer_type?: string }[];
   shared_fields: string[];
 }
 
@@ -51,9 +51,9 @@ export function MergeSuggestionsPage({ onNavigateBack, embedded }: { onNavigateB
                 </div>
               </div>
               <div className="grid gap-2 items-center [grid-template-columns:minmax(0,1fr)] tablet:[grid-template-columns:minmax(0,1fr)_auto_minmax(0,1fr)]">
-                <IdentityCard label="Keep" name={s.target_name} displayName={s.target_display_name} phone={s.target_phone} email={s.target_email} whatsapp={s.target_whatsapp} />
+                <IdentityCard label="Keep" name={s.target_name} displayName={s.target_display_name} phone={s.target_phone} email={s.target_email} whatsapp={s.target_whatsapp} kinds={s.target_kinds} />
                 <ArrowRight className="size-4 text-ink-muted mx-auto rotate-90 tablet:rotate-180" />
-                <IdentityCard label="Merge into it" name={s.source_name} displayName={s.source_display_name} phone={s.source_phone} email={s.source_email} whatsapp={s.source_whatsapp} />
+                <IdentityCard label="Merge into it" name={s.source_name} displayName={s.source_display_name} phone={s.source_phone} email={s.source_email} whatsapp={s.source_whatsapp} kinds={s.source_kinds} />
               </div>
             </div>
           ))}
@@ -63,11 +63,12 @@ export function MergeSuggestionsPage({ onNavigateBack, embedded }: { onNavigateB
   );
 }
 
-function IdentityCard({ label, name, displayName, phone, email, whatsapp }: { label: string; name: string; displayName: string; phone: string; email: string; whatsapp: string }) {
+function IdentityCard({ label, name, displayName, phone, email, whatsapp, kinds }: { label: string; name: string; displayName: string; phone: string; email: string; whatsapp: string; kinds?: { doctype: string; name: string; customer_type?: string }[] }) {
   return (
     <div className="rounded-md bg-surface-sunken p-2.5 min-w-0">
       <span className="text-xs text-ink-3">{label}</span>
       <p className="text-sm font-medium text-ink-1 truncate mt-0.5" title={name}>{displayName || name}</p>
+      <div className="chip-row mt-1 h-5">{(kinds || []).length === 0 ? <Chip size="sm" accent="neutral" label="No ERP record" /> : (kinds || []).map((k) => <Chip key={k.doctype + k.name} size="sm" accent={k.doctype === "Customer" ? "green" : k.doctype === "Opportunity" ? "violet" : k.doctype === "Lead" ? "amber" : "neutral"} label={`${k.doctype} · ${k.name}${k.customer_type ? ` · ${k.customer_type}` : ""}`} title={`${k.doctype} ${k.name}`} />)}</div>
       <div className="mt-1.5 space-y-0.5 text-xs text-ink-2 [&_svg]:size-3 [&_svg]:text-ink-muted [&_svg]:shrink-0">
         {phone && <p className="flex items-center gap-1.5 min-w-0"><Phone /><span className="truncate">{phone}</span></p>}
         {email && <p className="flex items-center gap-1.5 min-w-0"><Mail /><span className="truncate">{email}</span></p>}

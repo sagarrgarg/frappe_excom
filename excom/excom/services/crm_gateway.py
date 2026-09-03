@@ -320,7 +320,7 @@ def list_pipeline(customer_type: str, filters: dict | None = None, limit: int = 
 	return rows
 
 
-def list_intake(filters: dict | None = None, limit: int = 500) -> list[dict]:
+def list_intake(filters: dict | None = None, limit: int = 500, or_filters: list | None = None) -> list[dict]:
 	f: dict = {"status": ["not in", ["Converted", "Do Not Contact"]], "intake_stage": ["!=", "Qualified"]}
 	for k in ("company", "territory", "lead_owner", "intake_stage", "customer_type", "intake_source"):
 		if filters and filters.get(k):
@@ -328,6 +328,7 @@ def list_intake(filters: dict | None = None, limit: int = 500) -> list[dict]:
 	rows = frappe.get_list(
 		LEAD,
 		filters=f,
+		or_filters=or_filters or None,
 		fields=[
 			"name", "lead_name", "company_name", "email_id", "mobile_no", "status", "customer_type", "intake_stage", "intake_source",
 			"first_touch_channel", "first_touch_at", "auto_ack_sent_at", "source_reference", "lead_owner", "omni_identity", "creation",
@@ -485,3 +486,7 @@ def company_for_kind(kind: dict) -> str:
 	if dt == CUSTOMER:
 		return frappe.db.get_value(dt, name, "customer_name") or ""
 	return ""
+
+
+def merge_pair_kinds(identities: list[str]) -> dict[str, list[dict]]:
+	return kinds_for_identities(identities)

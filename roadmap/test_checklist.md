@@ -210,3 +210,12 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 |---|---|---|
 | `website_webhook?token=…` JSON → Intake Log Processed + Lead; same `submission_id` → duplicate; form-encoded without id → hash dedupe (second call duplicate); wrong token → 401; disallowed Origin → 403 | S | ✅ HTTP-level run on the dev site (synthetic source, cleaned) |
 | Admin → web chat account shows the script tag with Copy; Website source shows token, endpoints, HTML / JS / curl, Generate / Regenerate token | S | ✅ |
+
+## Identifiers, merge kinds, lead visibility, manual leads (2026-09-04)
+
+| Case | Sev | Result |
+|---|---|---|
+| WhatsApp accounts fetch `display_phone_number` + verified name from Meta (on save when missing, daily); Reply via / New conversation / admin show the number, not the phone-number id; Ctrl+click the number in Reply via copies it | S | ✅ code; live fetch needs a token |
+| Merge suggestions show the ERP records behind both identities (Lead / Opportunity / Customer chips, or "No ERP record") | S | ✅ |
+| Lead visibility: source → team managers until assigned; members only their own; Excom Managers all; no-source leads open to managers | S | ✅ test_visibility_filters |
+| Leads page: **+ New lead** (name, phone, email, company, type, source, notes) → identity + Lead via the gateway → record pane → Start conversation; typing the same phone again opens the existing lead | S | ✅ |

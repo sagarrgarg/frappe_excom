@@ -63,7 +63,7 @@ export function MoreRoute() {
   const { mergeCount } = useInboxMeta();
   const [fb, setFb] = useState(false);
   const items = [
-    { label: "Intake queue", icon: <ListChecks />, to: "/intake" },
+    { label: "Leads", icon: <ListChecks />, to: "/intake" },
     { label: "Contacts", icon: <Users />, to: "/contacts" },
     { label: "Broadcasts", icon: <Radio />, to: "/broadcasts" },
     { label: "Analytics", icon: <BarChart3 />, to: "/analytics" },

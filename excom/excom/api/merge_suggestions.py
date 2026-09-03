@@ -53,6 +53,12 @@ def get_merge_suggestions(limit: int = 50, offset: int = 0) -> list:
             shared.append("WhatsApp")
         row["shared_fields"] = shared
 
+    from excom.excom.services.crm_gateway import merge_pair_kinds
+    ids = list({x for r in rows for x in (r.get("source_name"), r.get("target_name")) if x})
+    kinds = merge_pair_kinds(ids) if ids else {}
+    for r in rows:
+        r["source_kinds"] = kinds.get(r.get("source_name"), [])
+        r["target_kinds"] = kinds.get(r.get("target_name"), [])
     return rows
 
 

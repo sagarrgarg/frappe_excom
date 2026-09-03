@@ -3,6 +3,8 @@ import { useFrappeGetCall } from "frappe-react-sdk";
 import { useNavigate } from "react-router-dom";
 import { Sun, Inbox, KanbanSquare, Loader2, MessageSquare, ExternalLink, Filter, Clock, AlertTriangle, CheckSquare } from "lucide-react";
 import { PageFrame } from "../components/shell/PageFrame";
+import { NewLeadDialog } from "../components/crm/NewLeadDialog";
+import { Plus } from "lucide-react";
 import { useInbox } from "../components/shell/InboxProvider";
 import { Row, Avatar, Chip, Badge, EmptyState, Button, Select, SegmentedControl } from "../components/primitives";
 import { GateChips } from "../components/crm/GateChips";
@@ -88,8 +90,9 @@ export function IntakeRoute() {
   const open = useOpenThread();
   const rows = data?.message ?? [];
   const toggle = (n: string) => setSelected((s) => { const x = new Set(s); x.has(n) ? x.delete(n) : x.add(n); return x; });
+  const [newLead, setNewLead] = useState(false);
   return (
-    <PageFrame title="Intake" icon={<Inbox />} className="!p-0" actions={<Badge count={rows.length} accent="neutral" />}>
+    <PageFrame title="Leads" icon={<Inbox />} className="!p-0" actions={<><Badge count={rows.length} accent="neutral" /><Button size="sm" variant="primary" onClick={() => setNewLead(true)}><Plus />New lead</Button><NewLeadDialog open={newLead} onClose={() => setNewLead(false)} onCreated={() => mutate()} /></>}>
       <div className="-m-3">
         <div className="sticky top-0 z-10 bg-surface-sunken border-b border-border px-2 py-1.5 flex items-center gap-2 min-w-0">
           <div className="chip-row flex-1 h-7">
