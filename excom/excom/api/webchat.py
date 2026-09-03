@@ -8,6 +8,7 @@ allowing unauthenticated website visitors to chat with agents.
 import secrets
 
 import frappe
+from frappe.rate_limiter import rate_limit
 from frappe import _
 from frappe.utils import now_datetime
 
@@ -34,7 +35,8 @@ def _validate_session(session_token: str):
 
 
 @frappe.whitelist(allow_guest=True)
-def get_config(account_id: str):
+@rate_limit(limit=120, seconds=60)
+def get_config(account_id: str = ""):
     """
     Return the web chat widget configuration for a channel account.
     Called by the widget on initialization to fetch branding/settings.
@@ -67,6 +69,7 @@ def get_config(account_id: str):
 
 
 @frappe.whitelist(allow_guest=True)
+@rate_limit(limit=120, seconds=60)
 def create_session(
     account_id: str,
     visitor_name: str = "Visitor",
@@ -141,6 +144,7 @@ def create_session(
 
 
 @frappe.whitelist(allow_guest=True)
+@rate_limit(limit=120, seconds=60)
 def send_visitor_message(
     session_token: str,
     content: str,
@@ -206,6 +210,7 @@ def send_visitor_message(
 
 
 @frappe.whitelist(allow_guest=True)
+@rate_limit(limit=120, seconds=60)
 def get_visitor_messages(session_token: str, after: str = ""):
     """
     Fetch conversation messages for a visitor session.
@@ -242,6 +247,7 @@ def get_visitor_messages(session_token: str, after: str = ""):
 
 
 @frappe.whitelist(allow_guest=True)
+@rate_limit(limit=120, seconds=60)
 def end_session(session_token: str):
     """Mark a visitor session as ended."""
     session = _validate_session(session_token)

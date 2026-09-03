@@ -6,11 +6,13 @@ CAN-SPAM compliant: one-click, immediate effect, no login required.
 """
 
 import frappe
+from frappe.rate_limiter import rate_limit
 from frappe import _
 from frappe.utils import now_datetime
 
 
 @frappe.whitelist(allow_guest=True)
+@rate_limit(limit=30, seconds=60)
 def unsubscribe():
     """
     Process an unsubscribe request from an email footer link.

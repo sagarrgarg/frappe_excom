@@ -5,6 +5,7 @@ and create_oauth_client (manager) for the Excom mobile app.
 """
 
 import frappe
+from frappe.rate_limiter import rate_limit
 from frappe.utils.change_log import get_versions
 from frappe.utils.data import get_host_name_from_request
 
@@ -65,6 +66,7 @@ def _mobile_public_base_url() -> str:
 
 
 @frappe.whitelist(allow_guest=True)
+@rate_limit(limit=60, seconds=60)
 def get_client_id() -> dict:
 	"""Return OAuth client_id, site metadata, and branding for the mobile app.
 
