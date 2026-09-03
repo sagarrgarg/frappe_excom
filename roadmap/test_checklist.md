@@ -219,3 +219,12 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 | Merge suggestions show the ERP records behind both identities (Lead / Opportunity / Customer chips, or "No ERP record") | S | ✅ |
 | Lead visibility: source → team managers until assigned; members only their own; Excom Managers all; no-source leads open to managers | S | ✅ test_visibility_filters |
 | Leads page: **+ New lead** (name, phone, email, company, type, source, notes) → identity + Lead via the gateway → record pane → Start conversation; typing the same phone again opens the existing lead | S | ✅ |
+
+## Notes = Comments, email editor, read-only masters, reopen (2026-09-04)
+
+| Case | Sev | Result |
+|---|---|---|
+| Internal note in the chat and a note in the Notes tab are the same Frappe Comment on the party's open record (else the thread); both surfaces read the same list; old `is_internal` messages converted by patch `internal_notes_to_comments` | S | ✅ test_chat_note_and_tab_note_are_the_same_comment |
+| A customer message on a Closed chat reopens it, clears the closure fields and leaves "Reopened by a new customer message" on the thread and record; the CRM status is not touched | S | ✅ test_customer_message_reopens_closed_chat |
+| Customer / Supplier / Employee are read-only in Details unless Excom Manager or System Manager; server refuses edits too | S | ✅ test_master_records_read_only_for_agents |
+| Email: rich-text editor with HTML source toggle; To / Cc / Bcc chips with contact + colleague suggestions; "schedule for later" parks the mail as a Scheduled Excom Message that the every-minute scheduler sends as the author; cancel from the bubble | S | ✅ test_email_schedule (Gmail mocked) |

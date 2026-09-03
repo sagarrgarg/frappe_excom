@@ -287,3 +287,57 @@ class TestLeadVisibility(_Base):
 		r2 = create_lead_manual("QA Vis Person", phone="9900000798")
 		self.assertFalse(r2["created"]); self.assertEqual(r2["ref"]["name"], r["ref"]["name"])
 		for t in (team.name, other.name): frappe.delete_doc("Excom Team", t, force=True, ignore_permissions=True)
+
+
+class TestNotesUnified(_Base):
+	def test_chat_note_and_tab_note_are_the_same_comment(self):
+		from excom.excom.api.chat import send_internal_note, get_messages
+		from excom.excom.api.record import get_identity_notes, add_identity_note
+		oi = _mk_identity("QA Note Person", "+919900000799")
+		lead = frappe.get_doc({"doctype": "Lead", "first_name": "QA Note Person", "mobile_no": "+919900000799", "status": "Lead"}).insert(ignore_permissions=True)
+		doc = frappe.get_doc("Omni Identity", oi.name)
+		if not any(l.linked_doctype == "Lead" and l.linked_name == lead.name for l in doc.linked_entities):
+			doc.append("linked_entities", {"linked_doctype": "Lead", "linked_name": lead.name}); doc.save(ignore_permissions=True)
+		t = _mk_thread(oi.name, key="qa-note-1")
+		r = send_internal_note(t.name, "call back tomorrow")
+		self.assertEqual(r["note"]["on_doctype"], "Lead"); self.assertEqual(r["note"]["on_name"], lead.name)
+		self.assertTrue(frappe.db.exists("Comment", {"reference_doctype": "Lead", "reference_name": lead.name, "comment_type": "Comment", "content": ["like", "%call back tomorrow%"]}))
+		self.assertFalse(frappe.db.exists("Excom Message", {"thread": t.name, "is_internal": 1}))
+		add_identity_note(oi.name, "prefers email")
+		notes = get_identity_notes(oi.name)
+		self.assertEqual([frappe.utils.strip_html(n["content"]) for n in notes][:2], ["prefers email", "call back tomorrow"])
+		feed = get_messages(t.name)["messages"]
+		internal = [m for m in feed if m.get("is_internal")]
+		self.assertEqual(len(internal), 2); self.assertEqual(internal[0]["note_on"]["doctype"], "Lead")
+
+	def test_customer_message_reopens_closed_chat(self):
+		from excom.excom.api.record import close_conversation
+		from excom.excom.services.thread_service import ingest_inbound_message
+		from excom.excom.services.thread_service import upsert_thread
+		oi = _mk_identity("QA Reopen Person", "+919900000800")
+		ref = _ref_thread()
+		t = frappe.get_doc("Excom Thread", upsert_thread(oi.name, ref.channel, ref.account))  # the real key, so the inbound lands on it
+		frappe.db.set_value("Excom Thread", t.name, "last_message_at", now_datetime())
+		close_conversation(oi.name, "Resolved", "done", "", 0)
+		self.assertEqual(frappe.db.get_value("Excom Thread", t.name, ["status", "closure_outcome"]), ("Closed", "Resolved"))
+		ingest_inbound_message(phone="+919900000800", channel=t.channel, account=t.account, provider_message_id="qa-reopen-msg-1", content_text="hello again", display_name="QA Reopen Person")
+		self.assertEqual(frappe.db.get_value("Excom Thread", t.name, ["status", "closure_outcome"]), ("Open", None))
+		self.assertTrue(frappe.db.exists("Comment", {"reference_doctype": "Excom Thread", "reference_name": t.name, "content": ["like", "%Reopened by a new customer message%"]}))
+
+	def test_master_records_read_only_for_agents(self):
+		from excom.excom.api.crm import get_field_schema, update_record
+		u = _mk_user("qa.core.agent2@example.com")
+		cust = frappe.get_all("Customer", pluck="name", limit=1)
+		if not cust:
+			return
+		frappe.set_user(u)
+		try:
+			frappe.db.sql("INSERT IGNORE INTO `tabHas Role` (name, parent, parenttype, parentfield, role) VALUES (%s, %s, 'User', 'roles', 'Sales User')", (frappe.generate_hash(length=10), u))
+			frappe.clear_cache(user=u)
+			sch = get_field_schema("Customer", "")
+			self.assertFalse(sch["can_write"])
+			with self.assertRaises(frappe.PermissionError):
+				update_record("Customer", cust[0], {"customer_name": "x"})
+		finally:
+			frappe.set_user("Administrator")
+		self.assertTrue(get_field_schema("Customer", "")["can_write"])

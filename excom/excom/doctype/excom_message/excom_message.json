@@ -15,6 +15,7 @@
   "account_doctype",
   "account",
   "delivery_status",
+  "scheduled_at",
   "content_section",
   "content_text",
   "media_file",
@@ -32,12 +33,12 @@
   "column_break_rel",
   "reference_doctype",
   "reference_name",
-    "is_internal",
-    "pinning_section",
-    "is_pinned",
-    "pinned_by",
-    "reactions_section",
-    "reactions"
+  "is_internal",
+  "pinning_section",
+  "is_pinned",
+  "pinned_by",
+  "reactions_section",
+  "reactions"
  ],
  "fields": [
   {
@@ -107,7 +108,13 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Delivery Status",
-   "options": "Queued\nSent\nDelivered\nRead\nFailed"
+   "options": "Queued\nScheduled\nSent\nDelivered\nRead\nFailed"
+  },
+  {
+   "fieldname": "scheduled_at",
+   "fieldtype": "Datetime",
+   "label": "Scheduled At",
+   "description": "Outbound email waits until this time (scheduler sends it)."
   },
   {
    "fieldname": "content_section",

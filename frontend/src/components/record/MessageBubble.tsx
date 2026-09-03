@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from "react";
-import { Check, CheckCheck, AlertCircle, Loader2, Lock, Pin, Paperclip, FileText, RotateCcw, Reply, SmilePlus, Copy, Bot } from "lucide-react";
+import { Check, CheckCheck, AlertCircle, Loader2, Lock, Pin, Paperclip, FileText, RotateCcw, Reply, SmilePlus, Copy, Bot, Clock } from "lucide-react";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { toast } from "sonner";
 import { cn } from "../ui/utils";
@@ -15,6 +15,7 @@ const RETRY_WINDOW_MS = 6 * 60 * 60 * 1000;
 export function DeliveryIcon({ status }: { status?: string }) {
   switch (status) {
     case "queued": return <Loader2 className="size-3.5 text-ink-muted animate-spin" />;
+    case "scheduled": return <Clock className="size-3.5 text-crayon-amber-text" />;
     case "sent": return <Check className="size-3.5 text-ink-muted" />;
     case "delivered": return <CheckCheck className="size-3.5 text-ink-muted" />;
     case "read": return <CheckCheck className="size-3.5 text-crayon-blue-base" />;
@@ -56,6 +57,7 @@ export const MessageBubble = memo(function MessageBubble({ message: m, contactNa
   const failed = m.status === "failed";
   const ch = channelMeta(m.channel);
   const { call: reactCall } = useFrappePostCall("excom.excom.api.chat.toggle_reaction");
+  const { call: cancelScheduled } = useFrappePostCall("excom.excom.api.email.cancel_scheduled_email");
   const { call: pinCall } = useFrappePostCall("excom.excom.api.chat.pin_message");
   const { call: unpinCall } = useFrappePostCall("excom.excom.api.chat.unpin_message");
 
@@ -72,7 +74,7 @@ export const MessageBubble = memo(function MessageBubble({ message: m, contactNa
         <div className="w-full max-w-[85%] rounded-lg bg-crayon-amber-tint border-l-[3px] border-crayon-amber-base px-3 py-2">
           <div className="flex items-center gap-1.5 text-xs text-crayon-amber-text min-w-0">
             <Lock className="size-3.5 shrink-0" />
-            <span className="font-medium">Internal note</span>
+            <span className="font-medium">Internal note</span>{m.noteOn && m.noteOn.doctype !== "Excom Thread" && <span className="text-ink-3 truncate">· on {m.noteOn.doctype} {m.noteOn.name}</span>}
             {m.sentBy && <span className="truncate">· {m.sentBy.name}</span>}
             <span className="ml-auto tabular-nums shrink-0">{formatServerTime(m.timestamp)}</span>
           </div>
@@ -160,7 +162,13 @@ export const MessageBubble = memo(function MessageBubble({ message: m, contactNa
           {isUser && (m.status === "sent" || m.status === "queued") && <DeliveryTimer sentAt={m.timestamp} />}
         </div>
 
-        {failed && isUser && (
+        {m.status === "scheduled" && isUser && (
+        <div className="flex items-center gap-2 mt-0.5 min-w-0 max-w-full">
+          <span className="text-xs text-crayon-amber-text truncate">Scheduled for {m.scheduledAt ? formatServerTime(m.scheduledAt) : "later"}</span>
+          <button type="button" onClick={async () => { try { await cancelScheduled({ message_name: m.id }); toast.success("Scheduled email cancelled"); onRetry(""); } catch { toast.error("Could not cancel"); } }} className="text-xs font-medium text-ink-2 hover:text-ink-1 shrink-0">Cancel</button>
+        </div>
+      )}
+      {failed && isUser && (
           <div className="flex items-center gap-2 mt-0.5 min-w-0 max-w-full">
             <span className="text-xs text-crayon-rose-text truncate" title={m.failureReason}>{m.failureReason || "Delivery failed"}</span>
             {Date.now() - m.timestamp.getTime() <= RETRY_WINDOW_MS ? (

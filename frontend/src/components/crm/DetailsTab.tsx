@@ -69,7 +69,7 @@ export function DetailsTab({ refr, onChanged }: { refr: CrmRef | null; onChanged
         <span className="text-xs text-ink-3 shrink-0">{refr.doctype}</span>
         <a href={deskUrl(refr.doctype, refr.name)} target="_blank" rel="noreferrer" className="text-sm text-ink-1 truncate hover:underline">{refr.name}</a>
         {record._gate_status && <div className="chip-row flex-1 h-6"><StagePicker compact gate={record._gate_status} onSelect={(s, n) => actions.setStage(refr.name, s, n)} onOverride={(g, r) => actions.overrideGate(refr.name, g, r)} /><GateChips flags={record._gate_status.flags} /></div>}
-        {schema?.can_write && <Button size="sm" variant="primary" disabled={!dirty} onClick={async () => { await actions.updateRecord(refr, draft); setDraft({}); }}><Save />Save</Button>}
+        {schema?.can_write ? <Button size="sm" variant="primary" disabled={!dirty} onClick={async () => { await actions.updateRecord(refr, draft); setDraft({}); }}><Save />Save</Button> : <span className="text-xs text-ink-3 shrink-0" title="Customer, Supplier and Employee records can be edited here only by Excom Managers">Read-only here</span>}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
         {sections.map((s, i) => (

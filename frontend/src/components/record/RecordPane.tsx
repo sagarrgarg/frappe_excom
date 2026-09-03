@@ -213,7 +213,7 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
         </>
       )}
       {effectiveTab === "tasks" && <div className="flex-1 min-h-0"><TasksTab record={record} /></div>}
-      {effectiveTab === "notes" && <div className="flex-1 min-h-0"><NotesTab record={record} /></div>}
+      {effectiveTab === "notes" && <div className="flex-1 min-h-0"><NotesTab record={record} identityId={contact.id} /></div>}
       {effectiveTab === "activity" && <div className="flex-1 min-h-0 overflow-y-auto"><ActivityTab record={record} threadIds={threadIds} messages={messages} /></div>}
       {effectiveTab === "details" && <div className="flex-1 min-h-0"><DetailsTab refr={crmPrimary ? { doctype: crmPrimary.doctype, name: crmPrimary.name } : null} onChanged={refreshCrm} /></div>}
       {effectiveTab === "ai" && <div className="flex-1 min-h-0"><AIAssistantDrawer isOpen onClose={() => setTab("chat")} contactName={contact.contactName} threadId={via?.id || contact.activeAccountId} embedded onUseSuggestion={(t) => { setTab("chat"); setPendingText(t); }} /></div>}

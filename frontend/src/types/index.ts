@@ -80,11 +80,14 @@ export interface Message {
   content: string;
   timestamp: Date;
   sender: "user" | "contact" | "ai";
-  status?: "sent" | "delivered" | "read" | "failed" | "queued";
+  status?: "sent" | "delivered" | "read" | "failed" | "queued" | "scheduled";
+  scheduledAt?: Date;
   type?: "text" | "image" | "video" | "audio" | "document" | "sticker" | "location" | "template" | "email" | "interactive" | "flow" | "reaction" | "contact" | "button";
   mediaUrl?: string;
   channel?: string;
   isInternal?: boolean;
+  /** Internal notes are Comments; this says which document holds it. */
+  noteOn?: { doctype: string; name: string };
   isEmail?: boolean;
   contentJson?: string;
   rawDirection?: "Inbound" | "Outbound";

@@ -373,7 +373,7 @@ def get_messages(thread_id: str, limit: int = 50, before: str = ""):
                m.media_file, m.delivery_status, m.creation,
                m.provider_timestamp,
                m.provider_message_id, m.reply_to,
-               m.created_by_user, m.is_internal,
+               m.created_by_user, m.is_internal, m.scheduled_at,
                m.is_pinned, m.pinned_by, m.reactions,
                m.failure_reason,
                CASE WHEN m.message_type = 'Email' THEN m.content_json ELSE NULL END AS content_json,
@@ -405,6 +405,14 @@ def get_messages(thread_id: str, limit: int = 50, before: str = ""):
 
     # Opening a chat never claims it (claim happens on the first outbound message — see _claim_on_talk).
     auto_claimed_by = None
+
+    # Internal notes are Comments (one model with the Notes tab); show them inline, newest page only.
+    if not before:
+        from excom.excom.services.notes import feed_notes
+        oldest = min((str(m.get("provider_timestamp") or m.get("creation")) for m in messages), default=None) if has_more else None
+        notes = feed_notes(thread_id, since=oldest)
+        if notes:
+            messages = sorted(messages + notes, key=lambda m: str(m.get("provider_timestamp") or m.get("creation")))
 
     return {"messages": messages, "auto_claimed_by": auto_claimed_by, "has_more": has_more}
 
@@ -987,55 +995,16 @@ def get_canned_responses(search: str = "", channel: str = ""):
 @frappe.whitelist()
 @user_rate_limit(limit=30, seconds=60)
 def send_internal_note(thread_id: str, content: str):
-    """
-    Creates an internal note on a thread visible only to agents.
-    Does NOT send anything to the customer via any channel.
-
-    Args:
-        thread_id: Excom Thread name
-        content: Note text
-    """
+    """Internal note in the chat = the same Comment the Notes tab writes (on the party's open record, else
+    the thread). Nothing is sent to the customer."""
     _check_thread_access(thread_id)
     if not content or not content.strip():
         frappe.throw(_("Note content cannot be empty"))
-
     content = _sanitize_message(content, thread_id)
-
-    thread = frappe.get_doc("Excom Thread", thread_id)
-
-    msg = frappe.get_doc({
-        "doctype": "Excom Message",
-        "thread": thread_id,
-        "omni_identity": thread.omni_identity,
-        "direction": "Outbound",
-        "message_type": "Text",
-        "channel": thread.channel,
-        "account_doctype": thread.account_doctype,
-        "account": thread.account,
-        "delivery_status": "Read",
-        "content_text": content.strip(),
-        "is_internal": 1,
-        "created_by_user": frappe.session.user,
-    })
-    msg.insert(ignore_permissions=True)
-
-    frappe.publish_realtime(
-        "excom:message_received",
-        {
-            "thread": thread_id,
-            "message": msg.name,
-            "omni_identity": thread.omni_identity,
-            "direction": "Outbound",
-            "preview": content.strip()[:100],
-            "is_internal": True,
-        },
-        after_commit=True,
-    )
-
-    frappe.db.commit()
-
-    return {"success": True, "message_name": msg.name}
-
+    from excom.excom.services.notes import add_note
+    oi = frappe.db.get_value("Excom Thread", thread_id, "omni_identity")
+    row = add_note(oi, content, thread_id)
+    return {"success": True, "message_name": f"cmt:{row['name']}", "note": row}
 
 @frappe.whitelist()
 def pin_message(message_name: str):

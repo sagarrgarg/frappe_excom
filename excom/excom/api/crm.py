@@ -15,8 +15,16 @@ from excom.excom.services import crm_gateway as gw
 from excom.excom.utils.ratelimit import user_rate_limit
 
 
+# Master records agents may look at but not edit from the chat; managers (Excom Manager / System Manager) may.
+MANAGER_ONLY_EDIT = {gw.CUSTOMER, "Supplier", "Employee"}
+
+
+def _is_manager() -> bool:
+	return bool({"System Manager", "Excom Manager"} & set(frappe.get_roles()))
+
+
 def _ref(doctype: str, name: str):
-	if doctype not in gw.crm_doctypes():
+	if doctype not in gw.crm_doctypes() and doctype not in MANAGER_ONLY_EDIT:
 		frappe.throw(_("Not a CRM record type"))
 	if not frappe.db.exists(doctype, name):
 		frappe.throw(_("{0} {1} not found").format(doctype, name), frappe.DoesNotExistError)
@@ -67,12 +75,12 @@ def _field_dict(df, can_write: bool, first: list[str]) -> dict:
 @frappe.whitelist()
 def get_field_schema(doctype: str, customer_type: str = "") -> dict:
 	_check_excom_access()
-	if doctype not in gw.crm_doctypes():
+	if doctype not in gw.crm_doctypes() and doctype not in MANAGER_ONLY_EDIT:
 		frappe.throw(_("Not a CRM record type"))
 	if not frappe.has_permission(doctype, "read"):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 	meta = frappe.get_meta(doctype)
-	can_write = frappe.has_permission(doctype, "write")
+	can_write = frappe.has_permission(doctype, "write") and (doctype not in MANAGER_ONLY_EDIT or _is_manager())
 	first = TYPE_FIELDS.get(customer_type or "", [])
 	layout = COMPACT_LAYOUT.get(doctype)
 	if layout:
@@ -133,6 +141,8 @@ def get_record(doctype: str, name: str) -> dict:
 def update_record(doctype: str, name: str, values: str | dict) -> dict:
 	"""Field edits from the Details tab. Attribution/provenance/stage fields are refused here."""
 	_check_excom_access()
+	if doctype in MANAGER_ONLY_EDIT and not _is_manager():
+		frappe.throw(_("{0} records are read-only here — ask an Excom Manager").format(doctype), frappe.PermissionError)
 	r = _ref(doctype, name)
 	vals = json.loads(values) if isinstance(values, str) else (values or {})
 	blocked = {"source", "campaign_name", "campaign", "utm_source", "utm_campaign", "utm_medium", "first_touch_at", "first_touch_channel", "first_touch_by", "source_reference", "pipeline_stage", "stage_entered_at", "gate_flags", "omni_identity", "status"}
@@ -352,6 +362,11 @@ def get_records_for_identity(omni_identity: str) -> list:
 			elif gw.is_lead(r):
 				row.update(frappe.db.get_value(r.doctype, r.name, ["customer_type", "intake_stage", "status"], as_dict=True) or {})
 			out.append(row)
+	# master records agents may look at (read-only unless manager): Supplier, Employee
+	for ln in frappe.get_all("Omni Identity Link", filters={"parent": omni_identity, "parenttype": "Omni Identity", "linked_doctype": ["in", ["Supplier", "Employee"]]}, fields=["linked_doctype", "linked_name"]):
+		if frappe.db.exists(ln.linked_doctype, ln.linked_name) and frappe.has_permission(ln.linked_doctype, "read", doc=ln.linked_name):
+			title = frappe.db.get_value(ln.linked_doctype, ln.linked_name, "supplier_name" if ln.linked_doctype == "Supplier" else "employee_name") or ln.linked_name
+			out.append({"doctype": ln.linked_doctype, "name": ln.linked_name, "title": title, "read_only": not _is_manager()})
 	return out
 
 

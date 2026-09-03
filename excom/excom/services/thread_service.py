@@ -107,6 +107,7 @@ def ingest_inbound_message(
     now = frappe.utils.now_datetime()
     preview = _make_preview(content_text)
 
+    was_closed = frappe.db.get_value("Excom Thread", thread_name, ["status", "closure_outcome"], as_dict=True)
     msg = frappe.get_doc({
         "doctype": "Excom Message",
         "thread": thread_name,
@@ -140,6 +141,8 @@ def ingest_inbound_message(
         """,
         {"now": now, "preview": preview, "thread": thread_name},
     )
+    if was_closed and was_closed.status == "Closed":
+        _reopened_by_customer(thread_name, identity_name, was_closed.closure_outcome)
 
     display_name = frappe.db.get_value("Excom Thread", thread_name, "display_name") or ""
 
@@ -394,3 +397,20 @@ def _make_preview(text: str) -> str:
         return ""
     clean = re.sub(r"<[^>]+>", "", text)
     return clean[:120]
+
+
+
+def _reopened_by_customer(thread_name: str, identity_name: str, outcome: str | None) -> None:
+    """Closing a chat is not a wall: the next customer message reopens it. Clear the closure so the row
+    stops saying 'Closed · …', and leave a trace on the record. The CRM record's status is NOT changed —
+    a Lead marked Do Not Contact stays that way until an agent reopens it deliberately."""
+    frappe.db.set_value("Excom Thread", thread_name, {"closure_outcome": None, "closure_reason": None, "closed_by": None, "closed_at": None}, update_modified=False)
+    try:
+        from excom.excom.services import crm_gateway as gw
+        text = "<b>Reopened by a new customer message</b>" + (f" (was closed as {frappe.utils.escape_html(outcome)})" if outcome else "")
+        frappe.get_doc("Excom Thread", thread_name).add_comment("Comment", text)
+        recs = gw.find_open_records_for_identity(identity_name) if identity_name else []
+        if recs:
+            gw.add_timeline_comment(recs[0], text)
+    except Exception:
+        frappe.log_error(title="Excom: reopen trace failed", message=frappe.get_traceback())

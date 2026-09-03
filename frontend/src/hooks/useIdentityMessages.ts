@@ -15,7 +15,7 @@ export interface FeedMessage extends Message {
 
 /** Same mapping as useMessages, kept local so the legacy hook stays untouched. */
 function mapMessage(msg: ExcomMessage, threadId: string, account: { id: string; name: string; identifier: string; channel: string }): FeedMessage {
-  const statusMap: Record<string, Message["status"]> = { Sent: "sent", Delivered: "delivered", Read: "read", Failed: "failed", Queued: "queued" };
+  const statusMap: Record<string, Message["status"]> = { Sent: "sent", Delivered: "delivered", Read: "read", Failed: "failed", Queued: "queued", Scheduled: "scheduled" };
   const typeMap: Record<string, Message["type"]> = {
     Text: "text", Image: "image", Video: "video", Audio: "audio", Document: "document", Sticker: "sticker", Location: "location",
     Template: "template", Email: "email", Interactive: "interactive", Flow: "flow", Reaction: "reaction", Contact: "contact", Button: "button",
@@ -32,6 +32,8 @@ function mapMessage(msg: ExcomMessage, threadId: string, account: { id: string; 
     mediaUrl: msg.media_file || undefined,
     channel: account.channel,
     isInternal: Boolean(msg.is_internal),
+    noteOn: (msg as ExcomMessage & { note_on?: { doctype: string; name: string } }).note_on,
+    scheduledAt: (msg as ExcomMessage & { scheduled_at?: string }).scheduled_at ? parseFrappeDateTime((msg as ExcomMessage & { scheduled_at?: string }).scheduled_at as string) : undefined,
     isEmail: msg.message_type === "Email",
     contentJson: msg.content_json || undefined,
     rawDirection: msg.direction,

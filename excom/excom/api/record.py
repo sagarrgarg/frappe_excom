@@ -268,3 +268,18 @@ def get_identity_contact(omni_identity: str) -> dict:
 	kinds = kinds_for_identities([omni_identity]).get(omni_identity, [])
 	company = next((c for c in (company_for_kind(k) for k in kinds) if c), "")
 	return {"name": oi.name, "display_name": oi.display_name, "primary_phone": oi.primary_phone, "primary_email": oi.primary_email, "primary_whatsapp": oi.primary_whatsapp, "avatar_url": None, "creation": str(oi.creation), "kinds": kinds, "company": company, "threads": frappe.db.count("Excom Thread", {"omni_identity": omni_identity})}
+
+
+@frappe.whitelist()
+def get_identity_notes(omni_identity: str) -> list:
+	"""Notes tab: every note about this person, wherever it sits (linked records, threads, identity)."""
+	_check_excom_access()
+	from excom.excom.services.notes import list_notes
+	return list_notes(omni_identity)
+
+
+@frappe.whitelist()
+def add_identity_note(omni_identity: str, content: str, thread: str = "") -> dict:
+	_check_excom_access()
+	from excom.excom.services.notes import add_note
+	return add_note(omni_identity, content, thread or None)

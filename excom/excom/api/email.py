@@ -187,6 +187,7 @@ def send_email(
     cc: str = "",
     bcc: str = "",
     in_reply_to_gmail_id: str = "",
+    send_at: str = "",
 ):
     """
     Send an email reply via Gmail API on an existing email thread.
@@ -205,6 +206,11 @@ def send_email(
     """
     from excom.excom.api.chat import _claim_on_talk
     _claim_on_talk(thread_id)
+    if send_at:
+        from frappe.utils import get_datetime, now_datetime
+        when = get_datetime(send_at)
+        if when > now_datetime():
+            return schedule_email(thread_id, to, subject, body_html, cc, bcc, in_reply_to_gmail_id, when)
     _check_excom_access()
     try:
         msg_name = send_email_reply(
@@ -321,3 +327,76 @@ def save_my_signature(signature_html: str, position: str = "Below Reply") -> dic
     frappe.db.commit()
     return {"success": True}
 
+
+
+# ─── scheduled send ───────────────────────────────────────────────────────────
+
+def schedule_email(thread_id, to, subject, body_html, cc, bcc, in_reply_to_gmail_id, when) -> dict:
+    """Park the email as an Excom Message with delivery_status Scheduled; the scheduler sends it at `when`."""
+    import json
+    thread = frappe.get_doc("Excom Thread", thread_id)
+    msg = frappe.get_doc({
+        "doctype": "Excom Message", "thread": thread_id, "omni_identity": thread.omni_identity, "direction": "Outbound",
+        "message_type": "Email", "channel": thread.channel, "account_doctype": thread.account_doctype, "account": thread.account,
+        "delivery_status": "Scheduled", "scheduled_at": when, "content_text": frappe.utils.strip_html(body_html)[:2000],
+        "content_json": json.dumps({"to": to, "cc": cc, "bcc": bcc, "subject": subject, "body_html": body_html, "in_reply_to_gmail_id": in_reply_to_gmail_id}),
+        "created_by_user": frappe.session.user,
+    })
+    msg.insert(ignore_permissions=True)
+    frappe.db.commit()
+    frappe.publish_realtime("excom:thread_updated", {"thread": thread_id, "event": "scheduled"}, after_commit=True)
+    return {"success": True, "scheduled": True, "message_name": msg.name, "send_at": str(when)}
+
+
+@frappe.whitelist()
+def cancel_scheduled_email(message_name: str) -> dict:
+    from excom.excom.api.chat import _check_thread_access
+    thread = frappe.db.get_value("Excom Message", message_name, "thread")
+    _check_thread_access(thread)
+    if frappe.db.get_value("Excom Message", message_name, "delivery_status") != "Scheduled":
+        frappe.throw(_("Only scheduled emails can be cancelled"))
+    frappe.delete_doc("Excom Message", message_name, force=True, ignore_permissions=True)
+    frappe.db.commit()
+    return {"success": True}
+
+
+def send_scheduled_emails() -> None:
+    """Scheduler (every minute): send every Scheduled email whose time has come, as the user who scheduled it."""
+    import json
+    from frappe.utils import now_datetime
+    due = frappe.get_all("Excom Message", filters={"delivery_status": "Scheduled", "scheduled_at": ["<=", now_datetime()]}, fields=["name", "thread", "content_json", "created_by_user"])
+    for m in due:
+        try:
+            p = json.loads(m.content_json or "{}")
+            frappe.set_user(m.created_by_user or "Administrator")
+            send_email_reply(thread_name=m.thread, to=p.get("to", ""), subject=p.get("subject", ""), body_html=p.get("body_html", ""), cc=p.get("cc", ""), bcc=p.get("bcc", ""), in_reply_to_gmail_id=p.get("in_reply_to_gmail_id", ""))
+            frappe.delete_doc("Excom Message", m.name, force=True, ignore_permissions=True)
+            frappe.db.commit()
+        except Exception:
+            frappe.db.rollback()
+            frappe.db.set_value("Excom Message", m.name, {"delivery_status": "Failed", "failure_reason": frappe.get_traceback()[-500:]})
+            frappe.db.commit()
+            frappe.log_error(title=f"Excom scheduled email failed: {m.name}", message=frappe.get_traceback())
+        finally:
+            frappe.set_user("Administrator")
+
+
+@frappe.whitelist()
+def suggest_recipients(q: str = "", limit: int = 12) -> list:
+    """Addresses to tag in To / Cc / Bcc: this site's contacts and colleagues."""
+    from excom.excom.api.chat import _check_excom_access
+    _check_excom_access()
+    q = (q or "").strip()
+    like = f"%{q}%"
+    out, seen = [], set()
+    def add(email, name, kind):
+        e = (email or "").strip().lower()
+        if e and "@" in e and e not in seen:
+            seen.add(e); out.append({"email": e, "name": name or e, "kind": kind})
+    oi_filters = [["primary_email", "!=", ""]]
+    oi_or = [["primary_email", "like", like], ["display_name", "like", like]] if q else None
+    for r in frappe.get_all("Omni Identity", filters=oi_filters, or_filters=oi_or, fields=["display_name", "primary_email"], limit=limit):
+        add(r.primary_email, r.display_name, "contact")
+    for r in frappe.get_all("User", filters=[["enabled", "=", 1], ["user_type", "=", "System User"], ["name", "!=", "Administrator"]] + ([["full_name", "like", like]] if q else []), fields=["name", "full_name"], limit=limit):
+        add(r.name, r.full_name, "colleague")
+    return out[:limit]

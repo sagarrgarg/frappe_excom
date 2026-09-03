@@ -10,28 +10,30 @@ export interface Note {
   comment_by: string;
   creation: string;
   owner: string;
+  on_doctype: string;
+  on_name: string;
 }
 
-/** Notes tab: core Comment on the linked party (a note about the party, not a thread moment). */
-export function useNotes(record: RecordRef | null) {
+/** Notes tab and chat internal notes share one model: Frappe Comments on the party's record (or thread). */
+export function useNotes(identityId: string | null, _record?: RecordRef | null) {
   const { data, isLoading, error, mutate } = useFrappeGetCall<{ message: Note[] }>(
-    record ? "excom.excom.api.record.get_notes" : (null as unknown as string),
-    record ? { reference_doctype: record.doctype, reference_name: record.name } : undefined
+    identityId ? "excom.excom.api.record.get_identity_notes" : (null as unknown as string),
+    identityId ? { omni_identity: identityId } : undefined
   );
-  const { call, loading: adding } = useFrappePostCall("excom.excom.api.record.add_note");
+  const { call, loading: adding } = useFrappePostCall("excom.excom.api.record.add_identity_note");
 
   const addNote = useCallback(
     async (content: string) => {
-      if (!record) return;
+      if (!identityId) return;
       try {
-        await call({ reference_doctype: record.doctype, reference_name: record.name, content });
+        await call({ omni_identity: identityId, content });
         toast.success("Note added");
         await mutate();
       } catch (e: any) {
         toast.error(e?.message || "Failed to add note");
       }
     },
-    [record, call, mutate]
+    [identityId, call, mutate]
   );
 
   return { notes: data?.message ?? [], isLoading, error, adding, addNote, refresh: mutate };

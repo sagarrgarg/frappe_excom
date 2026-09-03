@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
 import { toast } from "sonner";
+import { EmailEditor } from "./EmailEditor";
+import { RecipientChips } from "./RecipientChips";
 import { Send, Plus, Paperclip, Image as ImageIcon, FileText, Sticker, Zap, Loader2, X, Reply, StickyNote, MessageCircle, Sparkles, Bot } from "lucide-react";
 import { ReplyVia } from "./ReplyVia";
 import { Button, Menu, menuItemClass, Kbd, Chip, Input } from "../primitives";
@@ -18,7 +20,7 @@ import type { FeedMessage } from "../../hooks/useIdentityMessages";
 
 const CHAR_LIMIT = 4096;
 
-export interface EmailDraft { to: string; subject: string; cc: string; inReplyToGmailId: string }
+export interface EmailDraft { to: string; subject: string; cc: string; bcc?: string; inReplyToGmailId: string; html?: string; sendAt?: string }
 
 interface Props {
   contact: UnifiedContact;
@@ -110,12 +112,12 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
     }
     if (blocked) { toast.error("You don't have access to send from this account"); return; }
     if (isEmail) {
-      if (!emailDraft?.to.trim() || !body) { toast.error("Recipient and body are required"); return; }
-      const html = body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>");
+      const html = (emailDraft?.html || "").trim();
+      if (!emailDraft?.to.trim() || !html || html === "<br>") { toast.error("Recipient and body are required"); return; }
       const finalBody = signature ? `${html}<br><br><div class="excom-signature">${signature}</div>` : html;
       try {
-        await sendEmail({ thread_id: threadId, to: emailDraft.to.trim(), subject: emailDraft.subject.trim() || "(No Subject)", body_html: finalBody, cc: emailDraft.cc.trim(), in_reply_to_gmail_id: emailDraft.inReplyToGmailId });
-        setText(""); setEmailDraft({ ...emailDraft, subject: "", inReplyToGmailId: "" }); onSent(); toast.success("Email sent");
+        const r = await sendEmail({ thread_id: threadId, to: emailDraft.to.trim(), subject: emailDraft.subject.trim() || "(No Subject)", body_html: finalBody, cc: (emailDraft.cc || "").trim(), bcc: (emailDraft.bcc || "").trim(), in_reply_to_gmail_id: emailDraft.inReplyToGmailId, send_at: emailDraft.sendAt || "" });
+        setText(""); setEmailDraft({ ...emailDraft, subject: "", inReplyToGmailId: "", html: "", sendAt: "" }); onSent(); toast.success(r?.message?.scheduled ? `Email scheduled for ${r.message.send_at.slice(0, 16)}` : "Email sent");
       } catch { toast.error("Failed to send email"); }
       return;
     }
@@ -207,8 +209,13 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
         {/* Email fields — grow in place */}
         {isEmail && !note && emailDraft && (
           <div className="rounded-md border border-border-strong bg-surface mb-1.5 divide-y divide-border">
-            <div className="flex items-center gap-2 px-2 h-8 min-w-0"><span className="text-xs text-ink-3 w-12 shrink-0">To</span><Input value={emailDraft.to} onChange={(e) => setEmailDraft({ ...emailDraft, to: e.target.value })} className="border-0 h-7 px-0 focus-visible:ring-0" placeholder="recipient@example.com" /></div>
-            <div className="flex items-center gap-2 px-2 h-8 min-w-0"><span className="text-xs text-ink-3 w-12 shrink-0">Cc</span><Input value={emailDraft.cc} onChange={(e) => setEmailDraft({ ...emailDraft, cc: e.target.value })} className="border-0 h-7 px-0 focus-visible:ring-0" placeholder="cc@example.com" /></div>
+            <RecipientChips label="To" value={emailDraft.to} onChange={(v) => setEmailDraft({ ...emailDraft, to: v })} placeholder="recipient@example.com" />
+            <RecipientChips label="Cc" value={emailDraft.cc || ""} onChange={(v) => setEmailDraft({ ...emailDraft, cc: v })} placeholder="tag colleagues or contacts…" />
+            <RecipientChips label="Bcc" value={emailDraft.bcc || ""} onChange={(v) => setEmailDraft({ ...emailDraft, bcc: v })} placeholder="" />
+            <div className="flex items-center gap-2 px-2 h-8 min-w-0"><span className="text-xs text-ink-3 w-12 shrink-0">Send</span>
+              {emailDraft.sendAt ? <><input type="datetime-local" value={emailDraft.sendAt.replace(" ", "T").slice(0, 16)} onChange={(e) => setEmailDraft({ ...emailDraft, sendAt: e.target.value.replace("T", " ") })} className="h-7 text-xs bg-transparent outline-none text-ink-1" /><button type="button" className="text-xs text-ink-3 hover:text-ink-1" onClick={() => setEmailDraft({ ...emailDraft, sendAt: "" })}>now instead</button></>
+                : <button type="button" className="text-xs text-ink-3 hover:text-ink-1" onClick={() => { const d = new Date(Date.now() + 60 * 60 * 1000); d.setSeconds(0, 0); const pad = (n: number) => String(n).padStart(2, "0"); setEmailDraft({ ...emailDraft, sendAt: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:00` }); }}>now · schedule for later…</button>}
+            </div>
             <div className="flex items-center gap-2 px-2 h-8 min-w-0"><span className="text-xs text-ink-3 w-12 shrink-0">Subject</span><Input value={emailDraft.subject} onChange={(e) => setEmailDraft({ ...emailDraft, subject: e.target.value })} className="border-0 h-7 px-0 focus-visible:ring-0" placeholder="Subject" />{emailDraft.inReplyToGmailId && <Chip size="sm" accent="blue" label="Reply" onRemove={() => setEmailDraft({ ...emailDraft, inReplyToGmailId: "", subject: "" })} />}</div>
           </div>
         )}
@@ -229,6 +236,9 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
             </Menu.Root>
           )}
           <div className={cn("flex-1 min-w-0 rounded-lg border bg-surface", note ? "border-crayon-amber-base/60 focus-within:border-crayon-amber-base" : "border-border-strong focus-within:border-crayon-blue-base", (blocked && !note) && "opacity-70")}>
+            {isEmail && !note && emailDraft ? (
+              <EmailEditor value={emailDraft.html || ""} onChange={(h) => setEmailDraft({ ...emailDraft, html: h })} placeholder="Write your email…" />
+            ) : (
             <textarea
               ref={taRef}
               value={text}
@@ -240,12 +250,13 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
               aria-label={note ? "Internal note" : "Message"}
               className="block w-full resize-none bg-transparent px-3 py-2 text-base text-ink-1 placeholder:text-ink-3 outline-none min-h-[36px] max-h-[200px]"
             />
+            )}
             {text.length > CHAR_LIMIT * 0.9 && <div className={cn("text-right text-xs px-3 pb-1 tabular-nums", text.length >= CHAR_LIMIT ? "text-crayon-rose-text" : "text-ink-3")}>{text.length}/{CHAR_LIMIT}</div>}
           </div>
           {templateRequired && !note ? (
             <Button variant="primary" onClick={() => setTemplateOpen(true)} className="shrink-0"><FileText />Template</Button>
           ) : (
-            <Button variant={note ? "default" : "primary"} size="icon" onClick={send} disabled={busy || (!note && blocked) || (!text.trim() && !isEmail)} aria-label={note ? "Add note" : "Send"} title={`${note ? "Add note" : "Send"}  ${MOD}+⏎`} className={cn("shrink-0", note && "bg-crayon-amber-base text-white border-transparent hover:bg-crayon-amber-text")}>
+            <Button variant={note ? "default" : "primary"} size="icon" onClick={send} disabled={busy || (!note && blocked) || (!text.trim() && !isEmail) || (isEmail && !note && !(emailDraft?.html || "").replace(/<[^>]+>/g, "").trim())} aria-label={note ? "Add note" : "Send"} title={`${note ? "Add note" : "Send"}  ${MOD}+⏎`} className={cn("shrink-0", note && "bg-crayon-amber-base text-white border-transparent hover:bg-crayon-amber-text")}>
               {busy ? <Loader2 className="animate-spin" /> : note ? <StickyNote /> : <Send />}
             </Button>
           )}
