@@ -68,9 +68,9 @@ export function AppShell() {
       {paletteOpen && (
         <Suspense fallback={null}>
           <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
-          <DetailLayer />
         </Suspense>
       )}
+      <DetailLayer />
     </div>
   );
 }

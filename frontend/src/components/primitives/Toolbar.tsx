@@ -5,16 +5,19 @@ import { cn } from "../ui/utils";
  * Toolbar — a fixed-height strip. Children that hold text must be min-w-0.
  * Action clusters collapse into OverflowMenu below container width 1100 (see useContainerWidth).
  */
-export function Toolbar({ className, children, height = "h-header-h", ...rest }: React.ComponentProps<"div"> & { height?: string }) {
-  return (
-    <div
-      className={cn("flex items-center gap-2 px-3 shrink-0 min-w-0 border-b border-border bg-surface", height, className)}
-      {...rest}
-    >
-      {children}
-    </div>
-  );
-}
+export const Toolbar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div"> & { height?: string }>(
+  function Toolbar({ className, children, height = "h-header-h", ...rest }, ref) {
+    return (
+      <div
+        ref={ref}
+        className={cn("flex items-center gap-2 px-3 shrink-0 min-w-0 border-b border-border bg-surface", height, className)}
+        {...rest}
+      >
+        {children}
+      </div>
+    );
+  }
+);
 
 /** Measures the width of a container so layout decisions use container, not viewport (§2.5 rule 3). */
 export function useContainerWidth<T extends HTMLElement>() {

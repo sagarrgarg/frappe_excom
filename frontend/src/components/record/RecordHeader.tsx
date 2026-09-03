@@ -44,7 +44,7 @@ export function RecordHeader({ contact, record, onBack, showBack, menuGroups, on
   const sub = [contact.contactInfo.company, contact.contactInfo.phone || contact.contactInfo.email].filter(Boolean).join(" · ");
   return (
     <ContextMenu groups={menuGroups}>
-    <Toolbar ref={ref as any} className="gap-2" data-detail={`${contact.contactName} | ${sub || "No contact details"} | Right-click (or long-press) for actions`}>
+    <Toolbar ref={ref} className="gap-2" data-detail={`${contact.contactName} | ${sub || "No contact details"} | Right-click (or long-press) for actions`}>
       {showBack && <Button variant="ghost" size="icon" aria-label="Back to list" onClick={onBack}><ArrowLeft /></Button>}
       <Avatar name={contact.contactName} src={contact.contactAvatar} size={32} />
       <div className="flex-1 min-w-0">
