@@ -119,6 +119,11 @@ class OmniIdentity(Document):
 		master_identity.flags.ignore_validate = True
 		master_identity.save(ignore_permissions=True)
 
+		# Re-parent conversations so the inbox shows one contact (QA T6: threads/messages
+		# used to stay on the merged identity and surfaced as a duplicate row).
+		frappe.db.set_value("Excom Thread", {"omni_identity": self.name}, "omni_identity", master_identity.name, update_modified=False)
+		frappe.db.set_value("Excom Message", {"omni_identity": self.name}, "omni_identity", master_identity.name, update_modified=False)
+
 		self.linked_entities = []
 		self.status = "Merged"
 		self.merged_into = master_identity.name
