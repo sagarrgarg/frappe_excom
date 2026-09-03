@@ -109,6 +109,7 @@ export function useThreads(
           threads: sortedThreads,
           assignedToEnabled: latestThread.assigned_to ? Boolean(latestThread.assigned_to_enabled) : undefined,
           kinds: latestThread.kinds || [],
+          closure: latestThread.closure_outcome ? { outcome: latestThread.closure_outcome, reason: latestThread.closure_reason, by: latestThread.closed_by, at: latestThread.closed_at } : undefined,
         };
 
         return contact;

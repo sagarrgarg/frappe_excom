@@ -202,6 +202,7 @@ def get_threads(
                oi.primary_email,
                u.full_name AS assigned_to_name, u.user_image AS assigned_to_avatar,
                COALESCE(u.enabled, 0) AS assigned_to_enabled,
+               t.closure_outcome, t.closure_reason, t.closed_by, t.closed_at,
                et.team_name AS assigned_team_name
                {broadcast_badge_col}
         FROM `tabExcom Thread` t

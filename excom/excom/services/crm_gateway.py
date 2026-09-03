@@ -397,3 +397,55 @@ def reassign_open_leads(from_user: str, to_user: str | None) -> int:
 	for n in names:
 		frappe.db.set_value(LEAD, n, "lead_owner", to_user, update_modified=False)
 	return len(names)
+
+
+# ─── closure (single seam for "this enquiry is over") ───────────────────────
+
+NEGATIVE_OUTCOMES = {"Lost", "Not Interested", "Spam", "Duplicate"}
+
+
+def add_timeline_comment(ref, html: str) -> None:
+	"""Doc-level activity log: a Comment on the linked ERP record (shows in Desk timeline + Activity tab)."""
+	if not ref:
+		return
+	try:
+		frappe.get_doc(ref.doctype, ref.name).add_comment("Comment", html)
+	except Exception:
+		frappe.log_error(title="Excom: timeline comment failed", message=frappe.get_traceback())
+
+
+def close_record(ref, outcome: str, reason: str = "", note: str = "") -> str | None:
+	"""Apply a closure outcome to the linked CRM record. Returns the status set, or None if untouched.
+	Lead: negative → 'Do Not Contact'. Opportunity: negative → Lost via ERPNext's declare_enquiry_lost.
+	Resolved / Converted leave the record's status alone (conversion is its own flow)."""
+	if not ref or outcome not in NEGATIVE_OUTCOMES:
+		return None
+	if ref.doctype == LEAD:
+		frappe.db.set_value(LEAD, ref.name, {"status": "Do Not Contact", "pipeline_stage": "Closed Lost"} if frappe.get_meta(LEAD).has_field("pipeline_stage") else {"status": "Do Not Contact"}, update_modified=True)
+		return "Do Not Contact"
+	if ref.doctype == OPPORTUNITY:
+		doc = frappe.get_doc(OPPORTUNITY, ref.name)
+		if doc.status in ("Converted", "Lost", "Closed"):
+			return doc.status
+		reasons = []
+		if reason:
+			if not frappe.db.exists("Opportunity Lost Reason", reason):
+				frappe.get_doc({"doctype": "Opportunity Lost Reason", "lost_reason": reason}).insert(ignore_permissions=True)
+			reasons = [{"lost_reason": reason}]
+		doc.flags.ignore_permissions = True
+		doc.declare_enquiry_lost(reasons, [], note or reason or outcome)
+		return "Lost"
+	return None
+
+
+def reopen_record(ref) -> str | None:
+	"""Undo a negative closure: Lead back to 'Open'; Opportunity back to 'Open'."""
+	if not ref:
+		return None
+	if ref.doctype == LEAD and frappe.db.get_value(LEAD, ref.name, "status") == "Do Not Contact":
+		frappe.db.set_value(LEAD, ref.name, "status", "Open", update_modified=True)
+		return "Open"
+	if ref.doctype == OPPORTUNITY and frappe.db.get_value(OPPORTUNITY, ref.name, "status") == "Lost":
+		frappe.db.set_value(OPPORTUNITY, ref.name, "status", "Open", update_modified=True)
+		return "Open"
+	return None

@@ -14,20 +14,21 @@
   "account_doctype",
   "account",
   "thread_key",
-
   "state_section",
   "status",
   "assigned_to",
   "assigned_team",
   "priority",
+  "closure_outcome",
+  "closure_reason",
+  "closed_by",
+  "closed_at",
   "column_break_state",
   "unread_count",
   "last_message_direction",
   "last_message_preview",
-
   "tags_section",
   "tags",
-
   "timestamps_section",
   "last_message_at",
   "column_break_ts",
@@ -98,7 +99,6 @@
    "read_only": 1,
    "unique": 1
   },
-
   {
    "fieldname": "state_section",
    "fieldtype": "Section Break",
@@ -135,6 +135,33 @@
    "options": "Low\nNormal\nHigh"
   },
   {
+   "fieldname": "closure_outcome",
+   "fieldtype": "Select",
+   "label": "Closure Outcome",
+   "options": "\nResolved\nConverted\nLost\nNot Interested\nSpam\nDuplicate",
+   "read_only": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "closure_reason",
+   "fieldtype": "Data",
+   "label": "Closure Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "closed_by",
+   "fieldtype": "Link",
+   "label": "Closed By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "closed_at",
+   "fieldtype": "Datetime",
+   "label": "Closed At",
+   "read_only": 1
+  },
+  {
    "fieldname": "column_break_state",
    "fieldtype": "Column Break"
   },
@@ -156,7 +183,6 @@
    "fieldtype": "Small Text",
    "label": "Last Message"
   },
-
   {
    "collapsible": 1,
    "fieldname": "tags_section",

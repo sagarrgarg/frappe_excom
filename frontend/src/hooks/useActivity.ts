@@ -3,7 +3,9 @@ import type { RecordRef } from "./useRecordLinks";
 
 export type ActivityItem =
   | { kind: "version"; id: string; by: string; at: string; changed: { field: string; old: unknown; new: unknown }[] }
-  | { kind: "transfer"; id: string; by: string; at: string; from_team: string; to_team: string; note: string; thread: string };
+  | { kind: "transfer"; id: string; by: string; at: string; from_team: string; to_team: string; note: string; thread: string }
+  | { kind: "comment"; id: string; by: string; at: string; text: string }
+  | { kind: "closure"; id: string; by: string; at: string; outcome: string; reason?: string };
 
 /** Activity tab: Version + transfer log (server), merged with thread system messages client-side. */
 export function useActivity(record: RecordRef | null, threadIds: string[]) {

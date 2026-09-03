@@ -27,6 +27,10 @@ export interface ExcomThread {
   broadcast_delivery_status?: string;
   assigned_to_enabled?: number;
   kinds?: ContactKind[];
+  closure_outcome?: string;
+  closure_reason?: string;
+  closed_by?: string;
+  closed_at?: string;
 }
 
 /** Linked ERP record kind for the inbox row: Customer · Supplier · Employee · Opportunity · Lead (+ customer_type). */
@@ -145,6 +149,7 @@ export interface UnifiedContact {
   /** false when the assignee's user account is disabled → treated as unassigned. */
   assignedToEnabled?: boolean;
   kinds?: ContactKind[];
+  closure?: { outcome: string; reason?: string; by?: string; at?: string };
 }
 
 export interface Conversation {

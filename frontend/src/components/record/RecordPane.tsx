@@ -11,6 +11,7 @@ import { TasksTab } from "./TasksTab";
 import { NotesTab } from "./NotesTab";
 import { ActivityTab } from "./ActivityTab";
 import { TransferDialog } from "./TransferDialog";
+import { CloseDialog } from "./CloseDialog";
 import { AIAssistantDrawer } from "../AIAssistantDrawer";
 import { DetailsTab } from "../crm/DetailsTab";
 import { useIdentityRecords, useCrmActions, useCrmOptions } from "../../hooks/useCrm";
@@ -89,6 +90,8 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
   const [emailDraft, setEmailDraft] = useState<EmailDraft | null>(null);
   const [optimistic, setOptimistic] = useState<{ id: string; content: string; timestamp: Date }[]>([]);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
+  const { call: reopenCall } = useFrappePostCall("excom.excom.api.record.reopen_conversation");
   const [tagsOpen, setTagsOpen] = useState(false);
 
   const { call: sendMessage } = useFrappePostCall("excom.excom.api.chat.send_message");
@@ -148,8 +151,9 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
     ],
     [
       archived
-        ? { id: "unarchive", label: "Unarchive", icon: <ArchiveRestore />, onSelect: async () => { try { await all((id) => unarchiveCall({ thread_id: id })); toast.success("Reopened — back in the inbox"); refreshThreads(); } catch { toast.error("Failed"); } } }
-        : { id: "archive", label: "Archive", icon: <Archive />, shortcut: "e", onSelect: async () => { try { await all((id) => archiveCall({ thread_id: id })); toast.success("Archived"); closeRecord(); refreshThreads(); } catch { toast.error("Failed"); } } },
+        ? { id: "unarchive", label: "Reopen", icon: <ArchiveRestore />, onSelect: async () => { try { await reopenCall({ omni_identity: contact.id }); toast.success("Reopened — back in the inbox"); refreshThreads(); } catch { try { await all((id) => unarchiveCall({ thread_id: id })); refreshThreads(); } catch { toast.error("Failed"); } } } }
+        : { id: "close", label: "Close…", icon: <Archive />, shortcut: "e", onSelect: () => setCloseOpen(true) },
+      ...(!archived ? [{ id: "archive", label: "Archive without outcome", icon: <Archive />, onSelect: async () => { try { await all((id) => archiveCall({ thread_id: id })); toast.success("Archived"); closeRecord(); refreshThreads(); } catch { toast.error("Failed"); } } }] : []),
       { id: "spam", label: "Mark as spam", icon: <AlertOctagon />, danger: true, onSelect: async () => { try { await all((id) => spamCall({ thread_id: id })); toast.success("Marked as spam"); closeRecord(); refreshThreads(); } catch { toast.error("Failed"); } } },
       ...(hasRole("System Manager") ? [{ id: "delete", label: "Delete", icon: <Trash2 />, danger: true, onSelect: async () => { if (!window.confirm("Delete this conversation and all its threads?")) return; try { await all((id) => deleteCall({ thread_id: id })); toast.success("Deleted"); closeRecord(); refreshThreads(); } catch { toast.error("Failed"); } } }] : []),
     ],
@@ -169,6 +173,7 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
     <section aria-label={`Conversation with ${contact.contactName}`} className="flex-1 min-w-0 min-h-0 flex flex-col bg-surface">
       <RecordHeader contact={contact} record={record} showBack={drill} onBack={closeRecord} menuGroups={menuGroups} onToggleDetails={toggleDetails} detailsToggleVisible={!wide} />
       <ContextStrip contact={contact} record={record} crm={crmPrimary} onStage={crmPrimary?.doctype === "Opportunity" ? () => setTab("details") : undefined} />
+      {contact.closure && <div className="shrink-0 flex items-center gap-2 px-3 h-8 text-xs bg-surface-sunken border-b border-border min-w-0"><span className="font-medium text-ink-1">Closed · {contact.closure.outcome}</span>{contact.closure.reason && <span className="text-ink-2 truncate">— {contact.closure.reason}</span>}<span className="text-ink-3 truncate ml-auto">{contact.closure.by}{contact.closure.at ? ` · ${contact.closure.at.slice(0, 16)}` : ""}</span></div>}
       <SegmentedControl<Tab> ariaLabel="Record sections" className="px-2 border-b border-border bg-surface" value={effectiveTab} onChange={setTab} segments={segments} />
 
       {effectiveTab === "chat" && (
@@ -200,6 +205,8 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
       {effectiveTab === "activity" && <div className="flex-1 min-h-0 overflow-y-auto"><ActivityTab record={record} threadIds={threadIds} messages={messages} /></div>}
       {effectiveTab === "details" && <div className="flex-1 min-h-0"><DetailsTab refr={crmPrimary ? { doctype: crmPrimary.doctype, name: crmPrimary.name } : null} onChanged={refreshCrm} /></div>}
       {effectiveTab === "ai" && <div className="flex-1 min-h-0"><AIAssistantDrawer isOpen onClose={() => setTab("chat")} contactName={contact.contactName} threadId={via?.id || contact.activeAccountId} embedded onUseSuggestion={(t) => { setTab("chat"); setPendingText(t); }} /></div>}
+
+      <CloseDialog open={closeOpen} onClose={() => setCloseOpen(false)} contact={contact} crm={crmPrimary ? { doctype: crmPrimary.doctype, name: crmPrimary.name } : null} onDone={() => { closeRecord(); refreshThreads(); }} />
 
       <TransferDialog open={transferOpen} onOpenChange={setTransferOpen} threadIds={threadIds} onDone={refreshThreads} />
       <Modal open={classifyOpen} onOpenChange={setClassifyOpen} title="Classify lead" description="Sets customer_type; pipelines and gates follow the type."

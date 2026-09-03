@@ -80,6 +80,15 @@ def get_activity(reference_doctype: str = "", reference_name: str = "", thread_i
 
     if reference_doctype and reference_name:
         _check_doc_read(reference_doctype, reference_name)
+        for c in frappe.get_all(
+            "Comment",
+            filters={"reference_doctype": reference_doctype, "reference_name": reference_name, "comment_type": "Comment"},
+            fields=["name", "owner", "creation", "content"],
+            order_by="creation desc",
+            limit=50,
+            ignore_permissions=True,
+        ):
+            items.append({"kind": "comment", "id": c.name, "by": frappe.utils.get_fullname(c.owner), "at": str(c.creation), "text": frappe.utils.strip_html((c.content or "").replace("<br>", " · "))})
         versions = frappe.get_all(
             "Version",
             filters={"ref_doctype": reference_doctype, "docname": reference_name},
@@ -114,6 +123,8 @@ def get_activity(reference_doctype: str = "", reference_name: str = "", thread_i
         except ValueError:
             ids = []
     if ids:
+        for t in frappe.get_all("Excom Thread", filters={"name": ["in", ids], "closure_outcome": ["is", "set"]}, fields=["name", "closure_outcome", "closure_reason", "closed_by", "closed_at"], ignore_permissions=True):
+            items.append({"kind": "closure", "id": f"close-{t.name}", "by": frappe.utils.get_fullname(t.closed_by), "at": str(t.closed_at), "outcome": t.closure_outcome, "reason": t.closure_reason})
         logs = frappe.db.sql(
             """
             SELECT tl.thread, tl.from_team, tl.to_team, tl.transferred_by, tl.note, tl.transferred_at,
@@ -183,3 +194,63 @@ def submit_ui_feedback(message: str = "", route: str = "", viewport: str = "", d
         }
     ).insert(ignore_permissions=True)
     return {"ok": True}
+
+
+OUTCOMES = ("Resolved", "Converted", "Lost", "Not Interested", "Spam", "Duplicate")
+
+
+@frappe.whitelist()
+def close_conversation(omni_identity: str, outcome: str = "Resolved", reason: str = "", note: str = "", close_crm: int = 1) -> dict:
+    """Closure scene: archive every open thread of this contact with an outcome, write the doc-level
+    activity log (Comment on the linked Lead/Opportunity/Customer and on each thread), and — for
+    negative outcomes — close the CRM record too (Lead → Do Not Contact, Opportunity → Lost)."""
+    from excom.excom.api.chat import _user_can_access_thread
+    from excom.excom.services import crm_gateway as gw
+    _check_excom_access()
+    if outcome not in OUTCOMES:
+        frappe.throw(_("Unknown outcome: {0}").format(outcome))
+    user = frappe.session.user
+    threads = frappe.get_all("Excom Thread", filters={"omni_identity": omni_identity, "status": ["!=", "Closed"]}, pluck="name")
+    threads = [t for t in threads if _user_can_access_thread(t)]
+    now = frappe.utils.now_datetime()
+    summary = f"<b>Closed · {outcome}</b>" + (f" — {frappe.utils.escape_html(reason)}" if reason else "") + (f"<br>{frappe.utils.escape_html(note)}" if note else "")
+    for t in threads:
+        frappe.db.set_value("Excom Thread", t, {"status": "Closed", "closure_outcome": outcome, "closure_reason": reason[:140], "closed_by": user, "closed_at": now}, update_modified=True)
+        frappe.get_doc("Excom Thread", t).add_comment("Comment", summary)
+    crm_status = None
+    ref = None
+    recs = gw.find_open_records_for_identity(omni_identity) if omni_identity else []
+    if recs:
+        ref = recs[0]
+        gw.add_timeline_comment(ref, summary + f"<br><span class='text-muted'>via Excom · {len(threads)} conversation(s)</span>")
+        if int(close_crm or 0):
+            crm_status = gw.close_record(ref, outcome, reason, note)
+    frappe.db.commit()
+    for t in threads:
+        frappe.publish_realtime("excom:thread_updated", {"thread": t, "event": "closed"}, after_commit=True)
+    return {"threads": threads, "crm": {"doctype": ref.doctype, "name": ref.name, "status": crm_status} if ref else None}
+
+
+@frappe.whitelist()
+def reopen_conversation(omni_identity: str, note: str = "") -> dict:
+    """Undo a closure: threads back to Open, closure fields cleared, CRM record reopened if we closed it."""
+    from excom.excom.api.chat import _user_can_access_thread
+    from excom.excom.services import crm_gateway as gw
+    _check_excom_access()
+    threads = [t for t in frappe.get_all("Excom Thread", filters={"omni_identity": omni_identity, "status": "Closed"}, pluck="name") if _user_can_access_thread(t)]
+    text = "<b>Reopened</b>" + (f" — {frappe.utils.escape_html(note)}" if note else "")
+    for t in threads:
+        frappe.db.set_value("Excom Thread", t, {"status": "Open", "closure_outcome": None, "closure_reason": None, "closed_by": None, "closed_at": None}, update_modified=True)
+        frappe.get_doc("Excom Thread", t).add_comment("Comment", text)
+    crm_status = None
+    links = frappe.get_all("Omni Identity Link", filters={"parent": omni_identity, "parenttype": "Omni Identity", "linked_doctype": ["in", gw.crm_doctypes()]}, fields=["linked_doctype", "linked_name"])
+    for ln in links:
+        ref = frappe._dict(doctype=ln.linked_doctype, name=ln.linked_name)
+        st = gw.reopen_record(ref)
+        if st:
+            crm_status = st
+            gw.add_timeline_comment(ref, text + " <span class='text-muted'>via Excom</span>")
+    frappe.db.commit()
+    for t in threads:
+        frappe.publish_realtime("excom:thread_updated", {"thread": t, "event": "reopened"}, after_commit=True)
+    return {"threads": threads, "crm_status": crm_status}

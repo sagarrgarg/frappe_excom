@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Loader2, History, ArrowRightLeft, Pencil, Lock, UserCheck } from "lucide-react";
+import { Loader2, History, ArrowRightLeft, Pencil, Lock, UserCheck, MessageSquare, CheckCircle2 } from "lucide-react";
 import { useActivity, type ActivityItem } from "../../hooks/useActivity";
 import type { RecordRef } from "../../hooks/useRecordLinks";
 import { EmptyState } from "../primitives";
@@ -14,6 +14,8 @@ export function ActivityTab({ record, threadIds, messages }: { record: RecordRef
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
     for (const it of items as ActivityItem[]) {
+      if (it.kind === "comment") { out.push({ id: it.id, at: parseFrappeDateTime(it.at), icon: <MessageSquare />, title: `${it.by} commented on ${record?.doctype || "record"}`, detail: it.text }); continue; }
+      if (it.kind === "closure") { out.push({ id: it.id, at: parseFrappeDateTime(it.at), icon: <CheckCircle2 />, title: `${it.by} closed · ${it.outcome}`, detail: it.reason || undefined }); continue; }
       if (it.kind === "version") {
         const changed = it.changed.map((c) => `${c.field}: ${fmt(c.old)} → ${fmt(c.new)}`).join("; ");
         if (!changed) continue;
@@ -30,7 +32,7 @@ export function ActivityTab({ record, threadIds, messages }: { record: RecordRef
   }, [items, messages, record]);
 
   if (isLoading && rows.length === 0) return <div className="flex justify-center py-8 text-ink-3"><Loader2 className="size-5 animate-spin" /></div>;
-  if (rows.length === 0) return <EmptyState icon={<History />} title="No activity yet" hint="Field changes on the linked record, transfers and internal notes appear here. Stage changes join in P3." compact />;
+  if (rows.length === 0) return <EmptyState icon={<History />} title="No activity yet" hint="Comments and field changes on the linked record, transfers, closures and internal notes appear here." compact />;
   return (
     <ol className="divide-y divide-border">
       {rows.map((r) => (

@@ -89,6 +89,7 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className={cn("truncate text-sm min-w-0", unread ? "font-semibold text-ink-1" : "font-medium text-ink-1")}>{c.contactName}</span>
+          {c.closure && <Chip size="sm" accent={["Resolved", "Converted"].includes(c.closure.outcome) ? "green" : "rose"} label={c.closure.outcome} className="shrink-0" title={c.closure.reason} />}
           {kind ? <Chip size="sm" accent={kind.accent} label={kind.label} className="shrink-0 max-w-[45%]" /> : <Chip size="sm" accent="neutral" label="Unknown" className="shrink-0 opacity-70" title="No ERP record — promote to Lead or link in Desk" />}
           <span className="flex items-center gap-0.5 shrink-0" aria-label={c.channels.join(", ")}>
             {c.channels.slice(0, 4).map((ch) => {

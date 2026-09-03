@@ -146,3 +146,14 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 | Generic editor: Channel accounts (passwords write-only, masked as set/unset), Templates (+ Sync from Meta), Intake sources, Canned responses, Tags, Stickers (Attach upload), Email signatures, Notification rules (child tables), Excom Settings (Single) | S | ✅ schema-driven; `depends_on` honoured for the simple `eval:` forms |
 | Read-only logs: transfer log, stage change log, notification log | S | ✅ |
 | Legacy `/teams` route redirects to `/admin/teams`; Rail avatar menu + More show "Admin" for managers | S | ✅ |
+
+## Closure scene (2026-09-03, synthetic `QA Close Person`, cleaned up)
+
+| Case | Sev | Result |
+|---|---|---|
+| ⋯ → Close… (shortcut `e`): outcome Resolved / Converted / Lost / Not interested / Duplicate / Spam + reason chips + note | S | ✅ |
+| Close archives every open thread of the contact with `closure_outcome/reason/closed_by/closed_at`; row shows outcome chip in Archived; record shows a closed banner | S | ✅ |
+| Doc-level activity log: Comment on the linked Lead / Opportunity / Customer (Desk timeline) and on each thread; Activity tab shows comment + closure rows | S | ✅ |
+| Negative outcome + "also close CRM": Lead → Do Not Contact (pipeline stage Closed Lost), Opportunity → Lost via declare_enquiry_lost with the reason as an Opportunity Lost Reason | S | ✅ |
+| Reopen (⋯ → Reopen): threads back to Open, closure cleared, Lead/Opportunity reopened, comment logged | S | ✅ |
+| Resolved / Converted never touch the CRM record's status | S | ✅ |
