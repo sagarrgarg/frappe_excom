@@ -320,6 +320,7 @@ def get_messages(thread_id: str, limit: int = 50, before: str = ""):
 
     conditions = "m.thread = %(thread)s"
     if before:
+        # `before` = creation of the oldest message already loaded (pagination cursor)
         conditions += " AND m.creation < %(before)s"
         params["before"] = before
 
@@ -342,12 +343,15 @@ def get_messages(thread_id: str, limit: int = 50, before: str = ""):
         LEFT JOIN `tabExcom Message` rt ON rt.name = m.reply_to
         LEFT JOIN `tabUser` ru ON ru.name = rt.created_by_user
         WHERE {conditions}
-        ORDER BY COALESCE(m.provider_timestamp, m.creation) ASC
+        ORDER BY COALESCE(m.provider_timestamp, m.creation) DESC, m.creation DESC
         LIMIT %(limit)s
         """,
         params,
         as_dict=True,
     )
+    # Newest page first from SQL (so long threads show their latest messages), returned oldest→newest.
+    messages.reverse()
+    has_more = len(messages) >= limit
 
     for msg in messages:
         if msg.reactions and isinstance(msg.reactions, str):
@@ -374,7 +378,7 @@ def get_messages(thread_id: str, limit: int = 50, before: str = ""):
                 user=frappe.session.user,
             )
 
-    return {"messages": messages, "auto_claimed_by": auto_claimed_by}
+    return {"messages": messages, "auto_claimed_by": auto_claimed_by, "has_more": has_more}
 
 
 @frappe.whitelist()
