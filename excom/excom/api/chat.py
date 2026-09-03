@@ -320,8 +320,8 @@ def get_messages(thread_id: str, limit: int = 50, before: str = ""):
 
     conditions = "m.thread = %(thread)s"
     if before:
-        # `before` = creation of the oldest message already loaded (pagination cursor)
-        conditions += " AND m.creation < %(before)s"
+        # `before` = COALESCE(provider_timestamp, creation) of the oldest loaded message — same key as ORDER BY
+        conditions += " AND COALESCE(m.provider_timestamp, m.creation) < %(before)s"
         params["before"] = before
 
     messages = frappe.db.sql(

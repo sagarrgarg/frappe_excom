@@ -10,7 +10,7 @@ const PAGE = 100;
 export interface FeedMessage extends Message {
   threadId: string;
   /** Raw row kept for pagination cursors. */
-  raw?: { creation: string };
+  raw?: { creation: string; provider_timestamp?: string };
 }
 
 /** Same mapping as useMessages, kept local so the legacy hook stays untouched. */
@@ -23,7 +23,7 @@ function mapMessage(msg: ExcomMessage, threadId: string, account: { id: string; 
   return {
     id: msg.name,
     threadId,
-    raw: { creation: msg.creation },
+    raw: { creation: msg.creation, provider_timestamp: msg.provider_timestamp },
     content: msg.content_text || "",
     timestamp: parseFrappeDateTime(msg.provider_timestamp || msg.creation),
     sender: msg.direction === "Inbound" ? "contact" : "user",
@@ -123,7 +123,7 @@ export function useIdentityMessages(contact: UnifiedContact | null) {
           const current = [...(older[a.id] || []), ...(data.byThread[a.id] || [])];
           const oldest = current.reduce<FeedMessage | null>((min, m) => (!min || m.timestamp < min.timestamp ? m : min), null);
           if (!oldest) return;
-          const res = await ctx.call.get("excom.excom.api.chat.get_messages", { thread_id: a.id, limit: PAGE, before: oldest.raw?.creation });
+          const res = await ctx.call.get("excom.excom.api.chat.get_messages", { thread_id: a.id, limit: PAGE, before: oldest.raw?.provider_timestamp || oldest.raw?.creation });
           const raw: ExcomMessage[] = Array.isArray(res?.message) ? res.message : res?.message?.messages ?? [];
           setOlder((prev) => ({ ...prev, [a.id]: [...raw.map((m) => mapMessage(m, a.id, a)), ...(prev[a.id] || [])].concat(raw.length < PAGE ? [] : []) }));
           if (raw.length < PAGE) setOlder((prev) => ({ ...prev, [a.id]: prev[a.id]?.length ? prev[a.id] : [] }));
