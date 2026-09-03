@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useThreads } from "../../hooks/useContacts";
+
+export interface NewPrefill { name: string; display_name: string; primary_phone: string; primary_email: string; primary_whatsapp: string }
 import { useRealtimeThreads } from "../../hooks/useRealtimeThreads";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useBreakpoint, useCoarsePointer, type Breakpoint } from "../../hooks/useBreakpoint";
@@ -44,6 +46,9 @@ interface InboxCtx {
 
   newOpen: boolean;
   setNewOpen: (v: boolean) => void;
+  /** Pre-selected contact for the New conversation dialog (opened from a record with no chat). */
+  newPrefill: NewPrefill | null;
+  setNewPrefill: (v: NewPrefill | null) => void;
   paletteOpen: boolean;
   setPaletteOpen: (v: boolean) => void;
   pendingSelect: React.MutableRefObject<{ id: string; via: string } | null>;
@@ -170,6 +175,7 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
   const toggleDetails = useCallback(() => setDetailsOpen(!detailsOpen), [detailsOpen, setDetailsOpen]);
 
   const [newOpen, setNewOpen] = useState(false);
+  const [newPrefill, setNewPrefill] = useState<NewPrefill | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const pendingSelect = useRef<{ id: string; via: string } | null>(null);
   useEffect(() => {
@@ -185,7 +191,7 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
     listError: listErr ? (listErr.httpStatus === 429 ? "Too many requests — the list is paused for a moment." : (listErr.message || "Could not load conversations.")) : null,
     selectedId, selected, openRecord, closeRecord,
     detailsOpen, setDetailsOpen, toggleDetails,
-    newOpen, setNewOpen, paletteOpen, setPaletteOpen, pendingSelect,
+    newOpen, setNewOpen, newPrefill, setNewPrefill, paletteOpen, setPaletteOpen, pendingSelect,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

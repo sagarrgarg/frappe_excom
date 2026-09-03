@@ -12,6 +12,9 @@ import { NotesTab } from "./NotesTab";
 import { ActivityTab } from "./ActivityTab";
 import { TransferDialog } from "./TransferDialog";
 import { CloseDialog } from "./CloseDialog";
+import { useIdentityContact } from "../../hooks/useIdentityContact";
+import { MessageSquarePlus } from "lucide-react";
+import type { UnifiedContact } from "../../types";
 import { AIAssistantDrawer } from "../AIAssistantDrawer";
 import { DetailsTab } from "../crm/DetailsTab";
 import { useIdentityRecords, useCrmActions, useCrmOptions } from "../../hooks/useCrm";
@@ -43,12 +46,15 @@ export function RecordPane() {
   // Deep link fallback: if the record isn't in the filtered list, try an unfiltered fetch once.
   const { unifiedContacts: fallback, isLoading: fallbackLoading } = useThreads("", "", "", "", "", "", "", "", false, !selected);
   const { unifiedContacts: fallbackArchived } = useThreads("", "", "", "", "", "", "", "", true, !selected);
-  const contact = selected || fallback.find((c) => c.id === selectedId) || fallbackArchived.find((c) => c.id === selectedId) || null;
+  const listed = selected || fallback.find((c) => c.id === selectedId) || fallbackArchived.find((c) => c.id === selectedId) || null;
+  // Still nothing: a contact with no conversation yet (migrated lead, web-form lead, promoted contact).
+  const { contact: identityContact, isLoading: identityLoading } = useIdentityContact(selectedId, !listed && !fallbackLoading);
+  const contact = listed || identityContact;
 
   if (!contact) {
     return (
       <div className="flex-1 flex items-center justify-center bg-surface">
-        {fallbackLoading ? <Loader2 className="size-5 animate-spin text-ink-3" /> : (
+        {fallbackLoading || identityLoading ? <Loader2 className="size-5 animate-spin text-ink-3" /> : (
           <EmptyState icon={<MessageSquare />} title="Conversation not in your inbox" hint="It may be closed, marked spam, or outside your teams." action={<Button size="sm" onClick={closeRecord}>Back to inbox</Button>} />
         )}
       </div>
@@ -178,6 +184,9 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
 
       {effectiveTab === "chat" && (
         <>
+          {(contact.threads?.length ?? 0) === 0 && !archived ? (
+            <NoConversationYet contact={contact} />
+          ) : (
           <MessageFeed
             contact={contact}
             messages={messages}
@@ -197,7 +206,10 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
             isDragging={fileUpload.isDragging}
             dragHandlers={{ onDragOver: fileUpload.handleDragOver, onDragLeave: fileUpload.handleDragLeave, onDrop: fileUpload.handleDrop }}
           />
+          )}
+          {((contact.threads?.length ?? 0) > 0 || archived) && (
           <Composer contact={contact} via={via} setVia={setVia} prefill={pendingText} onPrefillConsumed={() => setPendingText(null)} replyingTo={replyingTo} clearReply={() => setReplyingTo(null)} emailDraft={emailDraft} setEmailDraft={setEmailDraft} onSent={onSent} onOptimistic={onOptimistic} fileUpload={fileUpload} />
+          )}
         </>
       )}
       {effectiveTab === "tasks" && <div className="flex-1 min-h-0"><TasksTab record={record} /></div>}
@@ -219,5 +231,17 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
         <TagManager threadId={via?.id || contact.activeAccountId} inline onChanged={refreshThreads} />
       </Modal>
     </section>
+  );
+}
+
+
+/** A lead / contact with no conversation yet: the chat tab offers to start one (WhatsApp template or email). */
+function NoConversationYet({ contact }: { contact: UnifiedContact }) {
+  const { setNewOpen, setNewPrefill } = useInbox();
+  return (
+    <div className="flex-1 min-h-0 flex items-center justify-center p-6">
+      <EmptyState icon={<MessageSquarePlus />} title="No conversation yet" hint={`${contact.contactInfo.phone ? "WhatsApp needs an approved template for the first message; " : ""}${contact.contactInfo.email ? "email can be sent directly. " : ""}Details, Tasks and Notes work without a chat.`}
+        action={<Button size="sm" variant="primary" onClick={() => { setNewPrefill({ name: contact.id, display_name: contact.contactName, primary_phone: contact.contactInfo.phone || "", primary_email: contact.contactInfo.email || "", primary_whatsapp: contact.contactInfo.phone || "" }); setNewOpen(true); }}><MessageSquarePlus />Start conversation</Button>} />
+    </div>
   );
 }

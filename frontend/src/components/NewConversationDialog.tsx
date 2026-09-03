@@ -7,6 +7,8 @@ import { toast } from "sonner";
 interface NewConversationDialogProps {
   onClose: () => void;
   onConversationCreated: (threadId: string, identityName: string) => void;
+  /** Open with this contact already selected (record pane → Start conversation). */
+  initialIdentity?: IdentityResult | null;
 }
 
 type TabMode = "search" | "create";
@@ -32,6 +34,7 @@ interface ChannelAccount {
 export function NewConversationDialog({
   onClose,
   onConversationCreated,
+  initialIdentity,
 }: NewConversationDialogProps) {
   const [tab, setTab] = useState<TabMode>("search");
   const [channel, setChannel] = useState<"whatsapp" | "email">("whatsapp");
@@ -39,7 +42,7 @@ export function NewConversationDialog({
   const [searchText, setSearchText] = useState("");
   const [identities, setIdentities] = useState<IdentityResult[]>([]);
   const [searching, setSearching] = useState(false);
-  const [selectedIdentity, setSelectedIdentity] = useState<IdentityResult | null>(null);
+  const [selectedIdentity, setSelectedIdentity] = useState<IdentityResult | null>(initialIdentity ?? null);
 
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");

@@ -19,7 +19,7 @@ const CommandPalette = lazy(() => import("../CommandPalette").then((m) => ({ def
  * The rail is absolutely positioned and content is padded by --ex-rail-w so hover-expand never reflows.
  */
 export function AppShell() {
-  const { bp, newOpen, setNewOpen, paletteOpen, setPaletteOpen, toggleDetails, pendingSelect, refresh, closeRecord } = useInbox();
+  const { bp, newOpen, setNewOpen, paletteOpen, setPaletteOpen, toggleDetails, pendingSelect, refresh, closeRecord, newPrefill, setNewPrefill } = useInbox();
   const navigate = useNavigate();
   const location = useLocation();
   const phone = bp === "phone";
@@ -56,7 +56,8 @@ export function AppShell() {
 
       {newOpen && (
         <NewConversationDialog
-          onClose={() => setNewOpen(false)}
+          initialIdentity={newPrefill}
+          onClose={() => { setNewOpen(false); setNewPrefill(null); }}
           onConversationCreated={(threadId, identityName) => {
             setNewOpen(false);
             pendingSelect.current = { id: identityName, via: threadId };

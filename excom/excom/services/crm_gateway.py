@@ -475,3 +475,13 @@ def find_lead_by_contact(email: str | None, phone: str | None):
 			if n:
 				return frappe._dict(doctype=LEAD, name=n)
 	return None
+
+
+def company_for_kind(kind: dict) -> str:
+	"""Organisation name behind a kind row (Lead/Opportunity company_name, Customer customer_name)."""
+	dt, name = kind.get("doctype"), kind.get("name")
+	if dt in (LEAD, OPPORTUNITY):
+		return frappe.db.get_value(dt, name, "company_name" if dt == LEAD else "customer_name") or ""
+	if dt == CUSTOMER:
+		return frappe.db.get_value(dt, name, "customer_name") or ""
+	return ""

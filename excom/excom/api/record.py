@@ -254,3 +254,17 @@ def reopen_conversation(omni_identity: str, note: str = "") -> dict:
     for t in threads:
         frappe.publish_realtime("excom:thread_updated", {"thread": t, "event": "reopened"}, after_commit=True)
     return {"threads": threads, "crm_status": crm_status}
+
+
+@frappe.whitelist()
+def get_identity_contact(omni_identity: str) -> dict:
+	"""A contact that has no conversation yet (a migrated or web-form lead): enough to open the record pane,
+	show Details / Tasks / Notes / Activity and offer 'Start conversation'."""
+	_check_excom_access()
+	oi = frappe.db.get_value("Omni Identity", omni_identity, ["name", "display_name", "primary_phone", "primary_email", "primary_whatsapp", "creation"], as_dict=True)
+	if not oi:
+		frappe.throw(_("Contact not found"), frappe.DoesNotExistError)
+	from excom.excom.services.crm_gateway import company_for_kind, kinds_for_identities
+	kinds = kinds_for_identities([omni_identity]).get(omni_identity, [])
+	company = next((c for c in (company_for_kind(k) for k in kinds) if c), "")
+	return {"name": oi.name, "display_name": oi.display_name, "primary_phone": oi.primary_phone, "primary_email": oi.primary_email, "primary_whatsapp": oi.primary_whatsapp, "avatar_url": None, "creation": str(oi.creation), "kinds": kinds, "company": company, "threads": frappe.db.count("Excom Thread", {"omni_identity": omni_identity})}
