@@ -184,3 +184,4 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 | Gateway contract suite (create/provenance/attribution, identity link + precedence, close/reopen, promote once, duplicate email, reassign, intake list, convert + stage, stage map) | S | ✅ 9/9 native |
 | Same suite against shadow `Excom Lead` | S | ✅ 9/9 after moving classification into the gateway |
 | Live v16 scratch bench | S | ⏭ needs ~15 GB free disk |
+| **Defect (P0)**: P3 custom field `Customer.customer_type` shadowed ERPNext's native field → every Customer save failed validation ("cannot be Individual") | P0 | ✅ fixed 2026-09-03: patch `fix_customer_type_clobber` removes the custom field, ours is now `excom_customer_type`; `crm_schema.apply()` refuses to shadow native fields; found by the P4 v16 diff |

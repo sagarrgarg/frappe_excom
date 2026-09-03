@@ -19,13 +19,8 @@ bench --site <site> execute excom.excom.services.crm_manifest.check --kwargs "{'
 
 Everything else excom reads or writes on Lead, Opportunity, Prospect, Customer, Contact, Sales Stage, Assignment Rule, ToDo exists unchanged.
 
-## The one thing to prepare before upgrading
-**`Customer.customer_type` collides.** v16 ships a native `customer_type` on Customer (Company / Individual / Partnership). Excom's custom field of the same name on Customer (our six commercial types) would clash on migrate.
-Before the upgrade, rename ours on Customer to `excom_customer_type` (Lead / Opportunity keep `customer_type`, which v16 does not add there):
-1. `crm_schema.py` → Customer entry: `customer_type` → `excom_customer_type`.
-2. A patch that renames the column and copies values (`frappe.reload_doctype("Customer"); rename_field("Customer", "customer_type", "excom_customer_type")` guarded by `has_column`).
-3. `crm_gateway.convert()` overlay loop and `kinds_for_identities()` read `excom_customer_type` on Customer.
-This is a two-hour change; do it on v15 first, deploy, then upgrade.
+## Customer.customer_type — already handled
+ERPNext v15 *and* v16 ship a native `Customer.customer_type` (Company / Individual / Partnership). P3 had created a custom field of the same name, which replaced the native definition and broke Customer validation; patch `excom.patches.v1_0.fix_customer_type_clobber` (2026-09-03) removes it and excom's field is `excom_customer_type`. `crm_schema.apply()` now refuses to shadow any native field, so v16's new fields cannot collide either.
 
 ## Live scratch-bench procedure (needs ~15 GB free, never production)
 ```bash

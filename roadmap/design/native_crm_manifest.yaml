@@ -35,4 +35,4 @@ excom_custom_fields:
   Lead: [customer_type, omni_identity, first_touch_at, first_touch_channel, first_touch_by, source_reference, intake_source, exhibition, auto_ack_sent_at, intake_stage]
   Opportunity: [customer_type, pipeline_stage, omni_identity, stage_entered_at, next_action_at, gate_flags, event_date, design_by, sample_round, incoterm, proposed_pincodes]
   Prospect: [customer_type, omni_identity]
-  Customer: [customer_type, first_touch_at, first_touch_channel, source_reference]
+  Customer: [excom_customer_type, first_touch_at, first_touch_channel, source_reference]

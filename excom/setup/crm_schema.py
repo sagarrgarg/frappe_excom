@@ -58,8 +58,8 @@ CUSTOM_FIELDS = {
 	],
 	"Customer": [
 		{"fieldname": "excom_sec_prov", "fieldtype": "Section Break", "label": "Excom Provenance", "insert_after": "customer_group", "collapsible": 1},
-		{"fieldname": "customer_type", "fieldtype": "Select", "label": "Customer Type (Excom)", "options": CT_OPTIONS, "insert_after": "excom_sec_prov"},
-		{"fieldname": "first_touch_at", "fieldtype": "Datetime", "label": "First Touch At", "read_only": 1, "insert_after": "customer_type"},
+		{"fieldname": "excom_customer_type", "fieldtype": "Select", "label": "Customer Type (Excom)", "options": CT_OPTIONS, "insert_after": "excom_sec_prov"},
+		{"fieldname": "first_touch_at", "fieldtype": "Datetime", "label": "First Touch At", "read_only": 1, "insert_after": "excom_customer_type"},
 		{"fieldname": "excom_cb_prov", "fieldtype": "Column Break", "insert_after": "first_touch_at"},
 		{"fieldname": "first_touch_channel", "fieldtype": "Data", "label": "First Touch Channel", "read_only": 1, "insert_after": "excom_cb_prov"},
 		{"fieldname": "source_reference", "fieldtype": "Data", "label": "Source Reference", "read_only": 1, "insert_after": "first_touch_channel"},
@@ -77,7 +77,18 @@ OPPORTUNITY_TYPES = ["Distributor", "Retailer", "Export", "OEM", "Corporate Gift
 def apply() -> None:
 	"""Idempotent. Called from after_migrate and the P3 patch."""
 	# Custom fields: only for doctypes present on this site (Prospect exists v13+; guard anyway)
-	fields = {dt: defs for dt, defs in CUSTOM_FIELDS.items() if frappe.db.exists("DocType", dt)}
+	fields = {}
+	for dt, defs in CUSTOM_FIELDS.items():
+		if not frappe.db.exists("DocType", dt):
+			continue
+		# Never shadow a field the doctype already ships natively (v15 Customer.customer_type, v16 adds more):
+		# a Custom Field with the same fieldname replaces the native definition in meta and breaks validation.
+		native = {f.fieldname for f in frappe.get_meta(dt).fields if not getattr(f, "is_custom_field", 0)}
+		safe = [d for d in defs if d["fieldname"] not in native]
+		for d in defs:
+			if d["fieldname"] in native:
+				frappe.log_error(title="Excom crm_schema: skipped custom field", message=f"{dt}.{d['fieldname']} exists natively — not created")
+		fields[dt] = safe
 	create_custom_fields(fields, ignore_validate=True, update=True)
 
 	crm_compat.seed_attribution_rows(ATTRIBUTION_SOURCES)

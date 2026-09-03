@@ -209,7 +209,7 @@ def on_conversion(src, new) -> None:
 		post_system_message(identity, _("{0} {1} converted to {2} {3}").format(src.doctype, gw.get_title(src), new.doctype, new.name))
 	if gw.is_customer(new):
 		s = frappe.get_doc(src.doctype, src.name)
-		vals = {f: s.get(f) for f in ("customer_type", "first_touch_at", "first_touch_channel", "source_reference") if s.get(f)}
+		vals = {gw.overlay_field(new.doctype, f): s.get(f) for f in ("customer_type", "first_touch_at", "first_touch_channel", "source_reference") if s.get(f)}
 		if vals:
 			frappe.db.set_value(new.doctype, new.name, vals, update_modified=False)
 

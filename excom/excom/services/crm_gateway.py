@@ -143,6 +143,14 @@ def create_lead(payload: dict, ignore_permissions: bool = False) -> frappe._dict
 	return lead_ref(doc.name)
 
 
+def overlay_field(doctype: str, field: str) -> str:
+	"""Excom overlay field name on a given doctype. Customer ships a native `customer_type`
+	(Company/Individual/Partnership), so ours is `excom_customer_type` there."""
+	if doctype == CUSTOMER and field == "customer_type":
+		return "excom_customer_type"
+	return field
+
+
 def stamp_provenance(doc, channel: str, by: str | None, reference: str | None) -> None:
 	"""Write-once first-touch fields (HLD-003 §1.3 principle 5)."""
 	if not doc.get("first_touch_at"):
@@ -248,8 +256,9 @@ def convert(r, target: str) -> frappe._dict:
 	# carry excom overlay fields forward
 	src = frappe.get_doc(r.doctype, r.name)
 	for f in ("customer_type", "omni_identity", "first_touch_at", "first_touch_channel", "first_touch_by", "source_reference"):
-		if src.get(f) and frappe.get_meta(new.doctype).has_field(f) and not new.get(f):
-			new.set(f, src.get(f))
+		target_field = overlay_field(new.doctype, f)
+		if src.get(f) and frappe.get_meta(new.doctype).has_field(target_field) and not new.get(target_field):
+			new.set(target_field, src.get(f))
 	if new.doctype == OPPORTUNITY:
 		new.pipeline_stage = "Qualified"
 		new.stage_entered_at = now_datetime()
