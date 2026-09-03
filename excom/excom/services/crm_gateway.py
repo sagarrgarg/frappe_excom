@@ -379,3 +379,21 @@ def kinds_for_identities(identities: list[str]) -> dict[str, list[dict]]:
 	for k in out:
 		out[k].sort(key=lambda x: order.get(x["doctype"], 9))
 	return out
+
+
+# ─── ownership helpers for the admin area ────────────────────────────────────
+
+def open_lead_counts_by_owner() -> dict[str, int]:
+	"""{user: open leads owned} — excludes converted / do-not-contact."""
+	rows = frappe.db.sql(
+		f"SELECT lead_owner, COUNT(*) FROM `tab{LEAD}` WHERE status NOT IN ('Converted','Do Not Contact') AND lead_owner IS NOT NULL GROUP BY lead_owner"
+	)
+	return {r[0]: int(r[1]) for r in rows}
+
+
+def reassign_open_leads(from_user: str, to_user: str | None) -> int:
+	"""Move every open lead owned by from_user to to_user (None = unassigned). Returns count."""
+	names = frappe.get_all(LEAD, filters={"lead_owner": from_user, "status": ["not in", ["Converted", "Do Not Contact"]]}, pluck="name")
+	for n in names:
+		frappe.db.set_value(LEAD, n, "lead_owner", to_user, update_modified=False)
+	return len(names)

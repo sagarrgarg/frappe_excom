@@ -4,6 +4,7 @@ import {
   Plus, Sun, Inbox, KanbanSquare, Users, Radio, BarChart3, Building2, ChevronsUpDown,
   Shield, GitMerge, ListChecks, Cog, Settings, Rows3, LogOut, Bug, Sparkles, ArrowLeftRight, Keyboard, ListTodo,
 } from "lucide-react";
+import { hasRole } from "../../lib/ui-flag";
 import { cn } from "../ui/utils";
 import { Avatar, Badge, Menu, menuItemClass, Kbd } from "../primitives";
 import { useInbox } from "./InboxProvider";
@@ -36,6 +37,7 @@ export function Rail() {
   const [feedback, setFeedback] = useState(false);
   const hoverTimer = useRef(0);
   const navigate = useNavigate();
+  const isManager = hasRole("Excom Manager") || hasRole("System Manager");
   const location = useLocation();
 
   useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
@@ -141,7 +143,7 @@ export function Rail() {
         <Menu.Portal>
           <Menu.Content side="right" align="end" sideOffset={6} className="z-50 min-w-[220px] rounded-lg border border-border bg-surface p-1 shadow-ex">
             <Menu.Label className="px-2 py-1.5 text-xs text-ink-3 truncate">{branding?.app_name || "Excom"} · {currentUserFullName()}</Menu.Label>
-            <Menu.Item className={menuItemClass} onSelect={() => navigate("/teams")}><Shield />Teams</Menu.Item>
+            {isManager && <Menu.Item className={menuItemClass} onSelect={() => navigate("/admin")}><Shield />Admin</Menu.Item>}
             <Menu.Item className={menuItemClass} onSelect={() => navigate("/merge")}><GitMerge />Merge suggestions {mergeCount > 0 && <Badge accent="green" count={mergeCount} className="ml-auto" />}</Menu.Item>
             <Menu.Item className={menuItemClass} onSelect={() => navigate("/subscribers")}><ListChecks />Subscribers</Menu.Item>
             <Menu.Item className={menuItemClass} onSelect={() => navigate("/rules")}><Cog />Subscriber rules</Menu.Item>

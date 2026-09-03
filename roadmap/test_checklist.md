@@ -133,3 +133,16 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 | Assignee whose User is disabled → shown as `Owner disabled` and listed under Unassigned | S | ✅ `assigned_to_enabled` from `tabUser.enabled`; intake queue drops disabled `lead_owner` too |
 | Talk = claim: first outbound on an unassigned (or disabled-owner) chat assigns the chat and the linked open Lead (`lead_owner` + ToDo) | S | ✅ `_claim_on_talk` on send_message / send_template_to_thread / send_email |
 | Details tab: Link fields are a searchable picker (frappe.desk.search.search_link), Select stays select | S | ✅ no more "Could not find Salutation: m" |
+
+## Admin area `/admin` (2026-09-03, synthetic data, cleaned up)
+
+| Case | Sev | Result |
+|---|---|---|
+| Manager-only gate (Excom Manager / System Manager); others see a notice | S | ✅ `hasRole` client + `_check_manager_access` on every `api/admin.py` endpoint |
+| Teams: create, rename (doc rename), parent team, description, delete with chats moved to another team / no team | S | ✅ |
+| Team members: add (enabled users only), Member↔Manager toggle, remove; disabled users flagged with "reassign chats" | S | ✅ |
+| Team → channel-account access (writes `Excom Channel Account.allowed_teams`) | S | ✅ |
+| Users & roles: grant/revoke Excom User / Excom Manager; open chats + leads owned; reassign all work to a user or to nobody (ToDos follow) | S | ✅ |
+| Generic editor: Channel accounts (passwords write-only, masked as set/unset), Templates (+ Sync from Meta), Intake sources, Canned responses, Tags, Stickers (Attach upload), Email signatures, Notification rules (child tables), Excom Settings (Single) | S | ✅ schema-driven; `depends_on` honoured for the simple `eval:` forms |
+| Read-only logs: transfer log, stage change log, notification log | S | ✅ |
+| Legacy `/teams` route redirects to `/admin/teams`; Rail avatar menu + More show "Admin" for managers | S | ✅ |

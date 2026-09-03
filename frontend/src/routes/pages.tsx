@@ -12,7 +12,7 @@ import { SubscriberListPage } from "../components/SubscriberListPage";
 import { SubscriberRulesPage } from "../components/SubscriberRulesPage";
 import { SettingsPage } from "../components/SettingsPage";
 import { useInboxMeta } from "../hooks/useInboxMeta";
-import { switchUi } from "../lib/ui-flag";
+import { switchUi, hasRole } from "../lib/ui-flag";
 import { channelMeta } from "../lib/channels";
 import { FeedbackDialog } from "../components/shell/FeedbackDialog";
 
@@ -67,7 +67,7 @@ export function MoreRoute() {
     { label: "Contacts", icon: <Users />, to: "/contacts" },
     { label: "Broadcasts", icon: <Radio />, to: "/broadcasts" },
     { label: "Analytics", icon: <BarChart3 />, to: "/analytics" },
-    { label: "Teams", icon: <Shield />, to: "/teams" },
+    ...(hasRole("Excom Manager") || hasRole("System Manager") ? [{ label: "Admin", icon: <Shield />, to: "/admin" }] : []),
     { label: "Merge suggestions", icon: <GitMerge />, to: "/merge", badge: mergeCount },
     { label: "Subscribers", icon: <ListChecks />, to: "/subscribers" },
     { label: "Subscriber rules", icon: <Cog />, to: "/rules" },

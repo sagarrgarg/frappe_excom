@@ -5,6 +5,8 @@
 **Duration:** 16–24 days
 **Depends on:** nothing — no backend work required
 **Blocks:** P2 (testing), P3 §3.10 (CRM surfaces reuse this shell)
+**Status (2026-09-03 addendum):** Admin area `/admin` replaces the legacy Teams page and the Desk-only management screens (teams, users & roles, channel accounts, templates, intake sources, canned, tags, stickers, signatures, notification rules, settings, logs).
+
 **Status:** Implemented 2026-09-03 and the default tree (W1–W13); legacy reachable via `?ui=legacy` until P2 sign-off deletes it (W12 step 2)
 
 ---

@@ -11,7 +11,7 @@ const PipelineRoute = lazy(() => import("./crm").then((m) => ({ default: m.Pipel
 
 const BroadcastsRoute = lazy(() => import("./pages").then((m) => ({ default: m.BroadcastsRoute })));
 const AnalyticsRoute = lazy(() => import("./pages").then((m) => ({ default: m.AnalyticsRoute })));
-const TeamsRoute = lazy(() => import("./pages").then((m) => ({ default: m.TeamsRoute })));
+const AdminRoute = lazy(() => import("../components/admin/AdminLayout").then((m) => ({ default: m.AdminLayout })));
 const MergeRoute = lazy(() => import("./pages").then((m) => ({ default: m.MergeRoute })));
 const SubscribersRoute = lazy(() => import("./pages").then((m) => ({ default: m.SubscribersRoute })));
 const RulesRoute = lazy(() => import("./pages").then((m) => ({ default: m.RulesRoute })));
@@ -45,7 +45,8 @@ export function NextRouter() {
           <Route path="/contacts" element={L(<ContactsRoute />)} />
           <Route path="/broadcasts" element={L(<BroadcastsRoute />)} />
           <Route path="/analytics" element={L(<AnalyticsRoute />)} />
-          <Route path="/teams" element={L(<TeamsRoute />)} />
+          <Route path="/teams" element={<Navigate to="/admin/teams" replace />} />
+          <Route path="/admin/:section?" element={L(<AdminRoute />)} />
           <Route path="/merge" element={L(<MergeRoute />)} />
           <Route path="/subscribers" element={L(<SubscribersRoute />)} />
           <Route path="/rules" element={L(<RulesRoute />)} />
