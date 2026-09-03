@@ -201,6 +201,7 @@ def get_threads(
                t.channel, t.account,
                oi.primary_email,
                u.full_name AS assigned_to_name, u.user_image AS assigned_to_avatar,
+               COALESCE(u.enabled, 0) AS assigned_to_enabled,
                et.team_name AS assigned_team_name
                {broadcast_badge_col}
         FROM `tabExcom Thread` t
@@ -219,8 +220,49 @@ def get_threads(
     if threads:
         _enrich_company(threads)
         _enrich_tags(threads)
+        _enrich_kinds(threads)
 
     return threads
+
+
+def _enrich_kinds(threads: list):
+    """What is this contact? Linked ERP records per identity, one query (Customer/Supplier/Lead/Opportunity/Employee).
+    Leads and Opportunities carry their customer_type so the row can say 'Lead · Export Importer'."""
+    ids = list({t.omni_identity for t in threads if t.get("omni_identity")})
+    for t in threads:
+        t["kinds"] = []
+    if not ids:
+        return
+    from excom.excom.services.crm_gateway import kinds_for_identities
+    by = kinds_for_identities(ids)
+    for t in threads:
+        t["kinds"] = by.get(t.get("omni_identity"), [])
+
+
+def _claim_on_talk(thread_id: str, user: str | None = None) -> None:
+    """Whoever sends the first message on an unassigned chat (or one whose assignee is disabled)
+    gets the chat — and the linked open Lead, if it has no active owner."""
+    user = user or frappe.session.user
+    if not user or user == "Guest":
+        return
+    row = frappe.db.get_value("Excom Thread", thread_id, ["assigned_to", "assigned_team", "omni_identity"], as_dict=True)
+    if not row:
+        return
+    assignee_active = bool(row.assigned_to) and bool(frappe.db.get_value("User", row.assigned_to, "enabled"))
+    if not assignee_active:
+        from excom.excom.doctype.excom_team.excom_team import get_user_teams
+        update = {"assigned_to": user}
+        teams = get_user_teams(user)
+        if teams and not row.assigned_team:
+            update["assigned_team"] = teams[0]
+        frappe.db.set_value("Excom Thread", thread_id, update, update_modified=False)
+        frappe.publish_realtime("excom:thread_updated", {"thread": thread_id, "event": "assigned"}, after_commit=True)
+    if row.omni_identity:
+        try:
+            from excom.excom.services.crm_flow import claim_lead_for_identity
+            claim_lead_for_identity(row.omni_identity, user)
+        except Exception:
+            frappe.log_error(title="Excom: lead claim on talk failed", message=frappe.get_traceback())
 
 
 @frappe.whitelist()
@@ -397,6 +439,7 @@ def send_message(thread_id: str, message: str = "", message_type: str = "Text",
         sticker_name: Excom Sticker name (for Sticker type)
     """
     _check_thread_access(thread_id)
+    _claim_on_talk(thread_id)
     message = _sanitize_message(message, thread_id)
 
     if message_type == "Sticker" and sticker_name:
@@ -1594,6 +1637,7 @@ def send_template_to_thread(
         header_location: JSON object ``{"latitude","longitude","name","address"}`` for LOCATION headers
     """
     _check_thread_access(thread_id)
+    _claim_on_talk(thread_id)
 
     thread = frappe.db.get_value(
         "Excom Thread", thread_id,

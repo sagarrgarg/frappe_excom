@@ -105,6 +105,8 @@ export function useThreads(
           assignedTeamName: latestThread.assigned_team_name || undefined,
           lastMessageDirection: latestThread.last_message_direction,
           threads: sortedThreads,
+          assignedToEnabled: latestThread.assigned_to ? Boolean(latestThread.assigned_to_enabled) : undefined,
+          kinds: latestThread.kinds || [],
         };
 
         return contact;

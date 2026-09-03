@@ -21,13 +21,15 @@ export interface InboxFilters {
   company: string;
   /** "1" → show archived (Closed) threads instead of open ones. */
   archived: string;
+  /** customer | supplier | employee | opportunity | lead | none — client-side, from Omni Identity links. */
+  kind: string;
 }
 
 export const EMPTY_FILTERS: InboxFilters = {
-  q: "", channel: "", account: "", team: "", tags: [], broadcast: "", bstatus: "", from: "", to: "", company: "", archived: "",
+  q: "", channel: "", account: "", team: "", tags: [], broadcast: "", bstatus: "", from: "", to: "", company: "", archived: "", kind: "",
 };
 
-export const CHIP_KEYS: (keyof InboxFilters)[] = ["channel", "account", "team", "tags", "broadcast", "bstatus", "from", "to", "company", "archived"];
+export const CHIP_KEYS: (keyof InboxFilters)[] = ["channel", "account", "team", "tags", "broadcast", "bstatus", "from", "to", "company", "archived", "kind"];
 
 const CHIP_ALIASES: Record<string, keyof InboxFilters> = {
   channel: "channel", ch: "channel",
@@ -40,6 +42,7 @@ const CHIP_ALIASES: Record<string, keyof InboxFilters> = {
   before: "to", to: "to", until: "to",
   company: "company", co: "company",
   archived: "archived", is: "archived",
+  kind: "kind", type: "kind",
 };
 
 export function filtersFromParams(sp: URLSearchParams): InboxFilters {
@@ -55,6 +58,7 @@ export function filtersFromParams(sp: URLSearchParams): InboxFilters {
     to: sp.get("to") || "",
     company: sp.get("company") || "",
     archived: sp.get("archived") || "",
+    kind: sp.get("kind") || "",
   };
 }
 
@@ -71,6 +75,7 @@ export function paramsFromFilters(f: InboxFilters): URLSearchParams {
   if (f.to) sp.set("to", f.to);
   if (f.company) sp.set("company", f.company);
   if (f.archived) sp.set("archived", "1");
+  if (f.kind) sp.set("kind", f.kind);
   return sp;
 }
 
@@ -108,6 +113,7 @@ export function activeChips(f: InboxFilters): { key: keyof InboxFilters; value: 
   if (f.to) out.push({ key: "to", value: f.to, label: `before:${f.to}` });
   if (f.company) out.push({ key: "company", value: f.company, label: `company:${f.company}` });
   if (f.archived) out.push({ key: "archived", value: "1", label: "archived" });
+  if (f.kind) out.push({ key: "kind", value: f.kind, label: `kind:${f.kind}` });
   return out;
 }
 
@@ -145,14 +151,27 @@ export const DEFAULT_VIEWS: SavedView[] = [
   { id: "calls", label: "Calls", filters: { channel: "calls" }, builtin: true },
   { id: "comments", label: "Comments", filters: { channel: "instagram" }, builtin: true, hint: "Instagram public comments" },
   { id: "archived", label: "Archived", filters: { archived: "1" }, builtin: true, hint: "Closed threads — reopen from the row menu" },
+  { id: "customers", label: "Customers", filters: { kind: "customer" }, builtin: true },
+  { id: "suppliers", label: "Suppliers", filters: { kind: "supplier" }, builtin: true },
+  { id: "leads", label: "Leads", filters: { kind: "lead" }, builtin: true, hint: "Open leads and opportunities" },
+  { id: "unknown", label: "Unknown contacts", filters: { kind: "none" }, builtin: true, hint: "No ERP record yet — promote or link" },
 ];
+
+/** Does the contact match a `kind:` chip? */
+export function kindMatches(c: UnifiedContact, kind: string): boolean {
+  if (!kind) return true;
+  const kinds = c.kinds || [];
+  if (kind === "none") return kinds.length === 0;
+  if (kind === "lead") return kinds.some((k) => k.doctype === "Lead" || k.doctype === "Opportunity");
+  return kinds.some((k) => k.doctype.toLowerCase() === kind);
+}
 
 export function viewPredicate(view: SavedView | undefined): (c: UnifiedContact) => boolean {
   const me = currentUser();
   switch (view?.predicate) {
     case "unread": return (c) => c.totalUnreadCount > 0;
     case "mine": return (c) => Boolean(c.assignedToUser && c.assignedToUser === me);
-    case "unassigned": return (c) => !c.assignedToUser && !c.assignedTeam;
+    case "unassigned": return (c) => (!c.assignedToUser || c.assignedToEnabled === false) && !c.assignedTeam || c.assignedToEnabled === false;
     case "today": return (c) => c.lastMessageDirection === "Inbound";
     case "sla": return (c) => c.lastMessageDirection === "Inbound" && Date.now() - c.timestamp.getTime() > SLA_RISK_MS;
     default: return () => true;

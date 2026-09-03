@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Archive, ArchiveRestore, UserPlus, Eye, EyeOff, AlertOctagon, Trash2, Copy, Clock } from "lucide-react";
-import { Row, Avatar, Badge, OverflowMenu, type MenuGroup } from "../primitives";
+import { Row, Avatar, Badge, Chip, OverflowMenu, type MenuGroup } from "../primitives";
+import type { Accent } from "../primitives/Chip";
 import { channelMeta } from "../../lib/channels";
 import { SLA_RISK_MS } from "../../lib/views";
 import { cn } from "../ui/utils";
@@ -16,6 +17,18 @@ export interface RowActions {
   del?: (c: UnifiedContact) => void;
   copy: (c: UnifiedContact) => void;
   snooze: (c: UnifiedContact) => void;
+}
+
+const KIND_ACCENT: Record<string, Accent> = { Customer: "green", Supplier: "sand", Employee: "teal", Opportunity: "violet", Lead: "amber" };
+
+/** "Customer" · "Supplier" · "Lead · Export Importer" · "Opportunity · OEM · Quote" — the first (highest-precedence) link. */
+export function kindLabel(c: UnifiedContact): { label: string; accent: Accent } | null {
+  const k = c.kinds?.[0];
+  if (!k) return null;
+  const parts = [k.doctype === "Opportunity" ? "Opp" : k.doctype];
+  if (k.customer_type) parts.push(k.customer_type);
+  if (k.stage) parts.push(k.stage);
+  return { label: parts.join(" · "), accent: KIND_ACCENT[k.doctype] || "neutral" };
 }
 
 function relTime(d: Date): string {
@@ -38,6 +51,9 @@ function relTime(d: Date): string {
 export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions, coarse, isSystemManager }: { c: UnifiedContact; selected: boolean; onOpen: () => void; actions: RowActions; coarse: boolean; isSystemManager: boolean }) {
   const unread = c.totalUnreadCount > 0;
   const archived = c.threads?.[0]?.status === "Closed";
+  const kind = kindLabel(c);
+  const ownerDisabled = Boolean(c.assignedToUser) && c.assignedToEnabled === false;
+  const unassigned = !c.assignedToUser || ownerDisabled;
   const awaiting = c.lastMessageDirection === "Inbound";
   const slaRisk = awaiting && Date.now() - c.timestamp.getTime() > SLA_RISK_MS;
   const groups: MenuGroup[] = [
@@ -73,6 +89,7 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className={cn("truncate text-sm min-w-0", unread ? "font-semibold text-ink-1" : "font-medium text-ink-1")}>{c.contactName}</span>
+          {kind ? <Chip size="sm" accent={kind.accent} label={kind.label} className="shrink-0 max-w-[45%]" /> : <Chip size="sm" accent="neutral" label="Unknown" className="shrink-0 opacity-70" title="No ERP record — promote to Lead or link in Desk" />}
           <span className="flex items-center gap-0.5 shrink-0" aria-label={c.channels.join(", ")}>
             {c.channels.slice(0, 4).map((ch) => {
               const m = channelMeta(ch);
@@ -82,7 +99,8 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
           <span className={cn("t2-hide ml-auto shrink-0 text-xs tabular-nums", unread ? "text-crayon-blue-text font-medium" : "text-ink-3")}>{relTime(c.timestamp)}</span>
         </div>
         <div className="flex items-center gap-1.5 min-w-0 mt-0.5">
-          {c.assignedTo?.name && <span className="text-xs text-ink-3 truncate max-w-[40%] shrink-0">{c.assignedTo.name.split(" ")[0]}:</span>}
+          {c.assignedTeamName && <span className="text-xs text-ink-3 truncate max-w-[30%] shrink-0 rounded bg-surface-sunken px-1" title={`Team: ${c.assignedTeamName}`}>{c.assignedTeamName}</span>}
+          {unassigned ? <span className="text-xs text-crayon-amber-text shrink-0" title={ownerDisabled ? `Assignee ${c.assignedTo?.name} is disabled` : "Nobody owns this chat"}>{ownerDisabled ? "Owner disabled" : "Unassigned"}</span> : c.assignedTo?.name && <span className="text-xs text-ink-3 truncate max-w-[40%] shrink-0">{c.assignedTo.name.split(" ")[0]}:</span>}
           <span className={cn("truncate text-xs min-w-0", unread ? "text-ink-1" : "text-ink-3")}>{c.lastMessage || "—"}</span>
           <span className="t2-hide ml-auto flex items-center gap-1 shrink-0">
             {c.tags?.slice(0, 4).map((t) => <span key={t.tag} className="size-2 rounded-full" style={{ backgroundColor: t.color }} title={t.tag_name} />)}

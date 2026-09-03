@@ -123,3 +123,13 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 | Guardrails G1–G6 | S | ⚠ site: bridge enabled, `crm_deal` fields present, `crm` installed — awaiting decision |
 | SLA ladder fenced to post-go-live records, in-app only by default | S | ✅ (0 escalations on legacy data after fence; an unfenced dry run touched 80 legacy leads and was fully reverted) |
 | IndiaMART / TradeIndia / Meta live pulls, auto-ack send, website form from a real origin | — | ⏭ need vendor keys + a registered source |
+
+## Inbox row identity + ownership (2026-09-03, synthetic `QA Kinds Person`, cleaned up)
+
+| Case | Sev | Result |
+|---|---|---|
+| Row shows what the contact is (Customer / Supplier / Employee / Opp · type / Lead · type) from Omni Identity links; `Unknown` when no ERP record | S | ✅ `Lead · Distributor` chip; `kind:` chip + Customers/Suppliers/Leads/Unknown views |
+| Row shows the team it belongs to | S | ✅ team name before the assignee |
+| Assignee whose User is disabled → shown as `Owner disabled` and listed under Unassigned | S | ✅ `assigned_to_enabled` from `tabUser.enabled`; intake queue drops disabled `lead_owner` too |
+| Talk = claim: first outbound on an unassigned (or disabled-owner) chat assigns the chat and the linked open Lead (`lead_owner` + ToDo) | S | ✅ `_claim_on_talk` on send_message / send_template_to_thread / send_email |
+| Details tab: Link fields are a searchable picker (frappe.desk.search.search_link), Select stays select | S | ✅ no more "Could not find Salutation: m" |

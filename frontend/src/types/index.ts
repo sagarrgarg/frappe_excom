@@ -25,6 +25,17 @@ export interface ExcomThread {
   assigned_to_avatar?: string;
   tags?: ThreadTag[];
   broadcast_delivery_status?: string;
+  assigned_to_enabled?: number;
+  kinds?: ContactKind[];
+}
+
+/** Linked ERP record kind for the inbox row: Customer · Supplier · Employee · Opportunity · Lead (+ customer_type). */
+export interface ContactKind {
+  doctype: string;
+  name: string;
+  customer_type?: string;
+  status?: string;
+  stage?: string;
 }
 
 export interface ExcomMessage {
@@ -131,6 +142,9 @@ export interface UnifiedContact {
   assignedTeamName?: string;
   lastMessageDirection?: "Inbound" | "Outbound";
   threads?: ExcomThread[];
+  /** false when the assignee's user account is disabled → treated as unassigned. */
+  assignedToEnabled?: boolean;
+  kinds?: ContactKind[];
 }
 
 export interface Conversation {

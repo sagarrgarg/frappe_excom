@@ -200,7 +200,12 @@ def get_intake_queue(filters: str | dict | None = None) -> list:
 	# SLA state: first response target from the intake source
 	sla = {s.name: s.sla_first_response for s in frappe.get_all("Excom Intake Source", fields=["name", "sla_first_response"])}
 	now = frappe.utils.now_datetime()
+	owners = {r.get("lead_owner") for r in rows if r.get("lead_owner")}
+	enabled = {u.name for u in frappe.get_all("User", filters={"name": ["in", list(owners)], "enabled": 1}, fields=["name"])} if owners else set()
 	for r in rows:
+		if r.get("lead_owner") and r["lead_owner"] not in enabled:
+			r["lead_owner_disabled"] = r["lead_owner"]
+			r["lead_owner"] = None
 		target = sla.get(r.get("intake_source")) or 0
 		age = frappe.utils.time_diff_in_seconds(now, r["creation"])
 		r["_age_seconds"] = age

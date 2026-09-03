@@ -343,3 +343,19 @@ def on_opportunity_updated(doc, method=None):
 			frappe.db.set_value(doc.doctype, doc.name, "next_action_at", frappe.utils.add_days(now_datetime(), 90), update_modified=False)
 	except Exception:
 		frappe.log_error(title=f"Excom crm_flow.on_opportunity_updated failed for {doc.name}", message=frappe.get_traceback())
+
+
+def claim_lead_for_identity(identity: str, user: str) -> str | None:
+	"""Talk = claim: the open Lead on this identity with no active owner goes to `user` (lead_owner + ToDo)."""
+	for r in gw.find_open_records_for_identity(identity):
+		if not gw.is_lead(r):
+			continue
+		owner = frappe.db.get_value(r.doctype, r.name, "lead_owner")
+		if owner and frappe.db.get_value("User", owner, "enabled"):
+			return None
+		frappe.db.set_value(r.doctype, r.name, "lead_owner", user, update_modified=False)
+		doc = frappe.get_doc(r.doctype, r.name)
+		if user not in (doc.get("_assign") or ""):
+			_assign(doc, user)
+		return r.name
+	return None

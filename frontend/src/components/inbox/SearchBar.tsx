@@ -113,6 +113,9 @@ export function SearchBar() {
                   {["Sent", "Failed", "Queued", "Skipped"].map((s) => <Menu.Item key={s} className={menuItemClass} onSelect={() => set({ bstatus: s })}>{s}</Menu.Item>)}
                 </Sub>
               )}
+              <Sub label="Kind" icon={<Users />}>
+                {[["customer", "Customers"], ["supplier", "Suppliers"], ["lead", "Leads & opportunities"], ["employee", "Employees"], ["none", "No ERP record"]].map(([v, l]) => <Menu.Item key={v} className={menuItemClass} onSelect={() => set({ kind: v })}>{l}</Menu.Item>)}
+              </Sub>
               <Sub label="Company" icon={<Building2 />}>
                 <Menu.Item className={menuItemClass} onSelect={() => { inputRef.current?.focus(); setText((t) => `${t} company:`.trim()); }}>Type company:…</Menu.Item>
               </Sub>
@@ -131,7 +134,7 @@ export function SearchBar() {
             <Chip key={`${c.key}:${c.value}`} size="sm" accent="blue" label={c.label} onRemove={() => setFilters(removeChip(filters, c.key, c.value))} />
           ))}
           {chips.length > 1 && (
-            <button type="button" className="text-xs text-ink-3 hover:text-ink-1 px-1" onClick={() => setFilters({ ...filters, channel: "", account: "", team: "", tags: [], broadcast: "", bstatus: "", from: "", to: "", company: "", archived: "" })}>Clear</button>
+            <button type="button" className="text-xs text-ink-3 hover:text-ink-1 px-1" onClick={() => setFilters({ ...filters, channel: "", account: "", team: "", tags: [], broadcast: "", bstatus: "", from: "", to: "", company: "", archived: "", kind: "" })}>Clear</button>
           )}
           {view && !view.builtin && (
             <button type="button" className="text-xs text-crayon-rose-text hover:underline px-1" onClick={() => deleteView(view.id)}>Delete view</button>

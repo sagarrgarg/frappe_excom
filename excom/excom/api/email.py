@@ -203,6 +203,8 @@ def send_email(
     Returns:
         {"success": True, "message_name": "..."}
     """
+    from excom.excom.api.chat import _claim_on_talk
+    _claim_on_talk(thread_id)
     _check_excom_access()
     try:
         msg_name = send_email_reply(

@@ -4,6 +4,7 @@ import { useCrmRecord, useFieldSchema, useCrmActions, type CrmRef, type SchemaFi
 import { Button, Input, Select, Textarea, Field, EmptyState } from "../primitives";
 import { deskUrl } from "../../hooks/useRecordLinks";
 import { GateChips } from "./GateChips";
+import { LinkField } from "./LinkField";
 import { StagePicker } from "./StagePicker";
 
 /**
@@ -35,8 +36,11 @@ export function DetailsTab({ refr, onChanged }: { refr: CrmRef | null; onChanged
       case "Date": control = <Input type="date" {...common} onChange={(e) => set(e.target.value)} />; break;
       case "Datetime": control = <Input type="datetime-local" {...common} value={v ? String(v).replace(" ", "T").slice(0, 16) : ""} onChange={(e) => set(e.target.value.replace("T", " "))} />; break;
       case "Int": case "Float": case "Currency": case "Percent": control = <Input type="number" {...common} onChange={(e) => set(e.target.value === "" ? null : Number(e.target.value))} className="tabular-nums" />; break;
-      case "Link": case "Dynamic Link":
-        control = <div className="flex items-center gap-1 min-w-0"><Input {...common} onChange={(e) => set(e.target.value)} placeholder={f.options} />{v && f.options && f.fieldtype === "Link" && <a href={deskUrl(f.options, String(v))} target="_blank" rel="noreferrer" className="text-ink-3 hover:text-ink-1 shrink-0"><ExternalLink className="size-4" /></a>}</div>;
+      case "Link":
+        control = <LinkField doctype={f.options || ""} value={v == null ? "" : String(v)} disabled={ro} onChange={set} />;
+        break;
+      case "Dynamic Link":
+        control = <div className="flex items-center gap-1 min-w-0"><Input {...common} onChange={(e) => set(e.target.value)} placeholder={f.options} /></div>;
         break;
       case "Table": control = <p className="text-xs text-ink-3">{Array.isArray(v) ? `${v.length} row${v.length === 1 ? "" : "s"} — edit in Desk` : "—"}</p>; break;
       default: control = <Input {...common} onChange={(e) => set(e.target.value)} />;

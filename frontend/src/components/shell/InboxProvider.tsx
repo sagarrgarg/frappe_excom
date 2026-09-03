@@ -6,7 +6,7 @@ import { useNotifications } from "../../hooks/useNotifications";
 import { useBreakpoint, useCoarsePointer, type Breakpoint } from "../../hooks/useBreakpoint";
 import {
   DEFAULT_VIEWS, EMPTY_FILTERS, filtersFromParams, loadSavedViews, paramsFromFilters, persistSavedViews,
-  viewPredicate, type InboxFilters, type SavedView,
+  viewPredicate, kindMatches, type InboxFilters, type SavedView,
 } from "../../lib/views";
 import { applyDensity, getDensity, type Density } from "../../lib/ui-flag";
 import type { UnifiedContact } from "../../types";
@@ -127,6 +127,7 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
       if (!pred(c)) return false;
       if (filters.tags.length && !filters.tags.every((t) => c.tags?.some((x) => x.tag === t || x.tag_name === t))) return false;
       if (filters.company && (c.contactInfo.company || "") !== filters.company) return false;
+      if (filters.kind && !kindMatches(c, filters.kind)) return false;
       return true;
     });
   }, [unifiedContacts, view, filters.tags, filters.company]);

@@ -343,3 +343,39 @@ def list_actions_due(user: str, limit: int = 200) -> list[dict]:
 	for r in rows:
 		r["_ref"] = {"doctype": OPPORTUNITY, "name": r["name"]}
 	return rows
+
+
+# ─── identity → kinds (for the inbox row) ─────────────────────────────────────
+
+KIND_DOCTYPES = [CUSTOMER, "Supplier", "Employee", OPPORTUNITY, LEAD]
+
+
+def kinds_for_identities(identities: list[str]) -> dict[str, list[dict]]:
+	"""{identity: [{doctype, name, customer_type?, status?}, …]} in precedence order, one query per doctype."""
+	links = frappe.get_all(
+		"Omni Identity Link",
+		filters={"parent": ["in", identities], "parenttype": "Omni Identity", "linked_doctype": ["in", KIND_DOCTYPES]},
+		fields=["parent", "linked_doctype", "linked_name"],
+	)
+	by_dt: dict[str, set] = {}
+	for ln in links:
+		by_dt.setdefault(ln.linked_doctype, set()).add(ln.linked_name)
+	extra: dict[tuple, dict] = {}
+	if by_dt.get(LEAD):
+		for r in frappe.get_all(LEAD, filters={"name": ["in", list(by_dt[LEAD])]}, fields=["name", "customer_type", "status"]):
+			extra[(LEAD, r.name)] = {"customer_type": r.customer_type, "status": r.status}
+	if by_dt.get(OPPORTUNITY):
+		for r in frappe.get_all(OPPORTUNITY, filters={"name": ["in", list(by_dt[OPPORTUNITY])]}, fields=["name", "customer_type", "status", "pipeline_stage"]):
+			extra[(OPPORTUNITY, r.name)] = {"customer_type": r.customer_type, "status": r.status, "stage": r.pipeline_stage}
+	out: dict[str, list[dict]] = {}
+	order = {dt: i for i, dt in enumerate(KIND_DOCTYPES)}
+	for ln in links:
+		e = extra.get((ln.linked_doctype, ln.linked_name), {})
+		if ln.linked_doctype == LEAD and e.get("status") in ("Converted", "Do Not Contact"):
+			continue
+		if ln.linked_doctype == OPPORTUNITY and e.get("status") in ("Converted", "Lost", "Closed"):
+			continue
+		out.setdefault(ln.parent, []).append({"doctype": ln.linked_doctype, "name": ln.linked_name, **e})
+	for k in out:
+		out[k].sort(key=lambda x: order.get(x["doctype"], 9))
+	return out
