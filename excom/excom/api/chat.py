@@ -1700,9 +1700,7 @@ def send_template_to_thread(
     if not isinstance(btn_list, list):
         btn_list = []
 
-    components = _build_template_components(
-        template_doc, var_list, header_media_url, btn_list, location_data,
-    )
+    components = _build_template_components(template_doc, var_list, header_media_url, btn_list, location_data, account=account)
 
     preview = _build_template_preview(template_doc, var_list, location_data)
     now = now_datetime()
@@ -1822,7 +1820,7 @@ def check_24h_window(thread_id: str) -> dict:
 
 def _build_template_components(
     template_doc, body_variables: list, header_media_url: str = "",
-    button_urls: list = None, location_data: dict = None,
+    button_urls: list = None, location_data: dict = None, account=None,
 ) -> list:
     """Build Meta Cloud API ``components`` for template sends.
 
@@ -1873,7 +1871,7 @@ def _build_template_components(
             "type": "header",
             "parameters": [{
                 "type": "image",
-                "image": {"link": _to_absolute_url(header_media_url)},
+                "image": _header_media(account, header_media_url),
             }],
         })
     elif ht == "VIDEO" and header_media_url:
@@ -1881,7 +1879,7 @@ def _build_template_components(
             "type": "header",
             "parameters": [{
                 "type": "video",
-                "video": {"link": _to_absolute_url(header_media_url)},
+                "video": _header_media(account, header_media_url),
             }],
         })
     elif ht == "DOCUMENT" and header_media_url:
@@ -1891,7 +1889,7 @@ def _build_template_components(
             "parameters": [{
                 "type": "document",
                 "document": {
-                    "link": _to_absolute_url(header_media_url),
+                    **_header_media(account, header_media_url),
                     "filename": filename,
                 },
             }],
@@ -1951,6 +1949,17 @@ def _get_site_url() -> str:
             return f"{scheme}://{host}".rstrip("/")
 
     return (frappe.conf.get("host_name") or frappe.utils.get_url()).rstrip("/")
+
+
+def _header_media(account, file_url: str) -> dict:
+    """Template header media: upload local files to Meta and reference by id (a link Meta cannot fetch → 131053)."""
+    if account is not None:
+        from excom.excom.services.whatsapp_service import media_reference
+        try:
+            return media_reference(account, file_url)
+        except Exception:
+            frappe.log_error(title="Excom: header media upload failed, falling back to link", message=frappe.get_traceback())
+    return {"link": _to_absolute_url(file_url)}
 
 
 def _to_absolute_url(file_url: str) -> str:
