@@ -4,7 +4,7 @@
 **Duration:** 8–12 days (T3/T5 may start during P1's tail)
 **Depends on:** P1 feature-complete behind the flag
 **Blocks:** P3 — CRM work must land on a proven base, not on an untested rewrite
-**Status:** In progress — T2 (automatable part), T3, T4 (thread size), T5, T6 run 2026-09-03; 7 defects fixed; see `roadmap/test_checklist.md`. T1 pilot + reconnect/packet-loss + email/outbound paths pending real users.
+**Status (2026-09-03, evening):** legacy tree deleted (E7 done), automated tests added (`excom/excom/tests/test_core_flows.py`, 12 cases; `frontend/src/lib/__tests__`, 6 cases), Frappe CRM migration rehearsed (`roadmap/frappe_crm_migration.md`). Still pending real users: T1 pilot, reconnect/packet-loss, live vendor intake.
 
 ---
 

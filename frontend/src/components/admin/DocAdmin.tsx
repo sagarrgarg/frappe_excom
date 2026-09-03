@@ -38,7 +38,14 @@ export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraAction
   }, [data, isNew, schema]);
   const doc: Doc = { ...base, ...draft };
   const dirty = Object.keys(draft).length > 0 && !(isNew && schema.needs_name && !String(draft.__newname ?? "").trim());
+  const SENSITIVE = ["Password"];
   const onSave = async () => {
+    const touchedSecrets = schema.sections.flatMap((s) => s.fields).filter((f) => SENSITIVE.includes(f.fieldtype) && f.fieldname in draft && draft[f.fieldname]);
+    const touchedKeys = schema.sections.flatMap((s) => s.fields).filter((f) => /token|secret|key|phone_id|business_id|app_id/i.test(f.fieldname) && !SENSITIVE.includes(f.fieldtype) && f.fieldname in draft);
+    if (touchedSecrets.length || touchedKeys.length) {
+      const list = [...touchedSecrets, ...touchedKeys].map((f) => f.label).join(", ");
+      if (!window.confirm(`You are changing credentials or integration ids (${list}). A wrong value stops messages or webhooks for this account. Save anyway?`)) return;
+    }
     try {
       const r = await save({ doctype, name: name || "", values: JSON.stringify(draft) });
       toast.success(isNew ? "Created" : "Saved"); setDraft({}); mutate(); onSaved?.(r.message.name);

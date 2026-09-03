@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { Search, Inbox, Plus, Radio, BarChart3, Shield, GitMerge, ListChecks, Cog, Settings, Rows3, PanelRight, ArrowLeftRight, Bug, Archive, UserPlus, Eye, Sun, KanbanSquare, Users, MessageSquare, Bookmark } from "lucide-react";
 import { useInbox } from "./shell/InboxProvider";
 import { Avatar, Kbd } from "./primitives";
-import { switchUi } from "../lib/ui-flag";
 import { channelMeta } from "../lib/channels";
 import { cn } from "./ui/utils";
 
@@ -79,7 +78,6 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       { id: "s:settings", group: "Settings", label: "Settings", icon: <Settings />, shortcut: "g s", run: go("/settings") },
       ...["general", "signatures", "notifications", "branding", "accounts", "shortcuts", "canned", "auto-reply", "appearance"].map<Item>((s) => ({ id: `s:${s}`, group: "Settings", label: `Settings › ${s.replace("-", " ")}`, icon: <Settings />, run: go(`/settings?section=${s}`) })),
       { id: "s:density", group: "Settings", label: `Density: switch to ${density === "compact" ? "Comfortable" : "Compact"}`, icon: <Rows3 />, run: () => setDensity(density === "compact" ? "comfortable" : "compact") },
-      { id: "s:legacy", group: "Settings", label: "Switch to old UI", icon: <ArrowLeftRight />, run: () => switchUi("legacy") },
     ];
     return list;
   }, [allContacts, views, navigate, openRecord, setView, setNewOpen, selected, toggleDetails, closeRecord, density, setDensity]);

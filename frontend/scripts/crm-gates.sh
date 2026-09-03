@@ -8,7 +8,7 @@ ALLOW='excom/excom/services/crm_gateway.py|excom/excom/services/crm_compat.py|ex
 echo "gate F3: \"Lead\"/\"Opportunity\"/\"Prospect\"/\"Quotation\" doctype strings outside the gateway"
 out=$(grep -rnE --include='*.py' '"(Lead|Opportunity|Prospect|Quotation)"' excom | grep -vE "$ALLOW|/test_|identity_hooks.py|identity_sync.py|api/chat.py|services/broadcast|subscribers.py|subscriber_rules|api/analytics|hooks.py|doctype/omni_identity/" ); [ -n "$out" ] && { echo "$out"; fail=1; }
 echo "gate G7: no Frappe CRM references"
-out=$(grep -rnE --include='*.py' --include='*.ts' --include='*.tsx' --include='*.json' 'CRM Lead|CRM Deal|fcrm|from crm[ .]|import crm( |$|\.)' excom frontend/src | grep -v guardrails.py); [ -n "$out" ] && { echo "$out"; fail=1; }
+out=$(grep -rnE --include='*.py' --include='*.ts' --include='*.tsx' --include='*.json' 'CRM Lead|CRM Deal|fcrm|from crm[ .]|import crm( |$|\.)' excom frontend/src | grep -vE 'guardrails.py|excom/patches/frappe_crm_migration.py'); [ -n "$out" ] && { echo "$out"; fail=1; }
 echo "gate E8: attribution only through set_attribution"
 out=$(grep -rnE --include='*.py' '\.(source|campaign_name|utm_source|utm_campaign|utm_medium) *= ' excom | grep -vE 'crm_compat.py'); [ -n "$out" ] && { echo "$out"; fail=1; }
 [ "$fail" = 1 ] && { echo "CRM GATES FAILED"; exit 1; }

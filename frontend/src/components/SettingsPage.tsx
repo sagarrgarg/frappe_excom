@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { Button, Select, Chip, Kbd, SegmentedControl } from "./primitives";
 import { AdminPage } from "./shell/AdminPage";
 import { useExcomBranding } from "../hooks/useBranding";
-import { resolveUiMode, switchUi, getDensity, applyDensity, type Density, type UiMode } from "../lib/ui-flag";
+import { getDensity, applyDensity, type Density } from "../lib/ui-flag";
 import { MOD } from "../lib/hotkeys";
 
 declare global {
@@ -123,12 +123,7 @@ export function SettingsPage({ onNavigateBack, embedded }: SettingsPageProps) {
 
 function AppearanceSection() {
   const [density, setDensity] = useState<Density>(getDensity);
-  const [mode] = useState<UiMode>(resolveUiMode);
-  const { call: setPref, loading } = useFrappePostCall("excom.excom.api.record.set_ui_preference");
   const apply = (d: Density) => { setDensity(d); applyDensity(d); toast.success(d === "compact" ? "Compact rows" : "Comfortable rows"); };
-  const setDefault = async (m: UiMode | "") => {
-    try { await setPref({ mode: m }); toast.success(m ? `Default UI set to ${m === "next" ? "new" : "old"} for your account` : "Account default cleared"); } catch { toast.error("Could not save preference"); }
-  };
   return (
     <div className="max-w-2xl space-y-4">
       <SectionHeader icon={<Rows3 className="w-4 h-4 text-crayon-blue-text" />} title="Appearance" />
@@ -138,19 +133,6 @@ function AppearanceSection() {
         <div className="inline-flex rounded-md bg-surface-sunken p-0.5">
           {(["comfortable", "compact"] as Density[]).map((d) => <button key={d} type="button" onClick={() => apply(d)} className={`h-8 px-3 rounded text-sm ${density === d ? "bg-surface text-ink-1 shadow-ex" : "text-ink-3"}`}>{d === "compact" ? "Compact" : "Comfortable"}</button>)}
         </div>
-      </Card>
-      <Card>
-        <p className="font-medium text-ink-1 text-sm mb-1">Interface</p>
-        <p className="text-xs text-ink-3 mb-3">You are on the <b className="text-ink-1">{mode === "next" ? "new" : "old"}</b> UI. Switching is instant and per browser; set an account default so every device follows.</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => switchUi(mode === "next" ? "legacy" : "next")}><ArrowLeftRight />{mode === "next" ? "Switch to old UI" : "Try the new UI"}</Button>
-          <Select className="w-[220px]" defaultValue="" onChange={(e) => setDefault(e.target.value as UiMode | "")} disabled={loading} aria-label="Account default UI">
-            <option value="">Account default: not set</option>
-            <option value="next">Account default: new UI</option>
-            <option value="legacy">Account default: old UI</option>
-          </Select>
-        </div>
-        <p className="text-xs text-ink-3 mt-3">Tip: <Kbd>?ui=next</Kbd> or <Kbd>?ui=legacy</Kbd> on the URL forces a tree for that browser.</p>
       </Card>
     </div>
   );

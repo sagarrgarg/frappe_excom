@@ -11,7 +11,7 @@ import { useInbox } from "./InboxProvider";
 import { useCompanies } from "../../hooks/useCompanies";
 import { useInboxMeta } from "../../hooks/useInboxMeta";
 import { useExcomBranding } from "../../hooks/useBranding";
-import { currentUserFullName, currentUserImage, switchUi } from "../../lib/ui-flag";
+import { currentUserFullName, currentUserImage } from "../../lib/ui-flag";
 import { MOD } from "../../lib/hotkeys";
 import { FeedbackDialog } from "./FeedbackDialog";
 
@@ -166,14 +166,14 @@ export function Rail() {
               <Rows3 />Density: {density === "compact" ? "Compact" : "Comfortable"}
             </Menu.Item>
             <Menu.Separator className="my-1 h-px bg-border" />
-            <Menu.Item className={menuItemClass} onSelect={() => setFeedback(true)}><ArrowLeftRight />Switch to old UI…</Menu.Item>
+            <Menu.Item className={menuItemClass} onSelect={() => setFeedback(true)}><ArrowLeftRight />Send feedback…</Menu.Item>
             <Menu.Item className={menuItemClass} onSelect={() => window.open("https://github.com/sagarrgarg/frappe_excom/issues", "_blank")}><Bug />Report issue</Menu.Item>
             <Menu.Item className={menuItemClass} onSelect={() => { window.location.href = "/?cmd=web_logout"; }}><LogOut />Sign out</Menu.Item>
           </Menu.Content>
         </Menu.Portal>
       </Menu.Root>
 
-      <FeedbackDialog open={feedback} onOpenChange={setFeedback} onDone={() => switchUi("legacy")} target="legacy" />
+      <FeedbackDialog open={feedback} onOpenChange={setFeedback} />
     </nav>
   );
 }

@@ -403,23 +403,8 @@ def get_messages(thread_id: str, limit: int = 50, before: str = ""):
             except (json.JSONDecodeError, TypeError):
                 msg.reactions = {}
 
-    # Auto-assign the thread to whoever opens it first if it is unassigned
+    # Opening a chat never claims it (claim happens on the first outbound message — see _claim_on_talk).
     auto_claimed_by = None
-    thread_row = frappe.db.get_value(
-        "Excom Thread", thread_id, ["assigned_to", "status"], as_dict=True
-    )
-    if thread_row and not thread_row.assigned_to and thread_row.status not in ("Closed", "Spam"):
-        from excom.excom.services.thread_service import _auto_claim_thread
-        thread_doc = frappe.get_doc("Excom Thread", thread_id)
-        claimed = _auto_claim_thread(thread_doc, frappe.session.user)
-        if claimed:
-            auto_claimed_by = frappe.session.user
-            frappe.db.commit()
-            frappe.publish_realtime(
-                "excom:thread_updated",
-                {"thread_id": thread_id, "assigned_to": frappe.session.user},
-                user=frappe.session.user,
-            )
 
     return {"messages": messages, "auto_claimed_by": auto_claimed_by, "has_more": has_more}
 

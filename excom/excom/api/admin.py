@@ -405,3 +405,36 @@ def get_admin_overview() -> dict:
         "unassigned": frappe.db.count("Excom Thread", {"status": ["!=", "Closed"], "assigned_to": ["is", "not set"]}),
         "disabled_owner_threads": int(disabled_owners or 0),
     }
+
+
+@frappe.whitelist()
+def get_audit(limit: int = 200) -> list:
+    """Who changed what in the admin area: Version rows on every admin doctype (+ Assignment Rule), newest first."""
+    _check_manager_access()
+    dts = list(ADMIN_DOCTYPES.keys())
+    rows = frappe.get_all(
+        "Version",
+        filters={"ref_doctype": ["in", dts]},
+        fields=["name", "ref_doctype", "docname", "owner", "creation", "data"],
+        order_by="creation desc",
+        limit=min(int(limit), 1000),
+    )
+    out = []
+    for r in rows:
+        changed = []
+        try:
+            data = json.loads(r.data or "{}")
+            for c in data.get("changed", []) or []:
+                if len(c) >= 3:
+                    field = c[0]
+                    secret = frappe.get_meta(r.ref_doctype).get_field(field)
+                    secret = bool(secret and secret.fieldtype == "Password")
+                    changed.append(f"{field}: {'••••' if secret else str(c[1])[:40]} → {'••••' if secret else str(c[2])[:40]}")
+            for c in data.get("added", []) or []:
+                changed.append(f"+ {c[0]} row")
+            for c in data.get("removed", []) or []:
+                changed.append(f"− {c[0]} row")
+        except (ValueError, TypeError):
+            pass
+        out.append({"id": r.name, "doctype": r.ref_doctype, "docname": r.docname, "by": frappe.utils.get_fullname(r.owner), "user": r.owner, "at": str(r.creation), "changes": changed})
+    return out

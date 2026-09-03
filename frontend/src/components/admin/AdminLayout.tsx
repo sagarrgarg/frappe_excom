@@ -9,6 +9,7 @@ import { hasRole } from "../../lib/ui-flag";
 import { TeamsAdmin } from "./TeamsAdmin";
 import { UsersAdmin } from "./UsersAdmin";
 import { DocAdmin } from "./DocAdmin";
+import { AuditAdmin } from "./AuditAdmin";
 import { serverMessage } from "./util";
 
 interface Section { id: string; label: string; icon: React.ReactNode; group: "People" | "Channels" | "Content" | "Automation" | "System" | "Lists"; render?: () => React.ReactNode; to?: string; hint?: string }
@@ -35,6 +36,7 @@ const SECTIONS: Section[] = [
   { id: "rules", label: "Subscriber rules", icon: <Cog />, group: "Lists", to: "/rules" },
   { id: "merge", label: "Merge suggestions", icon: <GitMerge />, group: "Lists", to: "/merge" },
   { id: "settings", label: "Excom settings", icon: <Settings />, group: "System", render: () => <DocAdmin doctype="Excom Settings" /> },
+  { id: "audit", label: "Admin audit", icon: <History />, group: "System", render: () => <AuditAdmin /> },
   { id: "transfers", label: "Transfer log", icon: <History />, group: "System", render: () => <DocAdmin doctype="Excom Thread Transfer Log" /> },
   { id: "stages", label: "Stage change log", icon: <History />, group: "System", render: () => <DocAdmin doctype="Excom Stage Change Log" /> },
   { id: "notif-log", label: "Notification log", icon: <History />, group: "System", render: () => <DocAdmin doctype="Excom Notification Log" /> },

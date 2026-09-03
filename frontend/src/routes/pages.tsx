@@ -12,7 +12,7 @@ import { SubscriberListPage } from "../components/SubscriberListPage";
 import { SubscriberRulesPage } from "../components/SubscriberRulesPage";
 import { SettingsPage } from "../components/SettingsPage";
 import { useInboxMeta } from "../hooks/useInboxMeta";
-import { switchUi, hasRole } from "../lib/ui-flag";
+import { hasRole } from "../lib/ui-flag";
 import { channelMeta } from "../lib/channels";
 import { FeedbackDialog } from "../components/shell/FeedbackDialog";
 
@@ -83,10 +83,10 @@ export function MoreRoute() {
         ))}
         <Row dense onClick={() => setPaletteOpen(true)} className="border-b border-border [&_svg]:size-5 [&_svg]:text-ink-3"><Search /><span className="flex-1 text-sm">Search everything</span></Row>
         <Row dense onClick={() => setDensity(density === "compact" ? "comfortable" : "compact")} className="border-b border-border [&_svg]:size-5 [&_svg]:text-ink-3"><Rows3 /><span className="flex-1 text-sm">Density: {density === "compact" ? "Compact" : "Comfortable"}</span></Row>
-        <Row dense onClick={() => setFb(true)} className="border-b border-border [&_svg]:size-5 [&_svg]:text-ink-3"><ArrowLeftRight /><span className="flex-1 text-sm">Switch to old UI</span></Row>
+        <Row dense onClick={() => setFb(true)} className="border-b border-border [&_svg]:size-5 [&_svg]:text-ink-3"><ArrowLeftRight /><span className="flex-1 text-sm">Send feedback</span></Row>
         <Row dense onClick={() => window.open("https://github.com/sagarrgarg/frappe_excom/issues", "_blank")} className="border-b border-border [&_svg]:size-5 [&_svg]:text-ink-3"><Bug /><span className="flex-1 text-sm">Report issue</span></Row>
       </div>
-      <FeedbackDialog open={fb} onOpenChange={setFb} onDone={() => switchUi("legacy")} target="legacy" />
+      <FeedbackDialog open={fb} onOpenChange={setFb} />
     </PageFrame>
   );
 }

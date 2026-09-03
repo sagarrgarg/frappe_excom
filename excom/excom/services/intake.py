@@ -78,13 +78,33 @@ def _transform(value, kind: str):
 
 
 def normalize_phone(v: str) -> str:
+	"""E.164 with India as the default country: '9900000782' → '+919900000782', '91 99…' → '+9199…'."""
 	try:
-		return _normalize_phone_util(v)
+		out = _normalize_phone_util(v)
 	except Exception:
-		digits = re.sub(r"[^\d+]", "", v or "")
-		if digits and not digits.startswith("+"):
-			digits = "+" + (digits if len(digits) > 10 else "91" + digits)
-		return digits
+		out = re.sub(r"[^\d+]", "", v or "")
+	if not out:
+		return ""
+	if out.startswith("+"):
+		return out
+	digits = out.lstrip("0")
+	if len(digits) == 10:
+		return "+91" + digits
+	if len(digits) == 12 and digits.startswith("91"):
+		return "+" + digits
+	return "+" + digits if len(digits) > 10 else "+91" + digits
+
+
+def country_name(v: str) -> str | None:
+	"""Vendors send ISO codes ('IN') or names; ERPNext wants the Country name. Unknown → None (never a broken link)."""
+	if not v:
+		return None
+	v = str(v).strip()
+	if frappe.db.exists("Country", v):
+		return v
+	if len(v) == 2:
+		return frappe.db.get_value("Country", {"code": v.lower()}, "name")
+	return frappe.db.get_value("Country", {"country_name": v}, "name")
 
 
 def _get(raw: dict, key: str):
@@ -116,6 +136,10 @@ def map_payload(source, raw: dict) -> dict:
 				out[mapping[k][0]] = _transform(v, mapping[k][1] or "")
 	if out.get("phone"):
 		out["phone"] = normalize_phone(out["phone"])
+	if out.get("country"):
+		out["country"] = country_name(out["country"])
+		if not out["country"]:
+			out.pop("country")
 	if out.get("email"):
 		out["email"] = str(out["email"]).strip().lower()
 	return out

@@ -166,3 +166,11 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 | Right-click on an inbox row or the record header opens Excom's own menu (same items as ⋯); long-press on touch (700 ms) does the same | S | ✅ code; long-press per Radix ContextMenu |
 | Hold Ctrl / ⌘ and hover: rows, header actions, rail items and message meta show a detail panel (full contact, record, owner, exact times, what a button does) | S | ✅ code |
 | Admin → Auto-assignment rules: Frappe Assignment Rule CRUD scoped to Excom-related doctypes (Excom Thread / Intake Log / Broadcast / Omni Identity / Lead / Opportunity / Prospect / Customer / Contact); HD Ticket rules hidden and unreadable; scope change blocked; Prompt-named docs get a Name field | S | ✅ synthetic rule created / read / deleted |
+
+## Automated (2026-09-03)
+
+| Suite | Run with | Covers |
+|---|---|---|
+| `excom.excom.tests.test_core_flows` (12) | `bench --site <site> execute excom.excom.tests.run.run` | open never claims · talk claims chat + lead · disabled owner = unassigned · reassign user work · 6h retry window · close Lost → Do Not Contact + timeline + reopen · admin needs manager · team access check · per-user rate limit · IndiaMART / TradeIndia / Meta payloads → mapping + Lead |
+| `frontend/src/lib/__tests__` (6) | `cd frontend && yarn test` | Unassigned view incl. disabled owners · kind filter · URL ↔ chip round-trip · search chips · SWR retry policy (429 / 4xx / 5xx) |
+| Browser (headless, 2026-09-03) | manual | Close dialog opens from the header icon; touch long-press (pointerType touch) opens the row menu |
