@@ -56,7 +56,7 @@ export function RecordPane() {
 function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, toggleDetails, setDetailsOpen, sp, setSp }: any) {
   const wide = bp === "wide";
     const drill = bp === "phone" || bp === "tablet";
-  const { messages, isLoading, refresh, autoClaimed } = useIdentityMessages(contact);
+  const { messages, isLoading, refresh, autoClaimed, error: feedError, failedThreads, canLoadOlder, loadOlder, loadingOlder } = useIdentityMessages(contact);
   const { record } = useRecordRef(contact.id, contact.contactName);
   const { open: openTasks } = useTasks(record);
   const threadIds = useMemo(() => contact.allAccounts.map((a: Account) => a.id), [contact.allAccounts]);
@@ -169,6 +169,11 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
             channelFilter={channelFilter}
             setChannelFilter={setChannelFilter}
             viaThreadId={via?.id || null}
+            error={feedError}
+            failedThreads={failedThreads}
+            canLoadOlder={canLoadOlder}
+            loadOlder={loadOlder}
+            loadingOlder={loadingOlder}
             isDragging={fileUpload.isDragging}
             dragHandlers={{ onDragOver: fileUpload.handleDragOver, onDragLeave: fileUpload.handleDragLeave, onDrop: fileUpload.handleDrop }}
           />

@@ -7,7 +7,7 @@ import { EmailMessageCard } from "../EmailMessageCard";
 import { MessageContextMenu } from "../MessageContextMenu";
 import { Chip, EmptyState } from "../primitives";
 import { useEmailBody } from "../../hooks/useEmailBody";
-import { usePinnedMessages } from "../../hooks/usePinnedMessages";
+import { useIdentityPinnedMessages } from "../../hooks/usePinnedMessages";
 import { channelMeta, CHANNEL_ORDER } from "../../lib/channels";
 import { cn } from "../ui/utils";
 import type { FeedMessage } from "../../hooks/useIdentityMessages";
@@ -25,6 +25,11 @@ interface Props {
   channelFilter: string;
   setChannelFilter: (c: string) => void;
   viaThreadId: string | null;
+  error?: unknown;
+  failedThreads?: string[];
+  canLoadOlder?: boolean;
+  loadOlder?: () => void;
+  loadingOlder?: boolean;
   isDragging?: boolean;
   dragHandlers?: { onDragOver: (e: React.DragEvent) => void; onDragLeave: (e: React.DragEvent) => void; onDrop: (e: React.DragEvent) => void };
 }
@@ -33,7 +38,7 @@ interface Props {
  * MessageFeed (UX-001 §6.1): one chronological feed, channel chips *filter* (never navigate),
  * "Group by channel" toggle (R1), one-line pinned strip, date dividers, optimistic sends.
  */
-export function MessageFeed({ contact, messages, isLoading, refresh, optimistic, onReply, onReplyEmail, channelFilter, setChannelFilter, viaThreadId, isDragging, dragHandlers }: Props) {
+export function MessageFeed({ contact, messages, isLoading, refresh, optimistic, onReply, onReplyEmail, channelFilter, setChannelFilter, viaThreadId, error, failedThreads = [], canLoadOlder, loadOlder, loadingOlder, isDragging, dragHandlers }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [grouped, setGrouped] = useState<boolean>(() => { try { return localStorage.getItem("excom_group_by_channel") === "true"; } catch { return false; } });
@@ -41,7 +46,8 @@ export function MessageFeed({ contact, messages, isLoading, refresh, optimistic,
   const [ctx, setCtx] = useState<{ message: FeedMessage; position: { x: number; y: number } } | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const { bodies, loading: bodyLoading, fetchBody, retryFetch } = useEmailBody();
-  const { pinnedMessages, refresh: refreshPinned } = usePinnedMessages(viaThreadId || contact.activeAccountId);
+  const threadIds = useMemo(() => contact.allAccounts.map((a) => a.id), [contact.allAccounts]);
+  const { pinnedMessages, refresh: refreshPinned } = useIdentityPinnedMessages(threadIds);
   const { call: retryCall } = useFrappePostCall("excom.excom.api.chat.retry_message");
 
   const counts = useMemo(() => {
@@ -123,8 +129,19 @@ export function MessageFeed({ contact, messages, isLoading, refresh, optimistic,
         aria-live="polite"
       >
         <div className="mx-auto max-w-[900px] space-y-2.5">
+          {(error || failedThreads.length > 0) && (
+            <div className="rounded-md bg-crayon-amber-tint border-l-[3px] border-crayon-amber-base px-3 py-2 text-xs text-crayon-amber-text flex items-center gap-2 min-w-0">
+              <span className="truncate flex-1">{error ? "Couldn't load messages — retrying." : `${failedThreads.length} account${failedThreads.length > 1 ? "s" : ""} couldn't be loaded (no access or rate limited).`}</span>
+              <button type="button" className="underline shrink-0" onClick={() => refresh()}>Retry</button>
+            </div>
+          )}
+          {canLoadOlder && !channelFilter && (
+            <div className="flex justify-center"><button type="button" onClick={loadOlder} disabled={loadingOlder} className="h-7 px-3 rounded-full bg-surface-sunken text-xs text-ink-2 hover:bg-surface-hover disabled:opacity-50 inline-flex items-center gap-1">{loadingOlder ? <Loader2 className="size-3 animate-spin" /> : null}Load earlier messages</button></div>
+          )}
           {isLoading && messages.length === 0 ? (
             <div className="flex items-center justify-center h-40 text-ink-3"><Loader2 className="size-5 animate-spin" /></div>
+          ) : error && messages.length === 0 ? (
+            <EmptyState icon={<MessageSquare />} title="Messages unavailable" hint="The server refused or rate-limited the request. It will retry automatically." compact />
           ) : visible.length === 0 ? (
             <EmptyState icon={<MessageSquare />} title="No messages yet" hint={channelFilter ? `Nothing on ${channelMeta(channelFilter).label}. Clear the chip to see everything.` : `Start the conversation with ${contact.contactName}.`} compact />
           ) : (
