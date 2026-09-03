@@ -2,7 +2,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.rate_limiter import rate_limit
+from excom.excom.utils.ratelimit import user_rate_limit
 from frappe.utils import flt, now_datetime
 
 from excom.excom.services.thread_service import send_outbound_message
@@ -56,7 +56,7 @@ def _check_manager_access() -> None:
 
 
 @frappe.whitelist()
-@rate_limit(key="user", limit=60, seconds=60)
+@user_rate_limit(limit=60, seconds=60)
 def get_threads(
     search: str = "",
     limit: int = 50,
@@ -285,7 +285,7 @@ def _enrich_tags(threads: list):
 
 
 @frappe.whitelist()
-@rate_limit(key="user", limit=120, seconds=60)
+@user_rate_limit(limit=300, seconds=60)
 def get_messages(thread_id: str, limit: int = 50, before: str = ""):
     """Load messages for a thread, ordered chronologically."""
     _check_excom_access()
@@ -352,7 +352,7 @@ def get_messages(thread_id: str, limit: int = 50, before: str = ""):
 
 
 @frappe.whitelist()
-@rate_limit(key="user", limit=30, seconds=60)
+@user_rate_limit(limit=30, seconds=60)
 def send_message(thread_id: str, message: str = "", message_type: str = "Text",
                  media_url: str = "", reply_to: str = "", sticker_name: str = ""):
     """
@@ -926,7 +926,7 @@ def get_canned_responses(search: str = "", channel: str = ""):
 
 
 @frappe.whitelist()
-@rate_limit(key="user", limit=30, seconds=60)
+@user_rate_limit(limit=30, seconds=60)
 def send_internal_note(thread_id: str, content: str):
     """
     Creates an internal note on a thread visible only to agents.
