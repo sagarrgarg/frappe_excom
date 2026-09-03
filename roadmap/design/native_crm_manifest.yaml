@@ -14,11 +14,11 @@ doctypes:
   Sales Stage: {use: native funnel reporting, written via map_stage_to_sales_stage}
   Opportunity Lost Reason: {use: loss handling}
   Incoterm: {use: export pipeline field}
-  Lead Source: {use: v15 attribution target (via crm_compat)}
-  Campaign: {use: v15 attribution target (via crm_compat)}
-  UTM Source: {use: v16 attribution target (via crm_compat)}
-  UTM Campaign: {use: v16 attribution target (via crm_compat)}
-  UTM Medium: {use: v16 attribution target (via crm_compat)}
+  Lead Source: {use: v15 attribution target (via crm_compat), until: v16}
+  Campaign: {use: v15 attribution target (via crm_compat), until: v16}
+  UTM Source: {use: v16 attribution target (via crm_compat), since: v16}
+  UTM Campaign: {use: v16 attribution target (via crm_compat), since: v16}
+  UTM Medium: {use: v16 attribution target (via crm_compat), since: v16}
   Assignment Rule: {use: routing per pipeline (frappe core)}
   ToDo: {use: tasks + assignment (frappe core)}
 helpers:
@@ -27,8 +27,10 @@ helpers:
   erpnext.crm.doctype.lead.lead.make_quotation: Lead → Quotation
   erpnext.crm.doctype.opportunity.opportunity.make_quotation: Opportunity → Quotation
 native_fields_reused:
-  Lead: [lead_name, company_name, email_id, mobile_no, whatsapp_no, company, territory, country, state, city, request_type, qualification_status, qualified_by, qualified_on, lead_owner, industry, market_segment, annual_revenue, no_of_employees, job_title, status, unsubscribed]
-  Opportunity: [opportunity_from, party_name, customer_name, opportunity_type, status, sales_stage, probability, expected_closing, currency, conversion_rate, opportunity_amount, items, territory, customer_group, contact_person, first_response_time, competitors, lost_reasons, order_lost_reason, opportunity_owner, company, country, state, city]
+  Lead: [lead_name, company_name, email_id, mobile_no, whatsapp_no, phone, company, territory, country, state, city, request_type, qualification_status, qualified_by, qualified_on, lead_owner, industry, market_segment, annual_revenue, no_of_employees, job_title, status, unsubscribed]
+  Opportunity: [opportunity_from, party_name, customer_name, opportunity_type, status, sales_stage, probability, expected_closing, currency, conversion_rate, opportunity_amount, items, territory, customer_group, contact_person, contact_email, contact_mobile, phone, whatsapp, first_response_time, competitors, lost_reasons, order_lost_reason, opportunity_owner, company, country, state, city]
+  Customer: [customer_name, lead_name, email_id, mobile_no, territory, customer_group]
+  Prospect: [company_name, company, territory]
 excom_custom_fields:
   Lead: [customer_type, omni_identity, first_touch_at, first_touch_channel, first_touch_by, source_reference, intake_source, exhibition, auto_ack_sent_at, intake_stage]
   Opportunity: [customer_type, pipeline_stage, omni_identity, stage_entered_at, next_action_at, gate_flags, event_date, design_by, sample_round, incoterm, proposed_pincodes]

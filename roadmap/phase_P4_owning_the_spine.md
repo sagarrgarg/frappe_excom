@@ -4,7 +4,7 @@
 **Design source:** `design/RES_001_native_crm_lock_and_intake.md` §3, §4
 **Duration:** 6–9 days (contingency fork: +16–25 days, only if triggered)
 **Depends on:** P3 §3.1 (gateway, compat shim, manifest) existing and being obeyed
-**Status:** Not started
+**Status (2026-09-03):** 4.2 contract suite (9 cases, native + shadow green), 4.3 manifest enforcement (`services/crm_manifest.py`, in the test suite), 4.4 shadow `Excom Lead` (`services/crm_shadow.py`; one leak found and fixed), 4.5 `design/fork_plan.md` done. 4.1 done at schema level against upstream v16 (`v16_upgrade_runbook.md`); the live scratch-bench run waits for a machine with disk. Finding: v16 adds a native `Customer.customer_type` that collides with ours — rename before upgrading (runbook).
 
 ---
 

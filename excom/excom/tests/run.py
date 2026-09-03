@@ -9,10 +9,13 @@ import unittest
 import frappe
 
 
-def run(module: str = "excom.excom.tests.test_core_flows", pattern: str = ""):
+def run(module: str = "excom.excom.tests.test_core_flows,excom.excom.tests.test_gateway_contract", pattern: str = "", backend: str = ""):
+	if backend:
+		import os
+		os.environ["EXCOM_CRM_BACKEND"] = backend
 	frappe.flags.in_test = True
 	frappe.flags.mute_emails = True
-	suite = unittest.defaultTestLoader.loadTestsFromName(module)
+	suite = unittest.TestSuite([unittest.defaultTestLoader.loadTestsFromName(m.strip()) for m in module.split(",") if m.strip()])
 	if pattern:
 		suite = unittest.TestSuite([t for t in _iter(suite) if pattern in t.id()])
 	result = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(suite)

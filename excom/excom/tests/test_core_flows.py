@@ -225,3 +225,10 @@ class TestIntakePayloads(_Base):
 		m = map_payload(src, row)
 		self.assertEqual(m.get("phone"), "+919900000783")
 		self.assertEqual(m.get("email"), "qa.arjun@example.com")
+
+
+class TestManifest(_Base):
+	def test_manifest_matches_installed_version(self):
+		from excom.excom.services.crm_manifest import check
+		r = check()
+		self.assertTrue(r["ok"], "\n".join(r["problems"]))

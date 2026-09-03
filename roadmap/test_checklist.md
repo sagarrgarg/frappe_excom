@@ -174,3 +174,13 @@ inside viewport, breakpoints phone/tablet/laptop/wide as specified. Screenshots:
 | `excom.excom.tests.test_core_flows` (12) | `bench --site <site> execute excom.excom.tests.run.run` | open never claims · talk claims chat + lead · disabled owner = unassigned · reassign user work · 6h retry window · close Lost → Do Not Contact + timeline + reopen · admin needs manager · team access check · per-user rate limit · IndiaMART / TradeIndia / Meta payloads → mapping + Lead |
 | `frontend/src/lib/__tests__` (6) | `cd frontend && yarn test` | Unassigned view incl. disabled owners · kind filter · URL ↔ chip round-trip · search chips · SWR retry policy (429 / 4xx / 5xx) |
 | Browser (headless, 2026-09-03) | manual | Close dialog opens from the header icon; touch long-press (pointerType touch) opens the row menu |
+
+## P4 — Owning the spine (2026-09-03)
+
+| Case | Sev | Result |
+|---|---|---|
+| Manifest existence + completeness against installed v15 | S | ✅ `crm_manifest.check` → OK (part of the test suite) |
+| Manifest existence against upstream v16 JSON (Lead, Opportunity, Prospect, Customer, Contact, Quotation, Sales Stage, Party Link, Company, Territory, UTM *, Assignment Rule, ToDo) | S | ✅ OK; diff recorded in `v16_upgrade_runbook.md` |
+| Gateway contract suite (create/provenance/attribution, identity link + precedence, close/reopen, promote once, duplicate email, reassign, intake list, convert + stage, stage map) | S | ✅ 9/9 native |
+| Same suite against shadow `Excom Lead` | S | ✅ 9/9 after moving classification into the gateway |
+| Live v16 scratch bench | S | ⏭ needs ~15 GB free disk |

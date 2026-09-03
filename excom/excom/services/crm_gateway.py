@@ -127,7 +127,8 @@ def create_lead(payload: dict, ignore_permissions: bool = False) -> frappe._dict
 			"lead_owner": payload.get("owner") or None,
 			"status": "Lead",
 			"customer_type": payload.get("customer_type") or "",
-			"intake_stage": "Captured",
+			# a typed lead is already past classification — rule lives here, not in a doctype hook, so any backend agrees
+			"intake_stage": "Classified" if payload.get("customer_type") else "Captured",
 			"intake_source": payload.get("intake_source") or None,
 			"exhibition": payload.get("exhibition") or None,
 			"notes": [{"note": payload["notes"]}] if payload.get("notes") and frappe.get_meta(LEAD).has_field("notes") else [],
