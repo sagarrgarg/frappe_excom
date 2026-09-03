@@ -6,7 +6,7 @@ import { toast } from "sonner";
 export interface CrmRef { doctype: string; name: string }
 export interface CrmRecordSummary extends CrmRef { title: string; customer_type?: string; pipeline_stage?: string; intake_stage?: string; status?: string; next_action_at?: string; opportunity_amount?: number; currency?: string }
 export interface SchemaField { fieldname: string; label: string; fieldtype: string; options?: string; reqd: boolean; read_only: boolean; description?: string; priority: number }
-export interface FieldSchema { doctype: string; customer_type: string; sections: { label: string; fields: SchemaField[] }[]; can_write: boolean; stages: string[] }
+export interface FieldSchema { doctype: string; customer_type: string; sections: { label: string; fields: SchemaField[]; collapsed?: boolean; meta?: boolean }[]; can_write: boolean; stages: string[]; compact?: boolean }
 export interface GateStatus { flags: Record<string, number>; stages: string[]; current?: string; blocked: Record<string, string[]> }
 export interface CrmOptions { customer_types: string[]; pipelines: Record<string, string[]>; stages: Record<string, { sales_stage: string | null; probability: number }>; intake_stages: string[] }
 

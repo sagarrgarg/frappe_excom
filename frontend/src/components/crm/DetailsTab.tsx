@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, ExternalLink, Save } from "lucide-react";
+import { Loader2, ExternalLink, Save, ChevronDown, ChevronRight } from "lucide-react";
 import { useCrmRecord, useFieldSchema, useCrmActions, type CrmRef, type SchemaField } from "../../hooks/useCrm";
 import { Button, Input, Select, Textarea, Field, EmptyState } from "../primitives";
 import { deskUrl } from "../../hooks/useRecordLinks";
@@ -49,6 +49,15 @@ export function DetailsTab({ refr, onChanged }: { refr: CrmRef | null; onChanged
   };
 
   const sections = useMemo(() => schema?.sections.filter((s) => s.fields.length) ?? [], [schema]);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const isOpen = (s: { label: string; collapsed?: boolean }) => openSections[s.label] ?? !s.collapsed;
+  const metaValue = (f: SchemaField) => {
+    const v = (draft as Record<string, unknown>)[f.fieldname] ?? record?.[f.fieldname];
+    if (v == null || v === "") return "—";
+    if (f.fieldtype === "Datetime") return String(v).slice(0, 16);
+    if (f.fieldtype === "Check") return v ? "Yes" : "No";
+    return String(v);
+  };
 
   if (!refr) return <EmptyState title="No CRM record yet" hint="Promote this conversation to a Lead from the ⋯ menu." compact />;
   if (isLoading && !record) return <div className="flex justify-center py-8 text-ink-3"><Loader2 className="size-5 animate-spin" /></div>;
@@ -62,11 +71,19 @@ export function DetailsTab({ refr, onChanged }: { refr: CrmRef | null; onChanged
         {record._gate_status && <div className="chip-row flex-1 h-6"><StagePicker compact gate={record._gate_status} onSelect={(s, n) => actions.setStage(refr.name, s, n)} onOverride={(g, r) => actions.overrideGate(refr.name, g, r)} /><GateChips flags={record._gate_status.flags} /></div>}
         {schema?.can_write && <Button size="sm" variant="primary" disabled={!dirty} onClick={async () => { await actions.updateRecord(refr, draft); setDraft({}); }}><Save />Save</Button>}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
         {sections.map((s, i) => (
           <section key={i} className="min-w-0">
-            {s.label && <h4 className="text-xs text-ink-3 mb-2">{s.label}</h4>}
-            <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))]">{s.fields.map(renderField)}</div>
+            {s.label && (
+              s.collapsed
+                ? <button type="button" onClick={() => setOpenSections((o) => ({ ...o, [s.label]: !isOpen(s) }))} className="flex items-center gap-1 text-xs text-ink-3 hover:text-ink-1 mb-1.5 [&>svg]:size-3.5" aria-expanded={isOpen(s)}>{isOpen(s) ? <ChevronDown /> : <ChevronRight />}{s.label}<span className="text-ink-muted">· {s.fields.length}</span></button>
+                : <h4 className="text-xs text-ink-3 mb-1.5">{s.label}</h4>
+            )}
+            {isOpen(s) && (
+              s.meta
+                ? <dl className="grid gap-x-4 gap-y-1 text-xs [grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr))]">{s.fields.map((f) => <div key={f.fieldname} className="flex items-baseline gap-2 min-w-0"><dt className="text-ink-3 shrink-0">{f.label}</dt><dd className="text-ink-1 truncate">{metaValue(f)}</dd></div>)}</dl>
+                : <div className="grid gap-x-3 gap-y-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr))]">{s.fields.map(renderField)}</div>
+            )}
           </section>
         ))}
         {record._stage_log?.length > 0 && (

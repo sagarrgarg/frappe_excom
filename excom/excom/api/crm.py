@@ -37,6 +37,33 @@ TYPE_FIELDS = {
 HIDDEN = {"naming_series", "amended_from", "gate_flags", "omni_identity", "image", "address_html", "contact_html", "notes_html", "open_activities_html", "all_activities_html", "language", "blog_subscriber", "unsubscribed", "disabled", "title", "fax", "phone_ext", "base_opportunity_amount", "base_total", "total", "first_response_time", "lost_reasons", "competitors"}
 
 
+# Compact layouts: what an agent needs while chatting, in one screen. Everything else folds under
+# "More"; Excom's own bookkeeping is read-only meta. Missing fieldnames are skipped, so a site
+# without a custom field still renders.
+COMPACT_LAYOUT: dict[str, list[dict]] = {
+	gw.LEAD: [
+		{"label": "", "fields": ["first_name", "last_name", "mobile_no", "email_id", "company_name", "territory", "city", "country"]},
+		{"label": "Deal", "fields": ["customer_type", "status", "lead_owner", "source", "campaign_name"]},
+		{"label": "More", "collapsed": True, "fields": ["salutation", "middle_name", "gender", "job_title", "phone", "whatsapp_no", "website", "industry", "market_segment", "no_of_employees", "annual_revenue", "state", "request_type", "lead_type", "customer"]},
+		{"label": "Excom", "collapsed": True, "meta": True, "fields": ["intake_source", "intake_stage", "first_touch_at", "first_touch_channel", "first_touch_by", "source_reference", "exhibition", "auto_ack_sent_at", "qualification_status", "qualified_by", "qualified_on"]},
+	],
+	gw.OPPORTUNITY: [
+		{"label": "", "fields": ["party_name", "customer_name", "contact_mobile", "contact_email", "opportunity_amount", "currency", "expected_closing", "probability"]},
+		{"label": "Deal", "fields": ["customer_type", "status", "opportunity_owner", "opportunity_type", "source", "campaign"]},
+		{"label": "More", "collapsed": True, "fields": ["contact_person", "job_title", "whatsapp", "phone", "website", "territory", "city", "state", "country", "industry", "market_segment", "customer_group", "no_of_employees", "annual_revenue", "conversion_rate", "transaction_date", "order_lost_reason"]},
+		{"label": "Excom", "collapsed": True, "meta": True, "fields": ["pipeline_stage", "stage_entered_at", "next_action_at", "first_touch_at", "first_touch_channel", "first_touch_by", "source_reference"]},
+	],
+}
+
+
+def _field_dict(df, can_write: bool, first: list[str]) -> dict:
+	return {
+		"fieldname": df.fieldname, "label": df.label, "fieldtype": df.fieldtype, "options": df.options,
+		"reqd": bool(df.reqd), "read_only": bool(df.read_only) or not can_write, "description": df.description,
+		"priority": 0 if df.fieldname in first else 1,
+	}
+
+
 @frappe.whitelist()
 def get_field_schema(doctype: str, customer_type: str = "") -> dict:
 	_check_excom_access()
@@ -47,6 +74,26 @@ def get_field_schema(doctype: str, customer_type: str = "") -> dict:
 	meta = frappe.get_meta(doctype)
 	can_write = frappe.has_permission(doctype, "write")
 	first = TYPE_FIELDS.get(customer_type or "", [])
+	layout = COMPACT_LAYOUT.get(doctype)
+	if layout:
+		sections, used = [], set()
+		for i, sec in enumerate(layout):
+			fields = []
+			names = list(sec["fields"])
+			if i == 0:
+				names = names + [f for f in first if f not in names]  # type-specific fields ride in the first section
+			for fn in names:
+				df = meta.get_field(fn)
+				if not df or df.hidden or fn in used:
+					continue
+				used.add(fn)
+				d = _field_dict(df, can_write, first)
+				if sec.get("meta"):
+					d["read_only"] = True
+				fields.append(d)
+			if fields:
+				sections.append({"label": sec["label"], "collapsed": bool(sec.get("collapsed")), "meta": bool(sec.get("meta")), "fields": fields})
+		return {"doctype": doctype, "customer_type": customer_type, "sections": sections, "can_write": can_write, "stages": gw.stages_for(customer_type), "compact": True}
 	sections, current = [], {"label": "", "fields": []}
 	for df in meta.fields:
 		if df.fieldtype in ("Section Break", "Tab Break"):
@@ -58,17 +105,10 @@ def get_field_schema(doctype: str, customer_type: str = "") -> dict:
 			continue
 		if df.fieldname in HIDDEN or df.hidden:
 			continue
-		# type-specific fields hide for other types (depends_on mirrors Desk)
 		dep = df.depends_on or ""
 		if customer_type and "customer_type" in dep and customer_type not in dep:
 			continue
-		current["fields"].append(
-			{
-				"fieldname": df.fieldname, "label": df.label, "fieldtype": df.fieldtype, "options": df.options,
-				"reqd": bool(df.reqd), "read_only": bool(df.read_only) or not can_write, "description": df.description,
-				"priority": 0 if df.fieldname in first else 1,
-			}
-		)
+		current["fields"].append(_field_dict(df, can_write, first))
 	if current["fields"]:
 		sections.append(current)
 	for s in sections:
