@@ -1025,6 +1025,9 @@ export function ChannelTabsView({
                               <span className="text-[10px] text-red-700 truncate max-w-48">
                                 {message.failureReason || "Delivery failed"}
                               </span>
+                              {Date.now() - message.timestamp.getTime() > 6 * 60 * 60 * 1000 ? (
+                                <span className="text-[11px] font-medium text-zinc-500" title="Resend window (6h) closed">Unsent</span>
+                              ) : (
                               <button
                                 onClick={() => handleRetryMessage(message.id)}
                                 disabled={retryingMsgId === message.id}
@@ -1037,6 +1040,7 @@ export function ChannelTabsView({
                                 )}
                                 Retry
                               </button>
+                              )}
                             </div>
                           )}
 

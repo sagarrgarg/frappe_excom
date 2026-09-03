@@ -8,10 +8,14 @@ Also provides retry functionality for failed messages.
 from __future__ import annotations
 
 import frappe
+from frappe.utils import now_datetime, time_diff_in_seconds
 from frappe import _
 from frappe.utils import now_datetime, add_to_date
 
 DELIVERY_TIMEOUT_SECONDS = 600  # 10 minutes
+
+
+RETRY_WINDOW_SECONDS = 6 * 60 * 60
 
 
 def check_stale_messages() -> None:
@@ -93,6 +97,11 @@ def retry_failed_message(message_name: str) -> dict:
 
     if msg.delivery_status != "Failed":
         frappe.throw(_("Only failed messages can be retried"))
+
+    # Product rule: a failed message may be resent for 6 hours; after that it stays "Unsent".
+    sent_at = msg.provider_timestamp or msg.creation
+    if sent_at and time_diff_in_seconds(now_datetime(), sent_at) > RETRY_WINDOW_SECONDS:
+        frappe.throw(_("This message is older than 6 hours and can no longer be resent. Send a new message instead."))
 
     if msg.direction != "Outbound":
         frappe.throw(_("Only outbound messages can be retried"))

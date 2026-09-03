@@ -9,6 +9,8 @@ import type { FeedMessage } from "../../hooks/useIdentityMessages";
 import { formatServerTime } from "../../utils/datetime";
 
 const DELIVERY_TIMEOUT_MS = 10 * 60 * 1000;
+/** Product rule: a failed message can be resent for 6 hours; after that it is flagged Unsent, no retry. */
+const RETRY_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 export function DeliveryIcon({ status }: { status?: string }) {
   switch (status) {
@@ -161,9 +163,13 @@ export const MessageBubble = memo(function MessageBubble({ message: m, contactNa
         {failed && isUser && (
           <div className="flex items-center gap-2 mt-0.5 min-w-0 max-w-full">
             <span className="text-xs text-crayon-rose-text truncate" title={m.failureReason}>{m.failureReason || "Delivery failed"}</span>
-            <button type="button" onClick={() => onRetry(m.id)} disabled={retrying} className="inline-flex items-center gap-1 text-xs font-medium text-crayon-rose-text hover:underline disabled:opacity-50 shrink-0">
-              {retrying ? <Loader2 className="size-3 animate-spin" /> : <RotateCcw className="size-3" />}Retry
-            </button>
+            {Date.now() - m.timestamp.getTime() <= RETRY_WINDOW_MS ? (
+              <button type="button" onClick={() => onRetry(m.id)} disabled={retrying} className="inline-flex items-center gap-1 text-xs font-medium text-crayon-rose-text hover:underline disabled:opacity-50 shrink-0" title="Resend is available for 6 hours after a failure">
+                {retrying ? <Loader2 className="size-3 animate-spin" /> : <RotateCcw className="size-3" />}Retry
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-ink-3 shrink-0 rounded-full bg-surface-sunken px-1.5 h-5" title="Failed more than 6 hours ago — resend window closed. Send a new message.">Unsent</span>
+            )}
           </div>
         )}
       </div>

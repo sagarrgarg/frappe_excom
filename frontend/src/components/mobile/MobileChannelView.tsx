@@ -454,6 +454,9 @@ export function MobileChannelView({ contact, onBack, onCall, onOpenContact, onOp
                               <span className="text-[10px] text-red-700 truncate max-w-40">
                                 {message.failureReason || "Delivery failed"}
                               </span>
+                              {Date.now() - message.timestamp.getTime() > 6 * 60 * 60 * 1000 ? (
+                                <span className="text-[11px] font-medium text-zinc-500" title="Resend window (6h) closed">Unsent</span>
+                              ) : (
                               <button
                                 onClick={() => handleRetryMessage(message.id)}
                                 disabled={retryingMsgId === message.id}
@@ -466,6 +469,7 @@ export function MobileChannelView({ contact, onBack, onCall, onOpenContact, onOp
                                 )}
                                 Retry
                               </button>
+                              )}
                             </div>
                           )}
                           {(message.status === "sent" || message.status === "queued") && isUser && (
