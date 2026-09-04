@@ -92,8 +92,8 @@ class TestIdentityAccess(FrappeTestCase):
 			record.close_conversation(omni_identity=self.owned, outcome="Resolved")
 
 	def test_an_outsider_cannot_read_their_activity(self):
-		from excom.excom.api import crm
+		from excom.excom.api.crm import get_records_for_identity
 
 		frappe.set_user(THEIRS)
 		with self.assertRaises(frappe.PermissionError):
-			crm.get_records_for_identity(omni_identity=self.owned)
+			get_records_for_identity(omni_identity=self.owned)
