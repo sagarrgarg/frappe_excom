@@ -8,7 +8,17 @@ MANAGER_ROLES = {"System Manager", "Excom Manager"}
 # These used to be three separate implementations that disagreed: the Excom API let a General
 # member open an unclaimed chat while the permission hook and the Desk list denied the same row.
 
-GENERAL_TEAM = "General"
+# Which team acts as the shared inbox. It was hardcoded to "General", so an organisation that names
+# its teams anything else had no shared inbox at all and unclaimed chats were invisible to every
+# agent. Configurable in Excom Settings; "General" stays the default because that is what exists.
+DEFAULT_SHARED_INBOX = "General"
+
+
+def shared_inbox_team() -> str:
+	try:
+		return frappe.db.get_single_value("Excom Settings", "shared_inbox_team") or DEFAULT_SHARED_INBOX
+	except Exception:
+		return DEFAULT_SHARED_INBOX
 
 
 def visible_teams(user: str) -> set[str]:
@@ -45,8 +55,8 @@ def can_access(doc, user: str | None = None) -> bool:
 	if doc.get("assigned_to"):
 		# Somebody has claimed it, so it has left the shared inbox even though it carries no team.
 		return False
-	# Nobody owns it, so it belongs to the shared inbox, which is what the General team is for.
-	return GENERAL_TEAM in teams
+	# Nobody owns it, so it belongs to whichever team acts as the shared inbox.
+	return shared_inbox_team() in teams
 
 
 
@@ -108,7 +118,7 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 	if teams:
 		team_list = ", ".join(frappe.db.escape(t) for t in sorted(teams))
 		conditions.append(f"{table}.assigned_team IN ({team_list})")
-	if GENERAL_TEAM in teams:
+	if shared_inbox_team() in teams:
 		conditions.append(f"(COALESCE({table}.assigned_to, '') = '' AND COALESCE({table}.assigned_team, '') = '')")
 
 	return f"({' OR '.join(conditions)})"

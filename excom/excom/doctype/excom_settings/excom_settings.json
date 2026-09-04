@@ -33,6 +33,7 @@
   "vapid_public_key",
   "crm_tab",
   "enforce_crm_visibility",
+  "shared_inbox_team",
   "crm_sla_escalation",
   "crm_go_live_date"
  ],
@@ -217,6 +218,14 @@
    "label": "Restrict lead visibility to owner, assignee and team",
    "default": "0",
    "description": "On: a lead nobody has been given to is visible only to a Sales Master Manager, and everyone else sees a lead only when they own it, are assigned it, or it sits on their team (a team manager also sees the teams beneath theirs). Off: ERPNext's own role permissions decide, unchanged."
+  },
+  {
+   "fieldname": "shared_inbox_team",
+   "fieldtype": "Link",
+   "options": "Excom Team",
+   "label": "Shared inbox team",
+   "default": "General",
+   "description": "Members of this team see conversations nobody has claimed yet. Leave it empty and an unclaimed chat is visible only to managers."
   },
   {
    "fieldname": "crm_sla_escalation",

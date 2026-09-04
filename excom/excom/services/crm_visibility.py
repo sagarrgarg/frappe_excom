@@ -167,19 +167,45 @@ def team_for_user(user: str) -> str | None:
 	return max(sorted(teams), key=lambda t: depth[t])
 
 
+def branch(team: str) -> set[str]:
+	"""A team and everything under it. Work handed to somebody inside this branch stays put."""
+	if not team:
+		return set()
+	return {team} | set(get_descendant_teams(team))
+
+
 def stamp_team(doctype: str, name: str, user: str) -> str | None:
-	"""Record which team a lead now belongs to. Called from every path that hands a record over:
-	the owner field changing, claim-on-talk, a manual Desk assignment and an Assignment Rule.
-	An existing team is never overwritten, so a sales head's placement outranks a later claim."""
+	"""Record which desk a record belongs to, on every path that hands it over: the owner field
+	changing, claim-on-talk, a manual Desk assignment and an Assignment Rule.
+
+	A team already on the record is kept while the new person sits inside that branch, so a sales
+	head's placement outranks a later claim by one of their own people. But handing the record to
+	somebody in a different part of the tree means the work has actually moved, and the desk has to
+	move with it: leaving it behind is how a lead ends up visible to a desk that is not working it
+	and invisible to the head of the desk that is.
+	"""
 	field = team_field(doctype)
 	if doctype not in OWNER_FIELD or not field:
 		return None
-	if frappe.db.get_value(doctype, name, field):
+	new_team = team_for_user(user)
+	if not new_team:
 		return None
-	team = team_for_user(user)
-	if team:
-		set_team(doctype, name, team)
-	return team
+	current = frappe.db.get_value(doctype, name, field)
+	if current:
+		if current == new_team or new_team in branch(current) or current in branch(new_team):
+			return None
+		set_team(doctype, name, new_team)
+		frappe.get_doc({
+			"doctype": "Comment", "comment_type": "Info", "reference_doctype": doctype,
+			"reference_name": name, "content": _team_move_note(current, new_team, user),
+		}).insert(ignore_permissions=True)
+		return new_team
+	set_team(doctype, name, new_team)
+	return new_team
+
+
+def _team_move_note(old: str, new: str, user: str) -> str:
+	return f"Moved from <b>{frappe.utils.escape_html(old)}</b> to <b>{frappe.utils.escape_html(new)}</b> because it was assigned to {frappe.utils.escape_html(user)}."
 
 
 def backfill_teams(doctype: str | None = None, limit: int = 0) -> dict:
@@ -232,3 +258,37 @@ def impact_report() -> dict:
 				losing.add(u)
 	out["users_whose_reach_narrows"] = sorted(losing)
 	return out
+
+
+def move_party_to_team(identity: str, team: str, reason: str = "", actor: str | None = None) -> dict:
+	"""Move everything about one contact to one desk: their open CRM records and their open
+	conversations together.
+
+	A conversation transferred on its own leaves the lead behind, and then the desk that answers the
+	customer cannot see what was sold to them while the desk that holds the lead cannot see what the
+	customer just said. One contact belongs to one desk at a time.
+	"""
+	actor = actor or frappe.session.user
+	moved = {"records": [], "threads": []}
+	if not identity or not team:
+		return moved
+	from excom.excom.services import crm_gateway as gw
+
+	for r in gw.find_open_records_for_identity(identity):
+		field = team_field(r.doctype)
+		if not field or frappe.db.get_value(r.doctype, r.name, field) == team:
+			continue
+		old = frappe.db.get_value(r.doctype, r.name, field)
+		set_team(r.doctype, r.name, team)
+		frappe.get_doc({
+			"doctype": "Comment", "comment_type": "Info", "reference_doctype": r.doctype,
+			"reference_name": r.name,
+			"content": f"Moved to <b>{frappe.utils.escape_html(team)}</b> with the conversation" + (f" ({frappe.utils.escape_html(reason)})" if reason else "") + ".",
+		}).insert(ignore_permissions=True)
+		moved["records"].append(f"{r.doctype} {r.name}" + (f" (was {old})" if old else ""))
+
+	for t in frappe.get_all("Excom Thread", filters={"omni_identity": identity, "status": ["!=", "Closed"]}, pluck="name"):
+		if frappe.db.get_value("Excom Thread", t, "assigned_team") != team:
+			frappe.db.set_value("Excom Thread", t, "assigned_team", team, update_modified=False)
+			moved["threads"].append(t)
+	return moved

@@ -112,25 +112,51 @@ def apply() -> None:
 	frappe.clear_cache(doctype="Opportunity")
 
 
-def ensure_assignment_rules(desks: dict[str, list[str]]) -> list[str]:
+DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+
+def ensure_assignment_rules(desks: dict[str, list[str]], days: list[str] | None = None) -> dict:
 	"""
 	HLD-003 §7.2 — one Assignment Rule per pipeline. `desks` maps rule name → user emails.
 	Called by an admin once teams are known (rules need at least one user, so this is not auto-seeded).
+
+	`assignment_days` is mandatory on Assignment Rule, and this function used to omit it, so every
+	call threw MandatoryError and no Excom rule was ever created on any site. Auto-assignment has
+	therefore never run. Default is all seven days; pass `days` for a weekday-only desk.
 	"""
+	# Frappe evaluates these with the document's own fields as locals, so a field is named bare.
+	# Every one of these used to carry a `doc.` prefix, which raises NameError inside
+	# AssignmentRule.safe_eval, is swallowed there, and returns False. The rules matched nothing.
 	spec = {
-		"Excom Intake — Unclassified": ("Lead", "not doc.customer_type", "Round Robin"),
-		"Excom Distributor Desk": ("Opportunity", 'doc.customer_type == "Distributor"', "Round Robin"),
-		"Excom Retailer Desk": ("Opportunity", 'doc.customer_type == "Retailer"', "Load Balancing"),
-		"Excom Export Desk": ("Opportunity", 'doc.customer_type == "Export Importer"', "Round Robin"),
-		"Excom OEM Desk": ("Opportunity", 'doc.customer_type == "OEM"', "Load Balancing"),
-		"Excom Gifting Desk": ("Opportunity", 'doc.customer_type == "Corporate Gifting"', "Round Robin"),
+		"Excom Intake — Unclassified": ("Lead", "not customer_type", "Round Robin"),
+		"Excom Distributor Desk": ("Opportunity", 'customer_type == "Distributor"', "Round Robin"),
+		"Excom Retailer Desk": ("Opportunity", 'customer_type == "Retailer"', "Load Balancing"),
+		"Excom Export Desk": ("Opportunity", 'customer_type == "Export Importer"', "Round Robin"),
+		"Excom OEM Desk": ("Opportunity", 'customer_type == "OEM"', "Load Balancing"),
+		"Excom Gifting Desk": ("Opportunity", 'customer_type == "Corporate Gifting"', "Round Robin"),
 	}
-	created = []
+	created, repaired = [], []
 	for name, users in desks.items():
 		if name not in spec or not users:
 			continue
 		doctype, cond, rule = spec[name]
+		unassign = 'status == "Do Not Contact"' if doctype == "Lead" else 'status in ("Lost", "Closed")'
 		if frappe.db.exists("Assignment Rule", name):
+			# Repair a rule created by an older version rather than leaving a rule that matches
+			# nothing: "it exists" is not the same as "it works".
+			existing = frappe.get_doc("Assignment Rule", name)
+			changed = False
+			for field, value in (("assign_condition", cond), ("unassign_condition", unassign)):
+				if existing.get(field) != value:
+					existing.set(field, value)
+					changed = True
+			if not existing.get("assignment_days"):
+				existing.set("assignment_days", [{"day": d} for d in (days or DAYS)])
+				changed = True
+			if changed:
+				existing.flags.ignore_permissions = True
+				existing.save()
+				repaired.append(name)
 			continue
 		frappe.get_doc(
 			{
@@ -138,11 +164,12 @@ def ensure_assignment_rules(desks: dict[str, list[str]]) -> list[str]:
 				"__newname": name,
 				"document_type": doctype,
 				"assign_condition": cond,
-				"unassign_condition": 'doc.status == "Do Not Contact"' if doctype == "Lead" else 'doc.status in ("Lost", "Closed")',
+				"unassign_condition": unassign,
 				"rule": rule,
 				"priority": 5,
+				"assignment_days": [{"day": d} for d in (days or DAYS)],
 				"users": [{"user": u} for u in users],
 			}
 		).insert(ignore_permissions=True)
 		created.append(name)
-	return created
+	return {"created": created, "repaired": repaired}

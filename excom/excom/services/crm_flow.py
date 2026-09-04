@@ -259,11 +259,11 @@ def sync_thread_owner(doc) -> None:
 	owner = doc.get("lead_owner") if doc.doctype == gw.LEAD else doc.get("opportunity_owner")
 	if not identity or not owner:
 		return
-	# Same tie-break as the CRM side: a user in several teams keeps the work on the deepest one.
-	# Reading the first matching row here meant a thread and its lead could land on different teams.
-	from excom.excom.services.crm_visibility import team_for_user
+	# The record's own desk is the source of truth, not the owner's default desk: a deliberate
+	# transfer put the record where it is, and reading the owner's team here would quietly undo it.
+	from excom.excom.services.crm_visibility import get_team, team_for_user
 
-	team = team_for_user(owner)
+	team = get_team(doc) or team_for_user(owner)
 	frappe.db.sql(
 		"""UPDATE `tabExcom Thread` SET assigned_to=%(u)s, assigned_team=COALESCE(%(t)s, assigned_team)
 		   WHERE omni_identity=%(oi)s AND status IN ('Open','Pending') AND COALESCE(assigned_to,'') <> %(u)s""",
@@ -369,7 +369,14 @@ def claim_lead_for_identity(identity: str, user: str) -> str | None:
 			return None
 		frappe.db.set_value(r.doctype, r.name, "lead_owner", user, update_modified=False)
 		from excom.excom.services.crm_visibility import stamp_team
-		stamp_team(r.doctype, r.name, user)
+
+		team = stamp_team(r.doctype, r.name, user) or frappe.db.get_value(r.doctype, r.name, "excom_team")
+		# The conversation moves onto the same desk as the record it just claimed, otherwise the
+		# agent's own manager can read the lead and not the chat it came from.
+		if team:
+			for t in frappe.get_all("Excom Thread", filters={"omni_identity": identity, "status": ["!=", "Closed"]}, pluck="name"):
+				if not frappe.db.get_value("Excom Thread", t, "assigned_team"):
+					frappe.db.set_value("Excom Thread", t, "assigned_team", team, update_modified=False)
 		doc = frappe.get_doc(r.doctype, r.name)
 		if user not in (doc.get("_assign") or ""):
 			_assign(doc, user)

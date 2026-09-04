@@ -796,6 +796,8 @@ def transfer_thread(thread_id: str, target_team: str, target_user: str = "", not
     )
     if not thread:
         frappe.throw(_("Thread not found"))
+    if not frappe.db.exists("Excom Team", target_team):
+        frappe.throw(_("No such team: {0}").format(target_team))
 
     from_team = thread.assigned_team or ""
 
@@ -804,6 +806,15 @@ def transfer_thread(thread_id: str, target_team: str, target_user: str = "", not
         thread_id,
         {"assigned_team": target_team, "assigned_to": target_user or ""},
     )
+
+    # The contact moves as a whole. A conversation transferred on its own leaves the lead behind,
+    # and then neither desk can see both halves of the same customer.
+    moved = {}
+    identity = frappe.db.get_value("Excom Thread", thread_id, "omni_identity")
+    if identity:
+        from excom.excom.services.crm_visibility import move_party_to_team
+
+        moved = move_party_to_team(identity, target_team, reason=note or "transferred")
 
     frappe.get_doc({
         "doctype": "Excom Thread Transfer Log",
@@ -828,7 +839,8 @@ def transfer_thread(thread_id: str, target_team: str, target_user: str = "", not
     )
 
     frappe.db.commit()
-    return {"success": True, "from_team": from_team, "to_team": target_team, "assigned_to": target_user}
+    return {"success": True, "from_team": from_team, "to_team": target_team,
+            "assigned_to": target_user, "moved_with_it": moved}
 
 
 @frappe.whitelist()

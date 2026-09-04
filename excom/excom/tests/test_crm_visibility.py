@@ -154,6 +154,22 @@ class TestCrmVisibility(FrappeTestCase):
 		self.assertIn(lead, _visible(MEMBER))
 		self.assertIn(lead, _visible(HEAD), "the sales head above that team sees it too")
 
-	def test_a_team_already_placed_is_not_overwritten_by_a_later_claim(self):
-		self.assertIsNone(vis.stamp_team(gw.LEAD, self.on_child, STRANGER))
+	def test_a_claim_from_inside_the_branch_leaves_the_team_alone(self):
+		"""A sales head's placement outranks a later claim by one of their own people."""
+		self.assertIsNone(vis.stamp_team(gw.LEAD, self.on_child, MEMBER))
 		self.assertEqual(frappe.db.get_value(gw.LEAD, self.on_child, "excom_team"), CHILD)
+		# The head runs the parent team, so the child team is inside their branch: still no move.
+		self.assertIsNone(vis.stamp_team(gw.LEAD, self.on_child, HEAD))
+		self.assertEqual(frappe.db.get_value(gw.LEAD, self.on_child, "excom_team"), CHILD)
+
+	def test_handing_work_to_another_branch_moves_the_desk_with_it(self):
+		"""Leaving the team behind is how a lead ends up visible to a desk that is not working it
+		and invisible to the head of the desk that is."""
+		lead = _lead("QA Vis Crossing Desks", excom_team=CHILD)  # _cleanup() removes it with the rest
+		if True:
+			self.assertEqual(vis.stamp_team(gw.LEAD, lead, STRANGER), OTHER)
+			self.assertEqual(frappe.db.get_value(gw.LEAD, lead, "excom_team"), OTHER)
+			self.assertIn(lead, _visible(STRANGER), "the desk now working it can see it")
+			self.assertNotIn(lead, _visible(MEMBER), "the desk that let it go cannot")
+			note = frappe.get_all("Comment", filters={"reference_doctype": gw.LEAD, "reference_name": lead}, pluck="content")
+			self.assertTrue(any("Moved from" in (c or "") for c in note), "the move is recorded on the record")

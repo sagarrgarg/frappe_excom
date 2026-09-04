@@ -15,10 +15,29 @@ def run(module: str = "excom.excom.tests.test_core_flows,excom.excom.tests.test_
 		os.environ["EXCOM_CRM_BACKEND"] = backend
 	frappe.flags.in_test = True
 	frappe.flags.mute_emails = True
+	# A test must not depend on how this site happens to be configured. Two ambient settings rewrite
+	# a fixture underneath a test: a live Assignment Rule claims every lead the suite creates and
+	# moves its team, and the visibility switch changes what the CRM helpers return. So assignment
+	# is stubbed out for the run (frappe.flags.in_patch would do it too, but it also disables the
+	# permission loading these tests are about), and the switch is pinned off here and turned on by
+	# the tests that are about it.
+	import frappe.automation.doctype.assignment_rule.assignment_rule as _assignment_rule
+
+	_real_apply = _assignment_rule.apply
+	_assignment_rule.apply = lambda *a, **k: None
+	prior_enforcement = frappe.db.get_single_value("Excom Settings", "enforce_crm_visibility")
+	frappe.db.set_single_value("Excom Settings", "enforce_crm_visibility", 0)
+	frappe.db.commit()
+	frappe.clear_cache()
 	suite = unittest.TestSuite([unittest.defaultTestLoader.loadTestsFromName(m.strip()) for m in module.split(",") if m.strip()])
 	if pattern:
 		suite = unittest.TestSuite([t for t in _iter(suite) if pattern in t.id()])
-	result = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(suite)
+	try:
+		result = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(suite)
+	finally:
+		_assignment_rule.apply = _real_apply
+		frappe.db.set_single_value("Excom Settings", "enforce_crm_visibility", prior_enforcement or 0)
+		frappe.db.commit()
 	frappe.flags.in_test = False
 	return {"ran": result.testsRun, "failures": len(result.failures), "errors": len(result.errors), "ok": result.wasSuccessful()}
 
