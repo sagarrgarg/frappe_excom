@@ -17,7 +17,7 @@ interface Section { id: string; label: string; icon: React.ReactNode; group: "Pe
 
 function SyncTemplates() {
   const { call, loading } = useFrappePostCall("excom.excom.api.admin.sync_whatsapp_templates");
-  return <Button size="sm" variant="default" disabled={loading} onClick={async () => { try { const r = await call({}); toast.success(`Synced — ${r.message.count} templates`); window.dispatchEvent(new Event("excom:templates-synced")); } catch (e) { toast.error(serverMessage(e)); } }}><RefreshCw className={loading ? "animate-spin" : ""} />Sync from Meta</Button>;
+  return <Button size="sm" variant="default" disabled={loading} onClick={async () => { try { const r = await call({}); const m = r.message; if (m.errors?.length) { toast.error(`Sync problem: ${m.errors.join(" · ")}`, { duration: 12000 }); } else { toast.success(`Synced — ${m.count} templates (${m.new} new)`); } window.dispatchEvent(new Event("excom:templates-synced")); } catch (e) { toast.error(serverMessage(e)); } }}><RefreshCw className={loading ? "animate-spin" : ""} />Sync from Meta</Button>;
 }
 
 const SECTIONS: Section[] = [

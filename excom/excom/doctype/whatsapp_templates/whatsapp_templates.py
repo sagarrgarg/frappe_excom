@@ -468,9 +468,15 @@ def fetch():
     """
     accounts = frappe.get_all(
         "Excom Channel Account",
-        filters={"status": "Active", "channel": "WhatsApp"},
+        filters={"status": "Active", "channel": ["in", ["whatsapp", "WhatsApp"]]},
         fields=["name", "wa_business_id"],
     )
+    if accounts and not any(a.wa_business_id for a in accounts):
+        frappe.msgprint(_("No active WhatsApp account has a Business Account ID (wa_business_id) — set it on the account (Meta → WhatsApp Manager → Business account id) or enable the number from Admin → Meta Business."), indicator="red")
+        return "No WhatsApp Business Account ID on any account"
+    if not accounts:
+        frappe.msgprint(_("No active WhatsApp channel account."), indicator="red")
+        return "No active WhatsApp account"
 
     biz_groups: dict[str, list[str]] = {}
     for acct in accounts:

@@ -380,9 +380,22 @@ def sync_whatsapp_templates() -> dict:
     """Pull approved templates from Meta for every WhatsApp account (same code Desk's Fetch button runs)."""
     _check_manager_access()
     from excom.excom.doctype.whatsapp_templates.whatsapp_templates import fetch
-    fetch()
+    frappe.local.message_log = []
+    before = frappe.db.count("WhatsApp Templates")
+    result = fetch()
     frappe.db.commit()
-    return {"count": frappe.db.count("WhatsApp Templates")}
+    # fetch() reports per-account failures via msgprint; surface them to the caller instead of a toast that says "synced"
+    errors = []
+    for m in list(frappe.local.message_log or []):
+        try:
+            msg = json.loads(m) if isinstance(m, str) else m
+            txt = frappe.utils.strip_html(str(msg.get("message") if isinstance(msg, dict) else msg))
+        except Exception:
+            txt = str(m)
+        if txt:
+            errors.append(txt)
+    frappe.local.message_log = []
+    return {"count": frappe.db.count("WhatsApp Templates"), "new": frappe.db.count("WhatsApp Templates") - before, "result": result, "errors": errors}
 
 
 @frappe.whitelist()
