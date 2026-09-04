@@ -32,6 +32,7 @@
   "push_config",
   "vapid_public_key",
   "crm_tab",
+  "enforce_crm_visibility",
   "crm_sla_escalation",
   "crm_go_live_date"
  ],
@@ -209,6 +210,13 @@
    "fieldname": "crm_tab",
    "fieldtype": "Tab Break",
    "label": "CRM"
+  },
+  {
+   "fieldname": "enforce_crm_visibility",
+   "fieldtype": "Check",
+   "label": "Restrict lead visibility to owner, assignee and team",
+   "default": "0",
+   "description": "On: a lead nobody has been given to is visible only to a Sales Master Manager, and everyone else sees a lead only when they own it, are assigned it, or it sits on their team (a team manager also sees the teams beneath theirs). Off: ERPNext's own role permissions decide, unchanged."
   },
   {
    "fieldname": "crm_sla_escalation",

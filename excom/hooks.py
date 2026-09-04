@@ -120,10 +120,16 @@ boot_session = "excom.boot.boot_session"
 
 permission_query_conditions = {
 	"Excom Thread": "excom.excom.doctype.excom_thread.excom_thread.get_permission_query_conditions",
+	# A lead nobody has been given to is visible to a Sales Master Manager only. See
+	# services/crm_visibility.py; switch it off with Excom Settings > enforce_crm_visibility.
+	"Lead": "excom.excom.services.crm_visibility.lead_query_conditions",
+	"Opportunity": "excom.excom.services.crm_visibility.opportunity_query_conditions",
 }
 
 has_permission = {
 	"Excom Thread": "excom.excom.doctype.excom_thread.excom_thread.has_permission",
+	"Lead": "excom.excom.services.crm_visibility.lead_has_permission",
+	"Opportunity": "excom.excom.services.crm_visibility.opportunity_has_permission",
 }
 
 # DocType Class
@@ -176,6 +182,9 @@ doc_events = {
 	},
 	"Prospect": {
 		"after_insert": "excom.excom.services.identity_hooks.on_entity_created",
+	},
+	"ToDo": {
+		"after_insert": "excom.excom.services.crm_flow.on_todo_assigned",
 	},
 	"Contact": {
 		"after_insert": "excom.excom.services.identity_hooks.on_entity_created",

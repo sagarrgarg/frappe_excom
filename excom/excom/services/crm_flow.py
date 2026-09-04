@@ -242,6 +242,17 @@ def _assign(doc, user: str) -> None:
 		frappe.log_error(title="Excom sticky assignment failed", message=frappe.get_traceback())
 
 
+def on_todo_assigned(doc, method=None) -> None:
+	"""Every assignment in Frappe lands as a ToDo, whether it came from the Desk, an Assignment
+	Rule or Excom itself. Stamping the team here means one place covers all of them."""
+	try:
+		if doc.get("reference_type") in (gw.LEAD, gw.OPPORTUNITY) and doc.get("reference_name") and doc.get("allocated_to"):
+			from excom.excom.services.crm_visibility import stamp_team
+			stamp_team(doc.reference_type, doc.reference_name, doc.allocated_to)
+	except Exception:
+		frappe.log_error(title="Excom: could not stamp team on assignment", message=frappe.get_traceback())
+
+
 def sync_thread_owner(doc) -> None:
 	"""When the CRM record owner changes, the conversation follows (§7.4). One direction only."""
 	identity = doc.get("omni_identity")
@@ -282,6 +293,9 @@ def on_lead_updated(doc, method=None):
 			frappe.db.set_value(doc.doctype, doc.name, "intake_stage", "Classified", update_modified=False)
 		if doc.has_value_changed("lead_owner"):
 			sync_thread_owner(doc)
+			if doc.get("lead_owner"):
+				from excom.excom.services.crm_visibility import stamp_team
+				stamp_team(doc.doctype, doc.name, doc.lead_owner)
 	except Exception:
 		frappe.log_error(title=f"Excom crm_flow.on_lead_updated failed for {doc.name}", message=frappe.get_traceback())
 
@@ -350,6 +364,8 @@ def claim_lead_for_identity(identity: str, user: str) -> str | None:
 		if owner and frappe.db.get_value("User", owner, "enabled"):
 			return None
 		frappe.db.set_value(r.doctype, r.name, "lead_owner", user, update_modified=False)
+		from excom.excom.services.crm_visibility import stamp_team
+		stamp_team(r.doctype, r.name, user)
 		doc = frappe.get_doc(r.doctype, r.name)
 		if user not in (doc.get("_assign") or ""):
 			_assign(doc, user)

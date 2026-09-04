@@ -248,6 +248,11 @@ def lead_visibility(user: str | None = None) -> list | None:
 	- Team member: only leads assigned to them.
 	Returned as OR-filters for frappe.get_list."""
 	user = user or frappe.session.user
+	from excom.excom.services import crm_visibility
+	if crm_visibility.is_enforced():
+		# The native permission layer already narrows every query to owner / assignee / team, so a
+		# second filter here would only be a way for the two to disagree.
+		return None
 	roles = set(frappe.get_roles(user))
 	if roles & {"System Manager", "Excom Manager"}:
 		return None

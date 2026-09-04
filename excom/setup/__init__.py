@@ -73,6 +73,8 @@ def after_install():
 	seed_general_team()
 	from excom.setup.crm_schema import apply as apply_crm_schema
 	apply_crm_schema()
+	from excom.setup.crm_permissions import apply as apply_crm_permissions
+	apply_crm_permissions()
 
 
 SHARED_DOCTYPES = [
@@ -116,6 +118,8 @@ def after_migrate():
 	from excom.setup.crm_schema import apply as apply_crm_schema
 	apply_crm_schema()
 	seed_roles()
+	from excom.setup.crm_permissions import apply as apply_crm_permissions
+	apply_crm_permissions()
 	seed_channels()
 	seed_general_team()
 	reclaim_shared_doctypes()
