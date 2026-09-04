@@ -17,15 +17,17 @@ import { serverMessage } from "./util";
 
 interface Section { id: string; label: string; icon: React.ReactNode; group: "People" | "Channels" | "Content" | "Automation" | "System" | "Lists"; render?: () => React.ReactNode; to?: string; hint?: string }
 
-interface Diag { account: string; phone_id: string; waba_id: string; version: string; ok: boolean; templates_visible?: number; checks: { label: string; ok: boolean; detail: string }[] }
+interface Diag { account: string; phone_id: string; waba_id: string; version: string; ok: boolean; templates_visible?: number; id_type?: string; suggested_wabas?: { id: string; name: string }[]; checks: { label: string; ok: boolean; detail: string }[] }
 
 /** One click that says why a WhatsApp account cannot sync: token, WABA id, and what Meta answers. */
 function DiagnoseWhatsApp() {
   const { call, loading } = useFrappePostCall("excom.excom.api.admin.diagnose_whatsapp");
+  const { call: setWaba } = useFrappePostCall("excom.excom.api.admin.set_whatsapp_business_id");
   const [rows, setRows] = useState<Diag[] | null>(null);
+  const rerun = async () => { try { const r = await call({}); setRows(r.message); } catch (e) { toast.error(serverMessage(e)); } };
   return (
     <>
-      <Button size="sm" variant="ghost" disabled={loading} onClick={async () => { try { const r = await call({}); setRows(r.message); } catch (e) { toast.error(serverMessage(e)); } }}><Stethoscope className={loading ? "animate-spin" : ""} />Diagnose accounts</Button>
+      <Button size="sm" variant="ghost" disabled={loading} onClick={rerun}><Stethoscope className={loading ? "animate-spin" : ""} />Diagnose accounts</Button>
       <Sheet open={rows !== null} onOpenChange={(o) => !o && setRows(null)} title="WhatsApp account check" width="w-[560px]">
         <div className="p-3 space-y-3">
           {(rows ?? []).length === 0 && <p className="text-sm text-ink-3">No active WhatsApp accounts.</p>}
@@ -43,7 +45,15 @@ function DiagnoseWhatsApp() {
                   </li>
                 ))}
               </ul>
-              <p className="px-2 py-1.5 text-xs text-ink-3">phone id {r.phone_id || "—"} · WABA {r.waba_id || "—"} · {r.version}{typeof r.templates_visible === "number" ? ` · ${r.templates_visible > 0 ? "templates visible" : "no templates on this WABA"}` : ""}</p>
+              {(r.suggested_wabas ?? []).length > 0 && (
+                <div className="px-2 py-1.5 border-t border-border flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-ink-2">Use the real WhatsApp Business Account:</span>
+                  {r.suggested_wabas!.map((w) => (
+                    <Button key={w.id} size="sm" variant="primary" onClick={async () => { try { await setWaba({ account: r.account, waba_id: w.id }); toast.success(`${r.account} → WABA ${w.id}`); rerun(); } catch (e) { toast.error(serverMessage(e)); } }}>{w.name || w.id}</Button>
+                  ))}
+                </div>
+              )}
+              <p className="px-2 py-1.5 text-xs text-ink-3">phone id {r.phone_id || "—"} · WABA {r.waba_id || "—"}{r.id_type ? ` (${r.id_type.replace(/_/g, " ")})` : ""} · {r.version}{typeof r.templates_visible === "number" ? ` · ${r.templates_visible > 0 ? "templates visible" : "no templates on this WABA"}` : ""}</p>
             </section>
           ))}
         </div>

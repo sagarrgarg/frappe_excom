@@ -472,6 +472,26 @@ def _extract_header_samples(example: dict) -> str | None:
     return None
 
 
+def resolve_waba_ids(creds: dict, some_id: str) -> list[dict]:
+    """WhatsApp Business Accounts reachable from an id. Meta calls several things a 'business account';
+    a Business Portfolio id has owned_/client_whatsapp_business_accounts edges, a WABA has none."""
+    base = (creds["url"] or "https://graph.facebook.com").rstrip("/")
+    version = creds["version"] or "v21.0"
+    if not version.startswith("v"):
+        version = "v" + version
+    out: list[dict] = []
+    for edge in ("owned_whatsapp_business_accounts", "client_whatsapp_business_accounts"):
+        try:
+            frappe.flags.integration_request = None
+            page = make_request("GET", f"{base}/{version}/{some_id}/{edge}?fields=id,name&limit=50", headers=creds["headers"]) or {}
+            for w in page.get("data") or []:
+                if w.get("id") and w["id"] not in {x["id"] for x in out}:
+                    out.append({"id": w["id"], "name": w.get("name") or ""})
+        except Exception:
+            continue
+    return out
+
+
 def _fetch_all_templates(creds: dict, biz_id: str) -> dict:
     """GET /{waba}/message_templates following paging.next.
 
@@ -502,6 +522,83 @@ def _fetch_all_templates(creds: dict, biz_id: str) -> dict:
             continue
     raise last_exc
 
+
+
+def _store_templates(response: dict, acct_names: list, errors: list = None, representative: str = "") -> None:
+    """Upsert every template from a fetch response onto this site (hooks off, so nothing is pushed back to Meta)."""
+    for template in response.get("data") or []:
+        if frappe.db.exists("WhatsApp Templates", {"actual_name": template["name"]}):
+            doc = frappe.get_doc("WhatsApp Templates", {"actual_name": template["name"]})
+        else:
+            doc = frappe.new_doc("WhatsApp Templates")
+            doc.template_name = template["name"]
+            doc.actual_name = template["name"]
+
+        doc.status = template["status"]
+        doc.language_code = template["language"]
+        doc.category = template["category"]
+        doc.id = template["id"]
+        _merge_template_linked_accounts(doc, acct_names)
+
+        for component in template.get("components") or []:
+            ctype = (component.get("type") or "").upper()
+
+            if ctype == "HEADER":
+                fmt = (component.get("format") or "").upper()
+                doc.header_type = fmt
+                if fmt == "TEXT":
+                    doc.header = component.get("text") or ""
+                    doc.header_variable_samples = _extract_header_samples(
+                        component.get("example") or {}
+                    )
+                else:
+                    doc.header_variable_samples = None
+
+            elif ctype == "FOOTER":
+                doc.footer = component.get("text") or ""
+
+            elif ctype == "BODY":
+                doc.template = component.get("text") or ""
+                if component.get("example"):
+                    body_text = component["example"].get("body_text")
+                    if body_text and isinstance(body_text, list) and body_text:
+                        doc.body_variable_samples = json.dumps(body_text[0])
+                        doc.sample_values = ""
+
+            elif ctype == "BUTTONS":
+                doc.set("buttons", [])
+                frappe.db.delete(
+                    "WhatsApp Button",
+                    {"parent": doc.name, "parenttype": "WhatsApp Templates"},
+                )
+                type_map = {
+                    "URL": "Visit Website",
+                    "PHONE_NUMBER": "Call Phone",
+                    "QUICK_REPLY": "Quick Reply",
+                    "FLOW": "Flow",
+                }
+                for i, button in enumerate(component.get("buttons", []), start=1):
+                    btn: dict = {
+                        "button_type": type_map.get(button["type"], button["type"]),
+                        "button_label": button.get("text"),
+                        "sequence": i,
+                    }
+                    if button["type"] == "URL":
+                        btn["website_url"] = button.get("url") or ""
+                        btn["url_type"] = (
+                            "Dynamic" if "{{" in btn["website_url"] else "Static"
+                        )
+                        if button.get("example"):
+                            btn["example_url"] = ",".join(button["example"])
+                    elif button["type"] == "PHONE_NUMBER":
+                        btn["phone_number"] = button.get("phone_number")
+                    elif button["type"] == "FLOW":
+                        btn["flow"] = button.get("flow")
+
+                    doc.append("buttons", btn)
+
+        upsert_doc_without_hooks(doc, "WhatsApp Button", "buttons")
+        _persist_linked_accounts(doc)
 
 
 @frappe.whitelist()
@@ -535,91 +632,38 @@ def fetch():
     for biz_id, acct_names in biz_groups.items():
         representative = acct_names[0]
         account_doc = frappe.get_doc("Excom Channel Account", representative)
-        creds = get_wa_credentials(account_doc)
-
         frappe.flags.integration_request = None  # never report a stale response from an earlier call
         try:
+            # inside the try: one account with a missing or undecryptable token must not abort the others
+            creds = get_wa_credentials(account_doc)
             response = _fetch_all_templates(creds, biz_id)
         except Exception as e:
             detail = _meta_error_from(e) or _extract_meta_error()
             if detail.startswith("Unknown error"):
-                detail = frappe.utils.strip_html(str(e))[:300] or detail  # credentials / network / decrypt problems never reach Meta
+                detail = frappe.utils.strip_html(str(e))[:300] or detail  # credentials / network / decrypt never reach Meta
+            if "nonexisting field" in detail and "message_templates" in detail:
+                wabas = resolve_waba_ids(creds, biz_id)
+                if len(wabas) == 1:
+                    real = wabas[0]
+                    for acct in acct_names:
+                        frappe.db.set_value("Excom Channel Account", acct, "wa_business_id", real["id"], update_modified=False)
+                    frappe.db.commit()
+                    frappe.msgprint(_("{0} is a Business Portfolio, not a WhatsApp Business Account. Corrected to WABA {1} {2} and retried.").format(biz_id, real["id"], real["name"]), indicator="orange")
+                    try:
+                        response = _fetch_all_templates(creds, real["id"])
+                        errors.append(f"{representative}: Business Account ID corrected to {real['id']} ({real['name']})")
+                        _store_templates(response, acct_names)
+                        continue
+                    except Exception as e2:
+                        detail = _meta_error_from(e2) or detail
+                elif wabas:
+                    detail = f"{biz_id} is a Business Portfolio, not a WhatsApp Business Account. WABAs under it: " + ", ".join(f"{w['id']} ({w['name']})" for w in wabas) + " — put one in Business Account ID."
+                else:
+                    detail = f"{biz_id} has no message_templates edge and no WhatsApp Business Accounts under it — it is not a WABA. Copy the WhatsApp Business Account ID from Meta → WhatsApp Manager → Account tools."
             errors.append(f"{representative}: {detail}")
             continue
 
-        for template in response.get("data") or []:
-            if frappe.db.exists("WhatsApp Templates", {"actual_name": template["name"]}):
-                doc = frappe.get_doc("WhatsApp Templates", {"actual_name": template["name"]})
-            else:
-                doc = frappe.new_doc("WhatsApp Templates")
-                doc.template_name = template["name"]
-                doc.actual_name = template["name"]
-
-            doc.status = template["status"]
-            doc.language_code = template["language"]
-            doc.category = template["category"]
-            doc.id = template["id"]
-            _merge_template_linked_accounts(doc, acct_names)
-
-            for component in template.get("components") or []:
-                ctype = (component.get("type") or "").upper()
-
-                if ctype == "HEADER":
-                    fmt = (component.get("format") or "").upper()
-                    doc.header_type = fmt
-                    if fmt == "TEXT":
-                        doc.header = component.get("text") or ""
-                        doc.header_variable_samples = _extract_header_samples(
-                            component.get("example") or {}
-                        )
-                    else:
-                        doc.header_variable_samples = None
-
-                elif ctype == "FOOTER":
-                    doc.footer = component.get("text") or ""
-
-                elif ctype == "BODY":
-                    doc.template = component.get("text") or ""
-                    if component.get("example"):
-                        body_text = component["example"].get("body_text")
-                        if body_text and isinstance(body_text, list) and body_text:
-                            doc.body_variable_samples = json.dumps(body_text[0])
-                            doc.sample_values = ""
-
-                elif ctype == "BUTTONS":
-                    doc.set("buttons", [])
-                    frappe.db.delete(
-                        "WhatsApp Button",
-                        {"parent": doc.name, "parenttype": "WhatsApp Templates"},
-                    )
-                    type_map = {
-                        "URL": "Visit Website",
-                        "PHONE_NUMBER": "Call Phone",
-                        "QUICK_REPLY": "Quick Reply",
-                        "FLOW": "Flow",
-                    }
-                    for i, button in enumerate(component.get("buttons", []), start=1):
-                        btn: dict = {
-                            "button_type": type_map.get(button["type"], button["type"]),
-                            "button_label": button.get("text"),
-                            "sequence": i,
-                        }
-                        if button["type"] == "URL":
-                            btn["website_url"] = button.get("url") or ""
-                            btn["url_type"] = (
-                                "Dynamic" if "{{" in btn["website_url"] else "Static"
-                            )
-                            if button.get("example"):
-                                btn["example_url"] = ",".join(button["example"])
-                        elif button["type"] == "PHONE_NUMBER":
-                            btn["phone_number"] = button.get("phone_number")
-                        elif button["type"] == "FLOW":
-                            btn["flow"] = button.get("flow")
-
-                        doc.append("buttons", btn)
-
-            upsert_doc_without_hooks(doc, "WhatsApp Button", "buttons")
-            _persist_linked_accounts(doc)
+        _store_templates(response, acct_names)
 
     if errors:
         frappe.msgprint(

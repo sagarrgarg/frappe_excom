@@ -585,12 +585,23 @@ def diagnose_whatsapp() -> list:
 			if acc.wa_business_id:
 				meta = probe("Business Account ID is readable", f"{base}/{ver}/{acc.wa_business_id}", {"metadata": 1, "fields": "id,name"})
 				if meta:
-					kind = ((meta.get("metadata") or {}).get("type") or "").lower()
-					row["id_type"] = kind
-					add("Business Account ID is a WhatsApp Business Account", kind in ("whatsapp_business_account", ""), "" if kind in ("whatsapp_business_account", "") else f"that id is a {kind.replace('_', ' ')}, not a WhatsApp Business Account — templates live on the WABA (Meta → WhatsApp Manager → Account tools → WhatsApp Business Account ID)")
+					row["id_type"] = ((meta.get("metadata") or {}).get("type") or "unknown").lower()
 				data = probe("Template list readable", f"{base}/{ver}/{acc.wa_business_id}/message_templates", {"limit": 1})
 				if data is not None:
 					row["templates_visible"] = len(data.get("data") or [])
+				else:
+					# no templates edge → the id is not a WABA; find the real ones under it
+					from excom.excom.doctype.whatsapp_templates.whatsapp_templates import resolve_waba_ids
+					from excom.excom.utils import get_wa_credentials
+					try:
+						wabas = resolve_waba_ids(get_wa_credentials(acc), acc.wa_business_id)
+					except Exception:
+						wabas = []
+					row["suggested_wabas"] = wabas
+					if wabas:
+						add("Business Account ID is the WhatsApp Business Account", False, "that id is a Business Portfolio, not a WhatsApp Business Account. WABAs under it: " + ", ".join(f"{w['id']} ({w['name'] or 'unnamed'})" for w in wabas))
+					else:
+						add("Business Account ID is the WhatsApp Business Account", False, "that id has no templates edge and no WhatsApp Business Accounts under it — copy the WhatsApp Business Account ID from Meta → WhatsApp Manager → Account tools")
 			# which WABAs this token may actually manage (needs app id + secret on the account)
 			app_secret = acc.get_password("wa_app_secret", raise_exception=False) or ""
 			if acc.wa_app_id and app_secret:
@@ -608,3 +619,14 @@ def diagnose_whatsapp() -> list:
 		row["ok"] = all(c["ok"] for c in row["checks"])
 		out.append(row)
 	return out
+
+
+@frappe.whitelist()
+def set_whatsapp_business_id(account: str, waba_id: str) -> dict:
+	"""Point a WhatsApp account at the right WhatsApp Business Account (from the diagnosis suggestions)."""
+	_check_manager_access()
+	if not frappe.db.exists("Excom Channel Account", account):
+		frappe.throw(_("Unknown account"))
+	frappe.db.set_value("Excom Channel Account", account, "wa_business_id", waba_id)
+	frappe.db.commit()
+	return {"ok": True, "waba_id": waba_id}
