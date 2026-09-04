@@ -103,7 +103,7 @@ This lands squarely on HLD-003 §2.2, which lists `source (→ Lead Source)` and
 
 **Required amendment to HLD-003:**
 
-1. Excom's own provenance fields stay the system of record: `first_touch_channel`, `first_touch_at`, `first_touch_by`, `source_reference` (already specified), **plus a new `Excom Intake Source` link** (Part 7.1) that we own outright.
+1. Excom's own provenance fields stay the system of record: `first_touch_channel`, `first_touch_at`, `first_touch_by`, `source_reference` (already specified), **plus a new `Excom Source` link** (Part 7.1) that we own outright.
 2. Native attribution is written through a shim, never inline:
 
 ```python
@@ -241,7 +241,7 @@ Design goal: **one intake spine, four adapters**, so a fifth source (JustDial, A
 
 ## 7.1 Two new doctypes
 
-**`Excom Intake Source`** — one row per external lead feed.
+**`Excom Source`** — one row per external lead feed.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -260,13 +260,13 @@ Design goal: **one intake spine, four adapters**, so a fifth source (JustDial, A
 | `default_lead_owner` | Link → User | |
 | `auto_ack_template` | Link → WhatsApp Templates | Utility template, HLD-003 §9.4 |
 | `sla_first_response` | Duration | 5 min IndiaMART, 15 min TradeIndia, 30 min Meta, 1 h web (HLD-003 §10.1) |
-| `field_map` | Table → `Excom Intake Field Map` | `source_key` → `target_fieldname` → `transform` |
+| `field_map` | Table → `Excom Source Field Map` | `source_key` → `target_fieldname` → `transform` |
 
-**`Excom Intake Log`** — one row per inbound payload, the audit trail and the replay queue.
+**`Excom Source Log`** — one row per inbound payload, the audit trail and the replay queue.
 
 | Field | Type | Notes |
 |---|---|---|
-| `source` | Link → Excom Intake Source | |
+| `source` | Link → Excom Source | |
 | `dedupe_key` | Data, **unique index** | IndiaMART `UNIQUE_QUERY_ID`, Meta `leadgen_id`, TradeIndia inquiry id, Web Form submission name. This *is* the idempotency mechanism |
 | `raw_payload` | Long Text | Verbatim, before any mapping |
 | `status` | Select | `Received`, `Processed`, `Duplicate`, `Failed`, `Ignored` |
@@ -289,7 +289,7 @@ excom.excom.api.intake.submit_enquiry
     @rate_limit(key="ip", limit=10, seconds=60)
 
 POST /api/method/excom.excom.api.intake.submit_enquiry
-  { "source_token": "<per-site token>",       # identifies the Excom Intake Source
+  { "source_token": "<per-site token>",       # identifies the Excom Source
     "submission_id": "<client uuid>",          # dedupe_key
     "name": "...", "email": "...", "phone": "...",
     "message": "...",
@@ -303,11 +303,11 @@ Rules:
 
 | # | Rule | Why |
 |---|---|---|
-| A1 | One `Excom Intake Source` row **per website/landing page**, each with its own `source_token`, `company`, `channel_account`, `default_lead_owner` and SLA | Attribution and company routing are structural (HLD-003 §11.2), and a leaked token is revoked for one site, not all |
+| A1 | One `Excom Source` row **per website/landing page**, each with its own `source_token`, `company`, `channel_account`, `default_lead_owner` and SLA | Attribution and company routing are structural (HLD-003 §11.2), and a leaked token is revoked for one site, not all |
 | A2 | `allowed_origins` on the source; the endpoint returns CORS headers only for a match and rejects a mismatched `Origin`/`Referer` | Harvested from H3's domain-allowlist regex — reject any value containing CSP/header metacharacters |
 | A3 | Field mapping via `field_map` rows, never positional; unmapped keys survive in `raw_payload` | A marketer adding a field must not need a release (S10) |
 | A4 | Spam controls: honeypot field, minimum fill-time, per-IP rate limit, optional hCaptcha/Turnstile token verified server-side per source | A public write endpoint with no CSRF needs its own defences |
-| A5 | `submission_id` → `Excom Intake Log.dedupe_key`; a retried POST returns the same result, 200 | Flaky mobile networks double-submit |
+| A5 | `submission_id` → `Excom Source Log.dedupe_key`; a retried POST returns the same result, 200 | Flaky mobile networks double-submit |
 | A6 | Response is minimal — `{"ok": true, "ref": "<log id>"}`. Never echo whether the email already exists | No enumeration oracle |
 | A7 | `utm.*` written through `crm_compat.set_attribution()`; `page_url` retained on the log | Survives the v15 → v16 attribution change (§3.2) |
 
@@ -327,7 +327,7 @@ GET https://mapi.indiamart.com/wservce/crm/crmListing/v2/
 ```
 
 - `glusr_crm_key` is generated from *seller.indiamart.com → Lead Manager → CRM Integration* and mailed to the primary address; **it expires after ~15 days of no use** — so `tasks/token_monitor.py` (already exists for WhatsApp tokens) must watch it too.
-- Scheduler entry: `excom.excom.tasks.intake.pull_indiamart` at `Every 5 Minutes`, `start_time = last_synced_at − 5 min` (overlap by design; `Excom Intake Log.dedupe_key` absorbs the duplicates).
+- Scheduler entry: `excom.excom.tasks.intake.pull_indiamart` at `Every 5 Minutes`, `start_time = last_synced_at − 5 min` (overlap by design; `Excom Source Log.dedupe_key` absorbs the duplicates).
 - Vendor guidance suggests polling every 5–15 minutes and requesting only the delta **[vendor]**; published 429/limit numbers are not in the public docs, so the poller must treat a non-200 as backoff-and-retry, not as an error to swallow.
 - Map `UNIQUE_QUERY_ID` → `dedupe_key` and `source_reference`; split attribution into `IndiaMART Direct` / `IndiaMART Buy Lead` / `IndiaMART Call` sources (HLD-003 Q4).
 
@@ -336,11 +336,11 @@ GET https://mapi.indiamart.com/wservce/crm/crmListing/v2/
 ```
 excom.excom.api.intake.indiamart_push   @frappe.whitelist(allow_guest=True, methods=["POST"])
 ```
-IndiaMART's push API posts to a URL you register in the seller panel and carries no HMAC **[vendor]**, so authentication is: an unguessable `push_token` in the path/query matched against `Excom Intake Source`, plus optional IP allowlist, plus `rate_limit(key="ip")`. Treat push as an *accelerator*: the poller remains the source of truth so a missed push self-heals within 5 minutes.
+IndiaMART's push API posts to a URL you register in the seller panel and carries no HMAC **[vendor]**, so authentication is: an unguessable `push_token` in the path/query matched against `Excom Source`, plus optional IP allowlist, plus `rate_limit(key="ip")`. Treat push as an *accelerator*: the poller remains the source of truth so a missed push self-heals within 5 minutes.
 
 ### C. TradeIndia
 
-Pull only. Credentials `userid`, `profile_id`, and API key come from *TradeIndia → Inquiries & Contacts → My Inquiry API*, which also displays the API link **[vendor]** — the exact host/path must be read from that panel at configuration time and stored on `Excom Intake Source`, not hardcoded. Frequency `Every 15 Minutes` (HLD-003 §4.2 sets a 15-minute first-response target). Dedupe on the inquiry id.
+Pull only. Credentials `userid`, `profile_id`, and API key come from *TradeIndia → Inquiries & Contacts → My Inquiry API*, which also displays the API link **[vendor]** — the exact host/path must be read from that panel at configuration time and stored on `Excom Source`, not hardcoded. Frequency `Every 15 Minutes` (HLD-003 §4.2 sets a 15-minute first-response target). Dedupe on the inquiry id.
 
 ### D. Meta lead ads (+ comments, + Instagram)
 
@@ -365,7 +365,7 @@ Form-question mapping mirrors H2: a child table of `source_key` → `target_fiel
 ## 7.3 Shared pipeline — every adapter ends the same way
 
 ```
-adapter ──▶ Excom Intake Log (raw, dedupe_key)          # idempotent: unique index
+adapter ──▶ Excom Source Log (raw, dedupe_key)          # idempotent: unique index
         ──▶ map via field_map
         ──▶ resolve_identity(phone=, email=, channel=, channel_user_id=)   # exists today
         ──▶ crm_gateway.create_lead(...)  +  set_attribution(...)          # §3.2, §4.1
@@ -389,7 +389,7 @@ Applies to every endpoint in Part 7. Phase A of the roadmap already established 
 | S1 | **Authenticate every inbound** | Meta: `X-Hub-Signature-256` HMAC-SHA256 over the raw body with `hmac.compare_digest`, per receiving object's app secret. IndiaMART push: secret path token + optional IP allowlist. Web form: framework CSRF |
 | S2 | **No accept-on-missing-signature** | Fix `utils/webhook.py:43` — once any secret exists for the receiving object, unsigned requests are 403. Keep degradation only for accounts with no secret at all, and log a warning each time it is used |
 | S3 | **Respond fast, process later** | 200 within Meta's 20 s window: log raw → `frappe.enqueue(queue="short")` → return. Already the pattern in `webhook.py:129` |
-| S4 | **Idempotency is a database constraint** | Unique index on `Excom Intake Log.dedupe_key`; never a "does it already exist?" query race |
+| S4 | **Idempotency is a database constraint** | Unique index on `Excom Source Log.dedupe_key`; never a "does it already exist?" query race |
 | S5 | **Rate limit every guest endpoint** | `@rate_limit(key="ip", ...)` — today only four whitelisted functions in the entire app are rate-limited, all user-keyed |
 | S6 | **`ignore_permissions` only inside the intake path** | HLD-003 §3.4's rule; the gateway is the boundary |
 | S7 | **Raw payload retention + PII** | 90-day purge, per-source; buyer phone/email are personal data under DPDP |
@@ -405,7 +405,7 @@ Applies to every endpoint in Part 7. Phase A of the roadmap already established 
 
 | Doc | Correction |
 |---|---|
-| HLD-003 §2.2 | `Lead.source`, `Lead.campaign_name`, `Opportunity.source`, `Opportunity.campaign` do not exist in v16. Route attribution through `crm_compat.set_attribution()`; add `Excom Intake Source` as our own provenance link |
+| HLD-003 §2.2 | `Lead.source`, `Lead.campaign_name`, `Opportunity.source`, `Opportunity.campaign` do not exist in v16. Route attribution through `crm_compat.set_attribution()`; add `Excom Source` as our own provenance link |
 | HLD-003 §12 N1 | "Seed `Lead Source` rows" becomes "seed intake sources + native attribution rows in whichever doctype the version provides" |
 | HLD-003 §10.2 | SLA design should adopt the working-hours/holiday/priority model from H4 rather than a bare elapsed-time check |
 | HLD-003 Q8 | Uninstalling `crm` is no longer just hygiene — V1/V2/V3 in §2.2 are concrete write paths into our data |
@@ -434,14 +434,14 @@ Applies to every endpoint in Part 7. Phase A of the roadmap already established 
 | D4 | One Meta webhook or one per field? | **One**, with a dispatch table — Meta sends everything for an app to one URL anyway |
 | D5 | Build `Excom SLA` (H4) now or keep HLD-003 §10.2's notification approach? | **Notifications for N3; the doctype when the second source with different targets appears** |
 | D6 | Instagram/Meta comments in this scope? | **No** — separate slice after lead ads, but the dispatch table must be built to accept it |
-| D7 | Where does `Excom Intake Source` live relative to `Excom Channel Account`? | Separate doctype, linked. A source is a *lead feed*; an account is a *conversation endpoint*. IndiaMART has no conversation endpoint |
+| D7 | Where does `Excom Source` live relative to `Excom Channel Account`? | Separate doctype, linked. A source is a *lead feed*; an account is a *conversation endpoint*. IndiaMART has no conversation endpoint |
 
 ## 9.4 Suggested sequencing (fits HLD-003 N-phases)
 
 | Step | Work | Days |
 |---|---|---|
 | 0 | Guardrails G2–G7 + `crm_compat.set_attribution()` + `crm_gateway.py` skeleton + manifest | 2 |
-| 1 | `Excom Intake Source` + `Excom Intake Log` + shared pipeline (§7.3) | 3 |
+| 1 | `Excom Source` + `Excom Source Log` + shared pipeline (§7.3) | 3 |
 | 2 | IndiaMART pull (+push) — highest commercial return, per HLD-003 §12 N3 | 2–3 |
 | 3 | Website via core Web Form | 1–2 |
 | 4 | Meta lead ads: webhook dispatch refactor + `leadgen` handler + reconciliation poll | 3–4 |

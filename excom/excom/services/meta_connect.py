@@ -203,9 +203,9 @@ def enable_asset(name: str, asset_type: str, asset_id: str, enable: int = 1) -> 
 		linked_name = _upsert_account(conn, "instagram", f"Instagram · {row.asset_name}", {"meta_ig_user_id": asset_id, "meta_page_id": row.page_id, "meta_page_token": _page_token(conn, row.page_id), "meta_api_version": conn.api_version or "v21.0", "meta_poll_interval_minutes": 1, "status": "Active"})
 		_subscribe_page(conn, row.page_id, "messages")
 	elif asset_type == "Lead Form":
-		linked_dt = "Excom Intake Source"
-		src_name = frappe.db.get_value("Excom Intake Source", {"source_type": "Meta Lead Ads", "form_id": asset_id}, "name")
-		src = frappe.get_doc("Excom Intake Source", src_name) if src_name else frappe.new_doc("Excom Intake Source")
+		linked_dt = "Excom Source"
+		src_name = frappe.db.get_value("Excom Source", {"source_type": "Meta Lead Ads", "form_id": asset_id}, "name")
+		src = frappe.get_doc("Excom Source", src_name) if src_name else frappe.new_doc("Excom Source")
 		if not src_name:
 			src.source_name = f"Meta · {row.asset_name}"[:140]
 			src.source_type = "Meta Lead Ads"

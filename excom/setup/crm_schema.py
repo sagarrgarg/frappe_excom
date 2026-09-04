@@ -20,7 +20,7 @@ CUSTOM_FIELDS = {
 		{"fieldname": "intake_stage", "fieldtype": "Select", "label": "Intake Stage", "options": "\n" + "\n".join(INTAKE_STAGES), "insert_after": "customer_type", "in_standard_filter": 1},
 		{"fieldname": "excom_cb_type", "fieldtype": "Column Break", "insert_after": "intake_stage"},
 		{"fieldname": "omni_identity", "fieldtype": "Link", "label": "Omni Identity", "options": "Omni Identity", "read_only": 1, "insert_after": "excom_cb_type"},
-		{"fieldname": "intake_source", "fieldtype": "Link", "label": "Intake Source", "options": "Excom Intake Source", "read_only": 1, "insert_after": "omni_identity"},
+		{"fieldname": "intake_source", "fieldtype": "Link", "label": "Intake Source", "options": "Excom Source", "read_only": 1, "insert_after": "omni_identity"},
 		{"fieldname": "excom_sec_prov", "fieldtype": "Section Break", "label": "Provenance (write-once)", "insert_after": "intake_source", "collapsible": 1},
 		{"fieldname": "first_touch_at", "fieldtype": "Datetime", "label": "First Touch At", "read_only": 1, "insert_after": "excom_sec_prov"},
 		{"fieldname": "first_touch_channel", "fieldtype": "Select", "label": "First Touch Channel", "options": "\n" + "\n".join(FIRST_TOUCH_CHANNELS), "read_only": 1, "insert_after": "first_touch_at"},

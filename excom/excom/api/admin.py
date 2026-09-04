@@ -20,7 +20,7 @@ ADMIN_DOCTYPES: dict[str, dict] = {
     "Excom Canned Response": {"title": "title"},
     "Excom Sticker": {"title": "sticker_name"},
     "Excom Notification": {"title": "notification_name"},
-    "Excom Intake Source": {"title": "source_name"},
+    "Excom Source": {"title": "source_name"},
     "Excom Email Signature": {"title": "user"},
     "Excom Subscriber List": {"title": "list_name"},
     "WhatsApp Templates": {"title": "template_name"},
@@ -38,7 +38,7 @@ def excom_related_doctypes() -> list[str]:
     """Excom module doctypes + the CRM records Excom creates (via the gateway, never named here)."""
     from excom.excom.services.crm_gateway import crm_doctypes
     # Only records people actually get assigned to — not logs, settings, tokens or messages.
-    own = ["Excom Thread", "Excom Intake Log", "Excom Broadcast", "Omni Identity"]
+    own = ["Excom Thread", "Excom Source Log", "Excom Broadcast", "Omni Identity"]
     return sorted(set(own) | set(crm_doctypes()) | {"Contact"})
 
 
@@ -418,7 +418,7 @@ def get_admin_overview() -> dict:
         "tags": frappe.db.count("Excom Tag"),
         "stickers": frappe.db.count("Excom Sticker", {"enabled": 1}),
         "notifications": frappe.db.count("Excom Notification", {"disabled": 0}),
-        "intake_sources": frappe.db.count("Excom Intake Source", {"enabled": 1}),
+        "intake_sources": frappe.db.count("Excom Source", {"enabled": 1}),
         "assignment_rules": frappe.db.count("Assignment Rule", {"disabled": 0, "document_type": ["in", excom_related_doctypes()]}),
         "unassigned": frappe.db.count("Excom Thread", {"status": ["!=", "Closed"], "assigned_to": ["is", "not set"]}),
         "disabled_owner_threads": int(disabled_owners or 0),
@@ -475,7 +475,7 @@ def get_embed(doctype: str, name: str) -> dict:
 			"script": f'<script src="{site}/assets/excom/widget/excom-chat.js" data-account="{acc.name}" data-site="{site}" defer></script>',
 			"notes": "Paste before </body> on every page. The widget opens in a shadow DOM, so your CSS is untouched. Title, colour, position and pre-chat fields come from this account.",
 		}
-	if doctype == "Excom Intake Source":
+	if doctype == "Excom Source":
 		src = frappe.get_doc(doctype, name)
 		if src.source_type != "Website":
 			return {"kind": "none"}
@@ -530,7 +530,7 @@ def regenerate_source_token(name: str) -> dict:
 	"""New push token for a Website / IndiaMART push source. Old token stops working immediately."""
 	_check_manager_access()
 	import secrets
-	src = frappe.get_doc("Excom Intake Source", name)
+	src = frappe.get_doc("Excom Source", name)
 	src.push_token = secrets.token_hex(24)
 	src.flags.ignore_permissions = True
 	src.save()

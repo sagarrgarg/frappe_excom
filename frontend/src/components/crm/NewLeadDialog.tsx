@@ -11,7 +11,7 @@ export function NewLeadDialog({ open, onClose, onCreated }: { open: boolean; onC
   const [f, setF] = useState({ name: "", phone: "", email: "", company_name: "", customer_type: "", intake_source: "", notes: "" });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF((v) => ({ ...v, [k]: e.target.value }));
   const options = useCrmOptions();
-  const { data: sources } = useFrappeGetCall<{ message: { name: string; source_name: string }[] }>("frappe.client.get_list", { doctype: "Excom Intake Source", fields: JSON.stringify(["name", "source_name"]), filters: JSON.stringify({ enabled: 1, source_type: ["in", ["Manual", "Exhibition", "Website", "IndiaMART", "TradeIndia", "Meta Lead Ads"]] }), limit_page_length: 100 }, "intake-sources-list", { revalidateOnFocus: false });
+  const { data: sources } = useFrappeGetCall<{ message: { name: string; source_name: string }[] }>("frappe.client.get_list", { doctype: "Excom Source", fields: JSON.stringify(["name", "source_name"]), filters: JSON.stringify({ enabled: 1, source_type: ["in", ["Manual", "Exhibition", "Website", "IndiaMART", "TradeIndia", "Meta Lead Ads"]] }), limit_page_length: 100 }, "intake-sources-list", { revalidateOnFocus: false });
   const { call, loading } = useFrappePostCall("excom.excom.api.crm.create_lead_manual");
   const { openRecord } = useInbox();
   const submit = async () => {

@@ -41,7 +41,7 @@ def check_crm_sla() -> dict:
 		return out
 	now = now_datetime()
 	go_live = _go_live()
-	sla_by_source = {s.name: s.sla_first_response for s in frappe.get_all("Excom Intake Source", fields=["name", "sla_first_response"])}
+	sla_by_source = {s.name: s.sla_first_response for s in frappe.get_all("Excom Source", fields=["name", "sla_first_response"])}
 
 	# 1) first response + 2) classification — on open Leads
 	for lead in gw.list_intake({}, limit=2000):

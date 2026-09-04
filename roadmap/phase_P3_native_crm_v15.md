@@ -63,7 +63,7 @@ Guardrails against the installed Frappe CRM app, as a scheduled `assert_native_c
 
 Custom Fields as excom fixtures — never by editing ERPNext JSON.
 
-**On `Lead`:** `customer_type` (Select: Distributor / Retailer / Export Importer / OEM / Corporate Gifting / Online B2C), `omni_identity` (Link, read-only), `first_touch_at`, `first_touch_channel`, `first_touch_by`, `source_reference`, `intake_source` (Link → Excom Intake Source), `exhibition`, `auto_ack_sent_at`, `intake_stage` (Captured / Deduped / Responded / Classified / Qualified).
+**On `Lead`:** `customer_type` (Select: Distributor / Retailer / Export Importer / OEM / Corporate Gifting / Online B2C), `omni_identity` (Link, read-only), `first_touch_at`, `first_touch_channel`, `first_touch_by`, `source_reference`, `intake_source` (Link → Excom Source), `exhibition`, `auto_ack_sent_at`, `intake_stage` (Captured / Deduped / Responded / Classified / Qualified).
 
 **On `Opportunity`:** `customer_type` (mandatory, fetched), `pipeline_stage` (Select — must be Select, Frappe Kanban requires it), `omni_identity`, `stage_entered_at`, `next_action_at`, `gate_flags` (Small Text JSON), `event_date`, `design_by`, `sample_round`, `incoterm`, `proposed_pincodes`.
 
@@ -97,10 +97,10 @@ doc_events = {
 
 **New doctypes:**
 
-`Excom Intake Source` — `source_name`, `source_type` (Website / IndiaMART / TradeIndia / Meta Lead Ads / Exhibition / Manual), `enabled`, `company`, `channel_account`, `mode` (Push / Pull / Both), `pull_frequency`, `last_synced_at`, credentials (`api_key`, `api_secret`, `user_id`, `profile_id`, `access_token` — Password fields), `push_token`, `allowed_origins`, `allowed_ips`, `default_lead_owner`, `auto_ack_template`, `sla_first_response`, `field_map` (child: `source_key` → `target_fieldname` → `transform`).
+`Excom Source` — `source_name`, `source_type` (Website / IndiaMART / TradeIndia / Meta Lead Ads / Exhibition / Manual), `enabled`, `company`, `channel_account`, `mode` (Push / Pull / Both), `pull_frequency`, `last_synced_at`, credentials (`api_key`, `api_secret`, `user_id`, `profile_id`, `access_token` — Password fields), `push_token`, `allowed_origins`, `allowed_ips`, `default_lead_owner`, `auto_ack_template`, `sla_first_response`, `field_map` (child: `source_key` → `target_fieldname` → `transform`).
 **One row per feed** — per website/landing page, per marketplace account, per lead form.
 
-`Excom Intake Log` — `source`, `dedupe_key` (**unique index**), `raw_payload`, `status` (Received / Processed / Duplicate / Failed / Ignored), `lead` (Dynamic Link), `omni_identity`, `error`, `received_at`, `processed_at`. Failed rows are replayable from the Desk form. Raw payloads purge at 90 days (buyer PII, DPDP).
+`Excom Source Log` — `source`, `dedupe_key` (**unique index**), `raw_payload`, `status` (Received / Processed / Duplicate / Failed / Ignored), `lead` (Dynamic Link), `omni_identity`, `error`, `received_at`, `processed_at`. Failed rows are replayable from the Desk form. Raw payloads purge at 90 days (buyer PII, DPDP).
 
 **Shared pipeline** (`services/intake.py`), identical for all adapters:
 
@@ -142,7 +142,7 @@ GET https://mapi.indiamart.com/wservce/crm/crmListing/v2/
   "page_url": "https://site.example/pricing", "extra": { } }
 ```
 
-One `Excom Intake Source` per site/landing page, each with its own token, `allowed_origins`, company, owner and SLA — a leaked token is revoked for one site, not all. CORS headers returned only on origin match; origins containing CSP/header metacharacters rejected. Spam controls: honeypot, minimum fill-time, IP rate limit, optional Turnstile/hCaptcha verified server-side per source. `submission_id` → `dedupe_key`, so a retried POST returns the same 200. Response is `{"ok": true, "ref": "<log id>"}` — never reveals whether the email is already known. `utm.*` through `set_attribution()`; `page_url` retained on the log.
+One `Excom Source` per site/landing page, each with its own token, `allowed_origins`, company, owner and SLA — a leaked token is revoked for one site, not all. CORS headers returned only on origin match; origins containing CSP/header metacharacters rejected. Spam controls: honeypot, minimum fill-time, IP rate limit, optional Turnstile/hCaptcha verified server-side per source. `submission_id` → `dedupe_key`, so a retried POST returns the same 200. Response is `{"ok": true, "ref": "<log id>"}` — never reveals whether the email is already known. `utm.*` through `set_attribution()`; `page_url` retained on the log.
 
 Ships with `excom-intake.js` (~30 lines, no dependencies) so each site wires its existing form markup without touching layout.
 
@@ -157,7 +157,7 @@ Ships with `excom-intake.js` (~30 lines, no dependencies) so each site wires its
 | `feed` / `comments` / `mentions` | new | later (UX-001's Comments view) |
 | `messaging` (IG/Messenger) | new | later |
 
-A handler exception must not 500 the endpoint; each is wrapped and logged to `Excom Intake Log`.
+A handler exception must not 500 the endpoint; each is wrapped and logged to `Excom Source Log`.
 
 **`leadgen` handler.** The webhook carries ids only — `leadgen_id`, `page_id`, `form_id`, `ad_id`, `adgroup_id`, `created_time` — so the job fetches the lead from the Graph API with the Page access token (`leads_retrieval` permission, App Review required; start the review during 3.2). Answers map through `field_map` populated by fetching the form definition, so a marketer adding a question needs no release. `dedupe_key` = `leadgen_id`.
 
@@ -175,7 +175,7 @@ Pull only, every 15 minutes. Credentials `userid`, `profile_id`, key — read fr
 | S5 | IP-keyed `@rate_limit` on every guest endpoint (today: 4 of 136 whitelisted functions, all user-keyed) |
 | S6 | `ignore_permissions` confined to the intake path, behind the gateway |
 | S8 | `token_monitor.py` extended to IndiaMART key (15-day inactivity expiry), Meta Page tokens, TradeIndia key |
-| S7 | 90-day purge job for `Excom Intake Log.raw_payload` |
+| S7 | 90-day purge job for `Excom Source Log.raw_payload` |
 
 ### 3.10 — CRM UI (6–8 d) — UX-001 U2 unhidden
 

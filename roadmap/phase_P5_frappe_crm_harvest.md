@@ -67,7 +67,7 @@ Each candidate: what it is, where to read it, what we would build, and the trigg
 ### C4 — Lead source framework generalisation
 
 **Theirs:** `Lead Sync Source` + `Failed Lead Sync Log` + frequency-bucketed scheduler jobs (`Every 5/10/15 Minutes`, Hourly, Daily, Monthly) + `last_synced_at` watermark + retry-from-log.
-**Ours today:** P3 §3.4 implements this shape as `Excom Intake Source` + `Excom Intake Log`, so the pattern is already harvested.
+**Ours today:** P3 §3.4 implements this shape as `Excom Source` + `Excom Source Log`, so the pattern is already harvested.
 **Would build:** additional adapters only — JustDial, Alibaba, exhibition CSV import, Google Lead Form extensions.
 **Trigger:** the business signs up to a new lead channel. Each is one source row plus one mapper — **no new subsystem**, roughly 1–2 d each.
 

@@ -1,6 +1,6 @@
 {
  "doctype": "DocType",
- "name": "Excom Intake Log",
+ "name": "Excom Source Log",
  "module": "Excom",
  "custom": 0,
  "engine": "InnoDB",
@@ -12,7 +12,7 @@
    "fieldname": "source",
    "fieldtype": "Link",
    "label": "Source",
-   "options": "Excom Intake Source",
+   "options": "Excom Source",
    "reqd": 1,
    "in_list_view": 1
   },

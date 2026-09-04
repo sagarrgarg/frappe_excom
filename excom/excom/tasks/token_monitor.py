@@ -116,7 +116,7 @@ def _check_intake_sources() -> None:
         from excom.excom.tasks.intake import stale_source_alarm
         from frappe.utils import now_datetime, get_datetime
         stale_source_alarm()
-        for s in frappe.get_all("Excom Intake Source", filters={"enabled": 1, "source_type": "IndiaMART"}, fields=["name", "last_success_at"]):
+        for s in frappe.get_all("Excom Source", filters={"enabled": 1, "source_type": "IndiaMART"}, fields=["name", "last_success_at"]):
             if s.last_success_at and (now_datetime() - get_datetime(s.last_success_at)).days >= 12:
                 frappe.log_error(title=f"Excom: IndiaMART key on {s.name} idle 12+ days — it expires at ~15", message=str(s.last_success_at))
     except Exception:

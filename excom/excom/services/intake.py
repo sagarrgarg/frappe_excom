@@ -1,7 +1,7 @@
 """
 Intake spine (P3 §3.4 / RES-001 §7.3). One pipeline, many adapters:
 
-    adapter → Excom Intake Log (raw, dedupe_key = unique index)   # idempotency is a DB constraint (F6)
+    adapter → Excom Source Log (raw, dedupe_key = unique index)   # idempotency is a DB constraint (F6)
             → map via field_map
             → resolve_identity(...)                               # exists today
             → crm_gateway.create_lead + set_attribution + provenance
@@ -39,19 +39,19 @@ def record(source, dedupe_key: str, raw: dict, received_at=None) -> tuple[str, b
 	"""Insert the log row. Returns (log name, is_new). A duplicate dedupe_key returns the existing row."""
 	if not dedupe_key:
 		frappe.throw(_("dedupe_key is required"))
-	existing = frappe.db.get_value("Excom Intake Log", {"dedupe_key": dedupe_key}, "name")
+	existing = frappe.db.get_value("Excom Source Log", {"dedupe_key": dedupe_key}, "name")
 	if existing:
 		return existing, False
 	try:
 		log = frappe.get_doc(
-			{"doctype": "Excom Intake Log", "source": source.name, "dedupe_key": dedupe_key, "status": "Received", "raw_payload": json.dumps(raw, ensure_ascii=False, default=str), "received_at": received_at or now_datetime()}
+			{"doctype": "Excom Source Log", "source": source.name, "dedupe_key": dedupe_key, "status": "Received", "raw_payload": json.dumps(raw, ensure_ascii=False, default=str), "received_at": received_at or now_datetime()}
 		)
 		log.insert(ignore_permissions=True)
 		frappe.db.commit()
 		return log.name, True
 	except frappe.UniqueValidationError:
 		frappe.db.rollback()
-		return frappe.db.get_value("Excom Intake Log", {"dedupe_key": dedupe_key}, "name"), False
+		return frappe.db.get_value("Excom Source Log", {"dedupe_key": dedupe_key}, "name"), False
 
 
 def enqueue(log_name: str) -> None:
@@ -149,19 +149,19 @@ def process_log(log_name: str, force: bool = False) -> None:
 	# Guest endpoints enqueue this; the worker inherits Guest and cannot create Leads. Ingestion is a system action.
 	if frappe.session.user == "Guest":
 		frappe.set_user("Administrator")
-	log = frappe.get_doc("Excom Intake Log", log_name)
+	log = frappe.get_doc("Excom Source Log", log_name)
 	if log.status == "Processed" and not force:
 		return
 	# Claim atomically: two workers (webhook retry + poll) must never process the same log at once.
 	claimed = frappe.db.sql(
-		"UPDATE `tabExcom Intake Log` SET status = 'Processing' WHERE name = %s AND status IN ('Received', 'Failed') " + ("" if not force else "OR name = %s AND status = 'Processed'"),
+		"UPDATE `tabExcom Source Log` SET status = 'Processing' WHERE name = %s AND status IN ('Received', 'Failed') " + ("" if not force else "OR name = %s AND status = 'Processed'"),
 		(log_name,) if not force else (log_name, log_name),
 	)
 	frappe.db.commit()
-	if not frappe.db.get_value("Excom Intake Log", log_name, "status") == "Processing":
+	if not frappe.db.get_value("Excom Source Log", log_name, "status") == "Processing":
 		return
 	log.reload()
-	source = frappe.get_doc("Excom Intake Source", log.source)
+	source = frappe.get_doc("Excom Source", log.source)
 	try:
 		raw = json.loads(log.raw_payload or "{}")
 		mapped = map_payload(source, raw)
@@ -183,7 +183,7 @@ def process_log(log_name: str, force: bool = False) -> None:
 			"name": mapped.get("name"), "email": mapped.get("email"), "phone": mapped.get("phone"), "company_name": mapped.get("company_name"),
 			"city": mapped.get("city"), "state": mapped.get("state"), "country": mapped.get("country"), "customer_type": mapped.get("customer_type") or "",
 			"company": source.company, "owner": source.default_lead_owner, "notes": notes,
-			"source": source.source_name, "campaign": utm.get("campaign") or mapped.get("campaign"), "medium": utm.get("medium") or mapped.get("medium"),
+			"source": source.source_name, "campaign": utm.get("campaign") or mapped.get("campaign") or source.get("default_campaign"), "medium": utm.get("medium") or mapped.get("medium") or source.get("default_medium"),
 			"source_reference": log.dedupe_key, "intake_source": source.name, "first_touch_channel": CHANNEL_FOR_TYPE.get(source.source_type, "Manual"),
 		}
 		r, created = crm_flow.resolve_or_create_lead(identity_name, payload["first_touch_channel"], payload, ignore_permissions=True)
@@ -219,8 +219,8 @@ def process_log(log_name: str, force: bool = False) -> None:
 
 def send_auto_ack(log_name: str) -> None:
 	"""HLD-003 §4.5 — pre-approved utility template to the enquirer, posted into the thread; stamps auto_ack_sent_at."""
-	log = frappe.get_doc("Excom Intake Log", log_name)
-	source = frappe.get_doc("Excom Intake Source", log.source)
+	log = frappe.get_doc("Excom Source Log", log_name)
+	source = frappe.get_doc("Excom Source", log.source)
 	if not (log.thread and source.auto_ack_template):
 		return
 	from excom.excom.api.chat import send_template_to_thread
@@ -242,7 +242,7 @@ def ingest(source, dedupe_key: str, raw: dict, received_at=None, sync: bool = Fa
 	"""Adapter entry point: log + enqueue (or process inline)."""
 	name, is_new = record(source, dedupe_key, raw, received_at)
 	if not is_new:
-		st = frappe.db.get_value("Excom Intake Log", name, "status")
+		st = frappe.db.get_value("Excom Source Log", name, "status")
 		if st != "Failed":  # Received / Processing / Processed / Duplicate / Ignored → already handled or in flight
 			return {"log": name, "duplicate": True}
 	if sync:

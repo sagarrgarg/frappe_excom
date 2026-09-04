@@ -1,5 +1,4 @@
 [pre_model_sync]
-
 [post_model_sync]
 excom.patches.v1_0.create_default_excom_channel
 excom.patches.v1_0.migrate_whatsapp_to_excom_messages
@@ -18,6 +17,7 @@ excom.patches.v1_0.add_email_signature_doctype
 excom.patches.v1_0.merge_email_threads_by_identity
 excom.patches.v1_0.migrate_email_tokens_to_account
 excom.patches.v1_0.p3_crm_schema
+excom.patches.v1_0.rename_intake_to_source
 excom.patches.v1_0.fix_customer_type_clobber
 excom.patches.v1_0.internal_notes_to_comments
 excom.patches.v1_0.unify_sources

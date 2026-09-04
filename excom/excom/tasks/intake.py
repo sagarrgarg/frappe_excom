@@ -9,7 +9,7 @@ FREQ_MINUTES = {"Every 5 Minutes": 5, "Every 15 Minutes": 15, "Hourly": 60, "Dai
 def pull_due_sources() -> None:
 	"""Cron */5: run every enabled Pull/Both source whose frequency has elapsed."""
 	now = now_datetime()
-	for s in frappe.get_all("Excom Intake Source", filters={"enabled": 1, "mode": ["in", ["Pull", "Both"]], "source_type": ["in", ["IndiaMART", "TradeIndia", "Meta Lead Ads"]]}, fields=["name", "source_type", "pull_frequency", "last_synced_at"]):
+	for s in frappe.get_all("Excom Source", filters={"enabled": 1, "mode": ["in", ["Pull", "Both"]], "source_type": ["in", ["IndiaMART", "TradeIndia", "Meta Lead Ads"]]}, fields=["name", "source_type", "pull_frequency", "last_synced_at"]):
 		mins = FREQ_MINUTES.get(s.pull_frequency, 15)
 		if s.last_synced_at and (now - get_datetime(s.last_synced_at)).total_seconds() < mins * 60 - 30:
 			continue
@@ -17,7 +17,7 @@ def pull_due_sources() -> None:
 
 
 def pull_source(source: str) -> dict:
-	src = frappe.get_doc("Excom Intake Source", source)
+	src = frappe.get_doc("Excom Source", source)
 	from excom.excom.intake import adapters
 
 	fn = {"IndiaMART": adapters.indiamart.pull, "TradeIndia": adapters.tradeindia.pull, "Meta Lead Ads": adapters.meta.reconcile}.get(src.source_type)
@@ -38,14 +38,14 @@ def pull_source(source: str) -> dict:
 
 
 def reconcile_meta_leads() -> None:
-	for s in frappe.get_all("Excom Intake Source", filters={"enabled": 1, "source_type": "Meta Lead Ads"}, pluck="name"):
+	for s in frappe.get_all("Excom Source", filters={"enabled": 1, "source_type": "Meta Lead Ads"}, pluck="name"):
 		frappe.enqueue("excom.excom.tasks.intake.pull_source", queue="long", source=s)
 
 
 def purge_old_payloads(days: int = 90) -> None:
 	"""S7 / DPDP: raw payloads (buyer PII) purge at 90 days; dedupe keys stay forever."""
 	cutoff = add_days(now_datetime(), -days)
-	frappe.db.sql("UPDATE `tabExcom Intake Log` SET raw_payload='', mapped_payload='' WHERE received_at < %s AND raw_payload <> ''", cutoff)
+	frappe.db.sql("UPDATE `tabExcom Source Log` SET raw_payload='', mapped_payload='' WHERE received_at < %s AND raw_payload <> ''", cutoff)
 	frappe.db.commit()
 
 
@@ -53,7 +53,7 @@ def stale_source_alarm() -> list[str]:
 	"""RES-001 R3: no successful pull in 3× frequency → error log (feeds token_monitor)."""
 	out = []
 	now = now_datetime()
-	for s in frappe.get_all("Excom Intake Source", filters={"enabled": 1, "mode": ["in", ["Pull", "Both"]]}, fields=["name", "pull_frequency", "last_success_at"]):
+	for s in frappe.get_all("Excom Source", filters={"enabled": 1, "mode": ["in", ["Pull", "Both"]]}, fields=["name", "pull_frequency", "last_success_at"]):
 		mins = FREQ_MINUTES.get(s.pull_frequency, 15) * 3
 		if not s.last_success_at or (now - get_datetime(s.last_success_at)).total_seconds() > mins * 60:
 			out.append(s.name)

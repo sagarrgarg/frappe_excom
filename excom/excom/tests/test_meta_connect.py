@@ -46,8 +46,8 @@ class TestMetaConnect(FrappeTestCase):
 			for t in frappe.get_all("Excom Thread", {"account": a}, pluck="name"):
 				frappe.db.delete("Excom Message", {"thread": t}); frappe.delete_doc("Excom Thread", t, force=True, ignore_permissions=True)
 			frappe.delete_doc("Excom Channel Account", a, force=True, ignore_permissions=True)
-		for s in frappe.get_all("Excom Intake Source", {"source_name": ["like", "Meta · QA %"]}, pluck="name"):
-			frappe.delete_doc("Excom Intake Source", s, force=True, ignore_permissions=True)
+		for s in frappe.get_all("Excom Source", {"source_name": ["like", "Meta · QA %"]}, pluck="name"):
+			frappe.delete_doc("Excom Source", s, force=True, ignore_permissions=True)
 		if frappe.db.exists("Excom Meta Connection", "QA Meta BM"):
 			frappe.delete_doc("Excom Meta Connection", "QA Meta BM", force=True, ignore_permissions=True)
 		frappe.db.commit()
@@ -69,7 +69,7 @@ class TestMetaConnect(FrappeTestCase):
 		self.assertEqual((ig.channel, ig.meta_page_id, ig.meta_ig_user_id), ("instagram", "111", "222"))
 		# Lead form → intake source pulling with the page token
 		e = mc.enable_asset(self.name, "Lead Form", "333")
-		src = frappe.get_doc("Excom Intake Source", e["linked_name"])
+		src = frappe.get_doc("Excom Source", e["linked_name"])
 		self.assertEqual((src.source_type, src.form_id, src.page_id, src.enabled, src.mode), ("Meta Lead Ads", "333", "111", 1, "Both"))
 		self.assertEqual(src.get_password("access_token"), "PAGE_TOKEN_111")
 		# WhatsApp number → whatsapp account with system token + app secret + verify token
@@ -95,7 +95,7 @@ class TestMetaConnect(FrappeTestCase):
 		mc.enable_asset(self.name, "Page", "111", 0)
 		self.assertEqual(frappe.db.get_value("Excom Channel Account", acc.name, "status"), "Inactive")
 		mc.enable_asset(self.name, "Lead Form", "333", 0)
-		self.assertEqual(frappe.db.get_value("Excom Intake Source", src.name, "enabled"), 0)
+		self.assertEqual(frappe.db.get_value("Excom Source", src.name, "enabled"), 0)
 		# token debug
 		d = mc.debug_token(self.name)
 		self.assertTrue(d["is_valid"]); self.assertEqual(frappe.db.get_value("Excom Meta Connection", self.name, "token_valid"), 1)

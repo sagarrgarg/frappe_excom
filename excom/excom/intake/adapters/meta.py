@@ -26,12 +26,12 @@ def handle_leadgen(change: dict) -> dict:
 	leadgen_id, page_id, form_id = v.get("leadgen_id"), str(v.get("page_id") or ""), str(v.get("form_id") or "")
 	if not leadgen_id:
 		return {"ignored": "no leadgen_id"}
-	src_name = frappe.db.get_value("Excom Intake Source", {"source_type": "Meta Lead Ads", "enabled": 1, "form_id": form_id}, "name") or frappe.db.get_value(
-		"Excom Intake Source", {"source_type": "Meta Lead Ads", "enabled": 1, "page_id": page_id}, "name"
+	src_name = frappe.db.get_value("Excom Source", {"source_type": "Meta Lead Ads", "enabled": 1, "form_id": form_id}, "name") or frappe.db.get_value(
+		"Excom Source", {"source_type": "Meta Lead Ads", "enabled": 1, "page_id": page_id}, "name"
 	)
 	if not src_name:
 		return {"ignored": f"no source for page {page_id} / form {form_id}"}
-	src = frappe.get_doc("Excom Intake Source", src_name)
+	src = frappe.get_doc("Excom Source", src_name)
 	raw = {"leadgen_id": leadgen_id, "page_id": page_id, "form_id": form_id, "created_time": v.get("created_time"), "_webhook": v}
 	try:
 		raw.update(fetch_lead(src, leadgen_id))

@@ -7,7 +7,7 @@ from frappe.model.document import Document
 MODE_BY_TYPE = {"Website": "Push", "TradeIndia": "Pull", "IndiaMART": "Both", "Meta Lead Ads": "Both", "Exhibition": "", "Manual": "", "Channel": ""}
 
 
-class ExcomIntakeSource(Document):
+class ExcomSource(Document):
 	"""The one Source list. Every row mirrors itself into ERPNext's attribution master (Lead Source on v15,
 	UTM Source on v16) so Lead.source / utm_source always has a matching value — nobody maintains two lists."""
 

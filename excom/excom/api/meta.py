@@ -106,8 +106,8 @@ def delete_platform_user_data(platform_user_id: str) -> dict:
 			frappe.delete_doc("Omni Identity", oi.name, force=True, ignore_permissions=True)
 			deleted["identities"] += 1
 	# lead-form payloads that carry this id
-	for lg in frappe.get_all("Excom Intake Log", filters={"raw_payload": ["like", f"%{platform_user_id}%"]}, pluck="name"):
-		frappe.db.set_value("Excom Intake Log", lg, "raw_payload", json.dumps({"redacted": "data deletion request"}), update_modified=False)
+	for lg in frappe.get_all("Excom Source Log", filters={"raw_payload": ["like", f"%{platform_user_id}%"]}, pluck="name"):
+		frappe.db.set_value("Excom Source Log", lg, "raw_payload", json.dumps({"redacted": "data deletion request"}), update_modified=False)
 	return deleted
 
 

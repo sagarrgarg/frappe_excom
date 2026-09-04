@@ -25,8 +25,8 @@ def _source_by_token(token: str, source_type: str | None = None):
 	filters = {"enabled": 1}
 	if source_type:
 		filters["source_type"] = source_type
-	for name in frappe.get_all("Excom Intake Source", filters=filters, pluck="name"):
-		doc = frappe.get_doc("Excom Intake Source", name)
+	for name in frappe.get_all("Excom Source", filters=filters, pluck="name"):
+		doc = frappe.get_doc("Excom Source", name)
 		if doc.get_password("push_token", raise_exception=False) == token:
 			return doc
 	return None

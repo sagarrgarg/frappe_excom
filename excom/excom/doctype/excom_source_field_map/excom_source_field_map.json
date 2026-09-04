@@ -1,6 +1,6 @@
 {
  "doctype": "DocType",
- "name": "Excom Intake Field Map",
+ "name": "Excom Source Field Map",
  "module": "Excom",
  "custom": 0,
  "engine": "InnoDB",

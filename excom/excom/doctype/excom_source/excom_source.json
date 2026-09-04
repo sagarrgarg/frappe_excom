@@ -1,6 +1,6 @@
 {
  "doctype": "DocType",
- "name": "Excom Intake Source",
+ "name": "Excom Source",
  "module": "Excom",
  "custom": 0,
  "engine": "InnoDB",
@@ -103,6 +103,20 @@
    "options": "WhatsApp Templates",
    "description": "Approved utility template; marketplace sources only",
    "depends_on": "eval:![\"Exhibition\",\"Manual\"].includes(doc.source_type)"
+  },
+  {
+   "fieldname": "default_campaign",
+   "fieldtype": "Data",
+   "label": "Campaign",
+   "description": "Stamped on every lead from this source: Campaign on v15, UTM Campaign on v16. A web form's utm_campaign overrides it.",
+   "depends_on": "eval:![\"Channel\"].includes(doc.source_type)"
+  },
+  {
+   "fieldname": "default_medium",
+   "fieldtype": "Data",
+   "label": "Medium",
+   "description": "e.g. paid-social, marketplace, exhibition. UTM Medium on v16; ignored on v15 (no native field).",
+   "depends_on": "eval:![\"Channel\"].includes(doc.source_type)"
   },
   {
    "fieldname": "sec_cred",
@@ -224,7 +238,7 @@
    "fieldname": "field_map",
    "fieldtype": "Table",
    "label": "Field Map",
-   "options": "Excom Intake Field Map"
+   "options": "Excom Source Field Map"
   },
   {
    "fieldname": "visibility_section",
@@ -253,6 +267,8 @@
   "default_lead_owner",
   "sla_first_response",
   "auto_ack_template",
+  "default_campaign",
+  "default_medium",
   "sec_cred",
   "api_url",
   "api_key",

@@ -122,7 +122,7 @@ G-a/G-b/G-c cost about a day between them and are what make P4 a 6–9 day phase
 | 3.1 | Guardrails + gateway + compat + manifest | — | 2 |
 | 3.2 | **N1 schema**: Custom Fields on Lead/Opportunity/Prospect/Customer as excom fixtures; `Opportunity Type`, `Sales Stage`, `Opportunity Lost Reason` rows; attribution rows via G-b; six Assignment Rules; `Sales Person` tree; Company User Permissions; Customize Form hide/show | 3.1 | 2–3 |
 | 3.3 | **N2 wiring**: `Opportunity` + `Prospect` hooks, `sync_single_opportunity`/`sync_single_prospect`, `services/crm_flow.py` (provenance, gates, stage advance, conversion bookkeeping, sticky assignment), `api/crm.py` (`get_field_schema`, `get_record`, `promote_thread`, `set_stage`, `convert`), thread re-pointing on conversion | 3.2 | 3–5 |
-| 3.4 | **Intake spine**: `Excom Intake Source` + `Excom Intake Log` (unique `dedupe_key`) + shared pipeline → identity → gateway → thread → auto-ack → assignment | 3.1 | 3 |
+| 3.4 | **Intake spine**: `Excom Source` + `Excom Source Log` (unique `dedupe_key`) + shared pipeline → identity → gateway → thread → auto-ack → assignment | 3.1 | 3 |
 | 3.5 | **IndiaMART**: pull every 5 min with −5 min overlap watermark (`crmListing/v2` + `glusr_crm_key`), optional push with per-source token; dedupe on `UNIQUE_QUERY_ID`; key-expiry monitoring | 3.4 | 2–3 |
 | 3.6 | **Website**: headless `submit_enquiry` — one intake source per site/landing page, per-site token, origin allowlist, honeypot + fill-time + IP rate limit, `submission_id` idempotency, `utm.*` through G-b, plus the ~30-line `excom-intake.js` snippet | 3.4 | 2 |
 | 3.7 | **Meta lead ads**: refactor the Meta webhook into a dispatch table on `entry[].changes[].field` (today it routes on `phone_number_id` and silently drops everything else), add the `leadgen` handler (webhook gives ids only → Graph fetch with Page token, `leads_retrieval` + App Review), nightly form-poll reconciliation **with pagination** | 3.4 | 3–4 |
@@ -197,7 +197,7 @@ Candidates, with the trigger that would justify building each (all designs, to b
 | Configurable field layouts + saved views as data (`CRM Fields Layout`, `CRM View Settings`) | Users start requesting per-team layouts faster than releases can ship them |
 | Domain enrichment (crawl the email domain → company data) | Manual research time on inbound leads becomes visible |
 | Telephony adapters (Twilio/Exotel patterns) | Phase C voice work starts — use as reference, not as dependency |
-| Additional lead sources beyond the four (JustDial, Alibaba, exhibitions) | Each is one `Excom Intake Source` row + one mapper on the P3 spine — no new subsystem |
+| Additional lead sources beyond the four (JustDial, Alibaba, exhibitions) | Each is one `Excom Source` row + one mapper on the P3 spine — no new subsystem |
 
 Nothing here blocks P1–P4, and nothing here is committed.
 

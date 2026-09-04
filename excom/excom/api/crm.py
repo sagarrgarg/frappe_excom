@@ -254,9 +254,9 @@ def lead_visibility(user: str | None = None) -> list | None:
 	managed = frappe.get_all("Excom Team Member", filters={"parenttype": "Excom Team", "user": user, "role": "Manager"}, pluck="parent")
 	if not managed:
 		return [["lead_owner", "=", user]]
-	restricted = {r.parent for r in frappe.get_all("Excom Account Team", filters={"parenttype": "Excom Intake Source"}, fields=["parent"])}
-	open_sources = [n for n in frappe.get_all("Excom Intake Source", pluck="name") if n not in restricted]
-	mine = frappe.get_all("Excom Account Team", filters={"parenttype": "Excom Intake Source", "team": ["in", managed]}, pluck="parent")
+	restricted = {r.parent for r in frappe.get_all("Excom Account Team", filters={"parenttype": "Excom Source"}, fields=["parent"])}
+	open_sources = [n for n in frappe.get_all("Excom Source", pluck="name") if n not in restricted]
+	mine = frappe.get_all("Excom Account Team", filters={"parenttype": "Excom Source", "team": ["in", managed]}, pluck="parent")
 	visible_sources = list(set(open_sources) | set(mine))
 	ors = [["lead_owner", "=", user], ["intake_source", "is", "not set"]]
 	if visible_sources:
@@ -272,7 +272,7 @@ def get_intake_queue(filters: str | dict | None = None) -> list:
 	rows = gw.list_intake(f, or_filters=lead_visibility())
 	_join_threads(rows)
 	# SLA state: first response target from the intake source
-	sla = {s.name: s.sla_first_response for s in frappe.get_all("Excom Intake Source", fields=["name", "sla_first_response"])}
+	sla = {s.name: s.sla_first_response for s in frappe.get_all("Excom Source", fields=["name", "sla_first_response"])}
 	now = frappe.utils.now_datetime()
 	owners = {r.get("lead_owner") for r in rows if r.get("lead_owner")}
 	enabled = {u.name for u in frappe.get_all("User", filters={"name": ["in", list(owners)], "enabled": 1}, fields=["name"])} if owners else set()
@@ -388,8 +388,9 @@ def create_lead_manual(name: str, phone: str = "", email: str = "", company_name
 		frappe.throw(_("Give at least a name, phone or email"))
 	phone_n = normalize_phone(phone) if phone else ""
 	identity = resolve_identity(phone=phone_n, email=email or "", channel="", channel_user_id="", display_name=name or "")  # no channel row: nobody has messaged yet
-	src_label = frappe.db.get_value("Excom Intake Source", intake_source, "source_name") if intake_source else "Organic Manual"
-	payload = {"name": name, "phone": phone_n, "email": email or None, "company_name": company_name or None, "customer_type": customer_type or "", "intake_source": intake_source or None, "owner": frappe.session.user, "first_touch_channel": "Manual", "first_touch_by": frappe.session.user, "source": src_label or "Organic Manual", "notes": notes or None}
+	src_row = frappe.db.get_value("Excom Source", intake_source, ["source_name", "default_campaign", "default_medium"], as_dict=True) if intake_source else None
+	src_label = (src_row and src_row.source_name) or "Organic Manual"
+	payload = {"name": name, "phone": phone_n, "email": email or None, "company_name": company_name or None, "customer_type": customer_type or "", "intake_source": intake_source or None, "owner": frappe.session.user, "first_touch_channel": "Manual", "first_touch_by": frappe.session.user, "source": src_label or "Organic Manual", "campaign": src_row.default_campaign if src_row else None, "medium": src_row.default_medium if src_row else None, "notes": notes or None}
 	r, created = resolve_or_create_lead(identity, "Manual", payload, ignore_permissions=True)
 	frappe.db.commit()
 	return {"identity": identity, "ref": {"doctype": r.doctype, "name": r.name}, "created": created}

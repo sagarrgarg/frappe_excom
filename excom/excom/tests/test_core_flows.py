@@ -42,9 +42,9 @@ def _cleanup():
 		for c in frappe.get_all("Dynamic Link", {"link_name": l, "link_doctype": "Lead", "parenttype": "Contact"}, pluck="parent"):
 			frappe.db.delete("Dynamic Link", {"parent": c}); frappe.delete_doc("Contact", c, force=True, ignore_permissions=True)
 		frappe.delete_doc("Lead", l, force=True, ignore_permissions=True)
-	frappe.db.delete("Excom Intake Log", {"dedupe_key": ["like", "%:QA-%"]})
-	for s in frappe.get_all("Excom Intake Source", {"source_name": ["like", "QA %"]}, pluck="name"):
-		frappe.delete_doc("Excom Intake Source", s, force=True, ignore_permissions=True)
+	frappe.db.delete("Excom Source Log", {"dedupe_key": ["like", "%:QA-%"]})
+	for s in frappe.get_all("Excom Source", {"source_name": ["like", "QA %"]}, pluck="name"):
+		frappe.delete_doc("Excom Source", s, force=True, ignore_permissions=True)
 	for t in frappe.get_all("Excom Team", {"team_name": ["like", "QA %"]}, pluck="name"):
 		frappe.delete_doc("Excom Team", t, force=True, ignore_permissions=True)
 	for u in frappe.get_all("User", {"name": ["like", "qa.core.%@example.com"]}, pluck="name"):
@@ -195,7 +195,7 @@ class TestIntakePayloads(_Base):
 	def _source(self, stype, extra=None):
 		acc = frappe.get_all("Excom Channel Account", filters={"channel": "whatsapp"}, pluck="name", limit=1)
 		company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
-		return frappe.get_doc({"doctype": "Excom Intake Source", "source_name": f"QA {stype}", "source_type": stype, "enabled": 1, "company": company, "channel_account": acc[0] if acc else None, "mode": "Pull", "sla_first_response": 3600, **(extra or {})}).insert(ignore_permissions=True)
+		return frappe.get_doc({"doctype": "Excom Source", "source_name": f"QA {stype}", "source_type": stype, "enabled": 1, "company": company, "channel_account": acc[0] if acc else None, "mode": "Pull", "sla_first_response": 3600, **(extra or {})}).insert(ignore_permissions=True)
 
 	def test_indiamart_row_maps_and_creates_lead(self):
 		from excom.excom.services.intake import map_payload, ingest
@@ -205,7 +205,7 @@ class TestIntakePayloads(_Base):
 		self.assertEqual(m.get("phone"), "+919900000781")
 		self.assertTrue(m.get("name") or m.get("first_name"))
 		r = ingest(src, "indiamart:QA-IM-1", row, sync=True)
-		log = frappe.get_doc("Excom Intake Log", r["log"])
+		log = frappe.get_doc("Excom Source Log", r["log"])
 		self.assertEqual(log.status, "Processed", log.get("error") or "")
 		self.assertTrue(log.lead)
 		r2 = ingest(src, "indiamart:QA-IM-1", row, sync=True)
@@ -246,11 +246,11 @@ class TestWebhookHelpers(_Base):
 	def test_embed_snippets(self):
 		from excom.excom.api.admin import get_embed, regenerate_source_token
 		company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
-		src = frappe.get_doc({"doctype": "Excom Intake Source", "source_name": "QA Embed Site", "source_type": "Website", "enabled": 1, "company": company, "mode": "Push", "sla_first_response": 3600}).insert(ignore_permissions=True)
-		e = get_embed("Excom Intake Source", src.name)
+		src = frappe.get_doc({"doctype": "Excom Source", "source_name": "QA Embed Site", "source_type": "Website", "enabled": 1, "company": company, "mode": "Push", "sla_first_response": 3600}).insert(ignore_permissions=True)
+		e = get_embed("Excom Source", src.name)
 		self.assertEqual(e["kind"], "website"); self.assertFalse(e["has_token"]); self.assertIn("submit_enquiry", e["form_endpoint"])
 		regenerate_source_token(src.name)
-		e = get_embed("Excom Intake Source", src.name)
+		e = get_embed("Excom Source", src.name)
 		self.assertTrue(e["has_token"]); self.assertIn(e["token"], e["webhook_endpoint"]); self.assertIn(e["token"], e["html"])
 		wc = frappe.get_all("Excom Channel Account", filters={"channel": "webchat"}, pluck="name", limit=1)
 		if wc:
@@ -267,8 +267,8 @@ class TestLeadVisibility(_Base):
 		mgr = _mk_user("qa.core.mgr@example.com"); mem = _mk_user("qa.core.mem@example.com")
 		team = frappe.get_doc({"doctype": "Excom Team", "team_name": "QA Vis Team", "members": [{"user": mgr, "role": "Manager"}, {"user": mem, "role": "Member"}]}).insert(ignore_permissions=True)
 		other = frappe.get_doc({"doctype": "Excom Team", "team_name": "QA Vis Other"}).insert(ignore_permissions=True)
-		src_team = frappe.get_doc({"doctype": "Excom Intake Source", "source_name": "QA Vis Source", "source_type": "Website", "enabled": 1, "company": company, "mode": "Push", "sla_first_response": 3600, "allowed_teams": [{"team": team.name}]}).insert(ignore_permissions=True)
-		src_other = frappe.get_doc({"doctype": "Excom Intake Source", "source_name": "QA Vis Foreign", "source_type": "Website", "enabled": 1, "company": company, "mode": "Push", "sla_first_response": 3600, "allowed_teams": [{"team": other.name}]}).insert(ignore_permissions=True)
+		src_team = frappe.get_doc({"doctype": "Excom Source", "source_name": "QA Vis Source", "source_type": "Website", "enabled": 1, "company": company, "mode": "Push", "sla_first_response": 3600, "allowed_teams": [{"team": team.name}]}).insert(ignore_permissions=True)
+		src_other = frappe.get_doc({"doctype": "Excom Source", "source_name": "QA Vis Foreign", "source_type": "Website", "enabled": 1, "company": company, "mode": "Push", "sla_first_response": 3600, "allowed_teams": [{"team": other.name}]}).insert(ignore_permissions=True)
 		frappe.db.commit()
 		# Excom Manager / System Manager → no filter
 		self.assertIsNone(lead_visibility("Administrator"))
@@ -348,7 +348,7 @@ class TestOneSourceList(_Base):
 		from excom.excom.api.crm import create_lead_manual
 		from excom.excom.services.crm_compat import attribution_doctypes
 		company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
-		src = frappe.get_doc({"doctype": "Excom Intake Source", "source_name": "QA Trade Fair 2026", "source_type": "Exhibition", "enabled": 1, "company": company, "sla_first_response": 0}).insert(ignore_permissions=True)
+		src = frappe.get_doc({"doctype": "Excom Source", "source_name": "QA Trade Fair 2026", "source_type": "Exhibition", "enabled": 1, "company": company, "sla_first_response": 0}).insert(ignore_permissions=True)
 		target = attribution_doctypes()["source"]
 		self.assertTrue(frappe.db.exists(target, "QA Trade Fair 2026"))
 		self.assertEqual(src.mode, "")

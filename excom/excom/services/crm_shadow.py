@@ -32,7 +32,7 @@ FIELDS = [
 	("request_type", "Select", "Request Type", {"options": "\nProduct Enquiry\nRequest for Information\nSuggestions\nOther"}),
 	("customer_type", "Select", "Customer Type", {"options": "\n" + "\n".join(gw.CUSTOMER_TYPES)}),
 	("intake_stage", "Select", "Intake Stage", {"options": "\n".join(gw.INTAKE_STAGES), "default": "Captured"}),
-	("intake_source", "Link", "Intake Source", {"options": "Excom Intake Source"}),
+	("intake_source", "Link", "Intake Source", {"options": "Excom Source"}),
 	("omni_identity", "Link", "Omni Identity", {"options": "Omni Identity"}),
 	("first_touch_at", "Datetime", "First Touch At", {}),
 	("first_touch_channel", "Select", "First Touch Channel", {"options": "\n" + "\n".join(gw.FIRST_TOUCH_CHANNELS)}),
