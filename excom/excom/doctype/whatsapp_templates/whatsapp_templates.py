@@ -460,6 +460,23 @@ def _extract_header_samples(example: dict) -> str | None:
 
 
 @frappe.whitelist()
+def _fetch_all_templates(creds: dict, biz_id: str) -> dict:
+    """GET /{waba}/message_templates following paging.next — Meta pages at 25, a busy WABA has more."""
+    base = (creds["url"] or "https://graph.facebook.com").rstrip("/")
+    version = creds["version"] or "v21.0"
+    if not version.startswith("v"):
+        version = "v" + version
+    url = f"{base}/{version}/{biz_id}/message_templates?fields=name,status,language,category,id,components&limit=200"
+    data: list = []
+    pages = 0
+    while url and pages < 50:
+        page = make_request("GET", url, headers=creds["headers"]) or {}
+        data.extend(page.get("data") or [])
+        url = (page.get("paging") or {}).get("next")
+        pages += 1
+    return {"data": data, "pages": pages}
+
+
 def fetch():
     """Fetch templates from Meta for all active WhatsApp channel accounts.
 
@@ -493,11 +510,7 @@ def fetch():
         creds = get_wa_credentials(account_doc)
 
         try:
-            response = make_request(
-                "GET",
-                f"{creds['url']}/{creds['version']}/{biz_id}/message_templates",
-                headers=creds["headers"],
-            )
+            response = _fetch_all_templates(creds, biz_id)
         except Exception as e:
             detail = _extract_meta_error()
             if detail.startswith("Unknown error"):
