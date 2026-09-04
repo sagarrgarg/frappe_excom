@@ -1,10 +1,11 @@
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { useFrappeGetCall } from "@/lib/api";
-import { Shield, Users, Radio, Tag, MessageSquare, Smile, FileText, Bell, Inbox, Settings, History, GitMerge, ListChecks, Cog, RefreshCw, LayoutGrid, AlertTriangle, UserCheck, Facebook } from "lucide-react";
+import { Shield, Users, Radio, Tag, MessageSquare, Smile, FileText, Bell, Inbox, Settings, History, GitMerge, ListChecks, Cog, RefreshCw, LayoutGrid, AlertTriangle, UserCheck, Facebook, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPage } from "../shell/AdminPage";
-import { Button, Select } from "../primitives";
+import { Button, Select, Sheet, Chip } from "../primitives";
 import { cn } from "../ui/utils";
 import { hasRole } from "../../lib/ui-flag";
 import { TeamsAdmin } from "./TeamsAdmin";
@@ -15,6 +16,41 @@ import { MetaConnectAdmin } from "./MetaConnectAdmin";
 import { serverMessage } from "./util";
 
 interface Section { id: string; label: string; icon: React.ReactNode; group: "People" | "Channels" | "Content" | "Automation" | "System" | "Lists"; render?: () => React.ReactNode; to?: string; hint?: string }
+
+interface Diag { account: string; phone_id: string; waba_id: string; version: string; ok: boolean; templates_visible?: number; checks: { label: string; ok: boolean; detail: string }[] }
+
+/** One click that says why a WhatsApp account cannot sync: token, WABA id, and what Meta answers. */
+function DiagnoseWhatsApp() {
+  const { call, loading } = useFrappePostCall("excom.excom.api.admin.diagnose_whatsapp");
+  const [rows, setRows] = useState<Diag[] | null>(null);
+  return (
+    <>
+      <Button size="sm" variant="ghost" disabled={loading} onClick={async () => { try { const r = await call({}); setRows(r.message); } catch (e) { toast.error(serverMessage(e)); } }}><Stethoscope className={loading ? "animate-spin" : ""} />Diagnose accounts</Button>
+      <Sheet open={rows !== null} onOpenChange={(o) => !o && setRows(null)} title="WhatsApp account check" width="w-[560px]">
+        <div className="p-3 space-y-3">
+          {(rows ?? []).length === 0 && <p className="text-sm text-ink-3">No active WhatsApp accounts.</p>}
+          {(rows ?? []).map((r) => (
+            <section key={r.account} className="rounded-md border border-border min-w-0">
+              <div className="flex items-center gap-2 px-2 h-9 border-b border-border bg-surface-sunken min-w-0">
+                <span className="text-sm text-ink-1 truncate flex-1">{r.account}</span>
+                <Chip size="sm" accent={r.ok ? "green" : "rose"} label={r.ok ? "Ready" : "Blocked"} />
+              </div>
+              <ul className="divide-y divide-border">
+                {r.checks.map((c, i) => (
+                  <li key={i} className="px-2 py-1.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0"><Chip size="sm" accent={c.ok ? "green" : "rose"} label={c.ok ? "OK" : "FAIL"} /><span className="text-sm text-ink-1 truncate">{c.label}</span></div>
+                    {c.detail && <p className="text-xs text-ink-2 mt-0.5 break-words">{c.detail}</p>}
+                  </li>
+                ))}
+              </ul>
+              <p className="px-2 py-1.5 text-xs text-ink-3">phone id {r.phone_id || "—"} · WABA {r.waba_id || "—"} · {r.version}{typeof r.templates_visible === "number" ? ` · ${r.templates_visible > 0 ? "templates visible" : "no templates on this WABA"}` : ""}</p>
+            </section>
+          ))}
+        </div>
+      </Sheet>
+    </>
+  );
+}
 
 function SyncTemplates() {
   const { call, loading } = useFrappePostCall("excom.excom.api.admin.sync_whatsapp_templates");
@@ -27,7 +63,7 @@ const SECTIONS: Section[] = [
   { id: "users", label: "Users & roles", icon: <Users />, group: "People", render: () => <UsersAdmin /> },
   { id: "meta", label: "Meta Business", icon: <Facebook />, group: "Channels", render: () => <MetaConnectAdmin /> },
   { id: "accounts", label: "Channel accounts", icon: <Radio />, group: "Channels", render: () => <DocAdmin doctype="Excom Channel Account" hint="WhatsApp Cloud API, Gmail and web-chat accounts. Tokens are write-only here; leave a password field blank to keep it." /> },
-  { id: "templates", label: "WhatsApp templates", icon: <FileText />, group: "Channels", render: () => <DocAdmin doctype="WhatsApp Templates" headerAction={<SyncTemplates />} hint="Approved templates are pulled from Meta. Create or edit here to submit a new one." /> },
+  { id: "templates", label: "WhatsApp templates", icon: <FileText />, group: "Channels", render: () => <DocAdmin doctype="WhatsApp Templates" headerAction={<><DiagnoseWhatsApp /><SyncTemplates /></>} hint="Approved templates are pulled from Meta. Create or edit here to submit a new one." /> },
   { id: "intake", label: "Sources", icon: <Inbox />, group: "Channels", render: () => <DocAdmin doctype="Excom Source" hint="The one list of where leads come from. Integrations (Website, IndiaMART, TradeIndia, Meta) poll or receive; Exhibition / Manual are typed in; Channel rows are organic conversations. Each row mirrors itself into ERPNext's Lead Source so attribution never needs a second list." /> },
   { id: "canned", label: "Canned responses", icon: <MessageSquare />, group: "Content", render: () => <DocAdmin doctype="Excom Canned Response" hint="Type / in the composer to use them. Global ones are visible to every team." /> },
   { id: "tags", label: "Tags", icon: <Tag />, group: "Content", render: () => <DocAdmin doctype="Excom Tag" /> },

@@ -509,6 +509,7 @@ def fetch():
         account_doc = frappe.get_doc("Excom Channel Account", representative)
         creds = get_wa_credentials(account_doc)
 
+        frappe.flags.integration_request = None  # never report a stale response from an earlier call
         try:
             response = _fetch_all_templates(creds, biz_id)
         except Exception as e:

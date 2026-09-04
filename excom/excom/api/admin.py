@@ -536,3 +536,57 @@ def regenerate_source_token(name: str) -> dict:
 	src.save()
 	frappe.db.commit()
 	return {"ok": True}
+
+
+# ─── WhatsApp diagnostics (one call, every reason a sync can fail) ───────────
+
+@frappe.whitelist()
+def diagnose_whatsapp() -> list:
+	"""Per active WhatsApp account: is the token there and decryptable, is the WABA id set, and what does
+	Meta actually answer for the phone, the WABA and the template list. Read-only; no writes, no sends."""
+	_check_manager_access()
+	import requests
+
+	out = []
+	for name in frappe.get_all("Excom Channel Account", filters={"channel": ["in", ["whatsapp", "WhatsApp"]], "status": "Active"}, pluck="name"):
+		acc = frappe.get_doc("Excom Channel Account", name)
+		row = {"account": name, "phone_id": acc.wa_phone_id or "", "waba_id": acc.wa_business_id or "", "version": acc.wa_version or "v21.0", "checks": []}
+		def add(label, ok, detail=""):
+			row["checks"].append({"label": label, "ok": bool(ok), "detail": detail})
+		stored = frappe.db.sql("SELECT 1 FROM `__Auth` WHERE doctype = 'Excom Channel Account' AND name = %s AND fieldname = 'wa_token' LIMIT 1", (name,))
+		try:
+			token = acc.get_password("wa_token", raise_exception=False) or ""
+		except Exception:
+			token = ""
+		if token:
+			add("Access token stored", True, "")
+		elif stored:
+			add("Access token stored", False, "a token is saved but cannot be decrypted — the site's encryption key changed; paste the token again")
+		else:
+			add("Access token stored", False, "no token on this account — paste one, or enable the number from Admin → Meta Business")
+		add("Business Account ID (WABA) set", bool(acc.wa_business_id), "" if acc.wa_business_id else "Meta → WhatsApp Manager → the WhatsApp Business Account id (not the Business Manager id, not the phone id)")
+		if token:
+			base = (acc.wa_url or "https://graph.facebook.com").rstrip("/")
+			ver = acc.wa_version or "v21.0"
+			ver = ver if ver.startswith("v") else "v" + ver
+			h = {"authorization": f"Bearer {token}"}
+			def probe(label, url, params=None):
+				try:
+					r = requests.get(url, headers=h, params=params or {}, timeout=25)
+					if r.status_code == 200:
+						add(label, True, "")
+						return r.json()
+					err = (r.json().get("error") or {}) if r.content else {}
+					add(label, False, f"{r.status_code}: {err.get('error_user_msg') or err.get('message') or r.text[:160]}")
+				except Exception as e:
+					add(label, False, f"network: {frappe.utils.strip_html(str(e))[:140]}")
+				return None
+			probe("Token can read the phone number", f"{base}/{ver}/{acc.wa_phone_id}", {"fields": "display_phone_number,verified_name"})
+			if acc.wa_business_id:
+				probe("Token can read the WhatsApp Business Account", f"{base}/{ver}/{acc.wa_business_id}", {"fields": "id,name"})
+				data = probe("Template list readable", f"{base}/{ver}/{acc.wa_business_id}/message_templates", {"limit": 1})
+				if data is not None:
+					row["templates_visible"] = len(data.get("data") or [])
+		row["ok"] = all(c["ok"] for c in row["checks"])
+		out.append(row)
+	return out
