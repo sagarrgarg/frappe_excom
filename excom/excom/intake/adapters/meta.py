@@ -6,7 +6,21 @@ from frappe.utils import get_datetime
 
 from excom.excom.services.intake import ingest
 
-GRAPH = "https://graph.facebook.com/v19.0"
+GRAPH_BASE = "https://graph.facebook.com"
+DEFAULT_VERSION = "v21.0"
+
+
+def _graph(src=None) -> str:
+	"""Graph root at the version this site is configured for (Meta retires a version ~2 years after launch,
+	so a hardcoded one eventually starts failing). Falls back to the app default."""
+	version = ""
+	if src is not None:
+		conn = frappe.db.get_value("Excom Meta Connection", {"status": "Active"}, "api_version") if frappe.db.exists("DocType", "Excom Meta Connection") else None
+		version = conn or ""
+	version = version or DEFAULT_VERSION
+	if not version.startswith("v"):
+		version = "v" + version
+	return f"{GRAPH_BASE}/{version}"
 
 
 def _token(src) -> str:
@@ -14,7 +28,7 @@ def _token(src) -> str:
 
 
 def fetch_lead(src, leadgen_id: str) -> dict:
-	resp = requests.get(f"{GRAPH}/{leadgen_id}", params={"access_token": _token(src), "fields": "id,created_time,field_data,ad_id,form_id,campaign_name,adset_name,platform"}, timeout=30)
+	resp = requests.get(f"{_graph(src)}/{leadgen_id}", params={"access_token": _token(src), "fields": "id,created_time,field_data,ad_id,form_id,campaign_name,adset_name,platform"}, timeout=30)
 	if resp.status_code != 200:
 		raise frappe.ValidationError(f"Graph {resp.status_code}: {resp.text[:300]}")
 	return resp.json()
@@ -46,7 +60,7 @@ def reconcile(src) -> dict:
 	if not src.form_id:
 		return {"skipped": "no form_id"}
 	since = int(get_datetime(src.last_success_at).timestamp()) - 600 if src.last_success_at else 0  # 10-min overlap; dedupe by leadgen_id
-	url = f"{GRAPH}/{src.form_id}/leads"
+	url = f"{_graph(src)}/{src.form_id}/leads"
 	params = {"access_token": _token(src), "fields": "id,created_time,field_data,ad_id,form_id,campaign_name", "limit": 100, "filtering": f'[{{"field":"time_created","operator":"GREATER_THAN","value":{since}}}]'}
 	n = dup = pages = 0
 	while url and pages < 200:
