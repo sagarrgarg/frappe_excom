@@ -48,29 +48,19 @@ def repoint_threads(identity: str, r) -> int:
 
 
 def post_system_message(identity: str, text: str) -> None:
-	"""Internal note on the identity's most recent open thread — the audit trail reps actually see."""
+	"""System trace about a contact = the same Comment a note is (services/notes), so it shows in the chat,
+	the Notes tab and the Desk timeline instead of a fourth kind of record."""
+	from excom.excom.services.notes import add_note
+
 	thread = frappe.db.get_value("Excom Thread", {"omni_identity": identity, "status": ["in", ["Open", "Pending"]]}, "name", order_by="last_message_at desc")
-	if not thread:
-		return
-	msg = frappe.get_doc(
-		{
-			"doctype": "Excom Message",
-			"thread": thread,
-			"omni_identity": identity,
-			"direction": "Outbound",
-			"message_type": "Text",
-			"channel": frappe.db.get_value("Excom Thread", thread, "channel"),
-			"content_text": text,
-			"is_internal": 1,
-			"delivery_status": "Sent",
-			"created_by_user": frappe.session.user,
-		}
-	)
-	msg.flags.ignore_permissions = True
-	msg.insert(ignore_permissions=True)
+	try:
+		add_note(identity, text, thread)
+	except Exception:
+		frappe.log_error(title="Excom: system note failed", message=frappe.get_traceback())
+	if thread:
+		# the inbox row should say what came in, not stay blank
+		frappe.db.set_value("Excom Thread", thread, {"last_message_preview": frappe.utils.strip_html(text)[:140], "last_message_at": now_datetime()}, update_modified=False)
 
-
-# ─── gates (HLD-003 §6) ───────────────────────────────────────────────────────
 
 def evaluate_gates(r) -> dict:
 	"""Per-type gate evaluation → {gate: 0|1}. Server-side; Desk users are bound by the same rule."""

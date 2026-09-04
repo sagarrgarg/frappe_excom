@@ -177,7 +177,8 @@ def process_log(log_name: str, force: bool = False) -> None:
 		identity_name = identity.name if hasattr(identity, "name") else identity
 		log.omni_identity = identity_name
 
-		notes = "\n".join(filter(None, [mapped.get("subject"), mapped.get("product"), mapped.get("message"), f"Page: {raw.get('page_url')}" if raw.get("page_url") else ""]))
+		enquiry = "\n".join(filter(None, [mapped.get("subject"), mapped.get("product"), mapped.get("message")]))
+		notes = "\n".join(filter(None, [f"Enquiry from {source.source_name}", enquiry, f"Page: {raw.get('page_url')}" if raw.get("page_url") else ""]))
 		utm = raw.get("utm") or {}
 		payload = {
 			"name": mapped.get("name"), "email": mapped.get("email"), "phone": mapped.get("phone"), "company_name": mapped.get("company_name"),
@@ -198,7 +199,8 @@ def process_log(log_name: str, force: bool = False) -> None:
 			ch = frappe.db.get_value("Excom Channel Account", source.channel_account, "channel")
 			thread = upsert_thread(identity_name, ch, source.channel_account)
 			log.thread = thread
-			crm_flow.post_system_message(identity_name, _("Enquiry from {0} ({1})").format(source.source_name, log.dedupe_key))
+			# the enquiry is already a Comment on the lead (it shows in this thread); just make the row readable
+			frappe.db.set_value("Excom Thread", thread, {"last_message_preview": (enquiry or source.source_name)[:140], "last_message_at": now_datetime()}, update_modified=False)
 		if created and source.source_type in MARKETPLACE_TYPES and source.channel_account and source.auto_ack_template and mapped.get("phone"):
 			frappe.enqueue("excom.excom.services.intake.send_auto_ack", queue="short", log_name=log.name, enqueue_after_commit=True)
 

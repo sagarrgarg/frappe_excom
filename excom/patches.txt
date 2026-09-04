@@ -22,3 +22,4 @@ excom.patches.v1_0.fix_customer_type_clobber
 excom.patches.v1_0.internal_notes_to_comments
 excom.patches.v1_0.unify_sources
 excom.patches.v1_0.recompute_source_modes
+excom.patches.v1_0.enquiry_notes_to_comments

@@ -131,7 +131,6 @@ def create_lead(payload: dict, ignore_permissions: bool = False) -> frappe._dict
 			"intake_stage": "Classified" if payload.get("customer_type") else "Captured",
 			"intake_source": payload.get("intake_source") or None,
 			"exhibition": payload.get("exhibition") or None,
-			"notes": [{"note": payload["notes"]}] if payload.get("notes") and frappe.get_meta(LEAD).has_field("notes") else [],
 		}
 	)
 	if payload.get("source"):
@@ -140,6 +139,9 @@ def create_lead(payload: dict, ignore_permissions: bool = False) -> frappe._dict
 	doc.flags.ignore_permissions = ignore_permissions
 	doc.flags.ignore_mandatory = True
 	doc.insert(ignore_permissions=ignore_permissions)
+	if payload.get("notes"):
+		# what the customer actually wrote: one Comment, visible in the chat, the Notes tab and Desk
+		add_timeline_comment(lead_ref(doc.name), frappe.utils.escape_html(str(payload["notes"])).replace("\n", "<br>"))
 	return lead_ref(doc.name)
 
 

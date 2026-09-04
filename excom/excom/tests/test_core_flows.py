@@ -358,3 +358,28 @@ class TestOneSourceList(_Base):
 		attr = lead.get("utm_source") if lead.meta.has_field("utm_source") else lead.get("source")
 		self.assertEqual(attr, "QA Trade Fair 2026")
 		frappe.delete_doc(target, "QA Trade Fair 2026", force=True, ignore_permissions=True)
+
+
+class TestEnquiryText(_Base):
+	def test_website_enquiry_message_is_visible_in_excom(self):
+		"""What the customer typed must not vanish into ERPNext's Lead notes table."""
+		from excom.excom.services.intake import ingest
+		from excom.excom.api.record import get_identity_notes
+		company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
+		acc = frappe.get_all("Excom Channel Account", filters={"channel": "whatsapp"}, pluck="name", limit=1)
+		src = frappe.get_doc({"doctype": "Excom Source", "source_name": "QA Enquiry Site", "source_type": "Website", "enabled": 1, "company": company, "channel_account": acc[0] if acc else None, "sla_first_response": 3600}).insert(ignore_permissions=True)
+		r = ingest(src, "web:qa-enq:1", {"name": "QA Enquiry Person", "phone": "9900000912", "message": "Need 500 boxes of cones", "page_url": "https://qa.example.com/contact"}, sync=True)
+		log = frappe.get_doc("Excom Source Log", r["log"])
+		self.assertEqual(log.status, "Processed", log.get("error") or "")
+		lead = frappe.get_doc("Lead", log.lead)
+		self.assertEqual(len(lead.get("notes") or []), 0)  # not buried in the child table any more
+		notes = get_identity_notes(log.omni_identity)
+		text = " ".join(frappe.utils.strip_html(n["content"]) for n in notes)
+		self.assertIn("Need 500 boxes of cones", text)
+		self.assertIn("QA Enquiry Site", text)
+		if log.thread:
+			from excom.excom.api.chat import get_messages
+			feed = [m for m in get_messages(log.thread)["messages"] if m.get("is_internal")]
+			self.assertTrue(any("Need 500 boxes of cones" in (m.get("content_text") or "") for m in feed))
+			self.assertIn("Need 500 boxes", frappe.db.get_value("Excom Thread", log.thread, "last_message_preview") or "")
+		frappe.delete_doc("Excom Source", src.name, force=True, ignore_permissions=True)
