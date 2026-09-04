@@ -23,6 +23,41 @@ class ExcomTeam(Document):
     def on_trash(self):
         if self.name == GENERAL_TEAM:
             frappe.throw(_("The General team cannot be deleted"))
+        self._check_no_work_left()
+        if frappe.db.exists("Excom Team", {"parent_team": self.name}):
+            children = frappe.get_all("Excom Team", filters={"parent_team": self.name}, pluck="name")
+            frappe.throw(
+                _("{0} still has teams under it: {1}. Move or delete those first.").format(
+                    self.name, ", ".join(children)
+                )
+            )
+
+    def _check_no_work_left(self):
+        """Refuse to delete a desk that still holds work.
+
+        A lead pointing at a team that no longer exists matches nobody's visibility, so it silently
+        stops being visible to every single person except a Sales Master Manager. Nothing errors and
+        nothing appears in a list; the work simply stops existing for the people meant to do it.
+        """
+        from excom.excom.services.crm_visibility import TEAM_FIELDS
+
+        holding = []
+        for doctype, field in TEAM_FIELDS.items():
+            if not frappe.db.exists("DocType", doctype) or not frappe.get_meta(doctype).has_field(field):
+                continue
+            filters = {field: self.name}
+            if doctype == "Excom Thread":
+                filters["status"] = ["!=", "Closed"]
+            count = frappe.db.count(doctype, filters)
+            if count:
+                holding.append(f"{count} {doctype}")
+        if holding:
+            frappe.throw(
+                _("{0} still holds {1}. Move that work to another team first.").format(
+                    self.name, ", ".join(holding)
+                ),
+                title=_("Team is still in use"),
+            )
 
     def _check_duplicate_members(self):
         """Prevent the same user from appearing twice in one team."""

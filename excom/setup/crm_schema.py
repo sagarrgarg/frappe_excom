@@ -150,6 +150,11 @@ def ensure_assignment_rules(desks: dict[str, list[str]], days: list[str] | None 
 				if existing.get(field) != value:
 					existing.set(field, value)
 					changed = True
+			# The people on a desk change more often than the rule does, and silently keeping the
+			# old list is how a rotation carries on handing leads to whoever was there last year.
+			if sorted(u.user for u in existing.get("users", [])) != sorted(users):
+				existing.set("users", [{"user": u} for u in users])
+				changed = True
 			if not existing.get("assignment_days"):
 				existing.set("assignment_days", [{"day": d} for d in (days or DAYS)])
 				changed = True
