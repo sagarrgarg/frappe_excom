@@ -166,20 +166,20 @@
    "fieldname": "sample_values",
    "fieldtype": "Small Text",
    "label": "Sample Values (legacy)",
-   "description": "Deprecated: comma-separated examples — breaks when a sample contains a comma. Use Body Variable Samples (JSON array) instead. Migrated automatically where possible."
+   "description": "Deprecated: comma-separated examples \u2014 breaks when a sample contains a comma. Use Body Variable Samples (JSON array) instead. Migrated automatically where possible."
   },
   {
    "fieldname": "body_variable_samples",
    "fieldtype": "JSON",
    "label": "Body Variable Samples",
-   "description": "JSON array of strings, one per {{1}}, {{2}}, … e.g. [\"ACME, Inc.\",\"₹500\"]. Preferred over Sample Values."
+   "description": "JSON array of strings, one per {{1}}, {{2}}, \u2026 e.g. [\"ACME, Inc.\",\"\u20b9500\"]. Preferred over Sample Values."
   },
   {
    "depends_on": "eval:doc.header_type == 'TEXT'",
    "fieldname": "header_variable_samples",
    "fieldtype": "JSON",
    "label": "Header Variable Samples",
-   "description": "JSON array of strings for TEXT header {{1}}, {{2}}, … Populated from Meta on Fetch; used when counting header slots and for template example blocks.",
+   "description": "JSON array of strings for TEXT header {{1}}, {{2}}, \u2026 Populated from Meta on Fetch; used when counting header slots and for template example blocks.",
    "read_only": 1
   },
   {
@@ -233,14 +233,14 @@
   {
    "fieldname": "section_break_wu2vp",
    "fieldtype": "Section Break"
- },
- {
-  "fieldname": "whatsapp_account",
-  "fieldtype": "Link",
-  "label": "Primary WhatsApp Account",
-  "options": "Excom Channel Account",
-  "read_only": 1,
-  "description": "Filled from the first entry in WhatsApp Accounts (default for Desk / notifications). Edit accounts in the multi-select above."
+  },
+  {
+   "fieldname": "whatsapp_account",
+   "fieldtype": "Link",
+   "label": "Primary WhatsApp Account",
+   "options": "Excom Channel Account",
+   "read_only": 1,
+   "description": "Filled from the first entry in WhatsApp Accounts (default for Desk / notifications). Edit accounts in the multi-select above."
   }
  ],
  "grid_page_length": 50,
@@ -254,16 +254,34 @@
  "owner": "Administrator",
  "permissions": [
   {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
    "create": 1,
    "delete": 1,
+   "print": 1,
    "email": 1,
    "export": 1,
+   "report": 1,
+   "share": 1
+  },
+  {
+   "role": "Excom Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
    "print": 1,
+   "email": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1
+  },
+  {
+   "role": "Excom User",
    "read": 1,
    "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
+   "export": 1
   }
  ],
  "row_format": "Dynamic",
