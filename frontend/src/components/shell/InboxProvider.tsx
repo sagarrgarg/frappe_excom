@@ -41,6 +41,9 @@ interface InboxCtx {
   closeRecord: () => void;
 
   detailsOpen: boolean;
+  /** Left list column folded to a thin strip (laptop/wide only). */
+  listCollapsed: boolean;
+  toggleList: () => void;
   setDetailsOpen: (v: boolean) => void;
   toggleDetails: () => void;
 
@@ -164,15 +167,18 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
   // Details: wide = persistent; laptop = push drawer (⌘.), remembered; tablet/phone = sheet via ?panel=details (history-backed).
   // Laptop default: closed, so the record pane keeps 990px at 1366 (UX-001 §3.1). ⌘. opens it and the choice is remembered.
   const [detailsPref, setDetailsPref] = useState<boolean>(() => { try { return localStorage.getItem(DETAILS_KEY) === "true"; } catch { return false; } });
-  const detailsOpen = bp === "wide" ? true : bp === "laptop" ? detailsPref : sp.get("panel") === "details";
+  const [wideDetails, setWideDetails] = useState<boolean>(() => { try { return localStorage.getItem(DETAILS_KEY + ":wide") !== "false"; } catch { return true; } });
+  const detailsOpen = bp === "wide" ? wideDetails : bp === "laptop" ? detailsPref : sp.get("panel") === "details";
   const setDetailsOpen = useCallback((v: boolean) => {
-    if (bp === "wide") return;
+    if (bp === "wide") { setWideDetails(v); try { localStorage.setItem(DETAILS_KEY + ":wide", String(v)); } catch { /* ignore */ } return; }
     if (bp === "laptop") { setDetailsPref(v); try { localStorage.setItem(DETAILS_KEY, String(v)); } catch { /* ignore */ } return; }
     const next = new URLSearchParams(sp);
     if (v) { next.set("panel", "details"); setSp(next); }
     else if (next.get("panel") === "details") { navigate(-1); }
   }, [bp, sp, setSp, navigate]);
   const toggleDetails = useCallback(() => setDetailsOpen(!detailsOpen), [detailsOpen, setDetailsOpen]);
+  const [listCollapsed, setListCollapsed] = useState<boolean>(() => { try { return localStorage.getItem("excom_list_collapsed") === "true"; } catch { return false; } });
+  const toggleList = useCallback(() => setListCollapsed((v) => { try { localStorage.setItem("excom_list_collapsed", String(!v)); } catch { /* ignore */ } return !v; }), []);
 
   const [newOpen, setNewOpen] = useState(false);
   const [newPrefill, setNewPrefill] = useState<NewPrefill | null>(null);
@@ -190,7 +196,7 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
     contacts, allContacts: unifiedContacts, isLoading, refresh, totalUnread,
     listError: listErr ? (listErr.httpStatus === 429 ? "Too many requests — the list is paused for a moment." : (listErr.message || "Could not load conversations.")) : null,
     selectedId, selected, openRecord, closeRecord,
-    detailsOpen, setDetailsOpen, toggleDetails,
+    detailsOpen, setDetailsOpen, toggleDetails, listCollapsed, toggleList,
     newOpen, setNewOpen, newPrefill, setNewPrefill, paletteOpen, setPaletteOpen, pendingSelect,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

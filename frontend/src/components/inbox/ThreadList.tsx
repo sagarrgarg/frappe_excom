@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { toast } from "sonner";
-import { Inbox as InboxIcon, Loader2 } from "lucide-react";
+import { Inbox as InboxIcon, Loader2, PanelLeftClose } from "lucide-react";
 import { SearchBar } from "./SearchBar";
 import { ViewList } from "./ViewList";
 import { ThreadRow, type RowActions } from "./ThreadRow";
@@ -17,7 +17,7 @@ import { cn } from "../ui/utils";
  * Swipe-to-archive on touch (left swipe past 96px).
  */
 export function ThreadList({ className }: { className?: string }) {
-  const { contacts, isLoading, refresh, selectedId, openRecord, closeRecord, coarse, setNewOpen, listError } = useInbox();
+  const { contacts, isLoading, refresh, selectedId, openRecord, closeRecord, coarse, setNewOpen, listError, toggleList, bp } = useInbox();
   const listRef = useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = useState<number>(-1);
 
@@ -104,7 +104,10 @@ export function ThreadList({ className }: { className?: string }) {
 
   return (
     <section aria-label="Conversations" className={cn("flex flex-col min-h-0 min-w-0 bg-surface-sunken", className)}>
-      <SearchBar />
+      <div className="flex items-stretch min-w-0">
+        <div className="flex-1 min-w-0"><SearchBar /></div>
+        {bp !== "phone" && bp !== "tablet" && <button type="button" onClick={toggleList} title="Hide conversations" aria-label="Hide conversations" className="w-7 shrink-0 border-b border-border text-ink-3 hover:text-ink-1 flex items-center justify-center"><PanelLeftClose className="size-4" /></button>}
+      </div>
       <ViewList />
       <div
         ref={listRef}

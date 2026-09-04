@@ -177,7 +177,7 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
 
   return (
     <section aria-label={`Conversation with ${contact.contactName}`} className="flex-1 min-w-0 min-h-0 flex flex-col bg-surface">
-      <RecordHeader contact={contact} record={record} showBack={drill} onBack={closeRecord} menuGroups={menuGroups} onToggleDetails={toggleDetails} detailsToggleVisible={!wide} />
+      <RecordHeader contact={contact} record={record} showBack={drill} onBack={closeRecord} menuGroups={menuGroups} onToggleDetails={toggleDetails} detailsToggleVisible />
       <ContextStrip contact={contact} record={record} crm={crmPrimary} onStage={crmPrimary?.doctype === "Opportunity" ? () => setTab("details") : undefined} />
       {contact.closure && <div className="shrink-0 flex items-center gap-2 px-3 h-8 text-xs bg-surface-sunken border-b border-border min-w-0"><span className="font-medium text-ink-1">Closed · {contact.closure.outcome}</span>{contact.closure.reason && <span className="text-ink-2 truncate">— {contact.closure.reason}</span>}<span className="text-ink-3 truncate ml-auto">{contact.closure.by}{contact.closure.at ? ` · ${contact.closure.at.slice(0, 16)}` : ""}</span></div>}
       <SegmentedControl<Tab> ariaLabel="Record sections" className="px-2 border-b border-border bg-surface" value={effectiveTab} onChange={setTab} segments={segments} />
