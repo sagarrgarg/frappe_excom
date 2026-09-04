@@ -396,6 +396,19 @@ class WhatsAppTemplates(Document):
         return header
 
 
+def _meta_error_from(exc: Exception) -> str:
+    """Meta's own words, taken from the failed response attached to a requests HTTPError."""
+    resp = getattr(exc, "response", None)
+    if resp is None:
+        return ""
+    try:
+        err = ((resp.json() or {}).get("error")) or {}
+        parts = [p for p in (err.get("error_user_title"), err.get("error_user_msg"), err.get("message"), (f"code {err.get('code')}" if err.get("code") else "")) if p]
+        return " — ".join(parts) if parts else (resp.text or "")[:300]
+    except Exception:
+        return (getattr(resp, "text", "") or "")[:300]
+
+
 def _extract_meta_error() -> str:
     """Extract a human-readable error message from the last Meta API response."""
     try:
@@ -528,7 +541,7 @@ def fetch():
         try:
             response = _fetch_all_templates(creds, biz_id)
         except Exception as e:
-            detail = _extract_meta_error()
+            detail = _meta_error_from(e) or _extract_meta_error()
             if detail.startswith("Unknown error"):
                 detail = frappe.utils.strip_html(str(e))[:300] or detail  # credentials / network / decrypt problems never reach Meta
             errors.append(f"{representative}: {detail}")
