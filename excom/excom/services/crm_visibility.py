@@ -20,7 +20,9 @@ from excom.excom.doctype.excom_team.excom_team import get_descendant_teams, get_
 
 # Bypass the scope entirely. Deliberately short: the owner asked that a fresh lead be visible to a
 # Sales Master Manager and nobody else, and every extra role here is another person who sees it.
-BYPASS_ROLES = {"System Manager", "Sales Master Manager"}
+# Excom Admin is here because it owns the system and needs to be able to support it; Excom Manager
+# is not, because running desks and people is a capability, not a licence to read every lead.
+BYPASS_ROLES = {"System Manager", "Excom Admin", "Sales Master Manager"}
 
 # The doctypes this rule governs, mapped to their owner field.
 OWNER_FIELD = {gw.LEAD: "lead_owner", gw.OPPORTUNITY: "opportunity_owner"}

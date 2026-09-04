@@ -9,7 +9,7 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
-from excom.excom.api.chat import _check_excom_access, _check_manager_access
+from excom.excom.api.chat import _check_admin_access, _check_excom_access
 
 
 PROGRESS_KEY = "excom_identity_sync_progress"
@@ -23,7 +23,7 @@ def run_identity_sync() -> dict:
     Returns:
         {"enqueued": True, "progress_key": "..."}
     """
-    _check_manager_access()
+    _check_admin_access()
 
     existing = frappe.cache.get_value(PROGRESS_KEY)
     if existing and not existing.get("done"):
@@ -59,7 +59,7 @@ def get_sync_status() -> dict:
         {"done": bool, "current": int, "total": int, "phase": str, "percent": int}
         or {"done": True, "stats": {...}} when finished.
     """
-    _check_manager_access()
+    _check_admin_access()
     progress = frappe.cache.get_value(PROGRESS_KEY)
     if not progress:
         return {"done": True, "message": "No sync in progress."}
@@ -78,7 +78,7 @@ def sync_single_entity(doctype: str, name: str) -> dict:
     Returns:
         {"success": True, "identity": "OI-00001"} or error
     """
-    _check_manager_access()
+    _check_admin_access()
 
     from excom.excom.services.identity_sync import (
         sync_single_customer,

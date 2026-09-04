@@ -11,7 +11,7 @@ import json
 import frappe
 from frappe import _
 
-from excom.excom.api.chat import _check_manager_access
+from excom.excom.api.chat import _check_admin_access, _check_manager_access
 
 # Doctypes the generic editor may touch. Read-only ones are audit logs.
 ADMIN_DOCTYPES: dict[str, dict] = {
@@ -51,7 +51,7 @@ _SKIP_FIELDS = {"amended_from"}
 
 
 def _assert_allowed(doctype: str, write: bool = False) -> dict:
-    _check_manager_access()
+    _check_admin_access()
     cfg = ADMIN_DOCTYPES.get(doctype)
     if not cfg:
         frappe.throw(_("{0} is not managed from the Excom admin").format(doctype), frappe.PermissionError)
@@ -283,7 +283,7 @@ def set_member_role(team: str, user: str, role: str) -> dict:
 @frappe.whitelist()
 def set_team_accounts(team: str, accounts: str | list) -> dict:
     """Which channel accounts this team may see (writes Excom Channel Account.allowed_teams)."""
-    _check_manager_access()
+    _check_admin_access()
     accounts = json.loads(accounts) if isinstance(accounts, str) else (accounts or [])
     wanted = set(accounts)
     for acc in frappe.get_all("Excom Channel Account", pluck="name"):
@@ -302,7 +302,7 @@ def set_team_accounts(team: str, accounts: str | list) -> dict:
 
 # ─── Users ───────────────────────────────────────────────────────────────────
 
-EXCOM_ROLE_NAMES = ["Excom User", "Excom Manager"]
+EXCOM_ROLE_NAMES = ["Excom Admin", "Excom User", "Excom Manager"]
 
 
 @frappe.whitelist()
@@ -390,7 +390,7 @@ def reassign_user_work(from_user: str, to_user: str = "", include_leads: int = 1
 @frappe.whitelist()
 def sync_whatsapp_templates() -> dict:
     """Pull approved templates from Meta for every WhatsApp account (same code Desk's Fetch button runs)."""
-    _check_manager_access()
+    _check_admin_access()
     from excom.excom.doctype.whatsapp_templates.whatsapp_templates import fetch
     frappe.local.message_log = []
     before = frappe.db.count("WhatsApp Templates")
@@ -475,7 +475,7 @@ def get_audit(limit: int = 200) -> list:
 @frappe.whitelist()
 def get_embed(doctype: str, name: str) -> dict:
 	"""Copy-paste code for a web chat account or a Website intake source. Manager only (reveals the token)."""
-	_check_manager_access()
+	_check_admin_access()
 	site = frappe.utils.get_url()
 	if doctype == "Excom Channel Account":
 		acc = frappe.get_doc(doctype, name)
@@ -540,7 +540,7 @@ def get_embed(doctype: str, name: str) -> dict:
 @frappe.whitelist()
 def regenerate_source_token(name: str) -> dict:
 	"""New push token for a Website / IndiaMART push source. Old token stops working immediately."""
-	_check_manager_access()
+	_check_admin_access()
 	import secrets
 	src = frappe.get_doc("Excom Source", name)
 	src.push_token = secrets.token_hex(24)
@@ -556,7 +556,7 @@ def regenerate_source_token(name: str) -> dict:
 def diagnose_whatsapp() -> list:
 	"""Per active WhatsApp account: is the token there and decryptable, is the WABA id set, and what does
 	Meta actually answer for the phone, the WABA and the template list. Read-only; no writes, no sends."""
-	_check_manager_access()
+	_check_admin_access()
 	import requests
 
 	out = []
@@ -636,7 +636,7 @@ def diagnose_whatsapp() -> list:
 @frappe.whitelist()
 def set_whatsapp_business_id(account: str, waba_id: str) -> dict:
 	"""Point a WhatsApp account at the right WhatsApp Business Account (from the diagnosis suggestions)."""
-	_check_manager_access()
+	_check_admin_access()
 	if not frappe.db.exists("Excom Channel Account", account):
 		frappe.throw(_("Unknown account"))
 	frappe.db.set_value("Excom Channel Account", account, "wa_business_id", waba_id)

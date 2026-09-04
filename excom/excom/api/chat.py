@@ -8,7 +8,9 @@ from frappe.utils import flt, now_datetime
 from excom.excom.services.thread_service import send_outbound_message
 from excom.excom.utils.errors import ExcomProviderError, ExcomRateLimitError
 
-EXCOM_ROLES = {"System Manager", "Excom Manager", "Excom User"}
+# Anyone who may open Excom at all. Excom Admin belongs here too: the tier that owns the
+# system must be able to use the thing it configures.
+EXCOM_ROLES = {"System Manager", "Excom Admin", "Excom Manager", "Excom User"}
 
 MAX_MESSAGE_LENGTH = {
     "whatsapp": 4096,
@@ -46,7 +48,16 @@ def _check_excom_access() -> None:
         frappe.throw(_("You do not have access to Excom"), frappe.PermissionError)
 
 
-MANAGER_ROLES = {"System Manager", "Excom Manager"}
+# Three user roles, each a capability tier: what a person may operate.
+#   Excom User    — work the inbox: answer, note, tag, transfer, claim
+#   Excom Manager — that, plus run people and desks: teams, members, roles, reassignment, audit
+#   Excom Admin   — that, plus the system: channels, Meta, tokens, templates, embed, settings
+#
+# Visibility is a different axis and does not come from these at all: it comes from the team tree
+# (Excom Team Member.role). Being able to add somebody to a desk is not the same as being able to
+# read every conversation in the company, and until now one role did both.
+ADMIN_ROLES = {"System Manager", "Excom Admin"}
+MANAGER_ROLES = ADMIN_ROLES | {"Excom Manager"}
 
 
 def _user_can_access_thread(thread_id: str) -> bool:
@@ -100,9 +111,20 @@ def _check_thread_access(thread_id: str) -> None:
 
 
 def _check_manager_access() -> None:
-    """Block users without Excom Manager or System Manager role."""
+    """Running people and desks: teams, members, roles, reassignment, the audit log."""
     if not MANAGER_ROLES.intersection(frappe.get_roles(frappe.session.user)):
-        frappe.throw(_("You need Excom Manager role to perform this action"), frappe.PermissionError)
+        frappe.throw(_("You need the Excom Manager role to do this"), frappe.PermissionError)
+
+
+def _check_admin_access() -> None:
+    """Running the system: channels, credentials, connections, templates, settings.
+
+    Separate from _check_manager_access on purpose. A sales head who needs to add somebody to their
+    own desk should not thereby hold the WhatsApp access tokens, the Meta Business connection and
+    the power to regenerate webhook secrets.
+    """
+    if not ADMIN_ROLES.intersection(frappe.get_roles(frappe.session.user)):
+        frappe.throw(_("You need the Excom Admin role to do this"), frappe.PermissionError)
 
 
 @frappe.whitelist()

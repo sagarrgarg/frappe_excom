@@ -1,7 +1,16 @@
 import frappe
 from frappe.model.document import Document
 
-MANAGER_ROLES = {"System Manager", "Excom Manager"}
+# The only blanket bypass. Excom Manager is a capability tier — it lets somebody run teams and
+# people — and it deliberately grants no extra sight: a manager sees what their team memberships
+# give them, like everybody else. Company-wide sight is expressed in the tree, by managing the top
+# team, or by holding Excom Admin.
+MANAGER_ROLES = {"System Manager", "Excom Admin"}
+
+# Anybody who may open Excom at all. Checking for "Excom User" alone locked out a manager or an
+# admin who was not also given the agent role — the tiers are cumulative in capability, so they
+# must be cumulative here too.
+EXCOM_ROLES = {"Excom Admin", "Excom Manager", "Excom User"}
 
 # ─── visibility ───────────────────────────────────────────────────────────────
 # One rule, used by the doctype class, the has_permission hook, the list query and api/chat.py.
@@ -38,7 +47,7 @@ def can_access(doc, user: str | None = None) -> bool:
 	roles = set(frappe.get_roles(user))
 	if roles & MANAGER_ROLES:
 		return True
-	if "Excom User" not in roles:
+	if not (roles & EXCOM_ROLES):
 		return False
 	if isinstance(doc, str):
 		doc = frappe.db.get_value("Excom Thread", doc, ["assigned_to", "assigned_team"], as_dict=True)
@@ -109,7 +118,7 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 	if user_roles & MANAGER_ROLES:
 		return ""
 
-	if "Excom User" not in user_roles:
+	if not (user_roles & EXCOM_ROLES):
 		return "1=0"
 
 	table = "`tabExcom Thread`"

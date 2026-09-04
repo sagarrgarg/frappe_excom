@@ -77,6 +77,23 @@ opportunity keeps the desk and the owner. The conversation stays attached.
 
 **Closing a chat is not final.** The next message from that customer reopens it.
 
+## The three user roles
+
+What a person may *operate*. Cumulative: each tier includes the one below it.
+
+| | Excom User | Excom Manager | Excom Admin |
+|---|---|---|---|
+| Answer, note, tag, transfer, claim | yes | yes | yes |
+| Create teams, add and remove members, set a member's team role | no | yes | yes |
+| Grant Excom roles, reassign someone's work, read the audit log | no | yes | yes |
+| Channels, Meta connection, tokens, templates, embed code, settings | no | no | yes |
+
+**Visibility is a different axis, and it does not come from these roles.** It comes from the team
+tree: a member sees their desk, and a member marked *Manager of a team* sees that team and every
+team beneath it. Being able to add somebody to a desk is not the same as being able to read every
+conversation in the company, and until now one role did both. If someone genuinely needs
+company-wide sight, make them manager of the top team, or give them Excom Admin.
+
 ## What a sales head can and cannot do
 
 | | Sales Master Manager | Sales head (team Manager) | Agent |

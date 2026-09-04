@@ -10,7 +10,7 @@ import json
 import frappe
 from frappe import _
 
-from excom.excom.api.chat import _check_excom_access
+from excom.excom.api.chat import _check_excom_access, _check_thread_access
 from excom.excom.services import gmail_service
 from excom.excom.channels.email.outbound import send_email_reply
 
@@ -42,10 +42,12 @@ def get_email_body(message_name: str):
         }
     """
     _check_excom_access()
+    # The body belongs to a conversation, so the conversation decides who may read it. Checking
+    # only "is this an Excom user" let any agent read another desk's mail.
     thread = frappe.db.get_value("Excom Message", message_name, "thread")
-    if thread:
-        from excom.excom.api.chat import _check_thread_access
-        _check_thread_access(thread)
+    if not thread:
+        frappe.throw(_("No such message"), frappe.PermissionError)
+    _check_thread_access(thread)
     msg = frappe.get_doc("Excom Message", message_name)
 
     if msg.message_type != "Email":
@@ -141,6 +143,11 @@ def get_email_attachment(
         filename: Original filename for the Content-Disposition header
     """
     _check_excom_access()
+    # An attachment is part of a conversation, and so is who may download it.
+    thread = frappe.db.get_value("Excom Message", message_name, "thread")
+    if not thread:
+        frappe.throw(_("No such message"), frappe.PermissionError)
+    _check_thread_access(thread)
     msg = frappe.get_doc("Excom Message", message_name)
     if msg.message_type != "Email":
         frappe.throw(_("Message {0} is not an email").format(message_name))

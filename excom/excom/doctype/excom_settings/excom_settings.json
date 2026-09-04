@@ -269,6 +269,11 @@
   {
    "read": 1,
    "role": "Excom User"
+  },
+  {
+   "read": 1,
+   "role": "Excom Admin",
+   "write": 1
   }
  ],
  "sort_field": "modified",

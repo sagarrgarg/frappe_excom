@@ -23,7 +23,7 @@ def _excom_roles_allowed_for_relay_config() -> bool:
 	user = frappe.session.user
 	if not user or user == "Guest":
 		return False
-	return bool(set(frappe.get_roles(user)) & {"System Manager", "Excom Manager", "Excom User"})
+	return bool(set(frappe.get_roles(user)) & {"System Manager", "Excom Admin", "Excom Manager", "Excom User"})
 
 
 @frappe.whitelist()

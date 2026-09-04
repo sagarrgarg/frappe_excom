@@ -15,31 +15,32 @@ from excom.excom.services import crm_gateway as gw
 
 AGENT = "Excom User"
 MANAGER = "Excom Manager"
+ADMIN = "Excom Admin"
 # The owner's model puts a Sales Master Manager at the top: an unplaced lead is theirs to hand out.
 # ERPNext ships that role with no permission on Lead or Opportunity whatsoever, so it gets one here.
 SALES_HEAD = "Sales Master Manager"
 
 # doctype -> {role: (read, write, create, delete)}
 MATRIX: dict[str, dict[str, tuple[int, int, int, int]]] = {
-	gw.LEAD: {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1), SALES_HEAD: (1, 1, 1, 1)},
-	gw.OPPORTUNITY: {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1), SALES_HEAD: (1, 1, 1, 1)},
-	gw.QUOTATION: {AGENT: (1, 0, 0, 0), MANAGER: (1, 1, 1, 0)},
-	"Contact": {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1)},
-	"Address": {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1)},
+	gw.LEAD: {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1), SALES_HEAD: (1, 1, 1, 1), ADMIN: (1, 1, 1, 1)},
+	gw.OPPORTUNITY: {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1), SALES_HEAD: (1, 1, 1, 1), ADMIN: (1, 1, 1, 1)},
+	gw.QUOTATION: {AGENT: (1, 0, 0, 0), MANAGER: (1, 1, 1, 0), ADMIN: (1, 1, 1, 0)},
+	"Contact": {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1), ADMIN: (1, 1, 1, 1)},
+	"Address": {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1), ADMIN: (1, 1, 1, 1)},
 	# The party records an agent may consult but not edit. api/crm.py enforces the same split at
 	# the field level (MANAGER_ONLY_EDIT); this is the same rule one layer down.
-	gw.CUSTOMER: {AGENT: (1, 0, 0, 0), MANAGER: (1, 1, 0, 0)},
-	"Supplier": {AGENT: (1, 0, 0, 0), MANAGER: (1, 1, 0, 0)},
-	"Employee": {AGENT: (1, 0, 0, 0), MANAGER: (1, 0, 0, 0)},
+	gw.CUSTOMER: {AGENT: (1, 0, 0, 0), MANAGER: (1, 1, 0, 0), ADMIN: (1, 1, 0, 0)},
+	"Supplier": {AGENT: (1, 0, 0, 0), MANAGER: (1, 1, 0, 0), ADMIN: (1, 1, 0, 0)},
+	"Employee": {AGENT: (1, 0, 0, 0), MANAGER: (1, 0, 0, 0), ADMIN: (1, 0, 0, 0)},
 	# Needed for the record pane: activity, notes and the assignment todos.
-	"Communication": {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1)},
-	"ToDo": {AGENT: (1, 1, 1, 1), MANAGER: (1, 1, 1, 1)},
+	"Communication": {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1), ADMIN: (1, 1, 1, 1)},
+	"ToDo": {AGENT: (1, 1, 1, 1), MANAGER: (1, 1, 1, 1), ADMIN: (1, 1, 1, 1)},
 	# Every note in Excom — the internal note on a chat and the note on the Notes tab — is a Frappe
 	# Comment, and stock Frappe lets only System Manager create one. Writing a note is the most
 	# basic thing an agent does, and it worked only because the API bypassed permissions. Notes are
 	# append-only on purpose: an agent adds their own and reads the team's, and nobody quietly
 	# rewrites somebody else's note. A manager can correct one.
-	"Comment": {AGENT: (1, 0, 1, 0), MANAGER: (1, 1, 1, 1)},
+	"Comment": {AGENT: (1, 0, 1, 0), MANAGER: (1, 1, 1, 1), ADMIN: (1, 1, 1, 1)},
 }
 
 

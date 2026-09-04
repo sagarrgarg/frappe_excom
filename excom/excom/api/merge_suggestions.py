@@ -3,7 +3,7 @@
 import frappe
 from frappe import _
 
-from excom.excom.api.chat import _check_manager_access
+from excom.excom.api.chat import _check_admin_access
 
 
 @frappe.whitelist()
@@ -14,7 +14,7 @@ def get_merge_suggestions(limit: int = 50, offset: int = 0) -> list:
     Each result includes both the flagged identity and the identity it might
     be a duplicate of, along with the shared field for display.
     """
-    _check_manager_access()
+    _check_admin_access()
     limit = int(limit)
     offset = int(offset)
 
@@ -75,7 +75,7 @@ def _phone_match(a: str, b: str) -> bool:
 @frappe.whitelist()
 def approve_merge(source: str, target: str) -> dict:
     """Approve a merge suggestion — merge source into target."""
-    _check_manager_access()
+    _check_admin_access()
     from excom.excom.doctype.omni_identity.omni_identity import merge_identities
     result = merge_identities(source, target)
     return result
@@ -84,7 +84,7 @@ def approve_merge(source: str, target: str) -> dict:
 @frappe.whitelist()
 def dismiss_suggestion(identity: str) -> dict:
     """Dismiss a merge suggestion without merging."""
-    _check_manager_access()
+    _check_admin_access()
     frappe.db.set_value(
         "Omni Identity",
         identity,
@@ -98,7 +98,7 @@ def dismiss_suggestion(identity: str) -> dict:
 @frappe.whitelist()
 def get_suggestion_count() -> dict:
     """Return the count of pending merge suggestions for the sidebar badge."""
-    _check_manager_access()
+    _check_admin_access()
     count = frappe.db.count(
         "Omni Identity",
         {"needs_review": 1, "status": "Active"},

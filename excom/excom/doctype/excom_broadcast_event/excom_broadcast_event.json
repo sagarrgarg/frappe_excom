@@ -116,6 +116,12 @@
    "read": 1,
    "report": 1,
    "role": "Excom User"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin"
   }
  ],
  "sort_field": "creation",

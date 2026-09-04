@@ -3,13 +3,13 @@
 import frappe
 from frappe import _
 
-from excom.excom.api.chat import _check_manager_access
+from excom.excom.api.chat import _check_admin_access
 
 
 @frappe.whitelist()
 def search_doctypes(search: str = "", limit: int = 20) -> list:
     """Search DocTypes for the rule reference_doctype picker."""
-    _check_manager_access()
+    _check_admin_access()
     limit = min(int(limit), 50)
     params: dict = {"limit": limit}
     where = "istable = 0 AND issingle = 0 AND module != 'Core'"
@@ -33,7 +33,7 @@ def search_doctypes(search: str = "", limit: int = 20) -> list:
 @frappe.whitelist()
 def search_subscriber_lists(search: str = "", limit: int = 20) -> list:
     """Search Excom Subscriber Lists for the rule picker."""
-    _check_manager_access()
+    _check_admin_access()
     limit = min(int(limit), 50)
     params: dict = {"limit": limit}
     where = "1=1"
@@ -57,7 +57,7 @@ def search_subscriber_lists(search: str = "", limit: int = 20) -> list:
 @frappe.whitelist()
 def get_doctype_fields(doctype: str) -> list:
     """Return Link fields of a DocType for the identity_field picker."""
-    _check_manager_access()
+    _check_admin_access()
     if not doctype or not frappe.db.exists("DocType", doctype):
         return []
 
@@ -78,7 +78,7 @@ def get_doctype_fields(doctype: str) -> list:
 @frappe.whitelist()
 def get_rules(subscriber_list: str = "") -> list:
     """Return all subscriber rules, optionally filtered by list."""
-    _check_manager_access()
+    _check_admin_access()
     filters: dict = {}
     if subscriber_list:
         filters["subscriber_list"] = subscriber_list
@@ -107,7 +107,7 @@ def create_rule(
     description: str = "",
 ) -> dict:
     """Create a new subscriber rule."""
-    _check_manager_access()
+    _check_admin_access()
 
     doc = frappe.get_doc({
         "doctype": "Excom Subscriber Rule",
@@ -139,7 +139,7 @@ def update_rule(
     enabled: int = 1,
 ) -> dict:
     """Update an existing subscriber rule."""
-    _check_manager_access()
+    _check_admin_access()
 
     doc = frappe.get_doc("Excom Subscriber Rule", name)
     if rule_name:
@@ -165,7 +165,7 @@ def update_rule(
 @frappe.whitelist()
 def toggle_rule(name: str, enabled: int) -> dict:
     """Enable or disable a subscriber rule."""
-    _check_manager_access()
+    _check_admin_access()
     frappe.db.set_value("Excom Subscriber Rule", name, "enabled", int(enabled))
     frappe.db.commit()
     return {"success": True}
@@ -177,7 +177,7 @@ def test_rule(name: str, doc_name: str) -> dict:
     Dry-run a rule against a specific document.
     Returns whether the condition matches and the identity that would be resolved.
     """
-    _check_manager_access()
+    _check_admin_access()
     from excom.excom.services.subscriber_rules import test_rule_against_doc
     return test_rule_against_doc(name, doc_name)
 
@@ -188,6 +188,6 @@ def apply_rule_to_existing(name: str) -> dict:
     Retroactively apply a rule to all existing documents of its reference DocType.
     Runs in the foreground and returns counts of added/skipped/errors.
     """
-    _check_manager_access()
+    _check_admin_access()
     from excom.excom.services.subscriber_rules import backfill_rule
     return backfill_rule(name)

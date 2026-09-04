@@ -49,6 +49,12 @@ CHANNELS = [
 
 ROLES = [
 	{
+		"role_name": "Excom Admin",
+		"desk_access": 1,
+		"search_bar": 1,
+		"notifications": 1,
+	},
+	{
 		"role_name": "Excom Manager",
 		"desk_access": 1,
 		"search_bar": 1,

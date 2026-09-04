@@ -24,3 +24,4 @@ excom.patches.v1_0.unify_sources
 excom.patches.v1_0.recompute_source_modes
 excom.patches.v1_0.enquiry_notes_to_comments
 excom.patches.v1_0.message_idempotency_index
+excom.patches.v1_0.seed_excom_admin_role

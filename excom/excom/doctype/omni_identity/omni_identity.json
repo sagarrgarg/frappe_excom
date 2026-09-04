@@ -12,19 +12,15 @@
   "primary_phone",
   "primary_email",
   "primary_whatsapp",
-
   "normalized_section",
   "normalized_phone",
   "normalized_email",
   "column_break_norm",
   "hash_fingerprint",
-
   "channel_identifiers_section",
   "channels",
-
   "linked_entities_section",
   "linked_entities",
-
   "merge_section",
   "is_master",
   "merged_into",
@@ -32,16 +28,12 @@
   "merge_group_id",
   "needs_review",
   "potential_duplicate_of",
-
   "flags_section",
   "is_spam",
-
   "aliases_section",
   "aliases",
-
   "ai_section",
   "ai_profile_summary",
-
   "amended_from"
  ],
  "fields": [
@@ -92,7 +84,6 @@
    "label": "Primary WhatsApp",
    "options": "Phone"
   },
-
   {
    "collapsible": 1,
    "fieldname": "normalized_section",
@@ -125,7 +116,6 @@
    "read_only": 1,
    "unique": 1
   },
-
   {
    "fieldname": "channel_identifiers_section",
    "fieldtype": "Section Break",
@@ -137,7 +127,6 @@
    "label": "Channels",
    "options": "Omni Identity Channel"
   },
-
   {
    "fieldname": "linked_entities_section",
    "fieldtype": "Section Break",
@@ -149,7 +138,6 @@
    "label": "Linked Entities",
    "options": "Omni Identity Link"
   },
-
   {
    "collapsible": 1,
    "fieldname": "merge_section",
@@ -196,7 +184,6 @@
    "read_only": 1,
    "description": "Suspected duplicate identity flagged at creation time for supervisor review."
   },
-
   {
    "fieldname": "flags_section",
    "fieldtype": "Section Break",
@@ -208,7 +195,6 @@
    "fieldtype": "Check",
    "label": "Is Spam"
   },
-
   {
    "collapsible": 1,
    "fieldname": "aliases_section",
@@ -221,7 +207,6 @@
    "label": "Aliases",
    "options": "Omni Identity Alias"
   },
-
   {
    "collapsible": 1,
    "fieldname": "ai_section",
@@ -233,7 +218,6 @@
    "fieldtype": "Long Text",
    "label": "AI Profile Summary"
   },
-
   {
    "fieldname": "amended_from",
    "fieldtype": "Link",
@@ -283,6 +267,18 @@
    "read": 1,
    "report": 1,
    "role": "Excom User"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin",
+   "share": 1,
+   "write": 1
   }
  ],
  "search_fields": "display_name,primary_phone,primary_email",

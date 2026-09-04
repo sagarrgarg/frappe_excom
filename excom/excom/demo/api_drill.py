@@ -26,8 +26,8 @@ API_DIR = os.path.join(APP, "api")
 PW = "excom-demo-2026"
 
 # Who should get through the door of each module.
-MANAGER_MODULES = {"admin", "meta", "subscriber_rules", "mobile", "identity_sync",
-                   "broadcast", "merge_suggestions"}
+ADMIN_MODULES = {"meta", "subscriber_rules", "mobile", "identity_sync", "merge_suggestions"}
+MANAGER_MODULES = {"admin", "broadcast"}
 GUEST_MODULES = {"webchat", "intake", "flow_endpoint", "unsubscribe"}
 AGENT_MODULES = {"chat", "record", "crm", "email", "subscribers", "teams", "notification", "analytics"}
 
@@ -35,6 +35,7 @@ AGENT_MODULES = {"chat", "record", "crm", "email", "subscribers", "teams", "noti
 READ_PREFIXES = ("get_", "list_", "search_", "preview_", "diagnose_", "check_", "fetch_config", "app_urls")
 
 PERSONAS = {
+	"admin":      (["Excom Admin"], []),
 	"smm":        (["Sales Master Manager"], []),
 	"exmgr":      (["Excom Manager"], [("API Drill Desk", "Manager")]),
 	"head":       (["Excom User"], [("API Drill Group", "Manager")]),
@@ -79,7 +80,10 @@ def _endpoints():
 #   head     — manages API Drill Group, and the Desk hangs off it
 #   agent_in — a member of the Desk
 # and nobody else, however senior in sales they are.
-THREAD_ALLOWED = {"exmgr", "head", "agent_in"}
+AGENTS = {"admin", "exmgr", "head", "agent_in", "agent_out", "agent_solo"}
+# The fixture conversation belongs to API Drill Desk. admin bypasses everything; exmgr manages that
+# desk; head manages the group above it; agent_in is a member. Nobody else, however senior in sales.
+THREAD_ALLOWED = {"admin", "exmgr", "head", "agent_in"}
 
 # Endpoints that take a contact or a thread but are open to any agent on purpose, each with the
 # reason. Anything not listed here and record-shaped is expected to refuse an outsider.
@@ -94,19 +98,51 @@ OPEN_TO_ANY_AGENT = {
 CONFIG_ENDPOINTS = {"notification.register_site_on_excom_cloud"}
 
 
-def _expected(mod, guest_ok, thread_scoped=False):
-	"""Which personas should get through. Two different doors, so two answers."""
+GUARD_TIERS = {
+	"_check_admin_access": {"admin"},
+	"_assert_allowed": {"admin"},        # the generic doctype editor, which checks Admin inside
+	"_check_manager_access": {"admin", "exmgr"},
+	"_check_identity_access": THREAD_ALLOWED,
+	"_check_thread_access": THREAD_ALLOWED,
+	"_check_excom_access": AGENTS,
+}
+
+
+def _declared_guard(mod, fn):
+	"""The guard this endpoint says it uses. None when it declares nothing recognisable."""
+	src = open(os.path.join(API_DIR, f"{mod}.py"), errors="ignore").read()
+	tree = ast.parse(src)
+	lines = src.splitlines()
+	for node in ast.walk(tree):
+		if isinstance(node, ast.FunctionDef) and node.name == fn:
+			body = "\n".join(lines[node.lineno - 1:node.end_lineno])
+			for guard in ("_check_admin_access", "_assert_allowed", "_check_manager_access",
+			              "_check_identity_access", "_check_thread_access", "_check_excom_access"):
+				if guard + "(" in body:
+					return guard
+			if "only_for(" in body:
+				return "_check_manager_access" if "Excom Manager" in body else "_check_admin_access"
+	return None
+
+
+def _expected(mod, guest_ok, thread_scoped=False, fn=None):
+	"""Which personas should get through, taken from the guard the endpoint declares."""
 	if guest_ok or mod in GUEST_MODULES:
 		return set(PERSONAS)                      # open by design; other checks gate the payload
+	guard = _declared_guard(mod, fn) if fn else None
+	if guard:
+		tier = set(GUARD_TIERS[guard])
+		# an endpoint that acts on one record is bounded by that record as well as by its tier
+		return tier & THREAD_ALLOWED if (thread_scoped and guard == "_check_excom_access") else tier
+	if mod in ADMIN_MODULES:
+		return {"admin"}
 	if mod in MANAGER_MODULES:
-		return {"exmgr"}                          # a Sales Master Manager is not an Excom admin
+		return {"admin", "exmgr"}
 	if mod == "notification":
-		return set(PERSONAS)                      # push registration is per-user, not per-desk
+		return AGENTS
 	if mod in AGENT_MODULES:
-		if thread_scoped:
-			return THREAD_ALLOWED                 # the record decides, not the role
-		return {"exmgr", "head", "agent_in", "agent_out", "agent_solo"}
-	return {"exmgr"}
+		return THREAD_ALLOWED if thread_scoped else AGENTS
+	return {"admin"}
 
 
 # Real fixtures, so a refusal means "not you" rather than "no such record". Passing an empty id
@@ -127,6 +163,8 @@ def _fill(pname, annotation):
 		return FIXTURES.get("thread", "")
 	if name in ("omni_identity", "identity"):
 		return FIXTURES.get("identity", "")
+	if name in ("message_name", "message_id"):
+		return FIXTURES.get("message", "")
 	if name == "team":
 		return FIXTURES.get("team", "")
 	if name == "user":
@@ -138,7 +176,7 @@ def _fill(pname, annotation):
 	return ""
 
 
-RECORD_PARAMS = ("thread_id", "thread", "omni_identity", "reference_name")
+RECORD_PARAMS = ("thread_id", "thread", "omni_identity", "reference_name", "message_name")
 ACCOUNT_PARAMS = ("account_name",)
 
 
@@ -228,12 +266,12 @@ def run(verbose: int = 0):
 			continue
 		key = f"{mod}.{fn}"
 		if key in CONFIG_ENDPOINTS:
-			expected = {"exmgr"}
+			expected = {"admin"}
 		elif key in OPEN_TO_ANY_AGENT:
 			# "any agent" means anybody holding an Excom role, not literally every account
-			expected = {"exmgr", "head", "agent_in", "agent_out", "agent_solo"}
+			expected = AGENTS
 		else:
-			expected = _expected(mod, guest_ok, _thread_scoped(target))
+			expected = _expected(mod, guest_ok, _thread_scoped(target), fn)
 		for persona in PERSONAS:
 			email = f"api.{persona}@example.com"
 			should_pass = persona in expected
@@ -293,5 +331,10 @@ def _make_fixtures():
 		"account_doctype": ref.account_doctype, "account": ref.account, "thread_key": "api-drill-1",
 		"status": "Open", "assigned_team": "API Drill Desk", "last_message_at": now_datetime()}).insert(ignore_permissions=True).name
 	frappe.db.commit()
-	FIXTURES.update({"thread": thread, "identity": identity, "team": "API Drill Desk"})
+	message = frappe.get_doc({"doctype": "Excom Message", "thread": thread, "omni_identity": identity,
+		"direction": "Inbound", "message_type": "Text", "channel": ref.channel,
+		"account_doctype": ref.account_doctype, "account": ref.account,
+		"body": "API drill fixture", "sent_at": now_datetime()}).insert(ignore_permissions=True).name
+	frappe.db.commit()
+	FIXTURES.update({"thread": thread, "identity": identity, "message": message, "team": "API Drill Desk"})
 	print(f"fixture conversation {thread} on API Drill Desk")

@@ -4,7 +4,7 @@ import json
 
 import frappe
 
-from excom.excom.api.chat import _check_manager_access
+from excom.excom.api.chat import _check_admin_access
 from excom.excom.services import meta_connect
 
 
@@ -19,7 +19,7 @@ def _safe_extra(raw: str | None) -> dict:
 
 @frappe.whitelist()
 def get_connections() -> list:
-	_check_manager_access()
+	_check_admin_access()
 	out = []
 	for c in frappe.get_all("Excom Meta Connection", fields=["name", "business_id", "company", "status", "app_id", "api_version", "last_synced_at", "token_valid", "token_scopes", "webhook_verify_token"]):
 		doc = frappe.get_doc("Excom Meta Connection", c.name)
@@ -32,31 +32,31 @@ def get_connections() -> list:
 
 @frappe.whitelist()
 def discover(name: str) -> dict:
-	_check_manager_access()
+	_check_admin_access()
 	return meta_connect.discover(name)
 
 
 @frappe.whitelist()
 def enable_asset(name: str, asset_type: str, asset_id: str, enable: int = 1) -> dict:
-	_check_manager_access()
+	_check_admin_access()
 	return meta_connect.enable_asset(name, asset_type, asset_id, int(enable))
 
 
 @frappe.whitelist()
 def debug_token(name: str) -> dict:
-	_check_manager_access()
+	_check_admin_access()
 	return meta_connect.debug_token(name)
 
 
 @frappe.whitelist()
 def exchange_token(name: str, short_lived_token: str) -> dict:
-	_check_manager_access()
+	_check_admin_access()
 	return meta_connect.exchange_token(name, short_lived_token)
 
 
 @frappe.whitelist()
 def webhook_url() -> dict:
-	_check_manager_access()
+	_check_admin_access()
 	return {"url": frappe.utils.get_url("/api/method/excom.excom.utils.webhook.webhook")}
 
 
@@ -141,7 +141,7 @@ def data_deletion_callback():
 @frappe.whitelist()
 def app_urls() -> dict:
 	"""Everything the Meta App Dashboard asks for, for this site."""
-	_check_manager_access()
+	_check_admin_access()
 	site = frappe.utils.get_url()
 	return {
 		"site": site,
