@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { Copy, RefreshCw, Code2, Globe } from "lucide-react";
 import { toast } from "sonner";
 import { Button, Chip } from "../primitives";
@@ -20,7 +21,7 @@ function Code({ text, label }: { text: string; label: string }) {
 /** Copy-paste code for a saved web chat account or Website intake source. Rendered under the form in the admin drawer. */
 export function EmbedPanel({ doctype, name, channel, sourceType }: { doctype: string; name: string; channel?: string; sourceType?: string }) {
   const relevant = (doctype === "Excom Channel Account" && channel === "webchat") || (doctype === "Excom Source" && sourceType === "Website");
-  const { data, mutate } = useFrappeGetCall<{ message: Embed }>(relevant && name ? "excom.excom.api.admin.get_embed" : (null as unknown as string), { doctype, name }, `embed-${doctype}-${name}`, { revalidateOnFocus: false });
+  const { data, mutate } = useFrappeGetCall<{ message: Embed }>(relevant && name ? "excom.excom.api.admin.get_embed" : null, { doctype, name }, `embed-${doctype}-${name}`, { revalidateOnFocus: false });
   const { call: regen, loading } = useFrappePostCall("excom.excom.api.admin.regenerate_source_token");
   const [tab, setTab] = useState<"html" | "js" | "curl">("html");
   if (!relevant) return null;

@@ -1,5 +1,6 @@
 import { useCallback } from "react";
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { toast } from "sonner";
 import type { RecordRef } from "./useRecordLinks";
 
@@ -17,7 +18,7 @@ export interface Note {
 /** Notes tab and chat internal notes share one model: Frappe Comments on the party's record (or thread). */
 export function useNotes(identityId: string | null, _record?: RecordRef | null) {
   const { data, isLoading, error, mutate } = useFrappeGetCall<{ message: Note[] }>(
-    identityId ? "excom.excom.api.record.get_identity_notes" : (null as unknown as string),
+    identityId ? "excom.excom.api.record.get_identity_notes" : null,
     identityId ? { omni_identity: identityId } : undefined
   );
   const { call, loading: adding } = useFrappePostCall("excom.excom.api.record.add_identity_note");

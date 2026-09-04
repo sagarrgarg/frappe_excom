@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Send, X, Loader2 } from "lucide-react";
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { toast } from "sonner";
 
 interface EmailComposeProps {

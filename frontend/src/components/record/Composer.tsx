@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { toast } from "sonner";
 import { EmailEditor } from "./EmailEditor";
 import { RecipientChips } from "./RecipientChips";
@@ -71,7 +72,7 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
   const { call: sendNote, loading: sendingNote } = useFrappePostCall("excom.excom.api.chat.send_internal_note");
   const { call: sendEmail, loading: sendingEmail } = useFrappePostCall("excom.excom.api.email.send_email");
   const { call: assignThread } = useFrappePostCall("excom.excom.api.chat.assign_thread");
-  const { data: sigRaw } = useFrappeGetCall<{ message: { exists: boolean; signature_html: string } }>(isEmail ? "excom.excom.api.email.get_my_signature" : (null as unknown as string));
+  const { data: sigRaw } = useFrappeGetCall<{ message: { exists: boolean; signature_html: string } }>(isEmail ? "excom.excom.api.email.get_my_signature" : null);
   const signature = sigRaw?.message?.exists ? sigRaw.message.signature_html || "" : "";
   const { suggestions } = useAISuggestions(!suggestionsDismissed && threadId ? threadId : null);
   const replies = suggestions.suggested_replies.slice(0, 3);

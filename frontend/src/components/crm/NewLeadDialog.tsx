@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { UserPlus2 } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, Button, Field, Input, Select, Textarea } from "../primitives";

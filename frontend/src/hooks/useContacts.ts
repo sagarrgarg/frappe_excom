@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useFrappeGetCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import type { ExcomThread, UnifiedContact, Account, Message } from "../types";
 import { parseFrappeDateTime } from "../utils/datetime";
 
@@ -31,7 +31,7 @@ export function useThreads(
 
   const { data, error, isLoading, mutate } = useFrappeGetCall<{
     message: ExcomThread[];
-  }>(enabled ? "excom.excom.api.chat.get_threads" : (null as unknown as string), enabled ? params : undefined, undefined, { shouldRetryOnError: true, errorRetryCount: 3 });
+  }>(enabled ? "excom.excom.api.chat.get_threads" : null, enabled ? params : undefined, undefined, { shouldRetryOnError: true, errorRetryCount: 3 });
 
   const threads = data?.message ?? [];
 

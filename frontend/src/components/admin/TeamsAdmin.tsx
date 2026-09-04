@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { Plus, Trash2, UserPlus, UserMinus, Shield, AlertTriangle, ArrowRightLeft, Save, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button, Input, Textarea, Field, Sheet, Modal, EmptyState, Chip, Avatar, Select } from "../primitives";
@@ -151,7 +152,7 @@ function DeleteTeamButton({ team, teams, onDone }: { team: Team; teams: Team[]; 
 
 function AddMember({ open, team, onClose, onAdded }: { open: boolean; team: string; onClose: () => void; onAdded: () => void }) {
   const [q, setQ] = useState(""); const [role, setRole] = useState("Member");
-  const { data } = useFrappeGetCall<{ message: { name: string; full_name: string; user_image?: string }[] }>(open ? "excom.excom.api.teams.search_users" : (null as unknown as string), { search: q, limit: 20 }, undefined, { keepPreviousData: true });
+  const { data } = useFrappeGetCall<{ message: { name: string; full_name: string; user_image?: string }[] }>(open ? "excom.excom.api.teams.search_users" : null, { search: q, limit: 20 }, undefined, { keepPreviousData: true });
   const { call, loading } = useFrappePostCall("excom.excom.api.teams.add_team_member");
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()} title="Add member" width="w-[400px]">

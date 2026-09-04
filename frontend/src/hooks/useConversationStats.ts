@@ -1,4 +1,4 @@
-import { useFrappeGetCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 
 export interface ConversationStats {
   total_messages: number;
@@ -19,7 +19,7 @@ export function useConversationStats(omniIdentity: string | null) {
   }>(
     omniIdentity
       ? "excom.excom.api.chat.get_conversation_stats"
-      : (null as unknown as string),
+      : null,
     omniIdentity ? { omni_identity: omniIdentity } : undefined
   );
 

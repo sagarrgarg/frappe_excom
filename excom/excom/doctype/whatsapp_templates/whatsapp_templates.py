@@ -498,8 +498,11 @@ def fetch():
                 f"{creds['url']}/{creds['version']}/{biz_id}/message_templates",
                 headers=creds["headers"],
             )
-        except Exception:
-            errors.append(f"{representative}: {_extract_meta_error()}")
+        except Exception as e:
+            detail = _extract_meta_error()
+            if detail.startswith("Unknown error"):
+                detail = frappe.utils.strip_html(str(e))[:300] or detail  # credentials / network / decrypt problems never reach Meta
+            errors.append(f"{representative}: {detail}")
             continue
 
         for template in response.get("data") or []:

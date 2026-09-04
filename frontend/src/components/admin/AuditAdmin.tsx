@@ -1,4 +1,4 @@
-import { useFrappeGetCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import { EmptyState, Avatar } from "../primitives";
 import { DataTable } from "../shell/AdminPage";

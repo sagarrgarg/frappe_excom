@@ -1,4 +1,4 @@
-import { useFrappeGetCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 
 export interface LinkedEntity {
   linked_doctype: string;
@@ -15,7 +15,7 @@ export function useLinkedEntities(omniIdentity: string | null) {
   const { data, error, isLoading, mutate } = useFrappeGetCall<{
     message?: LinkedEntity[];
   }>(
-    omniIdentity ? "excom.excom.api.chat.get_linked_entities" : (null as unknown as string),
+    omniIdentity ? "excom.excom.api.chat.get_linked_entities" : null,
     omniIdentity ? { omni_identity: omniIdentity } : undefined
   );
 

@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { BarChart3, TrendingUp, MessageCircle, DollarSign, Clock, Users, Activity, RefreshCw, Loader2 } from "lucide-react";
-import { useFrappeGetCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { Button, Select, SegmentedControl } from "./primitives";
 import { AdminPage } from "./shell/AdminPage";
 import { chartTheme } from "../lib/chart-theme";

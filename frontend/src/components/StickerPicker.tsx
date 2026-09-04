@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useFrappePostCall, useFrappeGetCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { X, Loader2, Search } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";

@@ -1,4 +1,4 @@
-import { useFrappeGetCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 
 export interface WindowInfo {
   human_agent_ok?: boolean;
@@ -10,7 +10,7 @@ export interface WindowInfo {
 /** WhatsApp 24h session window for a thread. Refreshes every minute. */
 export function useWindowStatus(threadId: string | null, enabled: boolean) {
   const { data, mutate } = useFrappeGetCall<{ message: WindowInfo }>(
-    threadId && enabled ? "excom.excom.api.chat.check_24h_window" : (null as unknown as string),
+    threadId && enabled ? "excom.excom.api.chat.check_24h_window" : null,
     threadId && enabled ? { thread_id: threadId } : undefined,
     undefined,
     { refreshInterval: 60_000, revalidateOnFocus: true }

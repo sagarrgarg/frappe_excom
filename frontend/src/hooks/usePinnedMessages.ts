@@ -1,6 +1,7 @@
 import { useContext } from "react";
 import useSWR from "swr";
-import { FrappeContext, useFrappeGetCall } from "frappe-react-sdk";
+import { FrappeContext } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 
 interface PinnedMessage {
   name: string;
@@ -18,7 +19,7 @@ export function usePinnedMessages(threadId: string) {
   }>(
     threadId
       ? "excom.excom.api.chat.get_pinned_messages"
-      : (null as unknown as string),
+      : null,
     threadId ? { thread_id: threadId } : undefined
   );
 

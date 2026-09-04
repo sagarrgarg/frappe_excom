@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom";
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { Shield, Users, Radio, Tag, MessageSquare, Smile, FileText, Bell, Inbox, Settings, History, GitMerge, ListChecks, Cog, RefreshCw, LayoutGrid, AlertTriangle, UserCheck, Facebook } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPage } from "../shell/AdminPage";

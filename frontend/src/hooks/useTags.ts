@@ -1,4 +1,5 @@
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { useCallback } from "react";
 import { toast } from "sonner";
 
@@ -34,7 +35,7 @@ export function useThreadTags(threadId: string) {
   }>(
     threadId
       ? "excom.excom.api.chat.get_thread_tags"
-      : (null as unknown as string),
+      : null,
     threadId ? { thread_id: threadId } : undefined
   );
 

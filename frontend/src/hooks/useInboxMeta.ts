@@ -1,4 +1,4 @@
-import { useFrappeGetCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 
 export interface TeamOption { name: string; team_name: string }
 export interface AccountOption { name: string; account_name: string; channel: string; email_address?: string; wa_phone_id?: string }

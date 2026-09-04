@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useFrappeGetCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { ExternalLink, ChevronDown, X } from "lucide-react";
 import { Input } from "../primitives";
 import { deskUrl } from "../../hooks/useRecordLinks";
@@ -21,7 +21,7 @@ export function LinkField({ doctype, value, onChange, disabled, placeholder, fil
     document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
   }, [value]);
   const { data, isLoading } = useFrappeGetCall<{ message: { value: string; description?: string; label?: string }[] }>(
-    open && doctype ? "frappe.desk.search.search_link" : (null as unknown as string),
+    open && doctype ? "frappe.desk.search.search_link" : null,
     open && doctype ? { doctype, txt: q, page_length: 20, ...(filters ? { filters: JSON.stringify(filters) } : {}) } : undefined,
     undefined,
     { revalidateOnFocus: false, keepPreviousData: true }

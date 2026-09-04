@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { Loader2, RefreshCw, Plus, ShieldCheck, ShieldAlert, ExternalLink, Copy, Facebook, Instagram, FileText, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button, Chip, EmptyState, Sheet, Input, Field } from "../primitives";

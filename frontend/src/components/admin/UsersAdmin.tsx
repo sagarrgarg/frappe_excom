@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { Search, ArrowRightLeft, Loader2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { Input, Chip, Avatar, Button, EmptyState } from "../primitives";

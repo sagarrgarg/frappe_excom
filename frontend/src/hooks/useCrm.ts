@@ -1,5 +1,6 @@
 import { useCallback } from "react";
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { toast } from "sonner";
 
 /** Gateway vocabulary: refs are {doctype, name}; the UI never hardcodes field lists. */
@@ -20,7 +21,7 @@ export function useCrmOptions() {
 /** CRM records linked to an identity, precedence order (Customer → Opportunity → Lead). */
 export function useIdentityRecords(omniIdentity: string | null) {
   const { data, mutate, isLoading } = useFrappeGetCall<{ message: CrmRecordSummary[] }>(
-    omniIdentity ? `${M}.get_records_for_identity` : (null as unknown as string),
+    omniIdentity ? `${M}.get_records_for_identity` : null,
     omniIdentity ? { omni_identity: omniIdentity } : undefined
   );
   return { records: data?.message ?? [], primary: data?.message?.[0] ?? null, refresh: mutate, isLoading };
@@ -28,7 +29,7 @@ export function useIdentityRecords(omniIdentity: string | null) {
 
 export function useCrmRecord(ref: CrmRef | null) {
   const { data, mutate, isLoading, error } = useFrappeGetCall<{ message: any }>(
-    ref ? `${M}.get_record` : (null as unknown as string),
+    ref ? `${M}.get_record` : null,
     ref ? { doctype: ref.doctype, name: ref.name } : undefined
   );
   return { record: data?.message ?? null, refresh: mutate, isLoading, error };
@@ -36,7 +37,7 @@ export function useCrmRecord(ref: CrmRef | null) {
 
 export function useFieldSchema(doctype: string | null, customerType: string) {
   const { data, isLoading } = useFrappeGetCall<{ message: FieldSchema }>(
-    doctype ? `${M}.get_field_schema` : (null as unknown as string),
+    doctype ? `${M}.get_field_schema` : null,
     doctype ? { doctype, customer_type: customerType || "" } : undefined,
     undefined,
     { revalidateOnFocus: false }

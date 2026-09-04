@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { Plus, Search, Trash2, Save, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button, Input, Field, Sheet, EmptyState, Chip } from "../primitives";
@@ -26,7 +27,7 @@ export function useSchema(doctype: string) {
 /** Form for one doc of an admin doctype (drawer body). Also used stand-alone for the Single "Excom Settings". */
 export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraActions }: { doctype: string; name: string; schema: Schema; onSaved?: (name: string) => void; onDeleted?: () => void; extraActions?: React.ReactNode }) {
   const isNew = !name && !schema.single;
-  const { data, isLoading, mutate } = useFrappeGetCall<{ message: Doc }>(isNew ? (null as unknown as string) : "excom.excom.api.admin.get_doc", isNew ? undefined : { doctype, name }, isNew ? undefined : `admin-doc-${doctype}-${name}`, { revalidateOnFocus: false });
+  const { data, isLoading, mutate } = useFrappeGetCall<{ message: Doc }>(isNew ? null : "excom.excom.api.admin.get_doc", isNew ? undefined : { doctype, name }, isNew ? undefined : `admin-doc-${doctype}-${name}`, { revalidateOnFocus: false });
   const [draft, setDraft] = useState<Doc>({});
   const { call: save, loading: saving } = useFrappePostCall("excom.excom.api.admin.save_doc");
   const { call: del, loading: deleting } = useFrappePostCall("excom.excom.api.admin.delete_doc");

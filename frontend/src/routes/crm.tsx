@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useFrappeGetCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import { Sun, Inbox, KanbanSquare, Loader2, MessageSquare, ExternalLink, Filter, Clock, AlertTriangle, CheckSquare } from "lucide-react";
 import { PageFrame } from "../components/shell/PageFrame";
@@ -125,7 +125,7 @@ export function PipelineRoute() {
   const { bp } = useInbox();
   const [ct, setCt] = useState<string>(() => { try { return localStorage.getItem("excom_pipeline_type") || ""; } catch { return ""; } });
   const type = ct || opts.customer_types[0] || "";
-  const { data, isLoading, mutate } = useFrappeGetCall<{ message: { stages: string[]; columns: Record<string, any[]>; count: number } }>(type ? `${M}.get_pipeline` : (null as unknown as string), type ? { customer_type: type } : undefined, undefined, { refreshInterval: 60_000 });
+  const { data, isLoading, mutate } = useFrappeGetCall<{ message: { stages: string[]; columns: Record<string, any[]>; count: number } }>(type ? `${M}.get_pipeline` : null, type ? { customer_type: type } : undefined, undefined, { refreshInterval: 60_000 });
   const actions = useCrmActions(() => mutate());
   const open = useOpenThread();
   const d = data?.message;

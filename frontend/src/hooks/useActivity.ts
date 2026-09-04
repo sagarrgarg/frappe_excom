@@ -1,4 +1,4 @@
-import { useFrappeGetCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import type { RecordRef } from "./useRecordLinks";
 
 export type ActivityItem =
@@ -11,7 +11,7 @@ export type ActivityItem =
 export function useActivity(record: RecordRef | null, threadIds: string[]) {
   const enabled = Boolean(record || threadIds.length);
   const { data, isLoading, error, mutate } = useFrappeGetCall<{ message: ActivityItem[] }>(
-    enabled ? "excom.excom.api.record.get_activity" : (null as unknown as string),
+    enabled ? "excom.excom.api.record.get_activity" : null,
     enabled
       ? {
           reference_doctype: record?.doctype || "",

@@ -4,7 +4,8 @@ import {
   Mail, MessageSquare, Palette, RefreshCw, Reply, Shield,
   Volume2, VolumeX, Zap, RotateCcw, Users, Rows3, ArrowLeftRight, Settings as SettingsIcon,
 } from "lucide-react";
-import { useFrappeGetCall, useFrappePostCall, useFrappeGetDocList, useFrappeCreateDoc } from "frappe-react-sdk";
+import { useFrappePostCall, useFrappeGetDocList, useFrappeCreateDoc } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { toast } from "sonner";
 import { Button, Select, Chip, Kbd, SegmentedControl } from "./primitives";
 import { AdminPage } from "./shell/AdminPage";

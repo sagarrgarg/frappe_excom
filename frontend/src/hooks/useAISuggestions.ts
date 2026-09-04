@@ -1,4 +1,5 @@
-import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
+import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 
 export interface AISuggestion {
   text: string;
@@ -40,7 +41,7 @@ export function useAISuggestions(threadId: string | null) {
   }>(
     threadId
       ? "excom.excom.api.chat.get_ai_suggestions"
-      : (null as unknown as string),
+      : null,
     threadId ? { thread_id: threadId } : undefined,
   );
 

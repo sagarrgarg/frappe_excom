@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useFrappeGetCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { X } from "lucide-react";
 import { cn } from "../ui/utils";
 
@@ -11,7 +11,7 @@ export function RecipientChips({ label, value, onChange, placeholder }: { label:
   const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  const { data } = useFrappeGetCall<{ message: { email: string; name: string; kind: string }[] }>(open && text.length >= 2 ? "excom.excom.api.email.suggest_recipients" : (null as unknown as string), { q: text }, undefined, { keepPreviousData: true, revalidateOnFocus: false });
+  const { data } = useFrappeGetCall<{ message: { email: string; name: string; kind: string }[] }>(open && text.length >= 2 ? "excom.excom.api.email.suggest_recipients" : null, { q: text }, undefined, { keepPreviousData: true, revalidateOnFocus: false });
   const suggestions = (data?.message ?? []).filter((s) => !chips.includes(s.email));
   const commit = (raw: string) => { const e = raw.trim().replace(/,$/, ""); if (!e) return; if (!EMAIL.test(e)) return; if (!chips.includes(e)) onChange([...chips, e].join(", ")); setText(""); };
   useEffect(() => { const h = (ev: MouseEvent) => { if (box.current && !box.current.contains(ev.target as Node)) setOpen(false); }; document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h); }, []);

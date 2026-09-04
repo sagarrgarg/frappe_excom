@@ -28,7 +28,8 @@ function registerServiceWorker() {
           });
       })
       .catch((err: unknown) => {
-        console.error("Failed to register service worker", err);
+        // Push is optional: users without the relay permission or browsers that block SW just don't get push.
+        console.debug("Excom push not available:", err);
       });
   }
 }

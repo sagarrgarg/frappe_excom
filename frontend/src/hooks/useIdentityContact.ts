@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useFrappeGetCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import type { UnifiedContact, ContactKind } from "../types";
 import { parseFrappeDateTime } from "../utils/datetime";
 
@@ -7,7 +7,7 @@ interface IdentitySummary { name: string; display_name: string; primary_phone?: 
 
 /** A contact with no conversation yet (migrated / form lead) as a UnifiedContact with zero threads, so the record pane can open it. */
 export function useIdentityContact(id: string | null, enabled: boolean) {
-  const { data, isLoading, error } = useFrappeGetCall<{ message: IdentitySummary }>(id && enabled ? "excom.excom.api.record.get_identity_contact" : (null as unknown as string), id && enabled ? { omni_identity: id } : undefined, id && enabled ? `identity-contact-${id}` : undefined, { revalidateOnFocus: false });
+  const { data, isLoading, error } = useFrappeGetCall<{ message: IdentitySummary }>(id && enabled ? "excom.excom.api.record.get_identity_contact" : null, id && enabled ? { omni_identity: id } : undefined, id && enabled ? `identity-contact-${id}` : undefined, { revalidateOnFocus: false });
   const contact = useMemo<UnifiedContact | null>(() => {
     const s = data?.message;
     if (!s) return null;
