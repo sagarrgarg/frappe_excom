@@ -32,6 +32,13 @@ Every Intake Source has **Allowed Teams**. An unassigned lead from that source i
 - **Vendor only pushes** (webhooks) → require a per-source token in the URL or body, verify HMAC when the vendor signs, allowlist their IPs when they publish them, and schedule a reconcile if any list endpoint exists (Meta).
 - **Your own pages / partners** → `submit_enquiry` with token + origin (browser) or token + IP (server), captcha for public forms.
 
+## Who may call a Website source (token is never enough on its own once a list exists)
+- **Allowed Origins set** → the request must carry a browser `Origin` (or `Referer`) on the list. A POST with no Origin (curl, Postman, a script) is refused with 403, even with the right token.
+- **Allowed IPs set** → the caller's IP must be on the list.
+- **Both set** → either passes: browser forms from your domains *or* trusted servers.
+- **Neither** → the token alone is the fence (only for private, unguessable tokens).
+Note: a non-browser client can forge an `Origin` header, so for server-to-server callers the IP list is the real fence; Origin protects against someone pasting your token into their own web page.
+
 ## Security contract (applies to every guest entry point)
 Per-source secret (Password field, never in the repo) · origin or IP allowlist · IP rate limit · idempotent dedupe key · raw payload kept 90 days (`purge_old_payloads`) · replay from the log · no enumeration (unknown token ⇒ generic 401) · nothing is sent back to the customer unless the source has an auto-ack template configured.
 

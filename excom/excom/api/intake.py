@@ -41,6 +41,30 @@ def _origin_ok(src, origin: str) -> bool:
 	return origin in allowed
 
 
+def _caller_ok(src, origin: str) -> tuple[bool, str]:
+	"""Who may call this source, beyond the token:
+	- no domain list and no IP list → the token alone is the fence;
+	- domain list set → the request must carry an Origin (or Referer) on the list;
+	- IP list set → the caller's IP must be on it;
+	- both set → either is enough (browser form OR trusted server).
+	Requests without an Origin are NOT waved through when a domain list exists."""
+	origins = [o.strip() for o in (src.allowed_origins or "").splitlines() if o.strip()]
+	ips = [o.strip() for o in (src.allowed_ips or "").splitlines() if o.strip()]
+	if not origins and not ips:
+		return True, ""
+	if not origin:
+		ref = frappe.get_request_header("Referer") or ""
+		m = ORIGIN_RE.match("/".join(ref.split("/")[:3])) if ref else None
+		origin = m.group(0) if m else ""
+	origin_ok = bool(origins) and bool(origin) and origin in origins
+	ip_ok = bool(ips) and _ip_ok(src)
+	if origin_ok or ip_ok:
+		return True, ""
+	if origins and not origin:
+		return False, "origin"
+	return False, "origin" if origins else "ip"
+
+
 def _ip_ok(src) -> bool:
 	allowed = [o.strip() for o in (src.allowed_ips or "").splitlines() if o.strip()]
 	if not allowed:
@@ -69,8 +93,9 @@ def submit_enquiry():
 	src = _source_by_token(body.get("source_token") or "", "Website")
 	if not src:
 		frappe.throw(_("Unknown source"), frappe.AuthenticationError)
-	if not _origin_ok(src, origin):
-		frappe.throw(_("Origin not allowed"), frappe.PermissionError)
+	ok, why = _caller_ok(src, origin)
+	if not ok:
+		frappe.throw(_("Origin not allowed") if why == "origin" else _("IP not allowed"), frappe.PermissionError)
 	if origin:
 		_cors(origin)
 	# spam controls
@@ -174,10 +199,9 @@ def website_webhook(token: str = ""):
 	if not src:
 		frappe.throw(_("Unknown source"), frappe.AuthenticationError)
 	origin = frappe.get_request_header("Origin") or ""
-	if origin and not _origin_ok(src, origin):
-		frappe.throw(_("Origin not allowed"), frappe.PermissionError)
-	if not _ip_ok(src):
-		frappe.throw(_("IP not allowed"), frappe.PermissionError)
+	ok, why = _caller_ok(src, origin)
+	if not ok:
+		frappe.throw(_("Origin not allowed") if why == "origin" else _("IP not allowed"), frappe.PermissionError)
 	if origin:
 		_cors(origin)
 	raw_text = frappe.request.get_data(as_text=True) or ""
