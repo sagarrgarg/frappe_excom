@@ -10,6 +10,8 @@ import json
 from urllib.parse import urlparse
 
 import frappe
+
+from excom.excom.api.chat import _check_excom_access
 from frappe import _
 from frappe.frappeclient import FrappeClient
 from frappe.utils import get_request_session
@@ -125,7 +127,11 @@ def are_push_notifications_enabled() -> bool:
 
 	- Frappe Cloud: delegates to Push Notification Settings relay flag.
 	- Excom Cloud: always True (credentials validated at Settings save).
+
+	Trivial on its own, but every Excom endpoint should want an Excom role before it answers: an
+	endpoint any logged-in account can call is one fewer thing an audit can take for granted.
 	"""
+	_check_excom_access()
 	try:
 		push_service = (
 			frappe.db.get_single_value("Excom Settings", "push_notification_service")

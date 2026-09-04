@@ -16,7 +16,7 @@ GUARDS = {
 	"_check_excom_access", "_check_manager_access", "_check_thread_access", "_check_doc_read",
 	"_check_broadcast_access", "_assert_allowed", "_assert_in_scope", "_source_by_token",
 	"has_permission", "only_for", "check_permission", "_validate_session", "_verify_hmac_signature",
-	"_caller_ok", "parse_signed_request",
+	"_caller_ok", "parse_signed_request", "_check_identity_access", "_check_record_access",
 }
 # Public by design. Each line says why it is safe to leave open.
 ALLOWED = {
@@ -71,7 +71,7 @@ class TestEndpointGuards(FrappeTestCase):
 
 GUARDS_BEFORE_BYPASS = {
 	"_check_manager_access", "_check_thread_access", "_check_excom_access", "_assert_allowed",
-	"only_for", "_assert_in_scope", "_check_access",
+	"only_for", "_assert_in_scope", "_check_access", "_check_identity_access", "_check_record_access",
 }
 
 BYPASS_ALLOWED = {

@@ -13,7 +13,7 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
-from excom.excom.api.chat import _check_excom_access
+from excom.excom.api.chat import _check_excom_access, _check_identity_access, _check_thread_access
 
 
 def _check_doc_read(doctype: str, name: str):
@@ -23,6 +23,18 @@ def _check_doc_read(doctype: str, name: str):
         frappe.throw(_("{0} {1} not found").format(doctype, name), frappe.DoesNotExistError)
     if not frappe.has_permission(doctype, "read", doc=name):
         frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+
+
+
+def _check_record_access(doctype: str, name: str) -> None:
+	"""A CRM record's feed is as private as the record."""
+	from excom.excom.services.crm_visibility import can_read
+
+	if not frappe.has_permission(doctype, "read"):
+		frappe.throw(_("You do not have access to this record"), frappe.PermissionError)
+	if frappe.db.exists(doctype, name) and not can_read(frappe.get_doc(doctype, name)):
+		frappe.throw(_("You do not have access to this record"), frappe.PermissionError)
 
 
 @frappe.whitelist()
@@ -75,6 +87,12 @@ def get_activity(reference_doctype: str = "", reference_name: str = "", thread_i
     Client merges in thread system messages. P3 replaces this with the CRM endpoint.
     """
     _check_excom_access()
+    # The feed is only as private as the record it describes. Checking nothing but "is this an
+    # Excom user" let any agent read another desk's activity, transfers and notes.
+    if reference_doctype == "Excom Thread" and reference_name:
+        _check_thread_access(reference_name)
+    elif reference_doctype and reference_name:
+        _check_record_access(reference_doctype, reference_name)
     items: list = []
 
     if reference_doctype and reference_name:
@@ -121,6 +139,9 @@ def get_activity(reference_doctype: str = "", reference_name: str = "", thread_i
         except ValueError:
             ids = []
     if ids:
+        from excom.excom.api.chat import _user_can_access_thread
+
+        ids = [t for t in ids if _user_can_access_thread(t)]
         for t in frappe.get_all("Excom Thread", filters={"name": ["in", ids], "closure_outcome": ["is", "set"]}, fields=["name", "closure_outcome", "closure_reason", "closed_by", "closed_at"], ignore_permissions=True):
             items.append({"kind": "closure", "id": f"close-{t.name}", "by": frappe.utils.get_fullname(t.closed_by), "at": str(t.closed_at), "outcome": t.closure_outcome, "reason": t.closure_reason})
         logs = frappe.db.sql(
@@ -204,7 +225,7 @@ def close_conversation(omni_identity: str, outcome: str = "Resolved", reason: st
     negative outcomes — close the CRM record too (Lead → Do Not Contact, Opportunity → Lost)."""
     from excom.excom.api.chat import _user_can_access_thread
     from excom.excom.services import crm_gateway as gw
-    _check_excom_access()
+    _check_identity_access(omni_identity)
     if outcome not in OUTCOMES:
         frappe.throw(_("Unknown outcome: {0}").format(outcome))
     user = frappe.session.user
@@ -234,7 +255,7 @@ def reopen_conversation(omni_identity: str, note: str = "") -> dict:
     """Undo a closure: threads back to Open, closure fields cleared, CRM record reopened if we closed it."""
     from excom.excom.api.chat import _user_can_access_thread
     from excom.excom.services import crm_gateway as gw
-    _check_excom_access()
+    _check_identity_access(omni_identity)
     threads = [t for t in frappe.get_all("Excom Thread", filters={"omni_identity": omni_identity, "status": "Closed"}, pluck="name") if _user_can_access_thread(t)]
     text = "<b>Reopened</b>" + (f" — {frappe.utils.escape_html(note)}" if note else "")
     for t in threads:
@@ -258,7 +279,7 @@ def reopen_conversation(omni_identity: str, note: str = "") -> dict:
 def get_identity_contact(omni_identity: str) -> dict:
 	"""A contact that has no conversation yet (a migrated or web-form lead): enough to open the record pane,
 	show Details / Tasks / Notes / Activity and offer 'Start conversation'."""
-	_check_excom_access()
+	_check_identity_access(omni_identity)
 	oi = frappe.db.get_value("Omni Identity", omni_identity, ["name", "display_name", "primary_phone", "primary_email", "primary_whatsapp", "creation"], as_dict=True)
 	if not oi:
 		frappe.throw(_("Contact not found"), frappe.DoesNotExistError)
@@ -271,13 +292,13 @@ def get_identity_contact(omni_identity: str) -> dict:
 @frappe.whitelist()
 def get_identity_notes(omni_identity: str) -> list:
 	"""Notes tab: every note about this person, wherever it sits (linked records, threads, identity)."""
-	_check_excom_access()
+	_check_identity_access(omni_identity)
 	from excom.excom.services.notes import list_notes
 	return list_notes(omni_identity)
 
 
 @frappe.whitelist()
 def add_identity_note(omni_identity: str, content: str, thread: str = "") -> dict:
-	_check_excom_access()
+	_check_identity_access(omni_identity)
 	from excom.excom.services.notes import add_note
 	return add_note(omni_identity, content, thread or None)

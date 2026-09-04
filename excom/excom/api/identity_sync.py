@@ -59,7 +59,7 @@ def get_sync_status() -> dict:
         {"done": bool, "current": int, "total": int, "phase": str, "percent": int}
         or {"done": True, "stats": {...}} when finished.
     """
-    _check_excom_access()
+    _check_manager_access()
     progress = frappe.cache.get_value(PROGRESS_KEY)
     if not progress:
         return {"done": True, "message": "No sync in progress."}

@@ -9,7 +9,7 @@ import json
 import frappe
 from frappe import _
 
-from excom.excom.api.chat import _check_excom_access
+from excom.excom.api.chat import _check_excom_access, _check_identity_access
 from excom.excom.services import crm_flow
 from excom.excom.services import crm_gateway as gw
 from excom.excom.utils.ratelimit import user_rate_limit
@@ -366,7 +366,7 @@ def _join_threads(rows: list) -> None:
 @frappe.whitelist()
 def get_records_for_identity(omni_identity: str) -> list:
 	"""CRM records linked to an identity, precedence order — used by the record header chip."""
-	_check_excom_access()
+	_check_identity_access(omni_identity)
 	out = []
 	for r in gw.find_open_records_for_identity(omni_identity):
 		if frappe.has_permission(r.doctype, "read", doc=r.name):

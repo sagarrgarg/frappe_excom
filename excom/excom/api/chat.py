@@ -58,6 +58,40 @@ def _user_can_access_thread(thread_id: str) -> bool:
     return can_access(thread_id, frappe.session.user)
 
 
+def _check_identity_access(omni_identity: str) -> None:
+    """A contact is yours if one of their conversations or records is yours.
+
+    _check_excom_access() only asks "are you an Excom user at all", which let any agent read another
+    desk's contact, their activity trail, their linked records — and close or reopen their
+    conversations.
+
+    A contact nobody has claimed stays open to everybody, the same way an unclaimed chat does:
+    otherwise nobody could ever start the first conversation with a new lead.
+    """
+    _check_excom_access()
+    if not omni_identity:
+        frappe.throw(_("No contact given"), frappe.PermissionError)
+    from excom.excom.doctype.excom_thread.excom_thread import can_access
+
+    threads = frappe.get_all("Excom Thread", filters={"omni_identity": omni_identity}, pluck="name")
+    for thread in threads:
+        if can_access(thread, frappe.session.user):
+            return
+
+    from excom.excom.services import crm_gateway as gw
+    from excom.excom.services.crm_visibility import can_read
+
+    records = gw.find_open_records_for_identity(omni_identity)
+    for r in records:
+        if can_read(frappe.get_doc(r.doctype, r.name), frappe.session.user):
+            return
+
+    if not threads and not records:
+        return  # nobody owns this contact yet
+
+    frappe.throw(_("You do not have access to this contact"), frappe.PermissionError)
+
+
 def _check_thread_access(thread_id: str) -> None:
     """Throw PermissionError unless the current user may see this thread (S4)."""
     _check_excom_access()
@@ -519,7 +553,7 @@ def get_linked_entities(omni_identity: str):
     Fetch all linked ERP entities from the Omni Identity's linked_entities child table.
     Returns list of {linked_doctype, linked_name, role, title} for display in the sidebar.
     """
-    _check_excom_access()
+    _check_identity_access(omni_identity)
     if not omni_identity or not frappe.db.exists("Omni Identity", omni_identity):
         return []
 
@@ -571,7 +605,7 @@ def get_conversation_stats(omni_identity: str):
       and the next outbound reply (calculated per-thread, then averaged)
     - channels: list of distinct channels used
     """
-    _check_excom_access()
+    _check_identity_access(omni_identity)
     empty = {
         "total_messages": 0,
         "inbound_count": 0,
@@ -652,7 +686,7 @@ def get_ai_suggestions(thread_id: str, force_refresh: bool = False):
     Phase 2 stub: computes basic insights from message history.
     Full LLM integration deferred to Phase 5.
     """
-    _check_excom_access()
+    _check_thread_access(thread_id)  # it summarises the conversation, so it is the conversation
     if not thread_id or not frappe.db.exists("Excom Thread", thread_id):
         return _empty_ai_response()
 
@@ -908,7 +942,7 @@ def get_response_metrics(omni_identity: str):
     Calculates average response time for an Omni Identity.
     Time between last inbound and next outbound per thread.
     """
-    _check_excom_access()
+    _check_identity_access(omni_identity)
     if not omni_identity:
         return {"avg_response_time_seconds": None}
 
@@ -1185,7 +1219,7 @@ def get_related_documents(omni_identity: str):
     Customer-side: Quotation, Sales Order, Delivery Note, Sales Invoice.
     Supplier-side: Request for Quotation, Purchase Order, Purchase Receipt, Purchase Invoice.
     """
-    _check_excom_access()
+    _check_identity_access(omni_identity)
     result = {
         "quotations": [],
         "sales_orders": [],

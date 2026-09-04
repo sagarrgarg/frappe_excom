@@ -11,7 +11,7 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
-from excom.excom.api.chat import _check_excom_access
+from excom.excom.api.chat import _check_excom_access, _check_identity_access
 
 
 @frappe.whitelist()
@@ -102,7 +102,7 @@ def add_subscriber(subscriber_list: str, omni_identity: str) -> dict:
 
     Auto-creates the Excom Subscriber record.
     """
-    _check_excom_access()
+    _check_identity_access(omni_identity)
     if frappe.db.exists(
         "Excom Subscriber",
         {"subscriber_list": subscriber_list, "omni_identity": omni_identity},
