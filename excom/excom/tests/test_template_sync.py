@@ -21,3 +21,6 @@ class TestTemplateSync(FrappeTestCase):
 			wt.make_request = orig
 		self.assertEqual([t["name"] for t in r["data"]], ["t1", "t2"]); self.assertEqual(r["pages"], 2)
 		self.assertTrue(calls[0].startswith("https://graph.facebook.com/v26.0/WABA1/message_templates?fields=")); self.assertIn("limit=200", calls[0])
+
+	def test_fetch_is_whitelisted_for_desk_button(self):
+		self.assertTrue(getattr(wt.fetch, "whitelisted", False) or wt.fetch in frappe.whitelisted or "excom.excom.doctype.whatsapp_templates.whatsapp_templates.fetch" in [f"{getattr(x, '__module__', '')}.{getattr(x, '__name__', '')}" for x in frappe.whitelisted])

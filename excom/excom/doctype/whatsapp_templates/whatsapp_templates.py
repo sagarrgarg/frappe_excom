@@ -459,7 +459,6 @@ def _extract_header_samples(example: dict) -> str | None:
     return None
 
 
-@frappe.whitelist()
 def _fetch_all_templates(creds: dict, biz_id: str) -> dict:
     """GET /{waba}/message_templates following paging.next — Meta pages at 25, a busy WABA has more."""
     base = (creds["url"] or "https://graph.facebook.com").rstrip("/")
@@ -477,6 +476,7 @@ def _fetch_all_templates(creds: dict, biz_id: str) -> dict:
     return {"data": data, "pages": pages}
 
 
+@frappe.whitelist()
 def fetch():
     """Fetch templates from Meta for all active WhatsApp channel accounts.
 
