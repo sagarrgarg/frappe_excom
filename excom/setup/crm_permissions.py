@@ -34,6 +34,12 @@ MATRIX: dict[str, dict[str, tuple[int, int, int, int]]] = {
 	# Needed for the record pane: activity, notes and the assignment todos.
 	"Communication": {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1)},
 	"ToDo": {AGENT: (1, 1, 1, 1), MANAGER: (1, 1, 1, 1)},
+	# Every note in Excom — the internal note on a chat and the note on the Notes tab — is a Frappe
+	# Comment, and stock Frappe lets only System Manager create one. Writing a note is the most
+	# basic thing an agent does, and it worked only because the API bypassed permissions. Notes are
+	# append-only on purpose: an agent adds their own and reads the team's, and nobody quietly
+	# rewrites somebody else's note. A manager can correct one.
+	"Comment": {AGENT: (1, 0, 1, 0), MANAGER: (1, 1, 1, 1)},
 }
 
 

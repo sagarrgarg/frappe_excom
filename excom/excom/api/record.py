@@ -40,7 +40,6 @@ def get_notes(reference_doctype: str, reference_name: str, limit: int = 50) -> l
         fields=["name", "content", "comment_email", "comment_by", "creation", "owner"],
         order_by="creation desc",
         limit=int(limit),
-        ignore_permissions=True,
     )
     return rows
 
@@ -65,7 +64,7 @@ def add_note(reference_doctype: str, reference_name: str, content: str) -> dict:
             "comment_by": frappe.utils.get_fullname(user),
         }
     )
-    doc.insert(ignore_permissions=True)
+    doc.insert()  # the agent's own Comment create right, not a bypass
     return {"name": doc.name, "creation": str(doc.creation)}
 
 
@@ -86,7 +85,6 @@ def get_activity(reference_doctype: str = "", reference_name: str = "", thread_i
             fields=["name", "owner", "creation", "content"],
             order_by="creation desc",
             limit=50,
-            ignore_permissions=True,
         ):
             items.append({"kind": "comment", "id": c.name, "by": frappe.utils.get_fullname(c.owner), "at": str(c.creation), "text": frappe.utils.strip_html((c.content or "").replace("<br>", " · "))})
         versions = frappe.get_all(

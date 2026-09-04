@@ -59,3 +59,63 @@ class TestEndpointGuards(FrappeTestCase):
 	def test_allowlist_entries_still_exist(self):
 		names = {n for n, _ in _whitelisted()}
 		self.assertEqual(sorted(set(ALLOWED) - names), [], "ALLOWED lists endpoints that no longer exist")
+
+
+# ─── permission bypasses ─────────────────────────────────────────────────────
+# ignore_permissions is not forbidden — a Guest-facing endpoint, a signed callback and the
+# scheduler all legitimately write records no session user could write. What is forbidden is using
+# it to paper over a permission the role should simply have been given: that was how an agent came
+# to be unable to write a note, and nobody noticed for months because the API never asked.
+#
+# So: every bypass in the API layer must sit behind a check, or be named here with its reason.
+
+GUARDS_BEFORE_BYPASS = {
+	"_check_manager_access", "_check_thread_access", "_check_excom_access", "_assert_allowed",
+	"only_for", "_assert_in_scope", "_check_access",
+}
+
+BYPASS_ALLOWED = {
+	"meta.data_deletion_callback": "Meta calls this signed, with no session user at all",
+	"meta.delete_platform_user_data": "called by the signed deletion callback above",
+	"webchat.create_session": "a website visitor is Guest and owns nothing yet",
+	"webchat.send_visitor_message": "same visitor, still Guest",
+	"flow_endpoint.save_flow_data": "runs after the HMAC signature is verified",
+	"email.send_scheduled_emails": "the scheduler, sending as the user who scheduled it",
+	"email.schedule_email": "internal helper; the whitelisted caller checks thread access",
+	"chat._to_absolute_url": "internal helper that republishes a file for Meta to fetch",
+	"notification.register_site_on_excom_cloud": "System Manager only, writes the site's own config",
+	"mobile.create_oauth_client": "System Manager only, writes the site's own OAuth client",
+}
+
+
+def _api_bypasses():
+	api_dir = os.path.join(APP, "excom", "api")
+	for fname in sorted(os.listdir(api_dir)):
+		if not fname.endswith(".py"):
+			continue
+		path = os.path.join(api_dir, fname)
+		src = open(path, errors="ignore").read()
+		lines = src.splitlines()
+		try:
+			tree = ast.parse(src)
+		except SyntaxError:
+			continue
+		for node in ast.walk(tree):
+			if not isinstance(node, ast.FunctionDef):
+				continue
+			body = "\n".join(lines[node.lineno - 1:node.end_lineno])
+			if "ignore_permissions=True" not in body:
+				continue
+			guarded = any(g in body for g in GUARDS_BEFORE_BYPASS)
+			yield f"{fname[:-3]}.{node.name}", guarded
+
+
+class TestPermissionBypasses(FrappeTestCase):
+	def test_every_api_bypass_is_guarded_or_justified(self):
+		loose = sorted(name for name, guarded in _api_bypasses() if not guarded and name not in BYPASS_ALLOWED)
+		self.assertEqual(loose, [], "ignore_permissions with no check in front of it:\n  " + "\n  ".join(loose))
+
+	def test_the_justified_list_has_no_stale_entries(self):
+		names = {n for n, _ in _api_bypasses()}
+		self.assertEqual(sorted(set(BYPASS_ALLOWED) - names), [],
+		                 "these no longer bypass anything; drop them from BYPASS_ALLOWED")

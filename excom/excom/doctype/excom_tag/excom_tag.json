@@ -68,7 +68,8 @@
    "export": 1,
    "read": 1,
    "report": 1,
-   "role": "Excom User"
+   "role": "Excom User",
+   "create": 1
   }
  ],
  "sort_field": "modified",

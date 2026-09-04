@@ -824,7 +824,7 @@ def transfer_thread(thread_id: str, target_team: str, target_user: str = "", not
         "transferred_by": frappe.session.user,
         "note": note[:500] if note else "",
         "transferred_at": now_datetime(),
-    }).insert(ignore_permissions=True)
+    }).insert()  # agents may write the transfer log; nobody may edit or delete it
 
     frappe.publish_realtime(
         "excom:thread_transferred",
@@ -1129,7 +1129,7 @@ def add_thread_tag(thread_id: str, tag_name: str):
         frappe.get_doc({
             "doctype": "Excom Tag",
             "tag_name": tag_name,
-        }).insert(ignore_permissions=True)
+        }).insert()  # agents may create a tag; editing a shared one stays with a manager
 
     existing = frappe.db.exists(
         "Excom Thread Tag", {"parent": thread_id, "tag": tag_name}
@@ -1143,7 +1143,7 @@ def add_thread_tag(thread_id: str, tag_name: str):
         "added_by": frappe.session.user,
         "added_on": now_datetime(),
     })
-    thread.save(ignore_permissions=True)
+    thread.save()
     return {"success": True}
 
 
@@ -1156,7 +1156,7 @@ def remove_thread_tag(thread_id: str, tag_name: str):
 
     thread = frappe.get_doc("Excom Thread", thread_id)
     thread.tags = [t for t in thread.tags if t.tag != tag_name]
-    thread.save(ignore_permissions=True)
+    thread.save()
     return {"success": True}
 
 
