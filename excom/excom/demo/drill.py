@@ -189,13 +189,38 @@ def build():
 
 def teardown(quiet=False):
 	frappe.set_user("Administrator")
+	# The rotation is live and points at users about to be deleted, so it goes first: a rule
+	# handing leads to a deleted account is worse than no rule.
+	for rule in frappe.get_all("Assignment Rule", filters={"document_type": ["in", ["Lead", "Opportunity"]]}, pluck="name"):
+		users = frappe.get_all("Assignment Rule User", filters={"parent": rule}, pluck="user")
+		if any(u.startswith("drill.") for u in users):
+			doc = frappe.get_doc("Assignment Rule", rule)
+			doc.set("users", [{"user": u} for u in users if not u.startswith("drill.")])
+			doc.disabled = 1 if not doc.users else doc.disabled
+			doc.flags.ignore_permissions = True
+			doc.save()
+	frappe.db.commit()
+
+	failed = 0
 	for name in frappe.get_all("Lead", filters={"lead_name": ["like", "Drill %"]}, pluck="name"):
-		frappe.db.delete("ToDo", {"reference_type": "Lead", "reference_name": name})
-		frappe.db.delete("Comment", {"reference_doctype": "Lead", "reference_name": name})
-		for c in frappe.get_all("Dynamic Link", {"link_name": name, "link_doctype": "Lead", "parenttype": "Contact"}, pluck="parent"):
-			frappe.db.delete("Dynamic Link", {"parent": c})
-			frappe.delete_doc("Contact", c, force=True, ignore_permissions=True)
-		frappe.delete_doc("Lead", name, force=True, ignore_permissions=True, delete_permanently=True)
+		try:
+			frappe.db.delete("ToDo", {"reference_type": "Lead", "reference_name": name})
+			frappe.db.delete("Comment", {"reference_doctype": "Lead", "reference_name": name})
+			frappe.db.delete("Excom Stage Change Log", {"ref_name": name})
+			for c in frappe.get_all("Dynamic Link", {"link_name": name, "link_doctype": "Lead", "parenttype": "Contact"}, pluck="parent"):
+				frappe.db.delete("Dynamic Link", {"parent": c})
+				frappe.delete_doc("Contact", c, force=True, ignore_permissions=True)
+			oi = frappe.db.get_value("Lead", name, "omni_identity")
+			if oi:
+				frappe.db.delete("Omni Identity Link", {"parent": oi, "linked_name": name})
+			frappe.delete_doc("Lead", name, force=True, ignore_permissions=True, delete_permanently=True)
+		except Exception:
+			# one stubborn row must not strand the other six hundred
+			failed += 1
+			frappe.db.rollback()
+	frappe.db.commit()
+	if failed and not quiet:
+		print(f"{failed} leads could not be deleted; run teardown again")
 	for oi in frappe.get_all("Omni Identity", {"display_name": ["like", "Drill %"]}, pluck="name"):
 		frappe.db.delete("Excom Message", {"omni_identity": oi})
 		for t in frappe.get_all("Excom Thread", {"omni_identity": oi}, pluck="name"):
@@ -205,11 +230,26 @@ def teardown(quiet=False):
 			frappe.db.delete(child, {"parent": oi})
 		frappe.delete_doc("Omni Identity", oi, force=True, ignore_permissions=True)
 	for t in ["Drill Doomed", "Drill Deep", "Drill West A", "Drill West B", "Drill West", "Drill East", "Drill Lonely", "Drill Group"]:
-		if frappe.db.exists("Excom Team", t):
-			# the teams hold drill work by design; it is deleted above, so this is a clean delete
+		if not frappe.db.exists("Excom Team", t):
+			continue
+		try:
 			frappe.delete_doc("Excom Team", t, force=True, ignore_permissions=True)
+		except Exception as e:
+			if not quiet:
+				print(f"kept {t}: {str(e)[:90]}")
 	for u in frappe.get_all("User", {"name": ["like", "drill.%@example.com"]}, pluck="name"):
-		frappe.delete_doc("User", u, force=True, ignore_permissions=True)
+		# Deleting a User cascades through every ToDo and Comment it touched, which on a drill that
+		# made hundreds of leads is where the lock timeouts come from. Clear the trail first.
+		frappe.db.delete("ToDo", {"allocated_to": u})
+		frappe.db.delete("ToDo", {"owner": u})
+		frappe.db.commit()
+		try:
+			frappe.delete_doc("User", u, force=True, ignore_permissions=True)
+			frappe.db.commit()
+		except Exception as e:
+			frappe.db.rollback()
+			if not quiet:
+				print(f"kept {u}: {str(e)[:80]}")
 	frappe.db.commit()
 	if not quiet:
 		print("drill data removed")
