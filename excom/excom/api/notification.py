@@ -162,6 +162,8 @@ def subscribe(
 	Returns:
 		'Subscribed' on success.
 	"""
+	from excom.excom.api.chat import _check_excom_access
+	_check_excom_access()
 	if frappe.db.exists(
 		"Excom Push Token",
 		{"fcm_token": fcm_token, "user": frappe.session.user},
@@ -192,6 +194,8 @@ def unsubscribe(fcm_token: str) -> str:
 	Returns:
 		'Unsubscribed' on success.
 	"""
+	from excom.excom.api.chat import _check_excom_access
+	_check_excom_access()
 	names = frappe.get_all(
 		"Excom Push Token",
 		filters={"fcm_token": fcm_token, "user": frappe.session.user},

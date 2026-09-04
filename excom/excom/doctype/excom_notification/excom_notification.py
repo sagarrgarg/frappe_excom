@@ -469,6 +469,8 @@ class ExcomNotification(Document):
 @frappe.whitelist()
 def call_trigger_notifications():
     """Trigger notifications."""
+    from excom.excom.api.chat import _check_manager_access
+    _check_manager_access()
     try:
         # Directly call the trigger_notifications function
         trigger_notifications()  

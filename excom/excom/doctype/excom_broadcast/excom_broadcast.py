@@ -169,6 +169,8 @@ class ExcomBroadcast(Document):
         Returns:
             {"subject": "...", "body": "...", "subscriber": "..."}
         """
+        from excom.excom.api.chat import _check_excom_access
+        _check_excom_access()
         if self.channel != "Email":
             frappe.throw(_("Preview is only for Email broadcasts"))
 

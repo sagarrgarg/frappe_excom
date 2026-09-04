@@ -44,6 +44,8 @@ class ExcomChannelAccount(Document):
 		OAuth flow (no own token yet, but the shared cache has a fresh one), this
 		captures the tokens into the account's own encrypted fields.
 		"""
+		from excom.excom.api.chat import _check_manager_access
+		_check_manager_access()
 		if self.channel != "email":
 			return {"authorized": False}
 
@@ -64,6 +66,8 @@ class ExcomChannelAccount(Document):
 		this account's own encrypted fields, after verifying the mailbox identity.
 		Idempotent and safe to call at any time.
 		"""
+		from excom.excom.api.chat import _check_manager_access
+		_check_manager_access()
 		if self.channel != "email":
 			return {"authorized": False}
 

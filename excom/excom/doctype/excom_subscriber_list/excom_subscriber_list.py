@@ -40,6 +40,8 @@ class ExcomSubscriberList(Document):
         Returns:
             {"added": int, "skipped": int}
         """
+        from excom.excom.api.chat import _check_manager_access
+        _check_manager_access()
         from excom.excom.services.identity_sync import (
             sync_single_customer,
             sync_single_supplier,

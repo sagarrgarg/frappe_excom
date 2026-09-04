@@ -608,6 +608,8 @@ def fetch():
     Groups accounts by ``wa_business_id`` so each WABA is queried once,
     and every account under that business ID is auto-linked to each template.
     """
+    from excom.excom.api.chat import _check_manager_access
+    _check_manager_access()
     accounts = frappe.get_all(
         "Excom Channel Account",
         filters={"status": "Active", "channel": ["in", ["whatsapp", "WhatsApp"]]},

@@ -6,9 +6,11 @@ import hashlib
 import hmac
 import frappe
 from frappe import _
+from frappe.rate_limiter import rate_limit
 
 
 @frappe.whitelist(allow_guest=True)
+@rate_limit(limit=120, seconds=60)
 def handle_flow_request():
     """
     Handle WhatsApp Flow data exchange requests.
@@ -19,6 +21,11 @@ def handle_flow_request():
     Endpoint URL to configure in Meta:
     https://your-site.com/api/method/excom.excom.api.flow_endpoint.handle_flow_request
     """
+    # Meta signs flow data-exchange requests with the app secret; unsigned callers are refused once any
+    # secret is configured (same rule as the webhook). Without this, anyone could POST flow completions.
+    from excom.excom.utils.webhook import _verify_hmac_signature
+    if frappe.request and frappe.request.method == "POST" and not _verify_hmac_signature():
+        frappe.throw(_("Invalid signature"), frappe.AuthenticationError)
     try:
         # Get request data
         if frappe.request.method == "GET":

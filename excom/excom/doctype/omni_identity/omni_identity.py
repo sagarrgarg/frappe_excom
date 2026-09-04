@@ -169,6 +169,8 @@ def resolve_identity(phone: str = "", email: str = "", channel: str = "", channe
 
 	Returns the Omni Identity name.
 	"""
+	from excom.excom.api.chat import _check_excom_access
+	_check_excom_access()
 	norm_phone = normalize_phone(phone)
 	norm_email = normalize_email(email)
 	identity_name = None
@@ -437,6 +439,8 @@ def _find_potential_duplicate(display_name: str, norm_phone: str, norm_email: st
 @frappe.whitelist()
 def merge_identities(source: str, target: str):
 	"""Merge source identity into target (master)."""
+	from excom.excom.api.chat import _check_manager_access
+	_check_manager_access()
 	source_doc = frappe.get_doc("Omni Identity", source)
 	target_doc = frappe.get_doc("Omni Identity", target)
 

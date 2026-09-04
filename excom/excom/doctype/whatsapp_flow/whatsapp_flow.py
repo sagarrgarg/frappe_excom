@@ -317,6 +317,8 @@ class WhatsAppFlow(Document):
     @frappe.whitelist()
     def create_on_whatsapp(self):
         """Create the flow on WhatsApp Business API."""
+        from excom.excom.api.chat import _check_manager_access
+        _check_manager_access()
         if self.flow_id:
             frappe.throw(_("Flow already exists on WhatsApp. Use update instead."))
 
@@ -345,6 +347,8 @@ class WhatsAppFlow(Document):
     @frappe.whitelist()
     def upload_flow_json(self):
         """Upload flow JSON to WhatsApp."""
+        from excom.excom.api.chat import _check_manager_access
+        _check_manager_access()
         if not self.flow_id:
             frappe.throw(_("Flow must be created on WhatsApp first"))
 
@@ -383,6 +387,8 @@ class WhatsAppFlow(Document):
     @frappe.whitelist()
     def publish_flow(self):
         """Publish the flow to make it available for use."""
+        from excom.excom.api.chat import _check_manager_access
+        _check_manager_access()
         if not self.flow_id:
             frappe.throw(_("Flow must be created on WhatsApp first"))
 
@@ -412,6 +418,8 @@ class WhatsAppFlow(Document):
     @frappe.whitelist()
     def deprecate_flow(self):
         """Deprecate the flow."""
+        from excom.excom.api.chat import _check_manager_access
+        _check_manager_access()
         if not self.flow_id:
             frappe.throw(_("Flow must be created on WhatsApp first"))
 
@@ -431,6 +439,8 @@ class WhatsAppFlow(Document):
     @frappe.whitelist()
     def delete_from_whatsapp(self):
         """Delete the flow from WhatsApp."""
+        from excom.excom.api.chat import _check_manager_access
+        _check_manager_access()
         if not self.flow_id:
             frappe.throw(_("Flow does not exist on WhatsApp"))
 
@@ -454,6 +464,8 @@ class WhatsAppFlow(Document):
     @frappe.whitelist()
     def get_flow_preview(self):
         """Get the preview URL for the flow."""
+        from excom.excom.api.chat import _check_manager_access
+        _check_manager_access()
         if not self.flow_id:
             frappe.throw(_("Flow must be created on WhatsApp first"))
 
@@ -486,6 +498,8 @@ class WhatsAppFlow(Document):
             phone_number: Phone number to send to (must be a test number for draft flows)
             message: Optional message body
         """
+        from excom.excom.api.chat import _check_manager_access
+        _check_manager_access()
         if not self.flow_id:
             frappe.throw(_("Flow must be created on WhatsApp first"))
 
@@ -528,6 +542,8 @@ class WhatsAppFlow(Document):
     @frappe.whitelist()
     def get_flow_status(self):
         """Get flow status and validation errors from WhatsApp."""
+        from excom.excom.api.chat import _check_manager_access
+        _check_manager_access()
         if not self.flow_id:
             frappe.throw(_("Flow must be created on WhatsApp first"))
 
@@ -575,6 +591,8 @@ class WhatsAppFlow(Document):
     @frappe.whitelist()
     def sync_from_whatsapp(self):
         """Sync flow details from WhatsApp."""
+        from excom.excom.api.chat import _check_manager_access
+        _check_manager_access()
         if not self.flow_id:
             frappe.throw(_("Flow ID is required to sync"))
 
@@ -654,6 +672,8 @@ def get_whatsapp_flows(whatsapp_account):
     Returns:
         List of flows from WhatsApp.
     """
+    from excom.excom.api.chat import _check_manager_access
+    _check_manager_access()
     creds = _flow_creds(whatsapp_account)
     url = f"{creds['url']}/{creds['version']}/{creds['business_id']}/flows?fields=id,name,status,categories"
 
@@ -688,6 +708,8 @@ def import_flow_from_whatsapp(whatsapp_account, flow_id, flow_name=None):
     Returns:
         Name of created WhatsApp Flow document
     """
+    from excom.excom.api.chat import _check_manager_access
+    _check_manager_access()
     # Check if flow already exists
     existing = frappe.db.exists("WhatsApp Flow", {"flow_id": flow_id})
     if existing:
@@ -775,6 +797,8 @@ def sync_all_flows(whatsapp_account):
     Returns:
         Dict with counts: imported, updated, skipped
     """
+    from excom.excom.api.chat import _check_manager_access
+    _check_manager_access()
     creds = _flow_creds(whatsapp_account)
     url = f"{creds['url']}/{creds['version']}/{creds['business_id']}/flows?fields=id,name,status,categories"
 
