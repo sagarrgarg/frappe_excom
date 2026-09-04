@@ -12,6 +12,7 @@ class OmniIdentity(Document):
 		self.normalize_aliases()
 		self.compute_fingerprint()
 		self.validate_merge_state()
+		self.prune_dead_links()
 		self.validate_unique_links()
 
 	def normalize_identifiers(self):
@@ -44,6 +45,29 @@ class OmniIdentity(Document):
 			return
 		raw = "|".join(parts)
 		self.hash_fingerprint = hashlib.sha256(raw.encode()).hexdigest()[:40]
+
+	def prune_dead_links(self):
+		"""Drop link rows whose target no longer exists.
+
+		Frappe validates every Link row on save, so one link to a deleted Contact makes the whole
+		identity unsaveable from then on: the record cannot take a new conversation, a new lead or a
+		merge, and the failure surfaces far from the deletion that caused it. This is not
+		hypothetical — 489 leads failed to get an identity during the CRM migration for exactly this
+		reason, each one reported as "Could not find Row #N: Linked Name: ...".
+
+		Deleting the party the link pointed at is the user's decision; refusing to save the identity
+		afterwards is not a way to honour it.
+		"""
+		alive = []
+		for row in self.get("links") or []:
+			if not row.linked_doctype or not row.linked_name:
+				continue
+			if frappe.db.exists(row.linked_doctype, row.linked_name):
+				alive.append(row)
+			else:
+				frappe.logger("excom").info(f"Omni Identity {self.name}: dropped dead link {row.linked_doctype} {row.linked_name}")
+		if len(alive) != len(self.get("links") or []):
+			self.set("links", alive)
 
 	def validate_merge_state(self):
 		if self.status == "Merged" and not self.merged_into:
