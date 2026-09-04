@@ -75,7 +75,8 @@ class TestMetaConnect(FrappeTestCase):
 		# WhatsApp number → whatsapp account with system token + app secret + verify token
 		e = mc.enable_asset(self.name, "WhatsApp Number", "555")
 		wa = frappe.get_doc("Excom Channel Account", e["linked_name"])
-		self.assertEqual((wa.channel, wa.wa_phone_id, wa.wa_business_id, wa.wa_webhook_verify_token), ("whatsapp", "555", "444", "qa-verify"))
+		self.assertEqual((wa.channel, wa.wa_phone_id, wa.wa_business_id), ("whatsapp", "555", "444"))
+		self.assertEqual(wa.get_password("wa_webhook_verify_token"), "qa-verify")  # a Password field now, not plaintext
 		self.assertEqual(wa.get_password("wa_token"), "SYS_TOKEN")
 		# re-discover keeps enabled state; enabling twice reuses the record
 		mc.discover(self.name)

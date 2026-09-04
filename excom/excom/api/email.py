@@ -42,6 +42,10 @@ def get_email_body(message_name: str):
         }
     """
     _check_excom_access()
+    thread = frappe.db.get_value("Excom Message", message_name, "thread")
+    if thread:
+        from excom.excom.api.chat import _check_thread_access
+        _check_thread_access(thread)
     msg = frappe.get_doc("Excom Message", message_name)
 
     if msg.message_type != "Email":
@@ -173,6 +177,9 @@ def search_emails(account_name: str, query: str, max_results: int = 20):
         List of email metadata dicts
     """
     _check_excom_access()
+    from excom.excom.api.chat import get_channel_accounts
+    if account_name not in {a["name"] for a in get_channel_accounts()}:
+        frappe.throw(_("You do not have access to that mailbox"), frappe.PermissionError)
     max_results = min(int(max_results), 50)
     results = gmail_service.search_messages(account_name, query, max_results)
     return results
@@ -204,7 +211,8 @@ def send_email(
     Returns:
         {"success": True, "message_name": "..."}
     """
-    from excom.excom.api.chat import _claim_on_talk
+    from excom.excom.api.chat import _check_thread_access, _claim_on_talk
+    _check_thread_access(thread_id)  # before anything else: sending from a thread you cannot see is not allowed
     _claim_on_talk(thread_id)
     if send_at:
         from frappe.utils import get_datetime, now_datetime

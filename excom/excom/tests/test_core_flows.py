@@ -383,3 +383,71 @@ class TestEnquiryText(_Base):
 			self.assertTrue(any("Need 500 boxes of cones" in (m.get("content_text") or "") for m in feed))
 			self.assertIn("Need 500 boxes", frappe.db.get_value("Excom Thread", log.thread, "last_message_preview") or "")
 		frappe.delete_doc("Excom Source", src.name, force=True, ignore_permissions=True)
+
+
+class TestVisibilityLeaks(_Base):
+	"""The audit of 2026-09-04: an agent could read any team's inbox, any email body and any mailbox."""
+
+	def _agent(self):
+		u = _mk_user("qa.core.leak@example.com")
+		team = frappe.get_doc({"doctype": "Excom Team", "team_name": "QA Leak Team", "members": [{"user": u, "role": "Member"}]}).insert(ignore_permissions=True)
+		other = frappe.get_doc({"doctype": "Excom Team", "team_name": "QA Other Team"}).insert(ignore_permissions=True)
+		frappe.db.commit()
+		return u, team.name, other.name
+
+	def test_team_filter_requires_membership(self):
+		from excom.excom.api.chat import get_threads
+		u, mine, other = self._agent()
+		frappe.set_user(u)
+		try:
+			get_threads(team=mine)  # my own team is fine
+			with self.assertRaises(frappe.PermissionError):
+				get_threads(team=other)
+		finally:
+			frappe.set_user("Administrator")
+			for t in (mine, other): frappe.delete_doc("Excom Team", t, force=True, ignore_permissions=True)
+
+	def test_email_body_and_search_are_thread_scoped(self):
+		import inspect
+		from excom.excom.api import email as api
+		self.assertIn("_check_thread_access", inspect.getsource(api.get_email_body))
+		self.assertIn("_check_thread_access", inspect.getsource(api.send_email))
+		self.assertIn("do not have access to that mailbox", inspect.getsource(api.search_emails))
+
+	def test_no_doctype_grants_rights_to_every_logged_in_user(self):
+		import json, os
+		root = os.path.join(os.path.dirname(__file__), "..", "doctype")
+		offenders = []
+		for d in os.listdir(root):
+			f = os.path.join(root, d, d + ".json")
+			if not os.path.exists(f):
+				continue
+			j = json.load(open(f))
+			for p in j.get("permissions") or []:
+				if p.get("role") == "All":
+					offenders.append(f"{j['name']} ({', '.join(k for k in ('read', 'write', 'create', 'delete') if p.get(k))})")
+		self.assertEqual(offenders, [], "doctypes granting rights to role 'All'")
+
+
+class TestIdempotencyAndMerge(_Base):
+	def test_duplicate_provider_message_is_refused_by_the_database(self):
+		from excom.excom.services.thread_service import ingest_inbound_message
+		oi = _mk_identity("QA Idem Person", "+919900000913")
+		t = _mk_thread(oi.name, key="qa-idem-1")
+		first = ingest_inbound_message(phone="+919900000913", channel=t.channel, account=t.account, provider_message_id="wamid.QA-IDEM", content_text="one", display_name="QA Idem Person")
+		self.assertTrue(first)
+		self.assertEqual(ingest_inbound_message(phone="+919900000913", channel=t.channel, account=t.account, provider_message_id="wamid.QA-IDEM", content_text="one again", display_name="QA Idem Person"), "")
+		self.assertEqual(frappe.db.count("Excom Message", {"provider_message_id": "wamid.QA-IDEM"}), 1)
+		idx = frappe.db.sql("SELECT NON_UNIQUE FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='tabExcom Message' AND index_name='unique_provider_message_id' LIMIT 1")
+		self.assertEqual(idx and idx[0][0], 0, "provider_message_id must carry a UNIQUE index, not a plain one")
+
+	def test_merge_rekeys_moved_threads(self):
+		"""Without this the next inbound message opens a second thread for the master identity."""
+		a = _mk_identity("QA Merge A", "+919900000914")
+		b = _mk_identity("QA Merge B", "+919900000915")
+		t = _mk_thread(a.name, key="qa-merge-1")
+		frappe.get_doc("Omni Identity", a.name).merge_into(frappe.get_doc("Omni Identity", b.name))
+		row = frappe.db.get_value("Excom Thread", t.name, ["omni_identity", "thread_key", "display_name"], as_dict=True)
+		self.assertEqual(row.omni_identity, b.name)
+		self.assertTrue(row.thread_key.endswith(b.name) or ":merged:" in row.thread_key, row.thread_key)
+		self.assertEqual(row.display_name, "QA Merge B")

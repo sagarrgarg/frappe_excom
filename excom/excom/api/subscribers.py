@@ -219,6 +219,8 @@ def import_from_doctype(
         {"added": int, "skipped": int}
     """
     _check_excom_access()
+    if doctype not in ("Customer", "Supplier", "Lead", "Contact"):
+        frappe.throw(_("Subscribers can only be imported from Customer, Supplier, Lead or Contact"), frappe.PermissionError)
     parsed_filters = json.loads(filters) if isinstance(filters, str) else filters
     doc = frappe.get_doc("Excom Subscriber List", subscriber_list)
     result = doc.add_subscribers_from_doctype(

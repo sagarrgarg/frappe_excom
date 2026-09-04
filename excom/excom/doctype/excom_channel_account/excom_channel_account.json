@@ -190,7 +190,7 @@
   {
    "depends_on": "eval:doc.channel=='whatsapp'",
    "fieldname": "wa_webhook_verify_token",
-   "fieldtype": "Data",
+   "fieldtype": "Password",
    "label": "Webhook Verify Token"
   },
   {

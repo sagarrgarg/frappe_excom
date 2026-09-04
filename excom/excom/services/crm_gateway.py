@@ -299,7 +299,7 @@ def promote_thread(thread: str, customer_type: str = "", by: str | None = None) 
 
 # ─── lists ────────────────────────────────────────────────────────────────────
 
-def list_pipeline(customer_type: str, filters: dict | None = None, limit: int = 500) -> list[dict]:
+def list_pipeline(customer_type: str, filters: dict | None = None, limit: int = 500, or_filters: list | None = None) -> list[dict]:
 	f: dict = {"status": ["in", ["Open", "Quotation", "Replied"]]}
 	if customer_type:
 		f["customer_type"] = customer_type
@@ -309,6 +309,7 @@ def list_pipeline(customer_type: str, filters: dict | None = None, limit: int = 
 	rows = frappe.get_list(
 		OPPORTUNITY,
 		filters=f,
+		or_filters=or_filters or None,
 		fields=[
 			"name", "customer_name", "party_name", "opportunity_from", "customer_type", "pipeline_stage", "stage_entered_at",
 			"next_action_at", "gate_flags", "opportunity_amount", "currency", "opportunity_owner", "omni_identity", "status",

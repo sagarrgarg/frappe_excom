@@ -168,6 +168,10 @@ def get_threads(
                 frappe.throw(_("You do not have access to the General inbox"), frappe.PermissionError)
         conditions += " AND t.assigned_team IS NULL"
     elif team:
+        if not is_manager:
+            from excom.excom.doctype.excom_team.excom_team import get_user_teams
+            if team not in get_user_teams():
+                frappe.throw(_("You are not a member of {0}").format(team), frappe.PermissionError)
         conditions += " AND t.assigned_team = %(team_filter)s"
         params["team_filter"] = team
     elif is_manager:
@@ -176,9 +180,12 @@ def get_threads(
         from excom.excom.doctype.excom_team.excom_team import get_user_teams
         user_teams = get_user_teams()
         if user_teams:
+            # General members may claim unassigned threads (see _user_can_access_thread), so they must
+            # be able to see them in the list too
+            unassigned = " OR t.assigned_team IS NULL" if "General" in user_teams else ""
             conditions += (
                 " AND (t.assigned_team IN %(user_teams)s"
-                " OR t.assigned_to = %(current_user)s)"
+                " OR t.assigned_to = %(current_user)s" + unassigned + ")"
             )
             params["user_teams"] = user_teams
         else:
@@ -1712,7 +1719,7 @@ def send_template_to_thread(
         "account": thread.account,
         "direction": "Outbound",
         "message_type": "Template",
-        "provider_message_id": provider_message_id,
+        "provider_message_id": provider_message_id or None,
         "provider_timestamp": now,
         "content_text": preview,
         "media_file": header_media_url or None,

@@ -288,12 +288,21 @@ def get_intake_queue(filters: str | dict | None = None) -> list:
 	return rows
 
 
+def opportunity_visibility(user: str | None = None) -> list | None:
+	"""Same rule as lead_visibility, keyed on the opportunity owner: Excom/System Managers see everything,
+	a team manager sees their teams' sources and their own, a member sees only what is assigned to them."""
+	ors = lead_visibility(user)
+	if ors is None:
+		return None
+	return [(["opportunity_owner", c[1], c[2]] if c[0] == "lead_owner" else c) for c in ors]
+
+
 @frappe.whitelist()
 @user_rate_limit(limit=120, seconds=60)
 def get_pipeline(customer_type: str = "", filters: str | dict | None = None) -> dict:
 	_check_excom_access()
 	f = json.loads(filters) if isinstance(filters, str) else (filters or {})
-	rows = gw.list_pipeline(customer_type, f)
+	rows = gw.list_pipeline(customer_type, f, or_filters=opportunity_visibility())
 	_join_threads(rows)
 	stages = gw.stages_for(customer_type) if customer_type else list(gw.STAGES.keys())
 	cols = {s: [] for s in stages}
@@ -391,6 +400,6 @@ def create_lead_manual(name: str, phone: str = "", email: str = "", company_name
 	src_row = frappe.db.get_value("Excom Source", intake_source, ["source_name", "default_campaign", "default_medium"], as_dict=True) if intake_source else None
 	src_label = (src_row and src_row.source_name) or "Organic Manual"
 	payload = {"name": name, "phone": phone_n, "email": email or None, "company_name": company_name or None, "customer_type": customer_type or "", "intake_source": intake_source or None, "owner": frappe.session.user, "first_touch_channel": "Manual", "first_touch_by": frappe.session.user, "source": src_label or "Organic Manual", "campaign": src_row.default_campaign if src_row else None, "medium": src_row.default_medium if src_row else None, "notes": notes or None}
-	r, created = resolve_or_create_lead(identity, "Manual", payload, ignore_permissions=True)
+	r, created = resolve_or_create_lead(identity, "Manual", payload, ignore_permissions=False)
 	frappe.db.commit()
 	return {"identity": identity, "ref": {"doctype": r.doctype, "name": r.name}, "created": created}

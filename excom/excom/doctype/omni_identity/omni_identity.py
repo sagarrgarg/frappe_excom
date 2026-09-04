@@ -121,7 +121,15 @@ class OmniIdentity(Document):
 
 		# Re-parent conversations so the inbox shows one contact (QA T6: threads/messages
 		# used to stay on the merged identity and surfaced as a duplicate row).
+		moved = frappe.get_all("Excom Thread", filters={"omni_identity": self.name}, fields=["name", "channel", "account"])
 		frappe.db.set_value("Excom Thread", {"omni_identity": self.name}, "omni_identity", master_identity.name, update_modified=False)
+		for t in moved:
+			# the key and the denormalised name follow the identity, or the next inbound message opens a second
+			# thread for the master and the inbox keeps showing the merged-away name
+			key = f"{t.channel}:{t.account}:{master_identity.name}"
+			if frappe.db.get_value("Excom Thread", {"thread_key": key, "name": ["!=", t.name]}, "name"):
+				key = f"{key}:merged:{t.name}"
+			frappe.db.set_value("Excom Thread", t.name, {"thread_key": key, "display_name": master_identity.display_name, "primary_phone": master_identity.primary_phone}, update_modified=False)
 		frappe.db.set_value("Excom Message", {"omni_identity": self.name}, "omni_identity", master_identity.name, update_modified=False)
 
 		self.linked_entities = []

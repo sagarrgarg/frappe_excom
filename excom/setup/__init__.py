@@ -75,6 +75,42 @@ def after_install():
 	apply_crm_schema()
 
 
+SHARED_DOCTYPES = [
+	# Also shipped by frappe_whatsapp. Whichever app migrates last wins, and excom's copies carry ten
+	# load-bearing fields the other does not (linked accounts, variable samples, review timestamps).
+	# Reloading them at the end of every migrate makes excom's definition the one that survives.
+	("excom", "doctype", "whatsapp_templates"),
+	("excom", "doctype", "whatsapp_button"),
+	("excom", "doctype", "whatsapp_template_linked_account"),
+	("excom", "doctype", "whatsapp_flow"),
+	("excom", "doctype", "whatsapp_flow_field"),
+	("excom", "doctype", "whatsapp_flow_screen"),
+]
+
+REQUIRED_SHARED_FIELDS = {
+	"WhatsApp Templates": ["linked_whatsapp_accounts", "header_variable_samples", "body_variable_samples", "approved_at", "submitted_at", "rejected_at", "paused_at", "rejection_reason"],
+}
+
+
+def reclaim_shared_doctypes() -> list:
+	"""Re-apply excom's definition of the doctypes another installed app also ships, then report anything
+	still missing so a broken migrate order is visible instead of silent data loss."""
+	for app, kind, name in SHARED_DOCTYPES:
+		try:
+			frappe.reload_doc(app, kind, name, force=True)
+		except Exception:
+			frappe.log_error(title=f"Excom: could not reclaim {name}", message=frappe.get_traceback())
+	missing = []
+	for doctype, fields in REQUIRED_SHARED_FIELDS.items():
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		meta = frappe.get_meta(doctype)
+		missing += [f"{doctype}.{f}" for f in fields if not meta.has_field(f)]
+	if missing:
+		frappe.log_error(title="Excom: shared doctype fields missing after migrate", message=", ".join(missing))
+	return missing
+
+
 def after_migrate():
 	"""Called after every bench migrate. Ensures seed data is intact."""
 	from excom.setup.crm_schema import apply as apply_crm_schema
@@ -82,7 +118,7 @@ def after_migrate():
 	seed_roles()
 	seed_channels()
 	seed_general_team()
-
+	reclaim_shared_doctypes()
 
 def seed_roles():
 	"""Create Excom Manager and Excom User roles if they don't exist."""

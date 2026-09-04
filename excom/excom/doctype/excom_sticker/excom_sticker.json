@@ -125,10 +125,6 @@
   {
    "read": 1,
    "role": "Excom User"
-  },
-  {
-   "read": 1,
-   "role": "All"
   }
  ],
  "sort_field": "modified",
