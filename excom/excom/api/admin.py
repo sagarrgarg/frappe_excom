@@ -583,10 +583,28 @@ def diagnose_whatsapp() -> list:
 				return None
 			probe("Token can read the phone number", f"{base}/{ver}/{acc.wa_phone_id}", {"fields": "display_phone_number,verified_name"})
 			if acc.wa_business_id:
-				probe("Token can read the WhatsApp Business Account", f"{base}/{ver}/{acc.wa_business_id}", {"fields": "id,name"})
+				meta = probe("Business Account ID is readable", f"{base}/{ver}/{acc.wa_business_id}", {"metadata": 1, "fields": "id,name"})
+				if meta:
+					kind = ((meta.get("metadata") or {}).get("type") or "").lower()
+					row["id_type"] = kind
+					add("Business Account ID is a WhatsApp Business Account", kind in ("whatsapp_business_account", ""), "" if kind in ("whatsapp_business_account", "") else f"that id is a {kind.replace('_', ' ')}, not a WhatsApp Business Account — templates live on the WABA (Meta → WhatsApp Manager → Account tools → WhatsApp Business Account ID)")
 				data = probe("Template list readable", f"{base}/{ver}/{acc.wa_business_id}/message_templates", {"limit": 1})
 				if data is not None:
 					row["templates_visible"] = len(data.get("data") or [])
+			# which WABAs this token may actually manage (needs app id + secret on the account)
+			app_secret = acc.get_password("wa_app_secret", raise_exception=False) or ""
+			if acc.wa_app_id and app_secret:
+				try:
+					dbg = requests.get(f"{base}/{ver}/debug_token", params={"input_token": token, "access_token": f"{acc.wa_app_id}|{app_secret}"}, timeout=25)
+					d = (dbg.json().get("data") or {}) if dbg.content else {}
+					wabas = [t for g in (d.get("granular_scopes") or []) if g.get("scope") in ("whatsapp_business_management", "whatsapp_business_messaging") for t in (g.get("target_ids") or [])]
+					row["token_wabas"] = sorted(set(wabas))
+					scopes = d.get("scopes") or []
+					add("Token has whatsapp_business_management", "whatsapp_business_management" in scopes, "" if "whatsapp_business_management" in scopes else f"scopes on this token: {', '.join(scopes) or 'none'}")
+					if wabas:
+						add("Configured WABA is one this token manages", acc.wa_business_id in wabas, "" if acc.wa_business_id in wabas else f"token manages {', '.join(sorted(set(wabas)))} — put one of those in Business Account ID")
+				except Exception:
+					pass
 		row["ok"] = all(c["ok"] for c in row["checks"])
 		out.append(row)
 	return out

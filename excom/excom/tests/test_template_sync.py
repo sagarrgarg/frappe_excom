@@ -20,7 +20,22 @@ class TestTemplateSync(FrappeTestCase):
 		finally:
 			wt.make_request = orig
 		self.assertEqual([t["name"] for t in r["data"]], ["t1", "t2"]); self.assertEqual(r["pages"], 2)
-		self.assertTrue(calls[0].startswith("https://graph.facebook.com/v26.0/WABA1/message_templates?fields=")); self.assertIn("limit=200", calls[0])
+		self.assertTrue(calls[0].startswith("https://graph.facebook.com/v26.0/WABA1/message_templates?fields=")); self.assertIn("limit=100", calls[0])
+
+	def test_retries_bare_request_when_fielded_call_is_rejected(self):
+		"""A WABA that 400s on the explicit field list still syncs: we fall back to the plain edge."""
+		calls = []
+		def fake(method, url, headers=None, **kw):
+			calls.append(url)
+			if "fields=" in url:
+				raise Exception("400 Client Error: Bad Request for url: " + url)
+			return {"data": [{"name": "t1", "status": "APPROVED", "language": "en", "category": "UTILITY", "id": "1", "components": []}]}
+		orig = wt.make_request; wt.make_request = fake
+		try:
+			r = wt._fetch_all_templates({"url": "https://graph.facebook.com", "version": "v26.0", "headers": {}}, "WABA1")
+		finally:
+			wt.make_request = orig
+		self.assertEqual(len(r["data"]), 1); self.assertEqual(len(calls), 2); self.assertNotIn("fields=", calls[1])
 
 	def test_fetch_is_whitelisted_for_desk_button(self):
 		self.assertTrue(getattr(wt.fetch, "whitelisted", False) or wt.fetch in frappe.whitelisted or "excom.excom.doctype.whatsapp_templates.whatsapp_templates.fetch" in [f"{getattr(x, '__module__', '')}.{getattr(x, '__name__', '')}" for x in frappe.whitelisted])

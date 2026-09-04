@@ -460,20 +460,35 @@ def _extract_header_samples(example: dict) -> str | None:
 
 
 def _fetch_all_templates(creds: dict, biz_id: str) -> dict:
-    """GET /{waba}/message_templates following paging.next — Meta pages at 25, a busy WABA has more."""
+    """GET /{waba}/message_templates following paging.next.
+
+    Meta pages at 25; a busy WABA has more. Some WABAs / API versions reject the explicit field list or a
+    large limit with a plain 400, so a first failure is retried with the bare request the vendor apps use.
+    """
     base = (creds["url"] or "https://graph.facebook.com").rstrip("/")
     version = creds["version"] or "v21.0"
     if not version.startswith("v"):
         version = "v" + version
-    url = f"{base}/{version}/{biz_id}/message_templates?fields=name,status,language,category,id,components&limit=200"
-    data: list = []
-    pages = 0
-    while url and pages < 50:
-        page = make_request("GET", url, headers=creds["headers"]) or {}
-        data.extend(page.get("data") or [])
-        url = (page.get("paging") or {}).get("next")
-        pages += 1
-    return {"data": data, "pages": pages}
+    root = f"{base}/{version}/{biz_id}/message_templates"
+    attempts = [f"{root}?fields=name,status,language,category,id,components&limit=100", root]
+    last_exc = None
+    for start_url in attempts:
+        data: list = []
+        url = start_url
+        pages = 0
+        try:
+            while url and pages < 50:
+                frappe.flags.integration_request = None
+                page = make_request("GET", url, headers=creds["headers"]) or {}
+                data.extend(page.get("data") or [])
+                url = (page.get("paging") or {}).get("next")
+                pages += 1
+            return {"data": data, "pages": pages}
+        except Exception as e:
+            last_exc = e
+            continue
+    raise last_exc
+
 
 
 @frappe.whitelist()
