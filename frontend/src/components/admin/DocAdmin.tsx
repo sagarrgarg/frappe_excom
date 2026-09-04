@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { useFrappeGetCall } from "@/lib/api";
 import { Plus, Search, Trash2, Save, ExternalLink, Loader2, RefreshCw } from "lucide-react";
@@ -32,6 +32,11 @@ export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraAction
   const { call: save, loading: saving } = useFrappePostCall("excom.excom.api.admin.save_doc");
   const { call: del, loading: deleting } = useFrappePostCall("excom.excom.api.admin.delete_doc");
   useEffect(() => { setDraft({}); }, [name, doctype]);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); if (dirtyRef.current) onSaveRef.current(); } };
+    document.addEventListener("keydown", h); return () => document.removeEventListener("keydown", h);
+  }, []);
+  const dirtyRef = useRef(false); const onSaveRef = useRef<() => void>(() => undefined);
   const base: Doc = useMemo(() => {
     if (!isNew) return data?.message ?? {};
     const d: Doc = {};
@@ -40,6 +45,7 @@ export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraAction
   }, [data, isNew, schema]);
   const doc: Doc = { ...base, ...draft };
   const dirty = Object.keys(draft).length > 0 && !(isNew && schema.needs_name && !String(draft.__newname ?? "").trim());
+  dirtyRef.current = dirty;
   const SENSITIVE = ["Password"];
   const onSave = async () => {
     const touchedSecrets = schema.sections.flatMap((s) => s.fields).filter((f) => SENSITIVE.includes(f.fieldtype) && f.fieldname in draft && draft[f.fieldname]);
@@ -53,6 +59,7 @@ export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraAction
       toast.success(isNew ? "Created" : "Saved"); setDraft({}); mutate(); onSaved?.(r.message.name);
     } catch (e) { toast.error(serverMessage(e)); }
   };
+  onSaveRef.current = onSave;
   const onDelete = async () => {
     if (!window.confirm(`Delete ${doctype} "${name}"? This cannot be undone.`)) return;
     try { await del({ doctype, name }); toast.success("Deleted"); onDeleted?.(); } catch (e) { toast.error(serverMessage(e)); }
@@ -65,7 +72,9 @@ export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraAction
         {!isNew && !schema.single && <a href={deskUrl(doctype, name)} target="_blank" rel="noreferrer" className="text-ink-3 hover:text-ink-1" title="Open in Desk"><ExternalLink className="size-4" /></a>}
         {extraActions}
         {!schema.read_only && !isNew && !schema.single && <Button size="sm" variant="ghost" onClick={onDelete} disabled={deleting} className="text-crayon-rose-text"><Trash2 />Delete</Button>}
-        {!schema.read_only && <Button size="sm" variant="primary" disabled={!dirty || saving} onClick={onSave}><Save />{saving ? "Saving…" : "Save"}</Button>}
+        {!schema.read_only && !dirty && !isNew && <span className="text-xs text-ink-3 shrink-0">No changes yet</span>}
+        {!schema.read_only && dirty && <span className="text-xs text-crayon-amber-text shrink-0">{Object.keys(draft).length} unsaved</span>}
+        {!schema.read_only && <Button size="sm" variant="primary" disabled={!dirty || saving} onClick={onSave} title={dirty ? "Save (Ctrl+S)" : "Edit a field first — Save enables when something changed"}><Save />{saving ? "Saving…" : "Save"}</Button>}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-5">
         {isNew && schema.needs_name && (
@@ -81,7 +90,7 @@ export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraAction
               <div className="grid grid-cols-1 laptop:grid-cols-2 gap-x-4 gap-y-3">
                 {fields.map((f) => (
                   <div key={f.fieldname} className={["Table", "Table MultiSelect", "Code", "JSON", "Text Editor", "Small Text", "Text", "Long Text", "HTML"].includes(f.fieldtype) ? "laptop:col-span-2 min-w-0" : "min-w-0"}>
-                    <Field label={f.label} required={Boolean(f.reqd)} hint={f.description}>
+                    <Field label={f.read_only ? `${f.label} (read-only)` : f.label} required={Boolean(f.reqd)} hint={f.description}>
                       <FieldControl f={f} value={doc[f.fieldname]} disabled={schema.read_only} onChange={(v) => setDraft((d) => ({ ...d, [f.fieldname]: v }))} />
                     </Field>
                   </div>
