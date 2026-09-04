@@ -4,7 +4,7 @@ import { useFrappeGetCall, useFrappePostCall } from "frappe-react-sdk";
 import { toast } from "sonner";
 import { EmailEditor } from "./EmailEditor";
 import { RecipientChips } from "./RecipientChips";
-import { Send, Plus, Paperclip, Image as ImageIcon, FileText, Sticker, Zap, Loader2, X, Reply, StickyNote, MessageCircle, Sparkles, Bot } from "lucide-react";
+import { Send, Plus, Paperclip, Image as ImageIcon, FileText, Sticker, Zap, Loader2, X, Reply, StickyNote, MessageCircle, Sparkles, Bot, ChevronDown, ChevronUp } from "lucide-react";
 import { ReplyVia } from "./ReplyVia";
 import { Button, Menu, menuItemClass, Kbd, Chip, Input } from "../primitives";
 import { CannedResponsePopover } from "../CannedResponsePopover";
@@ -52,6 +52,7 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
   const [templateOpen, setTemplateOpen] = useState(false);
   const [stickerOpen, setStickerOpen] = useState(false);
   const [stickerPos, setStickerPos] = useState({ bottom: 0, left: 0 });
+  const [emailHeadOpen, setEmailHeadOpen] = useState(false);
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const stickerBtn = useRef<HTMLButtonElement>(null);
@@ -80,7 +81,7 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
   useEffect(() => { if (prefill) { setText(prefill); setNote(false); taRef.current?.focus(); onPrefillConsumed?.(); } }, [prefill, onPrefillConsumed]);
   useEffect(() => {
     // Email: open draft fields in place when switching to an email account.
-    if (isEmail && !emailDraft) setEmailDraft({ to: contact.contactInfo.email || via?.identifier || "", subject: "", cc: "", inReplyToGmailId: "" });
+    if (isEmail && !emailDraft) { const to = contact.contactInfo.email || ""; setEmailDraft({ to, subject: "", cc: "", inReplyToGmailId: "" }); setEmailHeadOpen(!to); }
     if (!isEmail && emailDraft) setEmailDraft(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEmail, via?.id]);
@@ -208,7 +209,9 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
 
         {/* Email fields — grow in place */}
         {isEmail && !note && emailDraft && (
-          <div className="rounded-md border border-border-strong bg-surface mb-1.5 divide-y divide-border">
+          emailHeadOpen ? (
+            <div className="rounded-md border border-border-strong bg-surface mb-1.5 divide-y divide-border">
+              <button type="button" onClick={() => setEmailHeadOpen(false)} className="w-full flex items-center gap-1 px-2 h-6 text-2xs text-ink-3 hover:text-ink-1"><ChevronUp className="size-3" />Collapse</button>
             <RecipientChips label="To" value={emailDraft.to} onChange={(v) => setEmailDraft({ ...emailDraft, to: v })} placeholder="recipient@example.com" />
             <RecipientChips label="Cc" value={emailDraft.cc || ""} onChange={(v) => setEmailDraft({ ...emailDraft, cc: v })} placeholder="tag colleagues or contacts…" />
             <RecipientChips label="Bcc" value={emailDraft.bcc || ""} onChange={(v) => setEmailDraft({ ...emailDraft, bcc: v })} placeholder="" />
@@ -218,6 +221,16 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
             </div>
             <div className="flex items-center gap-2 px-2 h-8 min-w-0"><span className="text-xs text-ink-3 w-12 shrink-0">Subject</span><Input value={emailDraft.subject} onChange={(e) => setEmailDraft({ ...emailDraft, subject: e.target.value })} className="border-0 h-7 px-0 focus-visible:ring-0" placeholder="Subject" />{emailDraft.inReplyToGmailId && <Chip size="sm" accent="blue" label="Reply" onRemove={() => setEmailDraft({ ...emailDraft, inReplyToGmailId: "", subject: "" })} />}</div>
           </div>
+          ) : (
+            <button type="button" onClick={() => setEmailHeadOpen(true)} className="w-full flex items-center gap-2 px-2 h-8 mb-1.5 rounded-md border border-border-strong bg-surface text-xs text-left min-w-0 hover:bg-surface-hover" title="Edit recipients, subject, schedule">
+              <ChevronDown className="size-3.5 text-ink-3 shrink-0" />
+              <span className="text-ink-3 shrink-0">To</span><span className="text-ink-1 truncate max-w-[40%]">{emailDraft.to || "—"}</span>
+              {(emailDraft.cc || emailDraft.bcc) && <span className="text-ink-3 shrink-0">+{[emailDraft.cc, emailDraft.bcc].filter(Boolean).join(",").split(",").filter((x) => x.trim()).length} cc</span>}
+              <span className="text-ink-3 shrink-0">·</span><span className={cn("truncate flex-1", emailDraft.subject ? "text-ink-1" : "text-ink-3")}>{emailDraft.subject || "No subject"}</span>
+              {emailDraft.inReplyToGmailId && <Chip size="sm" accent="blue" label="Reply" />}
+              <span className="text-ink-3 shrink-0">{emailDraft.sendAt ? `⏱ ${emailDraft.sendAt.slice(0, 16)}` : "now"}</span>
+            </button>
+          )
         )}
 
         {/* Input row */}

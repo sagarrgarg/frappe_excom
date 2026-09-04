@@ -26,7 +26,7 @@ export function EmailEditor({ value, onChange, placeholder, className }: { value
         <button type="button" onClick={() => setSource((s) => !s)} className={cn("h-6 px-2 rounded text-xs flex items-center gap-1", source ? "bg-surface-active text-ink-1" : "text-ink-3 hover:text-ink-1")} title="Edit the raw HTML"><Code2 className="size-3.5" />{source ? "Rich text" : "HTML"}</button>
       </div>
       {source ? (
-        <textarea value={value} onChange={(e) => onChange(e.target.value)} spellCheck={false} className="w-full min-h-[140px] max-h-[40vh] p-2 text-xs font-mono bg-surface-sunken outline-none resize-y" placeholder="<p>HTML…</p>" />
+        <textarea value={value} onChange={(e) => onChange(e.target.value)} spellCheck={false} className="w-full min-h-[72px] max-h-[40vh] p-2 text-xs font-mono bg-surface-sunken outline-none resize-y" placeholder="<p>HTML…</p>" />
       ) : (
         <div ref={ref} contentEditable suppressContentEditableWarning onInput={() => onChange(ref.current?.innerHTML || "")} data-placeholder={placeholder}
           className="min-h-[140px] max-h-[40vh] overflow-y-auto p-2 text-sm text-ink-1 outline-none [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 empty:before:content-[attr(data-placeholder)] empty:before:text-ink-3" />
