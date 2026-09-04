@@ -20,3 +20,4 @@ excom.patches.v1_0.migrate_email_tokens_to_account
 excom.patches.v1_0.p3_crm_schema
 excom.patches.v1_0.fix_customer_type_clobber
 excom.patches.v1_0.internal_notes_to_comments
+excom.patches.v1_0.unify_sources

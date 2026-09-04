@@ -1,5 +1,7 @@
 # Lead sources — every way a lead enters Excom
 
+**One list.** Admin → Channels → **Sources** (`Excom Intake Source`) is the only place sources are maintained. Types: Website, IndiaMART, TradeIndia, Meta Lead Ads (integrations, mode derived), Exhibition and Manual (typed in), Channel (organic conversations, stamped automatically). Every row mirrors itself into ERPNext's attribution master (`Lead Source` on v15, `UTM Source` on v16 via `crm_compat`), and every lead created through Excom carries `intake_source` (which row) plus the mirrored attribution value, so Desk reports and Excom agree without a second list. The Details tab shows the attribution as read-only; patch `unify_sources` created a Manual/Channel row for every pre-existing Lead Source.
+
 One pipeline for all of them: `services/intake.py` → `Excom Intake Log` (raw payload, unique `dedupe_key`) → `map_payload` (field map per source, defaults below) → `crm_flow.resolve_or_create_lead` (attach to an existing Lead by email / phone, else create) → identity link → auto-ack template (optional) → SLA clock. Replay any log row from Admin → Intake sources / Desk.
 
 Admin → Channels → **Intake sources** holds one row per source with mode, credentials, restrictions and the field map. Cron `*/5` runs every enabled Pull/Both source whose frequency elapsed (`tasks/intake.pull_due_sources`); `stale_source_alarm` logs when a source has had no success for 3× its frequency.

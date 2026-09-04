@@ -341,3 +341,20 @@ class TestNotesUnified(_Base):
 		finally:
 			frappe.set_user("Administrator")
 		self.assertTrue(get_field_schema("Customer", "")["can_write"])
+
+
+class TestOneSourceList(_Base):
+	def test_intake_source_mirrors_attribution_and_stamps_leads(self):
+		from excom.excom.api.crm import create_lead_manual
+		from excom.excom.services.crm_compat import attribution_doctypes
+		company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
+		src = frappe.get_doc({"doctype": "Excom Intake Source", "source_name": "QA Trade Fair 2026", "source_type": "Exhibition", "enabled": 1, "company": company, "sla_first_response": 0}).insert(ignore_permissions=True)
+		target = attribution_doctypes()["source"]
+		self.assertTrue(frappe.db.exists(target, "QA Trade Fair 2026"))
+		self.assertEqual(src.mode, "")
+		r = create_lead_manual("QA Fair Person", phone="9900000802", intake_source=src.name)
+		lead = frappe.get_doc("Lead", r["ref"]["name"])
+		self.assertEqual(lead.intake_source, src.name)
+		attr = lead.get("utm_source") if lead.meta.has_field("utm_source") else lead.get("source")
+		self.assertEqual(attr, "QA Trade Fair 2026")
+		frappe.delete_doc(target, "QA Trade Fair 2026", force=True, ignore_permissions=True)

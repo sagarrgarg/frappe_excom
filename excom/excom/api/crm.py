@@ -96,8 +96,8 @@ def get_field_schema(doctype: str, customer_type: str = "") -> dict:
 					continue
 				used.add(fn)
 				d = _field_dict(df, can_write, first)
-				if sec.get("meta"):
-					d["read_only"] = True
+				if sec.get("meta") or fn in ("source", "campaign_name", "campaign", "utm_source", "utm_campaign", "utm_medium"):
+					d["read_only"] = True  # attribution is stamped by the source, never typed
 				fields.append(d)
 			if fields:
 				sections.append({"label": sec["label"], "collapsed": bool(sec.get("collapsed")), "meta": bool(sec.get("meta")), "fields": fields})
@@ -388,7 +388,8 @@ def create_lead_manual(name: str, phone: str = "", email: str = "", company_name
 		frappe.throw(_("Give at least a name, phone or email"))
 	phone_n = normalize_phone(phone) if phone else ""
 	identity = resolve_identity(phone=phone_n, email=email or "", channel="", channel_user_id="", display_name=name or "")  # no channel row: nobody has messaged yet
-	payload = {"name": name, "phone": phone_n, "email": email or None, "company_name": company_name or None, "customer_type": customer_type or "", "intake_source": intake_source or None, "owner": frappe.session.user, "first_touch_channel": "Manual", "first_touch_by": frappe.session.user, "source": "Organic Manual", "notes": notes or None}
+	src_label = frappe.db.get_value("Excom Intake Source", intake_source, "source_name") if intake_source else "Organic Manual"
+	payload = {"name": name, "phone": phone_n, "email": email or None, "company_name": company_name or None, "customer_type": customer_type or "", "intake_source": intake_source or None, "owner": frappe.session.user, "first_touch_channel": "Manual", "first_touch_by": frappe.session.user, "source": src_label or "Organic Manual", "notes": notes or None}
 	r, created = resolve_or_create_lead(identity, "Manual", payload, ignore_permissions=True)
 	frappe.db.commit()
 	return {"identity": identity, "ref": {"doctype": r.doctype, "name": r.name}, "created": created}

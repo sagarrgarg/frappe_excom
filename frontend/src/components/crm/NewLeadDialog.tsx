@@ -11,7 +11,7 @@ export function NewLeadDialog({ open, onClose, onCreated }: { open: boolean; onC
   const [f, setF] = useState({ name: "", phone: "", email: "", company_name: "", customer_type: "", intake_source: "", notes: "" });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF((v) => ({ ...v, [k]: e.target.value }));
   const options = useCrmOptions();
-  const { data: sources } = useFrappeGetCall<{ message: { name: string; source_name: string }[] }>("frappe.client.get_list", { doctype: "Excom Intake Source", fields: JSON.stringify(["name", "source_name"]), filters: JSON.stringify({ enabled: 1 }), limit_page_length: 100 }, "intake-sources-list", { revalidateOnFocus: false });
+  const { data: sources } = useFrappeGetCall<{ message: { name: string; source_name: string }[] }>("frappe.client.get_list", { doctype: "Excom Intake Source", fields: JSON.stringify(["name", "source_name"]), filters: JSON.stringify({ enabled: 1, source_type: ["in", ["Manual", "Exhibition", "Website", "IndiaMART", "TradeIndia", "Meta Lead Ads"]] }), limit_page_length: 100 }, "intake-sources-list", { revalidateOnFocus: false });
   const { call, loading } = useFrappePostCall("excom.excom.api.crm.create_lead_manual");
   const { openRecord } = useInbox();
   const submit = async () => {
@@ -31,7 +31,7 @@ export function NewLeadDialog({ open, onClose, onCreated }: { open: boolean; onC
         <Field label="Email"><Input type="email" value={f.email} onChange={set("email")} /></Field>
         <Field label="Company"><Input value={f.company_name} onChange={set("company_name")} /></Field>
         <Field label="Customer type"><Select value={f.customer_type} onChange={set("customer_type")}><option value="">Not yet</option>{(options?.customer_types || []).map((t: string) => <option key={t}>{t}</option>)}</Select></Field>
-        <Field label="Source" hint="Which team sees it follows the source"><Select value={f.intake_source} onChange={set("intake_source")}><option value="">Manual (no source)</option>{(sources?.message || []).map((s) => <option key={s.name} value={s.name}>{s.source_name}</option>)}</Select></Field>
+        <Field label="Source" hint="Stamps the lead's source and decides which team sees it"><Select value={f.intake_source} onChange={set("intake_source")}><option value="">Manual (no source)</option>{(sources?.message || []).map((s) => <option key={s.name} value={s.name}>{s.source_name}</option>)}</Select></Field>
         <div className="tablet:col-span-2"><Field label="What do they want?"><Textarea rows={2} value={f.notes} onChange={set("notes")} /></Field></div>
       </div>
     </Modal>

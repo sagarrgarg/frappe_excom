@@ -27,7 +27,7 @@ const SECTIONS: Section[] = [
   { id: "meta", label: "Meta Business", icon: <Facebook />, group: "Channels", render: () => <MetaConnectAdmin /> },
   { id: "accounts", label: "Channel accounts", icon: <Radio />, group: "Channels", render: () => <DocAdmin doctype="Excom Channel Account" hint="WhatsApp Cloud API, Gmail and web-chat accounts. Tokens are write-only here; leave a password field blank to keep it." /> },
   { id: "templates", label: "WhatsApp templates", icon: <FileText />, group: "Channels", render: () => <DocAdmin doctype="WhatsApp Templates" headerAction={<SyncTemplates />} hint="Approved templates are pulled from Meta. Create or edit here to submit a new one." /> },
-  { id: "intake", label: "Intake sources", icon: <Inbox />, group: "Channels", render: () => <DocAdmin doctype="Excom Intake Source" hint="IndiaMART / TradeIndia / Meta Lead Ads / website forms → Leads." /> },
+  { id: "intake", label: "Sources", icon: <Inbox />, group: "Channels", render: () => <DocAdmin doctype="Excom Intake Source" hint="The one list of where leads come from. Integrations (Website, IndiaMART, TradeIndia, Meta) poll or receive; Exhibition / Manual are typed in; Channel rows are organic conversations. Each row mirrors itself into ERPNext's Lead Source so attribution never needs a second list." /> },
   { id: "canned", label: "Canned responses", icon: <MessageSquare />, group: "Content", render: () => <DocAdmin doctype="Excom Canned Response" hint="Type / in the composer to use them. Global ones are visible to every team." /> },
   { id: "tags", label: "Tags", icon: <Tag />, group: "Content", render: () => <DocAdmin doctype="Excom Tag" /> },
   { id: "stickers", label: "Stickers", icon: <Smile />, group: "Content", render: () => <DocAdmin doctype="Excom Sticker" hint="WebP stickers uploaded to the WhatsApp account's media library." /> },
@@ -51,7 +51,7 @@ function Overview({ go }: { go: (id: string) => void }) {
   const cards: { id: string; label: string; value: number | undefined; warn?: boolean }[] = [
     { id: "teams", label: "Teams", value: m.teams }, { id: "users", label: "Excom users", value: m.users }, { id: "accounts", label: "Active accounts", value: m.accounts },
     { id: "templates", label: "WhatsApp templates", value: m.templates }, { id: "canned", label: "Canned responses", value: m.canned }, { id: "tags", label: "Tags", value: m.tags },
-    { id: "stickers", label: "Stickers", value: m.stickers }, { id: "notifications", label: "Notification rules", value: m.notifications }, { id: "assignment", label: "Auto-assignment rules", value: m.assignment_rules }, { id: "intake", label: "Intake sources", value: m.intake_sources },
+    { id: "stickers", label: "Stickers", value: m.stickers }, { id: "notifications", label: "Notification rules", value: m.notifications }, { id: "assignment", label: "Auto-assignment rules", value: m.assignment_rules }, { id: "intake", label: "Sources", value: m.intake_sources },
     { id: "users", label: "Chats owned by disabled users", value: m.disabled_owner_threads, warn: (m.disabled_owner_threads || 0) > 0 },
   ];
   return (
