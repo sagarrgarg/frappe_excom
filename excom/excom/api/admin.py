@@ -382,7 +382,11 @@ def sync_whatsapp_templates() -> dict:
     from excom.excom.doctype.whatsapp_templates.whatsapp_templates import fetch
     frappe.local.message_log = []
     before = frappe.db.count("WhatsApp Templates")
-    result = fetch()
+    try:
+        result = fetch()
+    except Exception as e:
+        frappe.db.rollback()
+        return {"count": before, "new": 0, "result": "failed", "errors": [frappe.utils.strip_html(str(e))[:300]]}
     frappe.db.commit()
     # fetch() reports per-account failures via msgprint; surface them to the caller instead of a toast that says "synced"
     errors = []
