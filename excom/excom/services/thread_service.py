@@ -278,7 +278,10 @@ def send_outbound_message(
         else:
             result = send_text_message(account, to_number, content_text)
         provider_message_id = result.get("provider_message_id", "")
-        delivery_status = result.get("status", "Sent")
+        # providers must not be able to write an arbitrary value into the Select field
+        delivery_status = str(result.get("status") or "Sent").title()
+        if delivery_status not in ("Queued", "Scheduled", "Sent", "Delivered", "Read", "Failed"):
+            delivery_status = "Sent"
 
     now = frappe.utils.now_datetime()
     preview = _make_preview(content_text)

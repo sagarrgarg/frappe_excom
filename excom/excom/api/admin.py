@@ -330,6 +330,7 @@ def list_users(q: str = "") -> list:
         u["roles"] = r_by.get(u.name, [])
         u["teams"] = t_by.get(u.name, [])
         u["open_threads"] = int(open_by_user.get(u.name) or 0)
+        u["no_team"] = bool(u["roles"]) and not u["teams"]  # an Excom role with no team = blank inbox
         u["open_leads"] = int(leads_by_user.get(u.name) or 0)
     return users
 
@@ -347,7 +348,18 @@ def set_user_roles(user: str, roles: str | list) -> dict:
     if have - wanted:
         doc.remove_roles(*(have - wanted))
     frappe.db.commit()
-    return {"ok": True}
+    # An agent who belongs to no team sees an empty inbox and cannot open anything, so the role on
+    # its own looks broken. Put a newly granted agent in the shared inbox; a manager can move them.
+    added_to = None
+    if wanted and not frappe.db.exists("Excom Team Member", {"parenttype": "Excom Team", "user": user}):
+        if frappe.db.exists("Excom Team", "General"):
+            team = frappe.get_doc("Excom Team", "General")
+            team.append("members", {"user": user, "role": "Manager" if "Excom Manager" in wanted else "Member"})
+            team.flags.ignore_permissions = True
+            team.save()
+            frappe.db.commit()
+            added_to = "General"
+    return {"ok": True, "added_to_team": added_to}
 
 
 @frappe.whitelist()

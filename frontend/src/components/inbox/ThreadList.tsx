@@ -7,6 +7,7 @@ import { ViewList } from "./ViewList";
 import { ThreadRow, type RowActions } from "./ThreadRow";
 import { EmptyState, Button } from "../primitives";
 import { useInbox } from "../shell/InboxProvider";
+import { useInboxMeta } from "../../hooks/useInboxMeta";
 import { useHotkeys } from "../../lib/hotkeys";
 import { hasRole } from "../../lib/ui-flag";
 import type { UnifiedContact } from "../../types";
@@ -18,6 +19,8 @@ import { cn } from "../ui/utils";
  */
 export function ThreadList({ className }: { className?: string }) {
   const { contacts, isLoading, refresh, selectedId, openRecord, closeRecord, coarse, setNewOpen, listError, toggleList, bp } = useInbox();
+  const { teams } = useInboxMeta();
+  const noTeam = teams.length === 0 && !hasRole("Excom Manager") && !hasRole("System Manager");
   const listRef = useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = useState<number>(-1);
 
@@ -124,6 +127,8 @@ export function ThreadList({ className }: { className?: string }) {
       >
         {isLoading && contacts.length === 0 ? (
           <div className="flex items-center justify-center py-12 text-ink-3"><Loader2 className="size-5 animate-spin" /></div>
+        ) : contacts.length === 0 && noTeam ? (
+          <EmptyState icon={<InboxIcon />} title="You are not in a team yet" hint="Conversations are shared by team. Ask a manager to add you in Admin → Teams; members of General also see unassigned chats." />
         ) : contacts.length === 0 && listError ? (
           <EmptyState icon={<InboxIcon />} title="Couldn't load conversations" hint={listError} action={<Button size="sm" variant="primary" onClick={() => refresh()}>Retry</Button>} />
         ) : contacts.length === 0 ? (

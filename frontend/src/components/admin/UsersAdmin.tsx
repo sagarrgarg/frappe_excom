@@ -8,7 +8,7 @@ import { DataTable } from "../shell/AdminPage";
 import { ReassignDialog } from "./TeamsAdmin";
 import { serverMessage } from "./util";
 
-interface U { name: string; full_name: string; user_image?: string; enabled: number; last_active?: string; roles: string[]; teams: { team: string; role: string }[]; open_threads: number; open_leads: number }
+interface U { name: string; full_name: string; user_image?: string; enabled: number; last_active?: string; roles: string[]; teams: { team: string; role: string }[]; open_threads: number; open_leads: number; no_team?: boolean }
 
 /** Users & roles: who can use Excom, who manages it, which teams they are in, and what they own. */
 export function UsersAdmin() {
@@ -25,7 +25,7 @@ export function UsersAdmin() {
   const cols = [
     { key: "user", label: "User", primary: true, render: (u: U) => <span className="inline-flex items-center gap-2 min-w-0"><Avatar name={u.full_name} src={u.user_image} size={20} /><span className="truncate"><span className="text-ink-1 font-medium">{u.full_name}</span> <span className="text-xs text-ink-3">{u.name}</span></span>{!u.enabled && <Chip size="sm" accent="amber" label="Disabled" />}</span> },
     { key: "roles", label: "Excom access", render: (u: U) => <span className="inline-flex gap-1">{["Excom User", "Excom Manager"].map((r) => <button key={r} type="button" onClick={() => toggle(u, r)} className={`rounded-full px-2 h-6 text-xs border ${u.roles.includes(r) ? "bg-crayon-blue-tint text-crayon-blue-text border-transparent" : "border-border text-ink-3 hover:text-ink-1"}`} title={`Click to ${u.roles.includes(r) ? "revoke" : "grant"}`}>{r.replace("Excom ", "")}</button>)}{u.roles.includes("System Manager") && <Chip size="sm" accent="violet" label="Sys admin" />}</span> },
-    { key: "teams", label: "Teams", render: (u: U) => u.teams.length ? <span className="text-ink-2 text-xs">{u.teams.map((t) => `${t.team}${t.role === "Manager" ? " (M)" : ""}`).join(", ")}</span> : <span className="text-ink-muted">—</span> },
+    { key: "teams", label: "Teams", render: (u: U) => u.teams.length ? <span className="text-ink-2 text-xs">{u.teams.map((t) => `${t.team}${t.role === "Manager" ? " (M)" : ""}`).join(", ")}</span> : u.no_team ? <Chip size="sm" accent="amber" label="No team — empty inbox" title="An Excom role without a team shows an empty inbox. Add them to a team in Admin → Teams." /> : <span className="text-ink-muted">—</span> },
     { key: "work", label: "Owns", align: "right" as const, render: (u: U) => <span className={`text-xs tabular-nums ${!u.enabled && (u.open_threads || u.open_leads) ? "text-crayon-amber-text" : "text-ink-2"}`}>{u.open_threads} chats · {u.open_leads} leads</span> },
     { key: "act", label: "", align: "right" as const, render: (u: U) => <span className="inline-flex items-center gap-1">{(u.open_threads > 0 || u.open_leads > 0) && <Button size="sm" variant={u.enabled ? "ghost" : "default"} onClick={() => setReassign(u)}><ArrowRightLeft />Reassign</Button>}<a href={`/app/user/${encodeURIComponent(u.name)}`} target="_blank" rel="noreferrer" className="text-ink-3 hover:text-ink-1" title="Open user in Desk (password, enable/disable)"><ExternalLink className="size-4" /></a></span> },
   ];
