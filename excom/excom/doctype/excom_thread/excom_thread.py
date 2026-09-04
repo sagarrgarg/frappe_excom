@@ -37,8 +37,11 @@ def can_access(doc, user: str | None = None) -> bool:
 	if doc.get("assigned_to") == user:
 		return True
 	teams = visible_teams(user)
-	if doc.get("assigned_team"):
-		return doc.get("assigned_team") in teams
+	from excom.excom.services.crm_visibility import get_team
+
+	team = get_team(doc) if doc.get("doctype") else doc.get("assigned_team")
+	if team:
+		return team in teams
 	if doc.get("assigned_to"):
 		# Somebody has claimed it, so it has left the shared inbox even though it carries no team.
 		return False

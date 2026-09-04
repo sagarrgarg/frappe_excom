@@ -248,11 +248,12 @@ def _claim_on_talk(thread_id: str, user: str | None = None) -> None:
         return
     assignee_active = bool(row.assigned_to) and bool(frappe.db.get_value("User", row.assigned_to, "enabled"))
     if not assignee_active:
-        from excom.excom.doctype.excom_team.excom_team import get_user_teams
+        from excom.excom.services.crm_visibility import team_for_user
+
         update = {"assigned_to": user}
-        teams = get_user_teams(user)
-        if teams and not row.assigned_team:
-            update["assigned_team"] = teams[0]
+        team = team_for_user(user)
+        if team and not row.assigned_team:
+            update["assigned_team"] = team
         frappe.db.set_value("Excom Thread", thread_id, update, update_modified=False)
         frappe.publish_realtime("excom:thread_updated", {"thread": thread_id, "event": "assigned"}, after_commit=True)
     if row.omni_identity:
@@ -840,11 +841,11 @@ def claim_thread(thread_id: str, team: str = "") -> dict:
     """
     _check_thread_access(thread_id)
     if not team:
-        from excom.excom.doctype.excom_team.excom_team import get_user_teams
-        user_teams = get_user_teams()
-        if not user_teams:
+        from excom.excom.services.crm_visibility import team_for_user
+
+        team = team_for_user(frappe.session.user)
+        if not team:
             frappe.throw(_("You are not a member of any team"))
-        team = user_teams[0]
     else:
         from excom.excom.doctype.excom_team.excom_team import get_user_teams
         user_teams = get_user_teams()
@@ -1417,10 +1418,11 @@ def initiate_outbound(
     if is_new:
         update_fields: dict = {"assigned_to": frappe.session.user}
         if not (user_roles & {"System Manager", "Excom Manager"}):
-            from excom.excom.doctype.excom_team.excom_team import get_user_teams
-            teams = get_user_teams()
-            if teams:
-                update_fields["assigned_team"] = teams[0]
+            from excom.excom.services.crm_visibility import team_for_user
+
+            team = team_for_user(frappe.session.user)
+            if team:
+                update_fields["assigned_team"] = team
         frappe.db.set_value("Excom Thread", thread_name, update_fields, update_modified=False)
 
     frappe.db.commit()

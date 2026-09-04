@@ -200,11 +200,12 @@ def _auto_claim_thread(thread, user: str) -> bool:
     if thread.assigned_to and frappe.db.get_value("User", thread.assigned_to, "enabled"):
         return False  # an assignee whose user is disabled counts as unassigned
 
-    from excom.excom.doctype.excom_team.excom_team import get_user_teams
-    teams = get_user_teams(user)
+    from excom.excom.services.crm_visibility import team_for_user
+
     update: dict = {"assigned_to": user}
-    if teams:
-        update["assigned_team"] = teams[0]
+    team = team_for_user(user)
+    if team:
+        update["assigned_team"] = team
 
     frappe.db.set_value("Excom Thread", thread.name, update, update_modified=False)
     return True

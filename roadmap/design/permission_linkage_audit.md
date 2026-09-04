@@ -13,6 +13,7 @@ Report: https://claude.ai/code/artifact/5e16603c-aa40-4e1b-b077-3e03f34f4d7a
 |---|---|
 | SEM-1 | Thread visibility had **three** implementations that disagreed. Same user, same thread: excom api `True`, has_permission hook `False`, Desk list `False`. All four call sites now delegate to `excom_thread.can_access()`, with the list query as its SQL twin. Regression test `test_thread_visibility.py` asks each entry point separately. |
 | SEM-2 | A claimed thread (owner, no team) still read as unclaimed to the document rule, so the whole General inbox saw work someone had taken. Found by the new test. |
+| SEM-5 | Two field names for one idea, hiding four copies of one decision. `assigned_team` (ours) and `excom_team` (prefixed, because Lead is not ours) both stay; `TEAM_FIELDS` is now the only place naming either, and three more sites that took `teams[0]` now call `team_for_user()`. `test_team_registry.py` holds the registry against the live schema. |
 | SEM-3 | Two tie-breaks for "which team does this user's work belong to": `sync_thread_owner` took the first membership row, the CRM side takes the deepest. Both now call `team_for_user()`. |
 | SEM-4 | `team_for_user` stamped a team for Administrator, because `get_user_teams()` reports every team for Administrator. Now reads real membership rows and refuses Administrator/Guest. |
 | PERM-1 | `Excom User` had **read only** on `Excom Thread` and `Excom Message`. Sending worked only because the API bypasses permissions. Now read+write+create. |
@@ -37,4 +38,3 @@ Report: https://claude.ai/code/artifact/5e16603c-aa40-4e1b-b077-3e03f34f4d7a
 3. `enforce_crm_visibility` still off. Blocked on 1 and 2: the backfill can only stamp a team when the owner is in one.
 4. `Sales Master Manager` sees every lead and no conversations (not an Excom role).
 5. `Excom Manager` sees every thread but only their teams' leads — the mirror image of 4.
-6. Naming drift: threads carry `assigned_team`, leads carry `excom_team`.

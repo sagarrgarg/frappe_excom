@@ -25,7 +25,40 @@ BYPASS_ROLES = {"System Manager", "Sales Master Manager"}
 # The doctypes this rule governs, mapped to their owner field.
 OWNER_FIELD = {gw.LEAD: "lead_owner", gw.OPPORTUNITY: "opportunity_owner"}
 
-TEAM_FIELD = "excom_team"
+# One idea, two field names, both correct where they sit. On Excom Thread the field is
+# `assigned_team`, which reads properly beside `assigned_to` on a doctype we own. On Lead and
+# Opportunity it is `excom_team`, because an unprefixed custom field on a doctype we do NOT own is
+# how our `customer_type` once shadowed ERPNext's and broke every Customer save, and v16's native
+# CRM may well introduce an `assigned_team` of its own.
+#
+# So the names stay and the drift goes: nothing outside this registry may spell either of them.
+# test_team_registry.py checks the registry against the live schema, so the day somebody renames a
+# field, a test says so instead of a query quietly returning nothing a year from now.
+TEAM_FIELDS = {
+	"Excom Thread": "assigned_team",
+	gw.LEAD: "excom_team",
+	gw.OPPORTUNITY: "excom_team",
+}
+
+def team_field(doctype: str) -> str | None:
+	"""The name of the "which team owns this" field on a doctype, or None if it has none."""
+	field = TEAM_FIELDS.get(doctype)
+	if field and frappe.get_meta(doctype).has_field(field):
+		return field
+	return None
+
+
+def get_team(doc) -> str | None:
+	"""Read the owning team off any record that has one, without naming the field."""
+	field = team_field(doc.get("doctype") if hasattr(doc, "get") else doc.doctype)
+	return doc.get(field) if field else None
+
+
+def set_team(doctype: str, name: str, team: str | None) -> None:
+	"""Write the owning team on any record that has one, without naming the field."""
+	field = team_field(doctype)
+	if field:
+		frappe.db.set_value(doctype, name, field, team, update_modified=False)
 
 
 def is_enforced() -> bool:
@@ -62,11 +95,12 @@ def _conditions(doctype: str, user: str) -> list[str]:
 	owner_field = OWNER_FIELD.get(doctype)
 	if owner_field and frappe.get_meta(doctype).has_field(owner_field):
 		ors.insert(0, f"{table}.`{owner_field}` = {esc}")
-	if frappe.get_meta(doctype).has_field(TEAM_FIELD):
+	field = team_field(doctype)
+	if field:
 		teams = visible_teams(user)
 		if teams:
 			team_list = ", ".join(frappe.db.escape(t) for t in teams)
-			ors.append(f"{table}.`{TEAM_FIELD}` IN ({team_list})")
+			ors.append(f"{table}.`{field}` IN ({team_list})")
 	return ors
 
 
@@ -90,7 +124,7 @@ def can_read(doc, user: str | None = None) -> bool:
 		return True
 	if user in (doc.get("_assign") or ""):
 		return True
-	team = doc.get(TEAM_FIELD)
+	team = get_team(doc)
 	return bool(team and team in visible_teams(user))
 
 
@@ -137,13 +171,14 @@ def stamp_team(doctype: str, name: str, user: str) -> str | None:
 	"""Record which team a lead now belongs to. Called from every path that hands a record over:
 	the owner field changing, claim-on-talk, a manual Desk assignment and an Assignment Rule.
 	An existing team is never overwritten, so a sales head's placement outranks a later claim."""
-	if doctype not in OWNER_FIELD or not frappe.get_meta(doctype).has_field(TEAM_FIELD):
+	field = team_field(doctype)
+	if doctype not in OWNER_FIELD or not field:
 		return None
-	if frappe.db.get_value(doctype, name, TEAM_FIELD):
+	if frappe.db.get_value(doctype, name, field):
 		return None
 	team = team_for_user(user)
 	if team:
-		frappe.db.set_value(doctype, name, TEAM_FIELD, team, update_modified=False)
+		set_team(doctype, name, team)
 	return team
 
 
@@ -161,14 +196,14 @@ def backfill_teams(doctype: str | None = None, limit: int = 0) -> dict:
 		owner_field = OWNER_FIELD[dt]
 		rows = frappe.get_all(
 			dt,
-			filters={owner_field: ["is", "set"], TEAM_FIELD: ["is", "not set"]},
+			filters={owner_field: ["is", "set"], team_field(dt): ["is", "not set"]},
 			fields=["name", owner_field],
 			limit_page_length=limit or 0,
 		)
 		for r in rows:
 			team = team_for_user(r.get(owner_field))
 			if team:
-				frappe.db.set_value(dt, r.name, TEAM_FIELD, team, update_modified=False)
+				set_team(dt, r.name, team)
 				stamped += 1
 			else:
 				skipped += 1
@@ -185,8 +220,8 @@ def impact_report() -> dict:
 		out["doctypes"][dt] = {
 			"total": total,
 			"with_owner": frappe.db.count(dt, {owner_field: ["is", "set"]}),
-			"with_team": frappe.db.count(dt, {TEAM_FIELD: ["is", "set"]}),
-			"visible_to_sales_master_manager_only": frappe.db.count(dt, {owner_field: ["is", "not set"], TEAM_FIELD: ["is", "not set"]}),
+			"with_team": frappe.db.count(dt, {team_field(dt): ["is", "set"]}),
+			"visible_to_sales_master_manager_only": frappe.db.count(dt, {owner_field: ["is", "not set"], team_field(dt): ["is", "not set"]}),
 		}
 	readers = frappe.get_all("Has Role", filters={"role": "Sales Master Manager", "parenttype": "User"}, pluck="parent")
 	out["sales_master_managers"] = sorted(u for u in readers if frappe.db.get_value("User", u, "enabled"))
