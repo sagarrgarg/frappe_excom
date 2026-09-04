@@ -459,3 +459,9 @@ def merge_identities(source: str, target: str):
 	frappe.db.commit()
 
 	return {"merged": source, "into": target}
+
+
+def on_doctype_update():
+	# Identity resolution looks a contact up by phone or email on every inbound message.
+	frappe.db.add_index("Omni Identity", ["primary_phone"])
+	frappe.db.add_index("Omni Identity", ["primary_email"])

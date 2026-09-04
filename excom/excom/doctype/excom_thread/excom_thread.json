@@ -257,7 +257,9 @@
    "export": 1,
    "read": 1,
    "report": 1,
-   "role": "Excom User"
+   "role": "Excom User",
+   "write": 1,
+   "create": 1
   }
  ],
  "search_fields": "display_name,primary_phone,channel",

@@ -11,3 +11,8 @@ class ExcomSourceLog(Document):
 		self.check_permission("write")
 		process_log(self.name, force=True)
 		return {"status": frappe.db.get_value("Excom Source Log", self.name, "status")}
+
+
+def on_doctype_update():
+	frappe.db.add_index("Excom Source Log", ["source", "status"])
+	frappe.db.add_index("Excom Source Log", ["status", "creation"])

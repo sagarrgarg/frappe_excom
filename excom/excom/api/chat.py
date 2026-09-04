@@ -50,22 +50,12 @@ MANAGER_ROLES = {"System Manager", "Excom Manager"}
 
 
 def _user_can_access_thread(thread_id: str) -> bool:
-    """Same visibility rule as get_threads: managers see all; others see threads in their
-    teams, directly assigned to them, or unassigned (General) if they belong to General."""
+    """One rule for every entry point: see excom_thread.can_access()."""
     if not thread_id:
         return False
-    if MANAGER_ROLES & set(frappe.get_roles(frappe.session.user)):
-        return True
-    row = frappe.db.get_value("Excom Thread", thread_id, ["assigned_to", "assigned_team"], as_dict=True)
-    if not row:
-        return False
-    if row.assigned_to == frappe.session.user:
-        return True
-    from excom.excom.doctype.excom_team.excom_team import get_user_teams
-    teams = set(get_user_teams())
-    if row.assigned_team:
-        return row.assigned_team in teams
-    return "General" in teams
+    from excom.excom.doctype.excom_thread.excom_thread import can_access
+
+    return can_access(thread_id, frappe.session.user)
 
 
 def _check_thread_access(thread_id: str) -> None:

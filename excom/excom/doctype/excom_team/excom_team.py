@@ -109,3 +109,8 @@ def get_descendant_teams(team_name: str) -> list[str]:
             queue.append(child)
 
     return result
+
+
+def on_doctype_update():
+	# Read on every permission check now that team membership decides lead and thread visibility.
+	frappe.db.add_index("Excom Team Member", ["user"])

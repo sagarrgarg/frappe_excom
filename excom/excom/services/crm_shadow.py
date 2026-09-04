@@ -49,6 +49,7 @@ FIELDS = [
 def install() -> str:
 	"""Create the shadow doctype on this site (idempotent). Custom DocType, module Excom, naming EXL-.#####."""
 	if frappe.db.exists("DocType", SHADOW_LEAD):
+		reconcile()
 		return SHADOW_LEAD
 	doc = frappe.get_doc(
 		{
@@ -61,6 +62,33 @@ def install() -> str:
 	doc.insert(ignore_permissions=True)
 	frappe.db.commit()
 	return SHADOW_LEAD
+
+
+def reconcile() -> dict:
+	"""Bring an already-installed shadow in line with FIELDS.
+
+	Returning early on "it exists" is not idempotent, it is a blind spot: the shadow was created
+	before Excom Intake Source was renamed to Excom Source, so its link pointed at a doctype that no
+	longer exists and nothing noticed. Adds missing fields and repairs drifted options and labels.
+	"""
+	doc = frappe.get_doc("DocType", SHADOW_LEAD)
+	have = {f.fieldname: f for f in doc.fields}
+	added, repaired = [], []
+	for fn, ft, lb, extra in FIELDS:
+		field = have.get(fn)
+		if not field:
+			doc.append("fields", {"fieldname": fn, "fieldtype": ft, "label": lb, **extra})
+			added.append(fn)
+			continue
+		for key, value in {"fieldtype": ft, "label": lb, **extra}.items():
+			if field.get(key) != value:
+				field.set(key, value)
+				repaired.append(f"{fn}.{key}")
+	if added or repaired:
+		doc.flags.ignore_permissions = True
+		doc.save()
+		frappe.db.commit()
+	return {"added": added, "repaired": repaired}
 
 
 def uninstall() -> None:

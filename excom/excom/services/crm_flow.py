@@ -259,7 +259,11 @@ def sync_thread_owner(doc) -> None:
 	owner = doc.get("lead_owner") if doc.doctype == gw.LEAD else doc.get("opportunity_owner")
 	if not identity or not owner:
 		return
-	team = frappe.db.get_value("Excom Team Member", {"user": owner}, "parent")
+	# Same tie-break as the CRM side: a user in several teams keeps the work on the deepest one.
+	# Reading the first matching row here meant a thread and its lead could land on different teams.
+	from excom.excom.services.crm_visibility import team_for_user
+
+	team = team_for_user(owner)
 	frappe.db.sql(
 		"""UPDATE `tabExcom Thread` SET assigned_to=%(u)s, assigned_team=COALESCE(%(t)s, assigned_team)
 		   WHERE omni_identity=%(oi)s AND status IN ('Open','Pending') AND COALESCE(assigned_to,'') <> %(u)s""",
