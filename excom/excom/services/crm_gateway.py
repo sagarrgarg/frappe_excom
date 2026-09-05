@@ -28,6 +28,10 @@ PROSPECT = "Prospect"
 CUSTOMER = "Customer"
 QUOTATION = "Quotation"
 
+# The native Lead.status options, named here because this module is the only place allowed to spell
+# native doctype and field values.
+LEAD_STATUSES = ["Lead", "Open", "Replied", "Opportunity", "Quotation", "Interested", "Converted", "Do Not Contact"]
+
 CUSTOMER_TYPES = ["Distributor", "Retailer", "Export Importer", "OEM", "Corporate Gifting", "Online B2C"]
 
 # HLD-003 §6.1 — pipeline_stage superset → (types, sales_stage, probability)
@@ -325,17 +329,37 @@ def list_pipeline(customer_type: str, filters: dict | None = None, limit: int = 
 
 def list_intake(filters: dict | None = None, limit: int = 500, or_filters: list | None = None) -> list[dict]:
 	f: dict = {"status": ["not in", ["Converted", "Do Not Contact"]], "intake_stage": ["!=", "Qualified"]}
-	for k in ("company", "territory", "lead_owner", "intake_stage", "customer_type", "intake_source"):
-		if filters and filters.get(k):
+	filters = filters or {}
+	# Straight equality filters. country and excom_team were returned on every row but could not be
+	# filtered on, so the columns were there to read and useless to narrow by.
+	for k in ("company", "territory", "lead_owner", "intake_stage", "customer_type", "intake_source",
+	          "country", "excom_team", "city", "state", "first_touch_channel", "request_type"):
+		if filters.get(k):
 			f[k] = filters[k]
+	if filters.get("status"):
+		f["status"] = filters["status"]           # overrides the open-only default on purpose
+	if filters.get("unassigned"):
+		f["lead_owner"] = ["is", "not set"]
+	if filters.get("from_date"):
+		f["creation"] = [">=", filters["from_date"]]
+	if filters.get("to_date"):
+		f["creation"] = ["<=", frappe.utils.add_to_date(filters["to_date"], days=1)] if "creation" not in f \
+			else ["between", [filters["from_date"], frappe.utils.add_to_date(filters["to_date"], days=1)]]
+
+	text = (filters.get("q") or "").strip()
+	search = None
+	if text:
+		like = f"%{text}%"
+		search = [[LEAD, c, "like", like] for c in ("lead_name", "company_name", "email_id", "mobile_no", "phone")]
+
 	rows = frappe.get_list(
 		LEAD,
 		filters=f,
-		or_filters=or_filters or None,
+		or_filters=search or or_filters or None,
 		fields=[
 			"name", "lead_name", "company_name", "email_id", "mobile_no", "status", "customer_type", "intake_stage", "intake_source",
 			"first_touch_channel", "first_touch_at", "auto_ack_sent_at", "source_reference", "lead_owner", "omni_identity", "creation",
-			"company", "territory", "country", "request_type",
+			"company", "territory", "country", "city", "state", "request_type", "excom_team",
 		],
 		order_by="creation desc",
 		limit=limit,

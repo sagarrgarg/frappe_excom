@@ -101,8 +101,25 @@
    "fieldtype": "Link",
    "label": "Auto Ack Template",
    "options": "WhatsApp Templates",
-   "description": "Approved utility template; marketplace sources only",
-   "depends_on": "eval:![\"Exhibition\",\"Manual\"].includes(doc.source_type)"
+   "description": "Approved utility template sent to the enquirer. Set it and it is sent, whatever the source type.",
+   "depends_on": "eval:!['Exhibition','Manual'].includes(doc.source_type)"
+  },
+  {
+   "fieldname": "auto_ack_repeat",
+   "fieldtype": "Check",
+   "label": "Acknowledge repeat enquiries too",
+   "default": "0",
+   "depends_on": "auto_ack_template",
+   "description": "Off: only a brand-new lead is acknowledged, so somebody who writes in twice is not messaged twice. On: every enquiry is acknowledged, including ones that dedupe onto an existing lead."
+  },
+  {
+   "fieldname": "auto_ack_repeat_cooldown_hours",
+   "fieldtype": "Int",
+   "label": "Wait this many hours before acknowledging the same lead again",
+   "default": "24",
+   "depends_on": "auto_ack_repeat",
+   "non_negative": 1,
+   "description": "Stops a customer who sends five enquiries in a minute from receiving five WhatsApp templates, which is how a number loses its quality rating. 0 means no wait."
   },
   {
    "fieldname": "default_campaign",
@@ -267,6 +284,8 @@
   "default_lead_owner",
   "sla_first_response",
   "auto_ack_template",
+  "auto_ack_repeat",
+  "auto_ack_repeat_cooldown_hours",
   "default_campaign",
   "default_medium",
   "sec_cred",

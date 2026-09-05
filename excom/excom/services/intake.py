@@ -23,6 +23,9 @@ from excom.excom.services import crm_flow
 from excom.excom.services import crm_gateway as gw
 from excom.excom.utils.phone import normalize_phone as _normalize_phone_util
 
+# Auto-acknowledgement used to be restricted to these three, which meant a Website source could be
+# given a template in the form and would silently never send it. The rule is now the obvious one:
+# a template that is set is a template that gets sent. Kept only for the SLA copy that names them.
 MARKETPLACE_TYPES = {"IndiaMART", "TradeIndia", "Meta Lead Ads"}
 CHANNEL_FOR_TYPE = {"Website": "Web Form", "IndiaMART": "Marketplace", "TradeIndia": "Marketplace", "Meta Lead Ads": "Facebook", "Exhibition": "Manual", "Manual": "Manual"}
 
@@ -201,8 +204,12 @@ def process_log(log_name: str, force: bool = False) -> None:
 			log.thread = thread
 			# the enquiry is already a Comment on the lead (it shows in this thread); just make the row readable
 			frappe.db.set_value("Excom Thread", thread, {"last_message_preview": (enquiry or source.source_name)[:140], "last_message_at": now_datetime()}, update_modified=False)
-		if created and source.source_type in MARKETPLACE_TYPES and source.channel_account and source.auto_ack_template and mapped.get("phone"):
-			frappe.enqueue("excom.excom.services.intake.send_auto_ack", queue="short", log_name=log.name, enqueue_after_commit=True)
+		# Acknowledge when there is a template to send, somewhere to send it from and somebody to send
+		# it to. A repeat enquiry is acknowledged only if the source asks for it, so a customer who
+		# writes in twice is not messaged twice by default.
+		if source.auto_ack_template and source.channel_account and mapped.get("phone"):
+			if created or source.get("auto_ack_repeat"):
+				frappe.enqueue("excom.excom.services.intake.send_auto_ack", queue="short", log_name=log.name, enqueue_after_commit=True)
 
 		log.status = "Processed"
 		log.processed_at = now_datetime()
@@ -219,11 +226,36 @@ def process_log(log_name: str, force: bool = False) -> None:
 		frappe.log_error(title=f"Excom intake failed: {log.name}", message=log.error)
 
 
+def _ack_cooldown_passed(log, source) -> bool:
+	"""Do not acknowledge the same lead again inside the source's cooldown.
+
+	Five enquiries in a minute would otherwise be five WhatsApp templates to the same number, which
+	is how a business number loses its quality rating. Checked at send time rather than at enqueue
+	time, so a job that sat in the queue cannot slip past it.
+	"""
+	if not source.get("auto_ack_repeat") or not log.lead:
+		return True
+	hours = frappe.utils.cint(source.get("auto_ack_repeat_cooldown_hours"))
+	if hours <= 0:
+		return True
+	last = frappe.db.get_value(log.lead_doctype, log.lead, "auto_ack_sent_at")
+	if not last:
+		return True
+	if frappe.utils.time_diff_in_hours(now_datetime(), last) >= hours:
+		return True
+	frappe.logger("excom").info(
+		f"auto-ack skipped for {log.lead}: last one was {last}, cooldown is {hours}h"
+	)
+	return False
+
+
 def send_auto_ack(log_name: str) -> None:
 	"""HLD-003 §4.5 — pre-approved utility template to the enquirer, posted into the thread; stamps auto_ack_sent_at."""
 	log = frappe.get_doc("Excom Source Log", log_name)
 	source = frappe.get_doc("Excom Source", log.source)
 	if not (log.thread and source.auto_ack_template):
+		return
+	if not _ack_cooldown_passed(log, source):
 		return
 	from excom.excom.api.chat import send_template_to_thread
 

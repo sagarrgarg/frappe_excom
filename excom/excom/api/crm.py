@@ -387,7 +387,30 @@ def get_records_for_identity(omni_identity: str) -> list:
 @frappe.whitelist()
 def get_options() -> dict:
 	_check_excom_access()
-	return {"customer_types": gw.CUSTOMER_TYPES, "pipelines": gw.PIPELINES, "stages": {k: {"sales_stage": v["sales_stage"], "probability": v["probability"]} for k, v in gw.STAGES.items()}, "intake_stages": gw.INTAKE_STAGES}
+	# The lists the filter bar offers are built from what the leads actually contain, so a country
+	# nobody has a lead in is never offered and a country somebody does is never missing.
+	def _present(field):
+		rows = frappe.get_all(gw.LEAD, filters={field: ["is", "set"]}, fields=[field], group_by=field,
+		                      order_by=field, limit_page_length=200)
+		return [r[field] for r in rows if r.get(field)]
+
+	owners = frappe.get_all(gw.LEAD, filters={"lead_owner": ["is", "set"]}, fields=["lead_owner"],
+	                        group_by="lead_owner", limit_page_length=200)
+	names = {u.name: u.full_name for u in frappe.get_all("User", filters={"name": ["in", [o.lead_owner for o in owners]]},
+	                                                     fields=["name", "full_name"])} if owners else {}
+	return {
+		"customer_types": gw.CUSTOMER_TYPES,
+		"pipelines": gw.PIPELINES,
+		"stages": {k: {"sales_stage": v["sales_stage"], "probability": v["probability"]} for k, v in gw.STAGES.items()},
+		"intake_stages": gw.INTAKE_STAGES,
+		"countries": _present("country"),
+		"territories": _present("territory"),
+		"teams": frappe.get_all("Excom Team", pluck="name", order_by="name"),
+		"sources": frappe.get_all("Excom Source", filters={"enabled": 1}, pluck="name", order_by="name"),
+		"channels": _present("first_touch_channel"),
+		"owners": [{"value": o.lead_owner, "label": names.get(o.lead_owner) or o.lead_owner} for o in owners],
+		"statuses": gw.LEAD_STATUSES,
+	}
 
 
 @frappe.whitelist()

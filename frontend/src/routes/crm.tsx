@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { useFrappeGetCall } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
-import { Sun, Inbox, KanbanSquare, Loader2, MessageSquare, ExternalLink, Filter, Clock, AlertTriangle, CheckSquare } from "lucide-react";
+import { Sun, Inbox, KanbanSquare, Loader2, MessageSquare, ExternalLink, Filter, Clock, AlertTriangle, CheckSquare, X } from "lucide-react";
 import { PageFrame } from "../components/shell/PageFrame";
 import { NewLeadDialog } from "../components/crm/NewLeadDialog";
 import { Plus } from "lucide-react";
 import { useInbox } from "../components/shell/InboxProvider";
-import { Row, Avatar, Chip, Badge, EmptyState, Button, Select, SegmentedControl } from "../components/primitives";
+import { Row, Avatar, Chip, Badge, EmptyState, Button, Select, Input, SegmentedControl } from "../components/primitives";
 import { GateChips } from "../components/crm/GateChips";
 import { StagePicker } from "../components/crm/StagePicker";
 import { useCrmActions, useCrmOptions } from "../hooks/useCrm";
@@ -79,13 +79,71 @@ export function TodayRoute() {
   );
 }
 
+
+type LeadFilters = Record<string, string>;
+
+/** The filter bar over the leads queue. Every dropdown is built from values the leads actually
+ *  carry, so a country nobody has a lead in is never offered. */
+function LeadFilterBar({ opts, value, onChange }: { opts: any; value: LeadFilters; onChange: (f: LeadFilters) => void }) {
+  const [open, setOpen] = useState(false);
+  const set = (k: string, v: string) => onChange({ ...value, [k]: v });
+  const active = Object.entries(value).filter(([k, v]) => v && k !== "intake_stage");
+  const clear = () => onChange(value.intake_stage ? { intake_stage: value.intake_stage } : {});
+
+  const selects: { key: string; label: string; options: { value: string; label: string }[] }[] = [
+    { key: "country", label: "Country", options: (opts.countries ?? []).map((c: string) => ({ value: c, label: c })) },
+    { key: "excom_team", label: "Team", options: (opts.teams ?? []).map((t: string) => ({ value: t, label: t })) },
+    { key: "customer_type", label: "Type", options: (opts.customer_types ?? []).map((t: string) => ({ value: t, label: t })) },
+    { key: "intake_source", label: "Source", options: (opts.sources ?? []).map((t: string) => ({ value: t, label: t })) },
+    { key: "lead_owner", label: "Owner", options: (opts.owners ?? []) },
+    { key: "first_touch_channel", label: "Channel", options: (opts.channels ?? []).map((t: string) => ({ value: t, label: t })) },
+    { key: "territory", label: "Territory", options: (opts.territories ?? []).map((t: string) => ({ value: t, label: t })) },
+    { key: "status", label: "Status", options: (opts.statuses ?? []).map((t: string) => ({ value: t, label: t })) },
+  ];
+
+  return (
+    <div className="border-b border-border bg-surface-sunken px-2 py-1.5 flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5 min-w-0">
+        <Input
+          value={value.q ?? ""}
+          onChange={(e) => set("q", e.target.value)}
+          placeholder="Search name, company, email or phone"
+          className="flex-1 min-w-0 max-w-[22rem]"
+          aria-label="Search leads"
+        />
+        <Button size="sm" variant={open || active.length ? "primary" : "ghost"} onClick={() => setOpen((o) => !o)}>
+          <Filter />Filters{active.length ? ` (${active.length})` : ""}
+        </Button>
+        {active.length > 0 && (
+          <Button size="sm" variant="ghost" onClick={clear} aria-label="Clear filters"><X />Clear</Button>
+        )}
+      </div>
+      {open && (
+        <div className="grid gap-1.5 grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]">
+          {selects.map((s) => (
+            <Select key={s.key} value={value[s.key] ?? ""} onChange={(e) => set(s.key, e.target.value)} aria-label={s.label}>
+              <option value="">{s.label}: any</option>
+              {s.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </Select>
+          ))}
+          <Input type="date" value={value.from_date ?? ""} onChange={(e) => set("from_date", e.target.value)} aria-label="From date" />
+          <Input type="date" value={value.to_date ?? ""} onChange={(e) => set("to_date", e.target.value)} aria-label="To date" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** /intake — S1–S5 queue by intake_stage, SLA pip, bulk classify, one-click open conversation. */
 export function IntakeRoute() {
   const opts = useCrmOptions();
-  const [stage, setStage] = useState("");
+  const [filters, setFilters] = useState<LeadFilters>({});
+  const stage = filters.intake_stage ?? "";
+  const setStage = (s: string) => setFilters((f) => ({ ...f, intake_stage: s }));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [ct, setCt] = useState("");
-  const { data, isLoading, mutate } = useFrappeGetCall<{ message: any[] }>(`${M}.get_intake_queue`, { filters: JSON.stringify(stage ? { intake_stage: stage } : {}) }, undefined, { refreshInterval: 60_000 });
+  const query = useMemo(() => Object.fromEntries(Object.entries(filters).filter(([, v]) => v)), [filters]);
+  const { data, isLoading, mutate } = useFrappeGetCall<{ message: any[] }>(`${M}.get_intake_queue`, { filters: JSON.stringify(query) }, undefined, { refreshInterval: 60_000 });
   const actions = useCrmActions(() => { mutate(); setSelected(new Set()); });
   const open = useOpenThread();
   const rows = data?.message ?? [];
@@ -94,6 +152,7 @@ export function IntakeRoute() {
   return (
     <PageFrame title="Leads" icon={<Inbox />} className="!p-0" actions={<><Badge count={rows.length} accent="neutral" /><Button size="sm" variant="primary" onClick={() => setNewLead(true)}><Plus />New lead</Button><NewLeadDialog open={newLead} onClose={() => setNewLead(false)} onCreated={() => mutate()} /></>}>
       <div className="-m-3">
+        <LeadFilterBar opts={opts} value={filters} onChange={setFilters} />
         <div className="sticky top-0 z-10 bg-surface-sunken border-b border-border px-2 py-1.5 flex items-center gap-2 min-w-0">
           <div className="chip-row flex-1 h-7">
             <Chip size="sm" label="All" accent={!stage ? "blue" : "neutral"} onClick={() => setStage("")} />
@@ -106,7 +165,7 @@ export function IntakeRoute() {
             </div>
           )}
         </div>
-        {isLoading && !rows.length ? <div className="flex justify-center py-10 text-ink-3"><Loader2 className="size-5 animate-spin" /></div> : rows.length === 0 ? <EmptyState icon={<Inbox />} title="Intake queue is empty" hint="New enquiries from IndiaMART, TradeIndia, Meta lead ads and websites land here." /> : (
+        {isLoading && !rows.length ? <div className="flex justify-center py-10 text-ink-3"><Loader2 className="size-5 animate-spin" /></div> : rows.length === 0 ? <EmptyState icon={<Inbox />} title={Object.keys(query).length ? "No leads match these filters" : "Intake queue is empty"} hint={Object.keys(query).length ? "Clear a filter to widen the search." : "New enquiries from IndiaMART, TradeIndia, Meta lead ads and websites land here."} /> : (
           rows.map((r) => (
             <div key={r.name} className="flex items-stretch min-w-0">
               <label className="flex items-center px-2 border-b border-border shrink-0"><input type="checkbox" className="size-4" checked={selected.has(r.name)} onChange={() => toggle(r.name)} /></label>
