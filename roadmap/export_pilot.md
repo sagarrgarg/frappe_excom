@@ -136,6 +136,20 @@ export leads. Set `customer_type` to `Export Importer` on the leads the desk wil
 team to `Export Desk`. If those leads already have an owner who is an export agent, the backfill
 command below does the team for you.
 
+**Decide whether the desk acknowledges automatically, and with what.** On the export source, set an
+approved WhatsApp utility template in *Auto Ack Template* and the enquirer gets an immediate
+acknowledgement in the export desk's own inbox, which for an export enquiry arriving at 2am from
+another timezone is most of the value of the whole system. Until this week that setting silently did
+nothing on a Website source — the code only sent acknowledgements for IndiaMART, TradeIndia and Meta
+lead ads, so a template configured on a website form was accepted by the form and never used. That is
+fixed: a template that is set is a template that gets sent.
+
+Two things sit next to it. *Acknowledge repeat enquiries too* is off by default, so somebody who
+writes in twice in a week is not messaged twice; turn it on for a desk where every enquiry is a
+distinct order rather than a follow-up. If you do turn it on, leave the cooldown beside it at
+24 hours unless you have a reason — five enquiries in a minute would otherwise be five WhatsApp
+templates to the same number, and that is how a business number loses its quality rating with Meta.
+
 **Run for a week with visibility still switched off.** Nothing is hidden, nobody is locked out, and
 the desk gets used to claiming, transferring and qualifying while the tree and the classifications
 settle. This is the cheap way to find out that somebody was left out of the team before it costs
@@ -169,6 +183,22 @@ Be careful with the other rule in that set, `Excom Intake — Unclassified`, whi
 that has no customer type — imports and background jobs included. On a site where 2,080 leads are
 unclassified, switching that on before classifying would hand the entire history to three people
 overnight. Leave it off until classification is done.
+
+## What changed this week that the desk will notice
+
+Three things landed after this document was first written, and all three are visible from the leads
+screen. **Auto-acknowledgement now works on website enquiries**, described in step five above.
+**Every note on a lead is now readable in Excom**: notes an agent typed by hand used to sit in
+ERPNext's own child table where Excom could not see them, so a lead with years of history looked
+empty in the conversation view; 89 were moved on the working bench and production has more waiting
+for its next migrate. And the **leads queue now filters** by country, team, customer type, source,
+owner, channel, territory, status, a date range and a free-text search across name, company, email
+and phone, with every dropdown built from the values your leads actually carry.
+
+One honest caveat about those filters: the Team filter and the Customer Type filter will both look
+broken at first, and they are not. No lead carries a team until the backfill in step six has run,
+and exactly one lead in the whole database is classified. The filters work; the data behind them is
+what the first four steps of this pilot are for.
 
 ## Before any of this, two things need closing on production
 
