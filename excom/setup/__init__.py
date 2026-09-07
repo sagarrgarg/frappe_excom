@@ -81,6 +81,9 @@ def after_install():
 	apply_crm_schema()
 	from excom.setup.crm_permissions import apply as apply_crm_permissions
 	apply_crm_permissions()
+	# A fresh install marks every patch as completed without running it, so the source mirror that
+	# unify_sources builds on an existing site has to be built here too, or Admin -> Sources is empty.
+	mirror_attribution_sources()
 
 
 SHARED_DOCTYPES = [
@@ -193,3 +196,37 @@ def seed_channels():
 		frappe.db.commit()
 	finally:
 		frappe.flags.in_migrate = was_in_migrate
+
+
+def mirror_attribution_sources() -> int:
+	"""Give every Lead Source (v15) / UTM Source (v16) row a matching Excom Source. Idempotent.
+
+	Shared by after_install and the v1_0 unify_sources patch so a new site and an upgraded one end
+	up with the same source list.
+	"""
+	from excom.excom.services.crm_compat import attribution_doctypes
+
+	target = attribution_doctypes()["source"]
+	if not frappe.db.exists("DocType", target):
+		return 0
+	company = frappe.defaults.get_global_default("company") or frappe.db.get_value("Company", {}, "name")
+	have = {frappe.db.get_value("Excom Source", n, "source_name") for n in frappe.get_all("Excom Source", pluck="name")}
+	created = 0
+	for name in frappe.get_all(target, pluck="name"):
+		if name in have or name.startswith("QA "):
+			continue
+		stype = "Channel" if name.startswith("Organic ") else ("Exhibition" if "xhibition" in name else "Manual")
+		doc = frappe.get_doc({
+			"doctype": "Excom Source",
+			"source_name": name,
+			"source_type": stype,
+			"enabled": 1,
+			"company": company,
+			"sla_first_response": 0,
+		})
+		doc.flags.ignore_permissions = True
+		doc.flags.ignore_mandatory = True
+		doc.insert()
+		created += 1
+	frappe.db.commit()
+	return created
