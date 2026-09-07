@@ -224,7 +224,6 @@
    "fieldtype": "Link",
    "options": "Excom Team",
    "label": "Shared inbox team",
-   "default": "General",
    "description": "Members of this team see conversations nobody has claimed yet. Leave it empty and an unclaimed chat is visible only to managers."
   },
   {

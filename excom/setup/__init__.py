@@ -147,16 +147,22 @@ def seed_roles():
 
 
 def seed_general_team():
-	"""Create the permanent General team if it doesn't exist."""
-	if frappe.db.exists("Excom Team", GENERAL_TEAM_NAME):
-		return
+	"""Create the permanent General team if it doesn't exist, and point the shared inbox at it.
 
-	doc = frappe.get_doc({
-		"doctype": "Excom Team",
-		"team_name": GENERAL_TEAM_NAME,
-		"description": "Default team for unassigned conversations. Members can view and claim threads from the General inbox.",
-	})
-	doc.insert(ignore_permissions=True)
+	The settings field carries no default: Frappe saves every single doctype during install, before
+	after_install runs, so a default of "General" would fail link validation on a fresh site.
+	"""
+	if not frappe.db.exists("Excom Team", GENERAL_TEAM_NAME):
+		doc = frappe.get_doc({
+			"doctype": "Excom Team",
+			"team_name": GENERAL_TEAM_NAME,
+			"description": "Default team for unassigned conversations. Members can view and claim threads from the General inbox.",
+		})
+		doc.insert(ignore_permissions=True)
+
+	if not frappe.db.get_single_value("Excom Settings", "shared_inbox_team"):
+		frappe.db.set_single_value("Excom Settings", "shared_inbox_team", GENERAL_TEAM_NAME)
+
 	frappe.db.commit()
 
 
