@@ -24,6 +24,11 @@ SALES_HEAD = "Sales Master Manager"
 MATRIX: dict[str, dict[str, tuple[int, int, int, int]]] = {
 	gw.LEAD: {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1), SALES_HEAD: (1, 1, 1, 1), ADMIN: (1, 1, 1, 1)},
 	gw.OPPORTUNITY: {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1), SALES_HEAD: (1, 1, 1, 1), ADMIN: (1, 1, 1, 1)},
+	# Prospect is one of gw.crm_doctypes(), so the record pane, the field schema and the promote
+	# flow all reach for it — and every one of them threw PermissionError for an agent, because it
+	# was the one CRM doctype missing from this matrix. ERPNext also anchors an Opportunity to a
+	# Prospect, so an agent who cannot read one cannot follow their own lead into a deal.
+	gw.PROSPECT: {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1), SALES_HEAD: (1, 1, 1, 1), ADMIN: (1, 1, 1, 1)},
 	gw.QUOTATION: {AGENT: (1, 0, 0, 0), MANAGER: (1, 1, 1, 0), ADMIN: (1, 1, 1, 0)},
 	"Contact": {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1), ADMIN: (1, 1, 1, 1)},
 	"Address": {AGENT: (1, 1, 1, 0), MANAGER: (1, 1, 1, 1), ADMIN: (1, 1, 1, 1)},
