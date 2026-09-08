@@ -40,7 +40,7 @@ class TestThreadVisibilityAgreement(FrappeTestCase):
 			u = frappe.get_doc({"doctype": "User", "email": email, "first_name": email.split("@")[0], "send_welcome_email": 0})
 			u.flags.ignore_permissions = True
 			u.insert(ignore_permissions=True)
-			u.add_roles("Excom User")
+			u.add_roles("Excom Agent")
 		team = frappe.get_doc("Excom Team", "General")
 		team.append("members", {"user": IN_GENERAL, "role": "Member"})
 		team.flags.ignore_permissions = True

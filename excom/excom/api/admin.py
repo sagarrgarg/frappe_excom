@@ -2,7 +2,7 @@
 Excom Admin API — one place for everything a manager used to do in Desk.
 
 Thin, meta-driven CRUD over a fixed allow-list of Excom doctypes, plus the team/user
-operations that don't fit a generic form. Every endpoint requires Excom Manager or
+operations that don't fit a generic form. Every endpoint requires Excom Admin or
 System Manager (``_check_manager_access``).
 """
 
@@ -302,7 +302,7 @@ def set_team_accounts(team: str, accounts: str | list) -> dict:
 
 # ─── Users ───────────────────────────────────────────────────────────────────
 
-EXCOM_ROLE_NAMES = ["Excom Admin", "Excom User", "Excom Manager"]
+EXCOM_ROLE_NAMES = ["Excom Admin", "Excom Agent"]
 
 
 @frappe.whitelist()
@@ -354,7 +354,7 @@ def set_user_roles(user: str, roles: str | list) -> dict:
     if wanted and not frappe.db.exists("Excom Team Member", {"parenttype": "Excom Team", "user": user}):
         if frappe.db.exists("Excom Team", "General"):
             team = frappe.get_doc("Excom Team", "General")
-            team.append("members", {"user": user, "role": "Manager" if "Excom Manager" in wanted else "Member"})
+            team.append("members", {"user": user, "role": "Manager" if "Excom Admin" in wanted else "Member"})
             team.flags.ignore_permissions = True
             team.save()
             frappe.db.commit()

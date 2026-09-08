@@ -136,7 +136,7 @@ def gate_status(r) -> dict:
 def override_gate(r, gate: str, reason: str) -> None:
 	"""Manager override, always logged as a comment naming the user (HLD-003 §11.3)."""
 	roles = set(frappe.get_roles())
-	if not roles & {"System Manager", "Excom Manager", "Sales Manager"}:
+	if not roles & {"System Manager", "Excom Admin", "Sales Manager"}:
 		frappe.throw(_("Only managers can override a gate"), frappe.PermissionError)
 	if not reason:
 		frappe.throw(_("A reason is required to override a gate"))

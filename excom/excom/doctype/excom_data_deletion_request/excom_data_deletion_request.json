@@ -80,10 +80,6 @@
    "delete": 1
   },
   {
-   "role": "Excom Manager",
-   "read": 1
-  },
-  {
    "role": "Excom Admin",
    "read": 1
   }

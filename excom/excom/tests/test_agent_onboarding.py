@@ -1,4 +1,4 @@
-"""A user who has the Excom User role but belongs to no team sees an empty inbox and cannot
+"""A user who has the Excom Agent role but belongs to no team sees an empty inbox and cannot
 open or answer anything. Granting the role therefore puts the agent in the shared inbox."""
 
 import json
@@ -38,7 +38,7 @@ class TestAgentOnboarding(FrappeTestCase):
 	def test_granting_the_agent_role_joins_the_shared_inbox(self):
 		from excom.excom.api import admin
 
-		res = admin.set_user_roles(user=USER, roles=json.dumps(["Excom User"]))
+		res = admin.set_user_roles(user=USER, roles=json.dumps(["Excom Agent"]))
 		self.assertEqual(res["added_to_team"], "General")
 		self.assertTrue(frappe.db.exists("Excom Team Member", {"parent": "General", "user": USER}))
 
@@ -49,14 +49,14 @@ class TestAgentOnboarding(FrappeTestCase):
 		team.append("members", {"user": USER, "role": "Manager"})
 		team.flags.ignore_permissions = True
 		team.save()
-		res = admin.set_user_roles(user=USER, roles=json.dumps(["Excom User"]))
+		res = admin.set_user_roles(user=USER, roles=json.dumps(["Excom Agent"]))
 		self.assertIsNone(res["added_to_team"])
 		self.assertEqual(frappe.db.get_value("Excom Team Member", {"parent": "General", "user": USER}, "role"), "Manager")
 
 	def test_an_agent_in_a_team_can_read_the_inbox(self):
 		from excom.excom.api import admin, chat
 
-		admin.set_user_roles(user=USER, roles=json.dumps(["Excom User"]))
+		admin.set_user_roles(user=USER, roles=json.dumps(["Excom Agent"]))
 		frappe.db.commit()
 		frappe.set_user(USER)
 		try:

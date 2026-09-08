@@ -47,7 +47,7 @@ export function Rail() {
   const [feedback, setFeedback] = useState(false);
   const hoverTimer = useRef(0);
   const navigate = useNavigate();
-  const isManager = hasRole("Excom Manager") || hasRole("System Manager");
+  const isManager = hasRole("Excom Admin") || hasRole("System Manager");
   const location = useLocation();
 
   useEffect(() => () => window.clearTimeout(hoverTimer.current), []);

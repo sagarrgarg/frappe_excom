@@ -23,7 +23,7 @@ def _excom_roles_allowed_for_relay_config() -> bool:
 	user = frappe.session.user
 	if not user or user == "Guest":
 		return False
-	return bool(set(frappe.get_roles(user)) & {"System Manager", "Excom Admin", "Excom Manager", "Excom User"})
+	return bool(set(frappe.get_roles(user)) & {"System Manager", "Excom Admin", "Excom Admin", "Excom Agent"})
 
 
 @frappe.whitelist()
@@ -245,9 +245,9 @@ def register_site_on_excom_cloud() -> None:
 def sync_user_tokens_to_excom_cloud() -> str:
 	"""Enqueue a bulk sync of all local push tokens to Excom Cloud.
 
-	Only Excom Managers or System Managers may trigger this.
+	Only Excom Admins or System Managers may trigger this.
 	"""
-	frappe.only_for(["System Manager", "Excom Manager"])
+	frappe.only_for(["System Manager", "Excom Admin"])
 	frappe.enqueue(
 		"excom.excom.excom_cloud_notifications.sync_users_tokens_to_excom_cloud",
 		queue="long",

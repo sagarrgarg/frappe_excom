@@ -5,7 +5,7 @@ permission layer was decoration: the moment anything called these paths honestly
 refused. Writing a note is the clearest case — a note is a Frappe Comment, and stock Frappe lets
 only a System Manager create one.
 
-These tests run as a plain Excom User with no manager role anywhere, and the API no longer bypasses.
+These tests run as a plain Excom Agent with no manager role anywhere, and the API no longer bypasses.
 """
 
 from unittest.mock import patch
@@ -30,7 +30,7 @@ class TestAgentRights(FrappeTestCase):
 		u = frappe.get_doc({"doctype": "User", "email": AGENT, "first_name": "QA Rights Agent", "send_welcome_email": 0})
 		u.flags.ignore_permissions = True
 		u.insert(ignore_permissions=True)
-		u.add_roles("Excom User")
+		u.add_roles("Excom Agent")
 		team = frappe.get_doc("Excom Team", TEAM)
 		team.append("members", {"user": AGENT, "role": "Member"})
 		team.flags.ignore_permissions = True

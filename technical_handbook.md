@@ -1934,3 +1934,39 @@ Added `_check_excom_access()` to **every** `@frappe.whitelist()` endpoint that w
 - `excom/excom/utils/template_utils.py` — DocType name + missing import
 - `frontend/src/hooks/useMessages.ts` — message type mapping
 - `frontend/src/types/index.ts` — type union update
+
+---
+
+## Two roles: Excom Admin and Excom Agent (2026-09-08)
+
+The three-tier model (Excom Admin / Excom Manager / Excom User) is gone. There are two roles now, and
+the middle tier is not coming back:
+
+| Role | What it means |
+|---|---|
+| **Excom Agent** | Works the inbox: answer, note, tag, transfer, claim, promote a conversation to a lead, edit Lead / Opportunity / Prospect / Contact / Address. Cannot touch channels, credentials, teams or settings. |
+| **Excom Admin** | Everything an agent does, plus running the system and the people: teams and members, reassignment, the audit log, channels, Meta connections, WhatsApp tokens, templates, the embed and Excom Settings. |
+
+`System Manager` continues to imply Excom Admin.
+
+**Visibility is still a separate axis.** Which conversations and leads a person sees comes from the
+team tree (`Excom Team Member.role`), not from these roles. Holding Excom Admin does grant the
+blanket bypass, because the tier that owns the system has to be able to support it.
+
+### Migration
+`excom.patches.v1_0.two_role_model` runs on migrate:
+- `Excom User` → `Excom Agent` for every holder.
+- `Excom Manager` → `Excom Agent`. **Nobody is promoted.** A patch that silently handed the WhatsApp
+  tokens and the Meta connection to every desk head would be the wrong default, so the admin tier is
+  granted by a person. The demoted names are written to the error log under
+  "Excom: former managers are now agents" so they can be reviewed and re-granted.
+- Custom DocPerm and DocPerm rows naming the old roles are deleted, `setup/crm_permissions.py` is
+  re-applied, and both old Role records are removed.
+
+### Where the roles are decided in code
+- `excom/excom/api/chat.py` — `EXCOM_ROLES`, `ADMIN_ROLES`, `MANAGER_ROLES` (the last two are the
+  same set now; the name is kept because "may run people and desks" reads better at the call sites).
+- `excom/excom/doctype/excom_thread/excom_thread.py` — `MANAGER_ROLES` (the blanket bypass) and
+  `EXCOM_ROLES` (may open Excom at all).
+- `excom/setup/crm_permissions.py` — the CRM permission matrix, `AGENT` and `ADMIN`.
+- `excom/setup/__init__.py` — `ROLES`, seeded on install and repaired on every migrate.

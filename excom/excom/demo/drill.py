@@ -170,12 +170,12 @@ def build():
 
 	people = {
 		"drill.boss@example.com": ([], [("Drill Group", "Manager")]),           # runs everything, Excom-blind
-		"drill.west@example.com": (["Excom User"], [("Drill West", "Manager")]),
-		"drill.east@example.com": (["Excom User"], [("Drill East", "Manager")]),
-		"drill.a@example.com": (["Excom User"], [("Drill West A", "Member")]),
-		"drill.deep@example.com": (["Excom User"], [("Drill Deep", "Member")]),
-		"drill.split@example.com": (["Excom User"], [("Drill West B", "Member"), ("Drill East", "Member")]),
-		"drill.gone@example.com": (["Excom User"], [("Drill East", "Member")]),   # will be disabled
+		"drill.west@example.com": (["Excom Agent"], [("Drill West", "Manager")]),
+		"drill.east@example.com": (["Excom Agent"], [("Drill East", "Manager")]),
+		"drill.a@example.com": (["Excom Agent"], [("Drill West A", "Member")]),
+		"drill.deep@example.com": (["Excom Agent"], [("Drill Deep", "Member")]),
+		"drill.split@example.com": (["Excom Agent"], [("Drill West B", "Member"), ("Drill East", "Member")]),
+		"drill.gone@example.com": (["Excom Agent"], [("Drill East", "Member")]),   # will be disabled
 		"drill.norole@example.com": ([], [("Drill West A", "Member")]),           # in a team, no Excom role
 		"drill.smm@example.com": (["Sales Master Manager"], []),
 	}
@@ -357,7 +357,7 @@ def _drill_deleted_team():
 	print("\n--- 5. the team on a record is deleted underneath it ---")
 	_team("Drill Doomed", "Drill West")
 	if not frappe.db.exists("Excom Team Member", {"parent": "Drill Doomed", "user": "drill.doomed@example.com"}):
-		_user("drill.doomed@example.com", ["Excom User"], [("Drill Doomed", "Member")])
+		_user("drill.doomed@example.com", ["Excom Agent"], [("Drill Doomed", "Member")])
 	lead = _lead("Drill Doomed Lead", excom_team="Drill Doomed")
 	frappe.db.commit()
 	try:

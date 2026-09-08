@@ -67,7 +67,7 @@ class _Base(FrappeTestCase):
 
 def _mk_user(email, enabled=1):
 	if not frappe.db.exists("User", email):
-		frappe.get_doc({"doctype": "User", "email": email, "first_name": email.split("@")[0], "enabled": enabled, "send_welcome_email": 0, "roles": [{"role": "Excom User"}]}).insert(ignore_permissions=True)
+		frappe.get_doc({"doctype": "User", "email": email, "first_name": email.split("@")[0], "enabled": enabled, "send_welcome_email": 0, "roles": [{"role": "Excom Agent"}]}).insert(ignore_permissions=True)
 	return email
 
 
@@ -259,7 +259,7 @@ class TestWebhookHelpers(_Base):
 
 
 class TestLeadVisibility(_Base):
-	"""Source → team managers until assigned; members only their own; Excom Managers everything."""
+	"""Source → team managers until assigned; members only their own; Excom Admins everything."""
 
 	def test_visibility_filters(self):
 		from excom.excom.api.crm import lead_visibility, create_lead_manual
@@ -270,7 +270,7 @@ class TestLeadVisibility(_Base):
 		src_team = frappe.get_doc({"doctype": "Excom Source", "source_name": "QA Vis Source", "source_type": "Website", "enabled": 1, "company": company, "mode": "Push", "sla_first_response": 3600, "allowed_teams": [{"team": team.name}]}).insert(ignore_permissions=True)
 		src_other = frappe.get_doc({"doctype": "Excom Source", "source_name": "QA Vis Foreign", "source_type": "Website", "enabled": 1, "company": company, "mode": "Push", "sla_first_response": 3600, "allowed_teams": [{"team": other.name}]}).insert(ignore_permissions=True)
 		frappe.db.commit()
-		# Excom Manager / System Manager → no filter
+		# Excom Admin / System Manager → no filter
 		self.assertIsNone(lead_visibility("Administrator"))
 		# member → only own
 		self.assertEqual(lead_visibility(mem), [["lead_owner", "=", mem]])

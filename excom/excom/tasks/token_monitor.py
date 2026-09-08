@@ -5,7 +5,7 @@ from frappe.utils import add_days, getdate, now_datetime
 
 
 def check_token_expiry() -> None:
-    """Alert Excom Manager/Admin users when OAuth tokens expire within 7 days.
+    """Alert Excom Admin/Admin users when OAuth tokens expire within 7 days.
 
     Checks:
     - Email accounts: Connected App token cache expiry
@@ -67,7 +67,7 @@ def _check_whatsapp_token_health() -> None:
 
 
 def _send_expiry_alert(account_name: str, channel: str, detail: str) -> None:
-    """Send Frappe notification to all Excom Manager users."""
+    """Send Frappe notification to all Excom Admin users."""
     admin_users = _get_admin_users()
     subject = f"Excom: {channel.title()} token alert for {account_name}"
     message = f"<b>{account_name}</b> ({channel}): {detail}"
@@ -95,9 +95,9 @@ def _send_expiry_alert(account_name: str, channel: str, detail: str) -> None:
 
 
 def _get_admin_users() -> list[str]:
-    """Return users with Excom Manager or System Manager role."""
+    """Return users with Excom Admin or System Manager role."""
     users = set()
-    for role in ("Excom Manager", "System Manager"):
+    for role in ("Excom Admin", "System Manager"):
         role_users = frappe.get_all(
             "Has Role",
             filters={"role": role, "parenttype": "User"},

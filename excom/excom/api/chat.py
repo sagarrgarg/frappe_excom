@@ -11,7 +11,7 @@ from excom.excom.utils.errors import ExcomProviderError, ExcomRateLimitError
 
 # Anyone who may open Excom at all. Excom Admin belongs here too: the tier that owns the
 # system must be able to use the thing it configures.
-EXCOM_ROLES = {"System Manager", "Excom Admin", "Excom Manager", "Excom User"}
+EXCOM_ROLES = {"System Manager", "Excom Admin", "Excom Agent"}
 
 MAX_MESSAGE_LENGTH = {
     "whatsapp": 4096,
@@ -48,20 +48,26 @@ def _check_excom_access() -> None:
     if not EXCOM_ROLES.intersection(frappe.get_roles(frappe.session.user)):
         deny(
             _("You do not have access to Excom."),
-            needs_roles=("Excom User", "Excom Manager", "Excom Admin"),
+            needs_roles=("Excom Agent", "Excom Admin"),
         )
 
 
-# Three user roles, each a capability tier: what a person may operate.
-#   Excom User    — work the inbox: answer, note, tag, transfer, claim
-#   Excom Manager — that, plus run people and desks: teams, members, roles, reassignment, audit
-#   Excom Admin   — that, plus the system: channels, Meta, tokens, templates, embed, settings
+# Two roles, and that is the whole model:
+#   Excom Agent — work the inbox: answer, note, tag, transfer, claim, promote to a lead
+#   Excom Admin — that, plus everything else: teams, members, reassignment, audit, channels, Meta,
+#                 tokens, templates, embed, settings
+#
+# There used to be a third tier, Excom Manager, sitting between them. Two tiers was the ask: a
+# person either works conversations or runs the system, and a middle role nobody could describe in
+# one sentence only made every check ambiguous.
 #
 # Visibility is a different axis and does not come from these at all: it comes from the team tree
 # (Excom Team Member.role). Being able to add somebody to a desk is not the same as being able to
-# read every conversation in the company, and until now one role did both.
+# read every conversation in the company.
 ADMIN_ROLES = {"System Manager", "Excom Admin"}
-MANAGER_ROLES = ADMIN_ROLES | {"Excom Manager"}
+# Kept as a name because "may run people and desks" reads better at the call sites than
+# ADMIN_ROLES; with two roles the two sets are the same thing.
+MANAGER_ROLES = ADMIN_ROLES
 
 
 def _user_can_access_thread(thread_id: str) -> bool:
@@ -123,7 +129,7 @@ def _thread_ownership_detail(thread_id: str) -> str:
     if not row:
         return _("Conversation {0} does not exist.").format(thread_id)
     if row.assigned_to:
-        return _("It is assigned to {0}{1}. Ask them or an Excom Manager to transfer it.").format(
+        return _("It is assigned to {0}{1}. Ask them or an Excom Admin to transfer it.").format(
             row.assigned_to, _(" on the {0} desk").format(row.assigned_team) if row.assigned_team else ""
         )
     if row.assigned_team:
@@ -229,7 +235,7 @@ def get_threads(
         params["broadcast"] = broadcast
 
     user_roles = set(frappe.get_roles(frappe.session.user))
-    is_manager = bool(user_roles & {"System Manager", "Excom Manager"})
+    is_manager = bool(user_roles & {"System Manager", "Excom Admin"})
 
     if team == "__general__":
         if not is_manager:
@@ -1405,7 +1411,7 @@ def get_channel_accounts(channel: str = "") -> list:
     - If an account has no entries in allowed_teams → visible to everyone
     - If it has entries → visible only to users whose teams (or ancestor teams)
       overlap with the allowed list
-    - System Manager / Excom Manager see all accounts
+    - System Manager / Excom Admin see all accounts
     """
     _check_excom_access()
     filters = {"status": "Active"}
@@ -1424,7 +1430,7 @@ def get_channel_accounts(channel: str = "") -> list:
     )
 
     user_roles = set(frappe.get_roles(frappe.session.user))
-    if user_roles & {"System Manager", "Excom Manager"}:
+    if user_roles & {"System Manager", "Excom Admin"}:
         for a in accounts:
             a["identifier"] = a.get("wa_display_phone") or a.get("email_address") or a.get("wa_phone_id") or ""
         return accounts
@@ -1509,7 +1515,7 @@ def initiate_outbound(
     is_new = not frappe.db.get_value("Excom Thread", thread_name, "assigned_to")
     if is_new:
         update_fields: dict = {"assigned_to": frappe.session.user}
-        if not (user_roles & {"System Manager", "Excom Manager"}):
+        if not (user_roles & {"System Manager", "Excom Admin"}):
             from excom.excom.services.crm_visibility import team_for_user
 
             team = team_for_user(frappe.session.user)

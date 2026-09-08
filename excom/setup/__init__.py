@@ -47,25 +47,12 @@ CHANNELS = [
 ]
 
 
+# Two roles, and no more. Excom Admin runs the system and the people; Excom Agent works the inbox.
+# The old middle tier (Excom Manager) and the old agent name (Excom User) are migrated away by
+# excom.patches.v1_0.two_role_model.
 ROLES = [
-	{
-		"role_name": "Excom Admin",
-		"desk_access": 1,
-		"search_bar": 1,
-		"notifications": 1,
-	},
-	{
-		"role_name": "Excom Manager",
-		"desk_access": 1,
-		"search_bar": 1,
-		"notifications": 1,
-	},
-	{
-		"role_name": "Excom User",
-		"desk_access": 1,
-		"search_bar": 1,
-		"notifications": 1,
-	},
+	{"role_name": "Excom Admin", "desk_access": 1},
+	{"role_name": "Excom Agent", "desk_access": 1},
 ]
 
 
@@ -134,7 +121,7 @@ def after_migrate():
 	reclaim_shared_doctypes()
 
 def seed_roles():
-	"""Create Excom Manager and Excom User roles if they don't exist."""
+	"""Create the two Excom roles if they don't exist."""
 	for role_def in ROLES:
 		if frappe.db.exists("Role", role_def["role_name"]):
 			continue
@@ -142,8 +129,6 @@ def seed_roles():
 			"doctype": "Role",
 			"role_name": role_def["role_name"],
 			"desk_access": role_def.get("desk_access", 1),
-			"search_bar": role_def.get("search_bar", 1),
-			"notifications": role_def.get("notifications", 1),
 		})
 		doc.insert(ignore_permissions=True)
 	frappe.db.commit()

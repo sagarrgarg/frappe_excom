@@ -262,17 +262,12 @@
   },
   {
    "read": 1,
-   "role": "Excom Manager",
-   "write": 1
-  },
-  {
-   "read": 1,
-   "role": "Excom User"
-  },
-  {
-   "read": 1,
    "role": "Excom Admin",
    "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Excom Agent"
   }
  ],
  "sort_field": "modified",

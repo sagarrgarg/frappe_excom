@@ -1,16 +1,14 @@
 import frappe
 from frappe.model.document import Document
 
-# The only blanket bypass. Excom Manager is a capability tier — it lets somebody run teams and
-# people — and it deliberately grants no extra sight: a manager sees what their team memberships
-# give them, like everybody else. Company-wide sight is expressed in the tree, by managing the top
-# team, or by holding Excom Admin.
+# The only blanket bypass: the tier that owns the system can see all of it, because it has to be
+# able to support it. Everybody else — Excom Agent — sees what their team memberships give them.
 MANAGER_ROLES = {"System Manager", "Excom Admin"}
 
-# Anybody who may open Excom at all. Checking for "Excom User" alone locked out a manager or an
-# admin who was not also given the agent role — the tiers are cumulative in capability, so they
-# must be cumulative here too.
-EXCOM_ROLES = {"Excom Admin", "Excom Manager", "Excom User"}
+# Anybody who may open Excom at all. Checking for "Excom Agent" alone locked out an admin who was
+# not also given the agent role — the tiers are cumulative in capability, so they must be
+# cumulative here too.
+EXCOM_ROLES = {"Excom Admin", "Excom Agent"}
 
 # ─── visibility ───────────────────────────────────────────────────────────────
 # One rule, used by the doctype class, the has_permission hook, the list query and api/chat.py.
@@ -83,7 +81,7 @@ class ExcomThread(Document):
 			self.denormalize_identity()
 
 	def has_permission(self, permtype: str = "read", user: str | None = None, **kwargs) -> bool:
-		"""Excom User can only access threads assigned to them, to their teams, or unclaimed ones
+		"""Excom Agent can only access threads assigned to them, to their teams, or unclaimed ones
 		if they are in the shared inbox. See can_access() below: this is the same rule everywhere.
 
 		Two things this override must not forget, because Document.has_permission does them and

@@ -202,7 +202,7 @@ function GeneralSection({ siteUrl: _siteUrl }: { siteUrl: string }) {
         ) : (
           <p className="mt-4 text-xs text-ink-3 flex items-start gap-2">
             <Shield className="w-4 h-4 shrink-0 mt-0.5 text-ink-3" />
-            Only System Manager or Excom Manager can create the OAuth client.
+            Only System Manager or Excom Admin can create the OAuth client.
           </p>
         )}
       </Card>

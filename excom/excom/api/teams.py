@@ -13,7 +13,7 @@ def get_my_teams() -> list:
     from excom.excom.doctype.excom_team.excom_team import get_user_teams
 
     user_roles = set(frappe.get_roles(frappe.session.user))
-    is_manager = bool(user_roles & {"System Manager", "Excom Manager"})
+    is_manager = bool(user_roles & {"System Manager", "Excom Admin"})
 
     team_names = get_user_teams()
 

@@ -119,8 +119,8 @@ export function AdminLayout() {
   const { section = "overview" } = useParams();
   const navigate = useNavigate();
   const go = (id: string) => { const s = SECTIONS.find((x) => x.id === id); if (s?.to) navigate(s.to); else navigate(`/admin/${id}`); };
-  if (!hasRole("Excom Manager") && !hasRole("System Manager")) {
-    return <AdminPage title="Admin" icon={<Shield />} embedded onBack={() => navigate("/inbox")}><p className="text-sm text-ink-2 p-3">You need the Excom Manager role to open this area.</p></AdminPage>;
+  if (!hasRole("Excom Admin") && !hasRole("System Manager")) {
+    return <AdminPage title="Admin" icon={<Shield />} embedded onBack={() => navigate("/inbox")}><p className="text-sm text-ink-2 p-3">You need the Excom Admin role to open this area.</p></AdminPage>;
   }
   const cur = SECTIONS.find((s) => s.id === section) || SECTIONS[0];
   return (

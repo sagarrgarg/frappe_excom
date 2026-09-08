@@ -37,11 +37,11 @@ READ_PREFIXES = ("get_", "list_", "search_", "preview_", "diagnose_", "check_", 
 PERSONAS = {
 	"admin":      (["Excom Admin"], []),
 	"smm":        (["Sales Master Manager"], []),
-	"exmgr":      (["Excom Manager"], [("API Drill Desk", "Manager")]),
-	"head":       (["Excom User"], [("API Drill Group", "Manager")]),
-	"agent_in":   (["Excom User"], [("API Drill Desk", "Member")]),
-	"agent_out":  (["Excom User"], [("API Drill Other", "Member")]),
-	"agent_solo": (["Excom User"], []),
+	"exmgr":      (["Excom Admin"], [("API Drill Desk", "Manager")]),
+	"head":       (["Excom Agent"], [("API Drill Group", "Manager")]),
+	"agent_in":   (["Excom Agent"], [("API Drill Desk", "Member")]),
+	"agent_out":  (["Excom Agent"], [("API Drill Other", "Member")]),
+	"agent_solo": (["Excom Agent"], []),
 	"norole":     ([], []),
 }
 RESULTS = []
@@ -76,7 +76,7 @@ def _endpoints():
 
 
 # The fixture conversation belongs to API Drill Desk. Who may touch it:
-#   exmgr    — Excom Manager, sees every conversation
+#   exmgr    — Excom Admin, sees every conversation
 #   head     — manages API Drill Group, and the Desk hangs off it
 #   agent_in — a member of the Desk
 # and nobody else, however senior in sales they are.
@@ -121,7 +121,7 @@ def _declared_guard(mod, fn):
 				if guard + "(" in body:
 					return guard
 			if "only_for(" in body:
-				return "_check_manager_access" if "Excom Manager" in body else "_check_admin_access"
+				return "_check_manager_access" if "Excom Admin" in body else "_check_admin_access"
 	return None
 
 

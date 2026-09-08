@@ -21,7 +21,7 @@ import { toastError } from "../ErrorDialog";
 export function ThreadList({ className }: { className?: string }) {
   const { contacts, isLoading, refresh, selectedId, openRecord, closeRecord, coarse, setNewOpen, listError, toggleList, bp } = useInbox();
   const { teams } = useInboxMeta();
-  const noTeam = teams.length === 0 && !hasRole("Excom Manager") && !hasRole("System Manager");
+  const noTeam = teams.length === 0 && !hasRole("Excom Admin") && !hasRole("System Manager");
   const listRef = useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = useState<number>(-1);
 

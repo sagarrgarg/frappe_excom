@@ -12,13 +12,13 @@ PW = "excom-demo-2026"
 # email -> (full name, excom roles, sales roles)
 PEOPLE = {
 	"demo.smm@example.com":       ("Demo Sales Master", [],                ["Sales Master Manager", "Sales User"]),
-	"demo.head@example.com":      ("Demo Sales Head",   ["Excom Manager"], ["Sales User"]),
-	"demo.north.mgr@example.com": ("Demo North Head",   ["Excom User"],    ["Sales User"]),
-	"demo.delhi.a@example.com":   ("Demo Delhi Agent A",["Excom User"],    ["Sales User"]),
-	"demo.delhi.b@example.com":   ("Demo Delhi Agent B",["Excom User"],    ["Sales User"]),
-	"demo.agra.a@example.com":    ("Demo Agra Agent",   ["Excom User"],    ["Sales User"]),
-	"demo.export.mgr@example.com":("Demo Export Head",  ["Excom User"],    ["Sales User"]),
-	"demo.export.a@example.com":  ("Demo Export Agent", ["Excom User"],    ["Sales User"]),
+	"demo.head@example.com":      ("Demo Sales Head",   ["Excom Admin"], ["Sales User"]),
+	"demo.north.mgr@example.com": ("Demo North Head",   ["Excom Agent"],    ["Sales User"]),
+	"demo.delhi.a@example.com":   ("Demo Delhi Agent A",["Excom Agent"],    ["Sales User"]),
+	"demo.delhi.b@example.com":   ("Demo Delhi Agent B",["Excom Agent"],    ["Sales User"]),
+	"demo.agra.a@example.com":    ("Demo Agra Agent",   ["Excom Agent"],    ["Sales User"]),
+	"demo.export.mgr@example.com":("Demo Export Head",  ["Excom Agent"],    ["Sales User"]),
+	"demo.export.a@example.com":  ("Demo Export Agent", ["Excom Agent"],    ["Sales User"]),
 }
 
 # team -> (parent, [(user, role)])

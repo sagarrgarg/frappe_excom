@@ -35,5 +35,5 @@ export function hasRole(role: string): boolean {
   return Boolean((window as any).frappe?.boot?.user?.roles?.includes(role));
 }
 export function isManager(): boolean {
-  return hasRole("System Manager") || hasRole("Excom Manager");
+  return hasRole("System Manager") || hasRole("Excom Admin");
 }

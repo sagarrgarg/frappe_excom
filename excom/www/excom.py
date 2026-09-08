@@ -20,10 +20,10 @@ def get_context(context):
         raise frappe.Redirect
 
     user_roles = frappe.get_roles(frappe.session.user)
-    allowed = {"System Manager", "Excom Manager", "Excom User"}
+    allowed = {"System Manager", "Excom Admin", "Excom Agent"}
     if not allowed.intersection(user_roles):
         frappe.throw(
-            _("You do not have access to Excom. Contact your administrator to get the Excom User or Excom Manager role."),
+            _("You do not have access to Excom. Contact your administrator to get the Excom Agent or Excom Admin role."),
             frappe.PermissionError,
         )
 

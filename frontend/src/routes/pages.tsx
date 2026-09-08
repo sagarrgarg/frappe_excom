@@ -67,7 +67,7 @@ export function MoreRoute() {
     { label: "Contacts", icon: <Users />, to: "/contacts" },
     { label: "Broadcasts", icon: <Radio />, to: "/broadcasts" },
     { label: "Analytics", icon: <BarChart3 />, to: "/analytics" },
-    ...(hasRole("Excom Manager") || hasRole("System Manager") ? [{ label: "Admin", icon: <Shield />, to: "/admin" }] : []),
+    ...(hasRole("Excom Admin") || hasRole("System Manager") ? [{ label: "Admin", icon: <Shield />, to: "/admin" }] : []),
     { label: "Merge suggestions", icon: <GitMerge />, to: "/merge", badge: mergeCount },
     { label: "Subscribers", icon: <ListChecks />, to: "/subscribers" },
     { label: "Subscriber rules", icon: <Cog />, to: "/rules" },

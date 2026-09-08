@@ -23,7 +23,7 @@
    "options": "Website\nIndiaMART\nTradeIndia\nMeta Lead Ads\nExhibition\nManual\nChannel",
    "reqd": 1,
    "in_list_view": 1,
-   "description": "Website / IndiaMART / TradeIndia / Meta = integrations \u00b7 Exhibition / Manual = typed in \u00b7 Channel = organic conversations (WhatsApp, email, web chat) stamped automatically"
+   "description": "Website / IndiaMART / TradeIndia / Meta = integrations · Exhibition / Manual = typed in · Channel = organic conversations (WhatsApp, email, web chat) stamped automatically"
   },
   {
    "fieldname": "enabled",
@@ -59,7 +59,7 @@
    "options": "\nPush\nPull\nBoth",
    "default": "Pull",
    "read_only": 1,
-   "description": "Derived from the source type: Website = your site posts to Excom's webhook \u00b7 TradeIndia = Excom polls \u00b7 IndiaMART and Meta = poll (authoritative) + push accelerator.",
+   "description": "Derived from the source type: Website = your site posts to Excom's webhook · TradeIndia = Excom polls · IndiaMART and Meta = poll (authoritative) + push accelerator.",
    "depends_on": "eval:![\"Exhibition\",\"Manual\"].includes(doc.source_type)"
   },
   {
@@ -94,7 +94,7 @@
    "fieldname": "sla_first_response",
    "fieldtype": "Duration",
    "label": "Sla First Response",
-   "description": "5 min IndiaMART \u00b7 15 min TradeIndia \u00b7 30 min Meta \u00b7 1 h web"
+   "description": "5 min IndiaMART · 15 min TradeIndia · 30 min Meta · 1 h web"
   },
   {
    "fieldname": "auto_ack_template",
@@ -153,7 +153,7 @@
    "fieldtype": "Password",
    "label": "API Key",
    "depends_on": "eval:[\"IndiaMART\",\"TradeIndia\"].includes(doc.source_type)",
-   "description": "IndiaMART: CRM key \u00b7 TradeIndia: key."
+   "description": "IndiaMART: CRM key · TradeIndia: key."
   },
   {
    "fieldname": "api_secret",
@@ -216,7 +216,7 @@
    "fieldname": "allowed_origins",
    "fieldtype": "Small Text",
    "label": "Allowed Origins",
-   "description": "One per line, e.g. https://www.yoursite.com \u2014 required for browser forms.",
+   "description": "One per line, e.g. https://www.yoursite.com — required for browser forms.",
    "depends_on": "eval:doc.source_type==\"Website\""
   },
   {
@@ -249,7 +249,7 @@
   {
    "fieldname": "sec_map",
    "fieldtype": "Section Break",
-   "label": "Field map (vendor key \u2192 lead field)"
+   "label": "Field map (vendor key → lead field)"
   },
   {
    "fieldname": "field_map",
@@ -330,23 +330,6 @@
    "share": 1
   },
   {
-   "role": "Excom Manager",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 1,
-   "print": 1,
-   "email": 1,
-   "export": 1,
-   "report": 1,
-   "share": 1
-  },
-  {
-   "role": "Excom User",
-   "read": 1,
-   "report": 1
-  },
-  {
    "role": "Excom Admin",
    "read": 1,
    "write": 1,
@@ -357,6 +340,11 @@
    "export": 1,
    "report": 1,
    "share": 1
+  },
+  {
+   "role": "Excom Agent",
+   "read": 1,
+   "report": 1
   }
  ],
  "track_changes": 1

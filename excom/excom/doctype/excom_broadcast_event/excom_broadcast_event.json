@@ -110,18 +110,12 @@
    "export": 1,
    "read": 1,
    "report": 1,
-   "role": "Excom Manager"
-  },
-  {
-   "read": 1,
-   "report": 1,
-   "role": "Excom User"
-  },
-  {
-   "export": 1,
-   "read": 1,
-   "report": 1,
    "role": "Excom Admin"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Excom Agent"
   }
  ],
  "sort_field": "creation",

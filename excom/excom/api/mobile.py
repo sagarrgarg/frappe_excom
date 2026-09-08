@@ -87,7 +87,7 @@ def get_client_id() -> dict:
 	can_manage = False
 	if frappe.session.user != "Guest":
 		roles = frappe.get_roles(frappe.session.user)
-		can_manage = bool(set(roles) & {"System Manager", "Excom Manager"})
+		can_manage = bool(set(roles) & {"System Manager", "Excom Admin"})
 
 	return {
 		"client_id": frappe.db.get_single_value("Excom Settings", "oauth_client"),
@@ -109,10 +109,10 @@ def get_client_id() -> dict:
 def create_oauth_client() -> dict:
 	"""Create or update the OAuth Client used by the Excom mobile app.
 
-	Only System Managers / Excom Managers should call this.
+	Only System Managers / Excom Admins should call this.
 	Stores the resulting client reference on Excom Settings.oauth_client.
 	"""
-	frappe.only_for(["System Manager", "Excom Manager"])
+	frappe.only_for(["System Manager", "Excom Admin"])
 
 	settings = frappe.get_doc("Excom Settings")
 	existing = settings.oauth_client
@@ -129,7 +129,8 @@ def create_oauth_client() -> dict:
 	oauth_client.grant_type = "Authorization Code"
 	oauth_client.response_type = "Code"
 	oauth_client.allowed_roles = []
-	oauth_client.append("allowed_roles", {"role": "Excom User"})
+	oauth_client.append("allowed_roles", {"role": "Excom Agent"})
+	oauth_client.append("allowed_roles", {"role": "Excom Admin"})
 	oauth_client.save(ignore_permissions=True)
 
 	settings.oauth_client = oauth_client.name

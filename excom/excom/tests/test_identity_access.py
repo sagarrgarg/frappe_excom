@@ -45,7 +45,7 @@ class TestIdentityAccess(FrappeTestCase):
 			u = frappe.get_doc({"doctype": "User", "email": email, "first_name": email.split("@")[0], "send_welcome_email": 0})
 			u.flags.ignore_permissions = True
 			u.insert(ignore_permissions=True)
-			u.add_roles("Excom User")
+			u.add_roles("Excom Agent")
 			doc = frappe.get_doc("Excom Team", team)
 			doc.append("members", {"user": email, "role": "Member"})
 			doc.flags.ignore_permissions = True

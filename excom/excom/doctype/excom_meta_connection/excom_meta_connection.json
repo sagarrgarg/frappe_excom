@@ -15,7 +15,7 @@
    "fieldname": "business_id",
    "fieldtype": "Data",
    "label": "Business Manager ID",
-   "description": "Meta Business Portfolio id (Business Settings \u2192 Business info)."
+   "description": "Meta Business Portfolio id (Business Settings → Business info)."
   },
   {
    "fieldname": "company",
@@ -68,7 +68,7 @@
    "fieldname": "system_user_token",
    "fieldtype": "Password",
    "label": "System User Token",
-   "description": "Business Settings \u2192 Users \u2192 System users \u2192 Generate token with pages_show_list, pages_messaging, pages_read_engagement, instagram_basic, instagram_manage_messages, leads_retrieval, whatsapp_business_management, business_management. Never expires."
+   "description": "Business Settings → Users → System users → Generate token with pages_show_list, pages_messaging, pages_read_engagement, instagram_basic, instagram_manage_messages, leads_retrieval, whatsapp_business_management, business_management. Never expires."
   },
   {
    "fieldname": "cb_2",
@@ -137,13 +137,6 @@
  "permissions": [
   {
    "role": "System Manager",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 1
-  },
-  {
-   "role": "Excom Manager",
    "read": 1,
    "write": 1,
    "create": 1,

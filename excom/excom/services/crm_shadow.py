@@ -56,7 +56,7 @@ def install() -> str:
 			"doctype": "DocType", "name": SHADOW_LEAD, "module": "Excom", "custom": 1, "autoname": "EXL-.#####", "title_field": "lead_name",
 			"track_changes": 1, "allow_rename": 0,
 			"fields": [{"fieldname": fn, "fieldtype": ft, "label": lb, **extra} for fn, ft, lb, extra in FIELDS],
-			"permissions": [{"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1}, {"role": "Excom Manager", "read": 1, "write": 1, "create": 1}, {"role": "Excom User", "read": 1, "write": 1, "create": 1}],
+			"permissions": [{"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1}, {"role": "Excom Admin", "read": 1, "write": 1, "create": 1}, {"role": "Excom Agent", "read": 1, "write": 1, "create": 1}],
 		}
 	)
 	doc.insert(ignore_permissions=True)

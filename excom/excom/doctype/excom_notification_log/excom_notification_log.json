@@ -116,24 +116,16 @@
    "delete": 1
   },
   {
-   "role": "Excom Manager",
-   "read": 1,
-   "report": 1,
-   "export": 1,
-   "write": 1,
-   "create": 1
-  },
-  {
-   "role": "Excom User",
-   "read": 1,
-   "write": 1,
-   "create": 1
-  },
-  {
    "role": "Excom Admin",
    "read": 1,
    "report": 1,
    "export": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "Excom Agent",
+   "read": 1,
    "write": 1,
    "create": 1
   }

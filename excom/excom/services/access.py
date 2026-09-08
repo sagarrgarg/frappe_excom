@@ -15,9 +15,9 @@ import frappe
 from frappe import _
 
 # The roles a person can hold that mean anything inside Excom. Listing what somebody has is only
-# helpful if the list is short: "you have Excom User" is an answer, the 40 roles of a real ERP user
+# helpful if the list is short: "you have Excom Agent" is an answer, the 40 roles of a real ERP user
 # are noise.
-EXCOM_ROLE_NAMES = ("System Manager", "Excom Admin", "Excom Manager", "Excom User")
+EXCOM_ROLE_NAMES = ("System Manager", "Excom Admin", "Excom Admin", "Excom Agent")
 
 
 def excom_roles_of(user: str | None = None) -> list[str]:

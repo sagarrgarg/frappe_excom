@@ -17,12 +17,12 @@ from excom.excom.services import crm_gateway as gw
 from excom.excom.utils.ratelimit import user_rate_limit
 
 
-# Master records agents may look at but not edit from the chat; managers (Excom Manager / System Manager) may.
+# Master records agents may look at but not edit from the chat; managers (Excom Admin / System Manager) may.
 MANAGER_ONLY_EDIT = {gw.CUSTOMER, "Supplier", "Employee"}
 
 
 def _is_manager() -> bool:
-	return bool({"System Manager", "Excom Manager"} & set(frappe.get_roles()))
+	return bool({"System Manager", "Excom Admin"} & set(frappe.get_roles()))
 
 
 def _ref(doctype: str, name: str):
@@ -146,7 +146,7 @@ def update_record(doctype: str, name: str, values: str | dict) -> dict:
 	if doctype in MANAGER_ONLY_EDIT and not _is_manager():
 		deny(
 			_("{0} records are read-only in Excom.").format(_(doctype)),
-			needs_roles=("Excom Manager", "Excom Admin", "System Manager"),
+			needs_roles=("Excom Admin", "Excom Admin", "System Manager"),
 			detail=_("Edit it in Desk, or ask a manager."),
 		)
 	r = _ref(doctype, name)
@@ -251,7 +251,7 @@ def set_next_action(doctype: str, name: str, next_action_at: str) -> dict:
 
 def lead_visibility(user: str | None = None) -> list | None:
 	"""Who may see which unassigned leads (mirrors channel-account team visibility):
-	- System Manager / Excom Manager: everything (None = no extra filter).
+	- System Manager / Excom Admin: everything (None = no extra filter).
 	- Manager of an Excom Team: leads they own + leads from intake sources allowed to their teams
 	  (or sources with no team restriction) + leads with no source at all (migrated / manual).
 	- Team member: only leads assigned to them.
@@ -263,7 +263,7 @@ def lead_visibility(user: str | None = None) -> list | None:
 		# second filter here would only be a way for the two to disagree.
 		return None
 	roles = set(frappe.get_roles(user))
-	if roles & {"System Manager", "Excom Manager"}:
+	if roles & {"System Manager", "Excom Admin"}:
 		return None
 	managed = frappe.get_all("Excom Team Member", filters={"parenttype": "Excom Team", "user": user, "role": "Manager"}, pluck="parent")
 	if not managed:

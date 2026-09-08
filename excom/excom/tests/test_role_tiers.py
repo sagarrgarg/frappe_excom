@@ -1,10 +1,10 @@
 """Three user roles, each a capability tier, and none of them a shortcut to seeing more.
 
-  Excom User    — work the inbox
-  Excom Manager — that, plus run people and desks
+  Excom Agent    — work the inbox
+  Excom Admin — that, plus run people and desks
   Excom Admin   — that, plus run the system
 
-Capability and scope used to be the same lever: Excom Manager was a blanket "sees every
+Capability and scope used to be the same lever: Excom Admin was a blanket "sees every
 conversation in the company" bypass, so letting somebody add a member to a desk also handed them
 every chat. Scope now comes from the team tree alone. These tests hold both halves of that.
 """
@@ -46,7 +46,7 @@ class TestRoleTiers(FrappeTestCase):
 		_cleanup()
 		for name in (TEAM, OTHER):
 			frappe.get_doc({"doctype": "Excom Team", "team_name": name}).insert(ignore_permissions=True)
-		for email, role in ((ADMIN, "Excom Admin"), (MANAGER, "Excom Manager"), (AGENT, "Excom User")):
+		for email, role in ((ADMIN, "Excom Admin"), (MANAGER, "Excom Admin"), (AGENT, "Excom Agent")):
 			u = frappe.get_doc({"doctype": "User", "email": email, "first_name": email.split("@")[0], "send_welcome_email": 0})
 			u.flags.ignore_permissions = True
 			u.insert(ignore_permissions=True)
