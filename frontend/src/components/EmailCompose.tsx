@@ -3,6 +3,7 @@ import { Send, X, Loader2 } from "lucide-react";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { useFrappeGetCall } from "@/lib/api";
 import { toast } from "sonner";
+import { toastError } from "./ErrorDialog";
 
 interface EmailComposeProps {
   threadId: string;
@@ -57,8 +58,8 @@ export function EmailCompose({
       toast.success("Email sent");
       onSent();
       onClose();
-    } catch {
-      toast.error("Failed to send email");
+    } catch (err) {
+      toastError(err, "Failed to send email");
     }
   };
 

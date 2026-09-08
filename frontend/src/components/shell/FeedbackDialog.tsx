@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { toast } from "sonner";
 import { Modal, Button, Textarea, Field } from "../primitives";
+import { toastError } from "../ErrorDialog";
 
 /** One-line feedback box. Captures route, viewport and DPR automatically; lands in Excom Settings → UI feedback. */
 export function FeedbackDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
@@ -12,7 +13,7 @@ export function FeedbackDialog({ open, onOpenChange }: { open: boolean; onOpenCh
     try {
       await call({ message: text.trim(), route: window.location.pathname + window.location.search, viewport: `${window.innerWidth}×${window.innerHeight}`, dpr: String(window.devicePixelRatio || 1), ui: "next" });
       toast.success("Thanks — feedback sent"); setText(""); onOpenChange(false);
-    } catch { toast.error("Could not send feedback"); }
+    } catch (err) { toastError(err, "Could not send feedback"); }
   };
   return (
     <Modal open={open} onOpenChange={onOpenChange} title="Send feedback"

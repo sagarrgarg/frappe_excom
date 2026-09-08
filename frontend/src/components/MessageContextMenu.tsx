@@ -3,6 +3,7 @@ import { Pin, PinOff, Reply, SmilePlus } from "lucide-react";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { toast } from "sonner";
 import type { Message } from "../types";
+import { toastError } from "./ErrorDialog";
 
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉", "🔥", "👏"];
 
@@ -48,8 +49,8 @@ export function MessageContextMenu({
         toast.success("Message pinned");
       }
       onRefresh();
-    } catch {
-      toast.error("Failed to update pin");
+    } catch (err) {
+      toastError(err, "Failed to update pin");
     }
     onClose();
   }, [message, pinCall, unpinCall, onRefresh, onClose]);
@@ -64,8 +65,8 @@ export function MessageContextMenu({
       try {
         await reactCall({ message_name: message.id, emoji });
         onRefresh();
-      } catch {
-        toast.error("Failed to react");
+      } catch (err) {
+        toastError(err, "Failed to react");
       }
       onClose();
     },
@@ -149,8 +150,8 @@ export function ReactionBar({ reactions, messageId, onRefresh }: ReactionBarProp
     try {
       await reactCall({ message_name: messageId, emoji });
       onRefresh();
-    } catch {
-      toast.error("Failed to react");
+    } catch (err) {
+      toastError(err, "Failed to react");
     }
   };
 

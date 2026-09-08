@@ -4,6 +4,7 @@ import { Plus, Search, Users, Mail, Phone, UserMinus, UserPlus, Trash2, Upload, 
 import { Button, Input, Field, Select, Modal, EmptyState, Chip, Badge } from "./primitives";
 import { AdminPage, DataTable } from "./shell/AdminPage";
 import { toast } from "sonner";
+import { toastError } from "./ErrorDialog";
 
 interface SubscriberList {
   name: string;
@@ -236,8 +237,8 @@ function SubscriberDetailView({
               }
               setShowAddDialog(false);
               onRefresh();
-            } catch {
-              toast.error("Failed to add subscriber");
+            } catch (err) {
+              toastError(err, "Failed to add subscriber");
             }
           }}
           onAddByContact={async (phone, email) => {
@@ -246,8 +247,8 @@ function SubscriberDetailView({
               toast.success("Subscriber added");
               setShowAddDialog(false);
               onRefresh();
-            } catch {
-              toast.error("Failed to add subscriber");
+            } catch (err) {
+              toastError(err, "Failed to add subscriber");
             }
           }}
           onClose={() => setShowAddDialog(false)}
@@ -269,8 +270,8 @@ function SubscriberDetailView({
               toast.success(`Imported: ${data.added} added, ${data.skipped} skipped`);
               setShowImportDialog(false);
               onRefresh();
-            } catch {
-              toast.error("Import failed");
+            } catch (err) {
+              toastError(err, "Import failed");
             }
           }}
           onClose={() => setShowImportDialog(false)}
@@ -316,8 +317,8 @@ export function SubscriberListPage({
     try {
       const res = await fetchLists({ search: searchQuery });
       setLists((res as any)?.message || []);
-    } catch {
-      toast.error("Failed to load subscriber lists");
+    } catch (err) {
+      toastError(err, "Failed to load subscriber lists");
     }
   }, [fetchLists, searchQuery]);
 
@@ -336,8 +337,8 @@ export function SubscriberListPage({
         active: data.active || 0,
         unsubscribed: data.unsubscribed || 0,
       });
-    } catch {
-      toast.error("Failed to load subscribers");
+    } catch (err) {
+      toastError(err, "Failed to load subscribers");
     }
   }, [fetchSubscribers, selectedList, searchQuery, statusFilter]);
 
@@ -406,8 +407,8 @@ export function SubscriberListPage({
               toast.success("List created");
               setShowCreateDialog(false);
               loadLists();
-            } catch {
-              toast.error("Failed to create list");
+            } catch (err) {
+              toastError(err, "Failed to create list");
             }
           }}
           onClose={() => setShowCreateDialog(false)}

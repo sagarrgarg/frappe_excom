@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { toast } from "sonner";
 import { Modal, Button, Field, Select, Input } from "../primitives";
+import { toastError } from "../ErrorDialog";
 
 /** Transfer conversation — moved to `⋯` (T3); confirm dialog unchanged in behaviour. */
 export function TransferDialog({ open, onOpenChange, threadIds, onDone }: { open: boolean; onOpenChange: (v: boolean) => void; threadIds: string[]; onDone: () => void }) {
@@ -33,7 +34,7 @@ export function TransferDialog({ open, onOpenChange, threadIds, onDone }: { open
       await Promise.all(threadIds.map((id) => transfer({ thread_id: id, target_team: team, target_user: user, note })));
       toast.success(user ? "Transferred and assigned" : "Transferred to team");
       onOpenChange(false); onDone();
-    } catch { toast.error("Transfer failed"); } finally { setBusy(false); }
+    } catch (err) { toastError(err, "Transfer failed"); } finally { setBusy(false); }
   };
 
   return (

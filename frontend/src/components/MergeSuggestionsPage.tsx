@@ -4,6 +4,7 @@ import { GitMerge, X, Phone, Mail, MessageCircle, Check, ArrowRight } from "luci
 import { toast } from "sonner";
 import { Button, Chip, EmptyState, Badge } from "./primitives";
 import { AdminPage } from "./shell/AdminPage";
+import { toastError } from "./ErrorDialog";
 
 interface Suggestion {
   source_name: string; source_display_name: string; source_phone: string; source_email: string; source_whatsapp: string; source_kinds?: { doctype: string; name: string; customer_type?: string }[];
@@ -22,7 +23,7 @@ export function MergeSuggestionsPage({ onNavigateBack, embedded }: { onNavigateB
   const { call: dismissSuggestion } = useFrappePostCall("excom.excom.api.merge_suggestions.dismiss_suggestion");
 
   const load = useCallback(async () => {
-    try { const res = await fetchSuggestions({ limit: 100 }); setSuggestions((res as any)?.message || []); } catch { toast.error("Failed to load suggestions"); }
+    try { const res = await fetchSuggestions({ limit: 100 }); setSuggestions((res as any)?.message || []); } catch (err) { toastError(err, "Failed to load suggestions"); }
   }, [fetchSuggestions]);
   useEffect(() => { load(); }, [load]);
 

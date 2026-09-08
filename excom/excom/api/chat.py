@@ -5,6 +5,7 @@ from frappe import _
 from excom.excom.utils.ratelimit import user_rate_limit
 from frappe.utils import flt, now_datetime
 
+from excom.excom.services.access import deny
 from excom.excom.services.thread_service import send_outbound_message
 from excom.excom.utils.errors import ExcomProviderError, ExcomRateLimitError
 
@@ -45,7 +46,10 @@ def _sanitize_message(text: str, thread_id: str = "") -> str:
 def _check_excom_access() -> None:
     """Block users without any Excom role from accessing chat APIs."""
     if not EXCOM_ROLES.intersection(frappe.get_roles(frappe.session.user)):
-        frappe.throw(_("You do not have access to Excom"), frappe.PermissionError)
+        deny(
+            _("You do not have access to Excom."),
+            needs_roles=("Excom User", "Excom Manager", "Excom Admin"),
+        )
 
 
 # Three user roles, each a capability tier: what a person may operate.
@@ -81,7 +85,7 @@ def _check_identity_access(omni_identity: str) -> None:
     """
     _check_excom_access()
     if not omni_identity:
-        frappe.throw(_("No contact given"), frappe.PermissionError)
+        frappe.throw(_("No contact given"))
     from excom.excom.doctype.excom_thread.excom_thread import can_access
 
     threads = frappe.get_all("Excom Thread", filters={"omni_identity": omni_identity}, pluck="name")
@@ -100,20 +104,37 @@ def _check_identity_access(omni_identity: str) -> None:
     if not threads and not records:
         return  # nobody owns this contact yet
 
-    frappe.throw(_("You do not have access to this contact"), frappe.PermissionError)
+    deny(
+        _("You do not have access to this contact."),
+        detail=_("Their conversations and records belong to another desk. A manager can transfer one to you."),
+    )
 
 
 def _check_thread_access(thread_id: str) -> None:
     """Throw PermissionError unless the current user may see this thread (S4)."""
     _check_excom_access()
     if not _user_can_access_thread(thread_id):
-        frappe.throw(_("You do not have access to this conversation"), frappe.PermissionError)
+        deny(_("You do not have access to this conversation."), detail=_thread_ownership_detail(thread_id))
+
+
+def _thread_ownership_detail(thread_id: str) -> str:
+    """Say who does hold the conversation, so the refusal names the person to ask."""
+    row = frappe.db.get_value("Excom Thread", thread_id, ["assigned_to", "assigned_team"], as_dict=True)
+    if not row:
+        return _("Conversation {0} does not exist.").format(thread_id)
+    if row.assigned_to:
+        return _("It is assigned to {0}{1}. Ask them or an Excom Manager to transfer it.").format(
+            row.assigned_to, _(" on the {0} desk").format(row.assigned_team) if row.assigned_team else ""
+        )
+    if row.assigned_team:
+        return _("It sits on the {0} desk and you are not a member of that team.").format(row.assigned_team)
+    return _("It is unclaimed, and you are not in the shared inbox team.")
 
 
 def _check_manager_access() -> None:
     """Running people and desks: teams, members, roles, reassignment, the audit log."""
     if not MANAGER_ROLES.intersection(frappe.get_roles(frappe.session.user)):
-        frappe.throw(_("You need the Excom Manager role to do this"), frappe.PermissionError)
+        deny(_("This is a manager action."), needs_roles=sorted(MANAGER_ROLES))
 
 
 def _check_admin_access() -> None:
@@ -124,7 +145,10 @@ def _check_admin_access() -> None:
     the power to regenerate webhook secrets.
     """
     if not ADMIN_ROLES.intersection(frappe.get_roles(frappe.session.user)):
-        frappe.throw(_("You need the Excom Admin role to do this"), frappe.PermissionError)
+        deny(
+            _("This is an administrator action: channels, credentials, connections, templates and settings."),
+            needs_roles=sorted(ADMIN_ROLES),
+        )
 
 
 @frappe.whitelist()

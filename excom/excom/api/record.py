@@ -11,6 +11,8 @@ import json
 
 import frappe
 from frappe import _
+
+from excom.excom.services.access import deny
 from frappe.utils import now_datetime
 
 from excom.excom.api.chat import _check_excom_access, _check_identity_access, _check_thread_access
@@ -22,7 +24,10 @@ def _check_doc_read(doctype: str, name: str):
     if not frappe.db.exists(doctype, name):
         frappe.throw(_("{0} {1} not found").format(doctype, name), frappe.DoesNotExistError)
     if not frappe.has_permission(doctype, "read", doc=name):
-        frappe.throw(_("Not permitted"), frappe.PermissionError)
+        deny(
+            _("You cannot open this {0}.").format(_(doctype)),
+            detail=_("Read permission on {0} comes from your roles, and {1} is not visible to yours.").format(_(doctype), name),
+        )
 
 
 
@@ -32,9 +37,15 @@ def _check_record_access(doctype: str, name: str) -> None:
 	from excom.excom.services.crm_visibility import can_read
 
 	if not frappe.has_permission(doctype, "read"):
-		frappe.throw(_("You do not have access to this record"), frappe.PermissionError)
+		deny(
+			_("You cannot open {0} records.").format(_(doctype)),
+			detail=_("None of your roles grant read on {0}.").format(_(doctype)),
+		)
 	if frappe.db.exists(doctype, name) and not can_read(frappe.get_doc(doctype, name)):
-		frappe.throw(_("You do not have access to this record"), frappe.PermissionError)
+		deny(
+			_("You cannot open this {0}.").format(_(doctype)),
+			detail=_("{0} {1} belongs to another desk. A manager can reassign it.").format(_(doctype), name),
+		)
 
 
 @frappe.whitelist()

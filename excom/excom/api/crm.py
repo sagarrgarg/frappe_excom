@@ -9,6 +9,8 @@ import json
 import frappe
 from frappe import _
 
+from excom.excom.services.access import deny
+
 from excom.excom.api.chat import _check_excom_access, _check_identity_access
 from excom.excom.services import crm_flow
 from excom.excom.services import crm_gateway as gw
@@ -78,7 +80,7 @@ def get_field_schema(doctype: str, customer_type: str = "") -> dict:
 	if doctype not in gw.crm_doctypes() and doctype not in MANAGER_ONLY_EDIT:
 		frappe.throw(_("Not a CRM record type"))
 	if not frappe.has_permission(doctype, "read"):
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
+		deny(_("You cannot open {0} records.").format(_(doctype)), detail=_("None of your roles grant read on {0}.").format(_(doctype)))
 	meta = frappe.get_meta(doctype)
 	can_write = frappe.has_permission(doctype, "write") and (doctype not in MANAGER_ONLY_EDIT or _is_manager())
 	first = TYPE_FIELDS.get(customer_type or "", [])
@@ -142,7 +144,11 @@ def update_record(doctype: str, name: str, values: str | dict) -> dict:
 	"""Field edits from the Details tab. Attribution/provenance/stage fields are refused here."""
 	_check_excom_access()
 	if doctype in MANAGER_ONLY_EDIT and not _is_manager():
-		frappe.throw(_("{0} records are read-only here — ask an Excom Manager").format(doctype), frappe.PermissionError)
+		deny(
+			_("{0} records are read-only in Excom.").format(_(doctype)),
+			needs_roles=("Excom Manager", "Excom Admin", "System Manager"),
+			detail=_("Edit it in Desk, or ask a manager."),
+		)
 	r = _ref(doctype, name)
 	vals = json.loads(values) if isinstance(values, str) else (values or {})
 	blocked = {"source", "campaign_name", "campaign", "utm_source", "utm_campaign", "utm_medium", "first_touch_at", "first_touch_channel", "first_touch_by", "source_reference", "pipeline_stage", "stage_entered_at", "gate_flags", "omni_identity", "status"}
@@ -211,7 +217,10 @@ def promote_thread(thread: str, customer_type: str = "") -> dict:
 	from excom.excom.api.chat import _check_thread_access
 	_check_thread_access(thread)
 	if not frappe.has_permission(gw.LEAD, "create"):
-		frappe.throw(_("Not permitted to create leads"), frappe.PermissionError)
+		deny(
+			_("You cannot create leads."),
+			detail=_("Create permission on {0} is missing from every role you hold.").format(_(gw.LEAD)),
+		)
 	identity = frappe.db.get_value("Excom Thread", thread, "omni_identity")
 	existing = gw.find_open_records_for_identity(identity) if identity else []
 	if existing:

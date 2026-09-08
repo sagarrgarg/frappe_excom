@@ -7,6 +7,7 @@ import { channelMeta } from "../../lib/channels";
 import { ReactionBar } from "../MessageContextMenu";
 import type { FeedMessage } from "../../hooks/useIdentityMessages";
 import { formatServerTime } from "../../utils/datetime";
+import { toastError } from "../ErrorDialog";
 
 const DELIVERY_TIMEOUT_MS = 10 * 60 * 1000;
 /** Product rule: a failed message can be resent for 6 hours; after that it is flagged Unsent, no retry. */
@@ -62,10 +63,10 @@ export const MessageBubble = memo(function MessageBubble({ message: m, contactNa
   const { call: unpinCall } = useFrappePostCall("excom.excom.api.chat.unpin_message");
 
   const quickReact = async (emoji: string) => {
-    try { await reactCall({ message_name: m.id, emoji }); onRefresh(); } catch { toast.error("Failed to react"); }
+    try { await reactCall({ message_name: m.id, emoji }); onRefresh(); } catch (err) { toastError(err, "Failed to react"); }
   };
   const togglePin = async () => {
-    try { await (m.isPinned ? unpinCall : pinCall)({ message_name: m.id }); onRefresh(); toast.success(m.isPinned ? "Unpinned" : "Pinned"); } catch { toast.error("Failed"); }
+    try { await (m.isPinned ? unpinCall : pinCall)({ message_name: m.id }); onRefresh(); toast.success(m.isPinned ? "Unpinned" : "Pinned"); } catch (err) { toastError(err, "Failed"); }
   };
 
   if (isNote) {
@@ -165,7 +166,7 @@ export const MessageBubble = memo(function MessageBubble({ message: m, contactNa
         {m.status === "scheduled" && isUser && (
         <div className="flex items-center gap-2 mt-0.5 min-w-0 max-w-full">
           <span className="text-xs text-crayon-amber-text truncate">Scheduled for {m.scheduledAt ? formatServerTime(m.scheduledAt) : "later"}</span>
-          <button type="button" onClick={async () => { try { await cancelScheduled({ message_name: m.id }); toast.success("Scheduled email cancelled"); onRetry(""); } catch { toast.error("Could not cancel"); } }} className="text-xs font-medium text-ink-2 hover:text-ink-1 shrink-0">Cancel</button>
+          <button type="button" onClick={async () => { try { await cancelScheduled({ message_name: m.id }); toast.success("Scheduled email cancelled"); onRetry(""); } catch (err) { toastError(err, "Could not cancel"); } }} className="text-xs font-medium text-ink-2 hover:text-ink-1 shrink-0">Cancel</button>
         </div>
       )}
       {failed && isUser && (

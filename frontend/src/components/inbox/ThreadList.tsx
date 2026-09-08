@@ -12,6 +12,7 @@ import { useHotkeys } from "../../lib/hotkeys";
 import { hasRole } from "../../lib/ui-flag";
 import type { UnifiedContact } from "../../types";
 import { cn } from "../ui/utils";
+import { toastError } from "../ErrorDialog";
 
 /**
  * List column (UX-001 §3.4). Search → view → rows. j/k move focus, ⏎ opens, e archives, a assigns.
@@ -43,33 +44,33 @@ export function ThreadList({ className }: { className?: string }) {
         await forEachThread(c, (id) => archiveCall({ thread_id: id }));
         if (selectedId === c.id) closeRecord();
         refresh();
-        toast.success(`Archived ${c.contactName}`, { duration: 6000, action: { label: "Undo", onClick: async () => { try { await forEachThread(c, (id) => unarchiveCall({ thread_id: id })); refresh(); toast.success("Restored"); } catch { toast.error("Could not restore"); } } } });
-      } catch { toast.error("Failed to archive"); }
+        toast.success(`Archived ${c.contactName}`, { duration: 6000, action: { label: "Undo", onClick: async () => { try { await forEachThread(c, (id) => unarchiveCall({ thread_id: id })); refresh(); toast.success("Restored"); } catch (err) { toastError(err, "Could not restore"); } } } });
+      } catch (err) { toastError(err, "Failed to archive"); }
     },
     unarchive: async (c) => {
       try { await forEachThread(c, (id) => unarchiveCall({ thread_id: id })); toast.success("Reopened — back in the inbox"); refresh(); }
-      catch { toast.error("Failed to unarchive"); }
+      catch (err) { toastError(err, "Failed to unarchive"); }
     },
     assignToMe: async (c) => {
       try { await forEachThread(c, (id) => assignCall({ thread_id: id })); toast.success("Assigned to you"); refresh(); }
-      catch { toast.error("Failed to assign"); }
+      catch (err) { toastError(err, "Failed to assign"); }
     },
     toggleRead: async (c) => {
       const unread = c.totalUnreadCount > 0;
       try { await forEachThread(c, (id) => (unread ? markReadCall({ thread_id: id }) : markUnreadCall({ thread_id: id }))); refresh(); }
-      catch { toast.error("Failed to update"); }
+      catch (err) { toastError(err, "Failed to update"); }
     },
     snooze: async (c) => {
       try { await forEachThread(c, (id) => markUnreadCall({ thread_id: id })); toast.success("Marked unread — it will stay in Unread until you open it"); refresh(); }
-      catch { toast.error("Failed"); }
+      catch (err) { toastError(err, "Failed"); }
     },
     spam: async (c) => {
       try { await forEachThread(c, (id) => spamCall({ thread_id: id })); toast.success("Marked as spam"); if (selectedId === c.id) closeRecord(); refresh(); }
-      catch { toast.error("Failed to mark spam"); }
+      catch (err) { toastError(err, "Failed to mark spam"); }
     },
     del: async (c) => {
       try { await forEachThread(c, (id) => deleteCall({ thread_id: id })); toast.success("Deleted"); if (selectedId === c.id) closeRecord(); refresh(); }
-      catch { toast.error("Failed to delete"); }
+      catch (err) { toastError(err, "Failed to delete"); }
     },
     copy: (c) => {
       const text = c.contactInfo.phone || c.contactInfo.email || c.contactName;

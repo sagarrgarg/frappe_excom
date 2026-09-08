@@ -18,6 +18,7 @@ import { MOD } from "../../lib/hotkeys";
 import { cn } from "../ui/utils";
 import type { Account, UnifiedContact } from "../../types";
 import type { FeedMessage } from "../../hooks/useIdentityMessages";
+import { toastError } from "../ErrorDialog";
 
 const CHAR_LIMIT = 4096;
 
@@ -109,7 +110,7 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
       if (!body) return;
       setText("");
       try { await sendNote({ thread_id: threadId, content: body }); onSent(); toast.success("Internal note added"); }
-      catch { setText(body); toast.error("Failed to add note"); }
+      catch (err) { setText(body); toastError(err, "Failed to add note"); }
       return;
     }
     if (blocked) { toast.error("You don't have access to send from this account"); return; }
@@ -120,7 +121,7 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
       try {
         const r = await sendEmail({ thread_id: threadId, to: emailDraft.to.trim(), subject: emailDraft.subject.trim() || "(No Subject)", body_html: finalBody, cc: (emailDraft.cc || "").trim(), bcc: (emailDraft.bcc || "").trim(), in_reply_to_gmail_id: emailDraft.inReplyToGmailId, send_at: emailDraft.sendAt || "" });
         setText(""); setEmailDraft({ ...emailDraft, subject: "", inReplyToGmailId: "", html: "", sendAt: "" }); onSent(); toast.success(r?.message?.scheduled ? `Email scheduled for ${r.message.send_at.slice(0, 16)}` : "Email sent");
-      } catch { toast.error("Failed to send email"); }
+      } catch (err) { toastError(err, "Failed to send email"); }
       return;
     }
     if (templateRequired) { setTemplateOpen(true); return; }
@@ -165,7 +166,7 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
         {contact.aiStatus === "active" && (
           <div className="flex items-center gap-2 text-xs text-ink-2 mb-1.5 min-w-0">
             <Bot className="size-4 text-crayon-violet-base shrink-0" /><span className="truncate">AI is replying on this thread until you take over.</span>
-            <Button size="sm" variant="ghost" className="ml-auto shrink-0" onClick={async () => { try { await assignThread({ thread_id: threadId }); toast.success("You took over"); onSent(); } catch { toast.error("Failed"); } }}>Take over</Button>
+            <Button size="sm" variant="ghost" className="ml-auto shrink-0" onClick={async () => { try { await assignThread({ thread_id: threadId }); toast.success("You took over"); onSent(); } catch (err) { toastError(err, "Failed"); } }}>Take over</Button>
           </div>
         )}
 

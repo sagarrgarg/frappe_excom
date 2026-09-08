@@ -3,6 +3,7 @@ import { X, Search, MessageCircle, Mail, Phone, User, Loader2, Plus } from "luci
 import { useFrappePostCall } from "frappe-react-sdk";
 import { Button, Input, Modal, Select, Avatar } from "./primitives";
 import { toast } from "sonner";
+import { showError } from "./ErrorDialog";
 
 interface NewConversationDialogProps {
   onClose: () => void;
@@ -157,20 +158,10 @@ export function NewConversationDialog({
       } else {
         toast.error("Unexpected response");
       }
-    } catch (err: any) {
-      let msg = "Failed to start conversation";
-      try {
-        if (err?._server_messages) {
-          const parsed = JSON.parse(err._server_messages);
-          if (typeof parsed?.[0] === "string") {
-            const inner = JSON.parse(parsed[0]);
-            msg = inner?.message || parsed[0];
-          }
-        }
-      } catch {
-        // use default
-      }
-      toast.error(msg);
+    } catch (err: unknown) {
+      // The dialog says what the server said — including which role or team is missing — and offers
+      // the whole thing on the clipboard. "Failed to start conversation" told nobody anything.
+      showError(err, "starting a conversation");
     } finally {
       setSubmitting(false);
     }

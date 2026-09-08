@@ -13,6 +13,7 @@ import { cn } from "../ui/utils";
 import type { FeedMessage } from "../../hooks/useIdentityMessages";
 import type { UnifiedContact } from "../../types";
 import { formatServerDateTimeFull, formatServerShortDateTime, parseFrappeDateTime } from "../../utils/datetime";
+import { toastError } from "../ErrorDialog";
 
 interface Props {
   contact: UnifiedContact;
@@ -80,7 +81,7 @@ export function MessageFeed({ contact, messages, isLoading, refresh, optimistic,
   const handleRefreshAll = useCallback(() => { refresh(); refreshPinned(); }, [refresh, refreshPinned]);
   const handleRetry = useCallback(async (id: string) => {
     setRetryingId(id);
-    try { await retryCall({ message_name: id }); toast.success("Message resent"); } catch { toast.error("Retry failed"); } finally { setRetryingId(null); refresh(); }
+    try { await retryCall({ message_name: id }); toast.success("Message resent"); } catch (err) { toastError(err, "Retry failed"); } finally { setRetryingId(null); refresh(); }
   }, [retryCall, refresh]);
 
   const toggleGrouped = () => { setGrouped((g) => { try { localStorage.setItem("excom_group_by_channel", String(!g)); } catch { /* ignore */ } return !g; }); };

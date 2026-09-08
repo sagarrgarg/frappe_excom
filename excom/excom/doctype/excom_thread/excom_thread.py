@@ -82,9 +82,26 @@ class ExcomThread(Document):
 		if not self.display_name:
 			self.denormalize_identity()
 
-	def has_permission(self, permtype: str = "read", user: str | None = None) -> bool:
+	def has_permission(self, permtype: str = "read", user: str | None = None, **kwargs) -> bool:
 		"""Excom User can only access threads assigned to them, to their teams, or unclaimed ones
-		if they are in the shared inbox. See can_access() below: this is the same rule everywhere."""
+		if they are in the shared inbox. See can_access() below: this is the same rule everywhere.
+
+		Two things this override must not forget, because Document.has_permission does them and
+		overriding it silently dropped both:
+
+		1. `ignore_permissions`. Every internal writer — inbound webhooks, upsert_thread, the
+		   broadcast runner — inserts with ignore_permissions=True and expects that to be honoured.
+		   Without this check an agent starting a conversation was refused by their own new thread:
+		   it is not assigned to anybody yet at insert time, so can_access() fell through to the
+		   shared-inbox rule and said no.
+		2. Creating. A thread being created has no owner and no team, so there is nothing to scope
+		   against; the right question is whether this person may work in Excom at all. Who ends up
+		   owning it is decided immediately after insert.
+		"""
+		if self.flags.ignore_permissions or frappe.flags.ignore_permissions:
+			return True
+		if permtype == "create" or self.get("__islocal") or not self.name:
+			return bool(set(frappe.get_roles(user or frappe.session.user)) & (EXCOM_ROLES | MANAGER_ROLES))
 		return can_access(self, user)
 
 	def compute_thread_key(self):

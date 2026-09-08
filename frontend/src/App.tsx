@@ -4,6 +4,7 @@ import { SWRConfig } from "swr";
 import { retryPolicy } from "./lib/retry-policy";
 import { Toaster } from "sonner";
 import { applyDensity, getDensity } from "./lib/ui-flag";
+import { ErrorDialogHost } from "./components/ErrorDialog";
 
 
 
@@ -49,6 +50,7 @@ function App() {
         position="top-right"
         toastOptions={{ style: { background: "var(--ex-surface)", border: "1px solid var(--ex-border)", color: "var(--ex-ink-1)", boxShadow: "var(--ex-shadow)" } }}
       />
+      <ErrorDialogHost />
       <Suspense fallback={null}>
         <NextRouter />
       </Suspense>

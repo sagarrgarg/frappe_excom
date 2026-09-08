@@ -12,6 +12,7 @@ import { AdminPage } from "./shell/AdminPage";
 import { useExcomBranding } from "../hooks/useBranding";
 import { getDensity, applyDensity, type Density } from "../lib/ui-flag";
 import { MOD } from "../lib/hotkeys";
+import { toastError } from "./ErrorDialog";
 
 declare global {
   interface Window {
@@ -237,8 +238,8 @@ function SignaturesSection() {
       await saveSig({ signature_html: html, position });
       toast.success("Signature saved");
       await refreshSig();
-    } catch {
-      toast.error("Failed to save signature");
+    } catch (err) {
+      toastError(err, "Failed to save signature");
     }
   };
 
@@ -362,8 +363,8 @@ function NotificationsSection() {
       await window.frappePushNotification?.disableNotification();
       checkRelayTokenLocal();
       toast.success("Unsubscribed from push on this device.");
-    } catch {
-      toast.error("Could not disable push on this device.");
+    } catch (err) {
+      toastError(err, "Could not disable push on this device.");
     } finally {
       setPushBusy(false);
     }
@@ -606,8 +607,8 @@ function CannedSection() {
       setNewTitle(""); setNewShortcode(""); setNewContent("");
       toast.success("Canned response added.");
       await refresh();
-    } catch {
-      toast.error("Failed to save. Check if the shortcode is already taken.");
+    } catch (err) {
+      toastError(err, "Failed to save. Check if the shortcode is already taken.");
     }
   };
 

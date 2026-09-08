@@ -23,7 +23,7 @@ import {
 import { Button, Input, Select, Chip, EmptyState, SegmentedControl } from "./primitives";
 import { AdminPage, DataTable } from "./shell/AdminPage";
 import { BroadcastWizard } from "./BroadcastWizard";
-import { toast } from "sonner";
+import { toastError } from "./ErrorDialog";
 
 interface BroadcastItem {
   name: string;
@@ -153,8 +153,8 @@ function AnalyticsPanel({ broadcastName }: { broadcastName: string }) {
     try {
       const res = await fetchMetrics({ broadcast_name: broadcastName, time_windows: tw || customWindows });
       setMetrics((res as any)?.message || null);
-    } catch {
-      toast.error("Failed to load metrics");
+    } catch (err) {
+      toastError(err, "Failed to load metrics");
     } finally {
       setLoading(false);
     }
@@ -333,8 +333,8 @@ function BroadcastDetailView({
       const data = (res as any)?.message;
       setDetail(data);
       setLogs(data?.recent_logs || []);
-    } catch {
-      toast.error("Failed to load broadcast");
+    } catch (err) {
+      toastError(err, "Failed to load broadcast");
     } finally {
       setLoading(false);
     }
@@ -443,7 +443,7 @@ export function BroadcastPage({ onNavigateBack, embedded, presetList }: { onNavi
     try {
       const res = await fetchBroadcasts({ search: searchQuery, status: statusFilter, channel: channelFilter });
       setBroadcasts((res as any)?.message?.broadcasts || []);
-    } catch { toast.error("Failed to load broadcasts"); } finally { setLoading(false); }
+    } catch (err) { toastError(err, "Failed to load broadcasts"); } finally { setLoading(false); }
   }, [fetchBroadcasts, searchQuery, statusFilter, channelFilter]);
 
   useEffect(() => { loadBroadcasts(); }, [loadBroadcasts]);

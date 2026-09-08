@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useFrappeCreateDoc, useFrappeGetDocList, useFrappeUpdateDoc } from "frappe-react-sdk";
 import { toast } from "sonner";
 import type { RecordRef } from "./useRecordLinks";
+import { toastError } from "../components/ErrorDialog";
 
 export interface Task {
   name: string;
@@ -60,8 +61,8 @@ export function useTasks(record: RecordRef | null) {
       try {
         await updateDoc("ToDo", name, { status });
         await mutate();
-      } catch {
-        toast.error("Failed to update task");
+      } catch (err) {
+        toastError(err, "Failed to update task");
       }
     },
     [updateDoc, mutate]

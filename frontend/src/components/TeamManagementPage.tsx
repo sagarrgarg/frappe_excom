@@ -4,6 +4,7 @@ import { Plus, Search, Users, Shield, UserPlus, Trash2, Crown, Lock } from "luci
 import { toast } from "sonner";
 import { Button, Input, Field, Select, Modal, EmptyState, Avatar, Chip, Badge } from "./primitives";
 import { AdminPage, DataTable } from "./shell/AdminPage";
+import { toastError } from "./ErrorDialog";
 
 interface Team { name: string; team_name: string; description: string; member_count: number }
 interface TeamMember { user: string; role: string; full_name: string; user_image: string }
@@ -59,7 +60,7 @@ function TeamDetailView({ team, onBack, embedded }: { team: Team; onBack: () => 
   const { call: fetchMembers } = useFrappePostCall("excom.excom.api.teams.get_team_members");
   const { call: addMember } = useFrappePostCall("excom.excom.api.teams.add_team_member");
   const { call: removeMember } = useFrappePostCall("excom.excom.api.teams.remove_team_member");
-  const load = useCallback(async () => { try { const res = await fetchMembers({ team: team.name }); setMembers((res as any)?.message || []); } catch { toast.error("Failed to load members"); } }, [fetchMembers, team.name]);
+  const load = useCallback(async () => { try { const res = await fetchMembers({ team: team.name }); setMembers((res as any)?.message || []); } catch (err) { toastError(err, "Failed to load members"); } }, [fetchMembers, team.name]);
   useEffect(() => { load(); }, [load]);
 
   return (
@@ -75,7 +76,7 @@ function TeamDetailView({ team, onBack, embedded }: { team: Team; onBack: () => 
           { key: "actions", label: "", align: "right", render: (m) => <Button variant="ghost" size="icon-sm" aria-label="Remove" title="Remove" onClick={async (e) => { e.stopPropagation(); await removeMember({ team: team.name, user: m.user }); toast.success("Member removed"); load(); }}><Trash2 /></Button> },
         ]}
       />
-      <AddMemberDialog open={showAdd} onOpenChange={setShowAdd} teamName={team.team_name} onAdd={async (user, role) => { try { await addMember({ team: team.name, user, role }); toast.success("Member added"); setShowAdd(false); load(); } catch { toast.error("Failed to add member"); } }} />
+      <AddMemberDialog open={showAdd} onOpenChange={setShowAdd} teamName={team.team_name} onAdd={async (user, role) => { try { await addMember({ team: team.name, user, role }); toast.success("Member added"); setShowAdd(false); load(); } catch (err) { toastError(err, "Failed to add member"); } }} />
     </AdminPage>
   );
 }
@@ -87,7 +88,7 @@ export function TeamManagementPage({ onNavigateBack, embedded }: { onNavigateBac
   const [showCreate, setShowCreate] = useState(false);
   const { call: fetchTeams } = useFrappePostCall("excom.excom.api.teams.get_all_teams");
   const { call: createTeam } = useFrappePostCall("excom.excom.api.teams.create_team");
-  const load = useCallback(async () => { try { const res = await fetchTeams({}); setTeams((res as any)?.message || []); } catch { toast.error("Failed to load teams"); } }, [fetchTeams]);
+  const load = useCallback(async () => { try { const res = await fetchTeams({}); setTeams((res as any)?.message || []); } catch (err) { toastError(err, "Failed to load teams"); } }, [fetchTeams]);
   useEffect(() => { load(); }, [load]);
 
   if (selected) return <TeamDetailView team={selected} embedded={embedded} onBack={() => { setSelected(null); load(); }} />;
@@ -107,7 +108,7 @@ export function TeamManagementPage({ onNavigateBack, embedded }: { onNavigateBac
           })}
         </div>
       )}
-      <CreateTeamDialog open={showCreate} onOpenChange={setShowCreate} onCreate={async (name, desc) => { try { await createTeam({ team_name: name, description: desc }); toast.success("Team created"); setShowCreate(false); load(); } catch { toast.error("Failed to create team"); } }} />
+      <CreateTeamDialog open={showCreate} onOpenChange={setShowCreate} onCreate={async (name, desc) => { try { await createTeam({ team_name: name, description: desc }); toast.success("Team created"); setShowCreate(false); load(); } catch (err) { toastError(err, "Failed to create team"); } }} />
     </AdminPage>
   );
 }

@@ -4,6 +4,7 @@ import { Cog, Plus, ToggleLeft, ToggleRight, Pencil, Play, Check, X, Search, Che
 import { Button, Input, Modal, Select, Textarea, EmptyState, Chip, Badge } from "./primitives";
 import { AdminPage } from "./shell/AdminPage";
 import { toast } from "sonner";
+import { toastError } from "./ErrorDialog";
 
 interface Rule {
   name: string;
@@ -303,8 +304,8 @@ function TestRuleDialog({
     try {
       const res = await testRule({ name: rule.name, doc_name: docName.trim() });
       setResult((res as any)?.message || null);
-    } catch {
-      toast.error("Test failed");
+    } catch (err) {
+      toastError(err, "Test failed");
     } finally {
       setLoading(false);
     }
@@ -410,8 +411,8 @@ export function SubscriberRulesPage({
     try {
       const res = await fetchRules({});
       setRules((res as any)?.message || []);
-    } catch {
-      toast.error("Failed to load rules");
+    } catch (err) {
+      toastError(err, "Failed to load rules");
     }
   }, [fetchRules]);
 
@@ -455,8 +456,8 @@ export function SubscriberRulesPage({
                           toast.success(
                             `Applied: ${data.added} added, ${data.skipped} skipped${data.errors ? `, ${data.errors} errors` : ""}`
                           );
-                        } catch {
-                          toast.error("Failed to apply rule");
+                        } catch (err) {
+                          toastError(err, "Failed to apply rule");
                         } finally {
                           setBackfilling(null);
                         }
@@ -540,8 +541,8 @@ export function SubscriberRulesPage({
               setShowForm(false);
               setEditingRule(undefined);
               loadRules();
-            } catch {
-              toast.error("Failed to save rule");
+            } catch (err) {
+              toastError(err, "Failed to save rule");
             }
           }}
           onClose={() => {

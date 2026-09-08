@@ -5,6 +5,7 @@ import { Search, Send, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Mail, 
 import { Sheet, Button, Input, Field, Select, Textarea, Chip, EmptyState } from "./primitives";
 import { DateTimePicker } from "./ui/date-time-picker";
 import { cn } from "./ui/utils";
+import { toastError } from "./ErrorDialog";
 
 interface SubscriberListOption { name: string; list_name: string; active_subscribers: number }
 interface TemplateButton { button_type: string; button_label: string; website_url?: string; url_type?: string; example_url?: string; phone_number?: string }
@@ -89,7 +90,7 @@ export function BroadcastWizard({ open, onOpenChange, onCreated, presetList }: {
 
   const loadTemplates = useCallback(async (search = "") => {
     if (!waChannelAccount) { setTemplates([]); return; }
-    try { const res = await fetchTemplates({ search, whatsapp_account: waChannelAccount }); setTemplates((res as any)?.message || []); } catch { toast.error("Failed to load templates"); }
+    try { const res = await fetchTemplates({ search, whatsapp_account: waChannelAccount }); setTemplates((res as any)?.message || []); } catch (err) { toastError(err, "Failed to load templates"); }
   }, [fetchTemplates, waChannelAccount]);
   useEffect(() => { if (step === 1 && channel === "WhatsApp" && waChannelAccount) loadTemplates(templateSearch); }, [step, channel, templateSearch, waChannelAccount, loadTemplates]);
 
@@ -97,7 +98,7 @@ export function BroadcastWizard({ open, onOpenChange, onCreated, presetList }: {
     const file = e.target.files?.[0]; if (!file) return;
     setUploading(true);
     try { const r = await upload(file, { isPrivate: false }); setHeaderMediaUrl(r.file_url); setHeaderFileName(file.name); toast.success("File uploaded"); }
-    catch { toast.error("Upload failed"); } finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
+    catch (err) { toastError(err, "Upload failed"); } finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
   }, [upload]);
 
   const selectedListData = lists.find((l) => l.name === subscriberList);

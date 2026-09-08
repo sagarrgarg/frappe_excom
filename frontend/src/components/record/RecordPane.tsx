@@ -29,6 +29,7 @@ import { useFileUpload } from "../../hooks/useFileUpload";
 import { useThreads } from "../../hooks/useContacts";
 import { hasRole } from "../../lib/ui-flag";
 import type { Account } from "../../types";
+import { toastError } from "../ErrorDialog";
 
 type Tab = "chat" | "tasks" | "notes" | "activity" | "ai" | "details";
 
@@ -123,7 +124,7 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
   const fileUpload = useFileUpload(useCallback(async (fileUrl: string, messageType: string) => {
     if (!via) return;
     try { await sendMessage({ thread_id: via.id, message: "", message_type: messageType, media_url: fileUrl }); onSent(); }
-    catch { toast.error("Failed to send attachment"); }
+    catch (err) { toastError(err, "Failed to send attachment"); }
   }, [via, sendMessage, onSent]));
 
   const onReplyEmail = useCallback((gmailId: string, subject: string, to: string, threadId: string) => {
@@ -139,7 +140,7 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
     [
       { id: "transfer", label: "Transfer…", icon: <ArrowRightLeft />, onSelect: () => setTransferOpen(true) },
       { id: "tags", label: "Tags…", icon: <Tag />, onSelect: () => setTagsOpen(true) },
-      { id: "assign", label: "Assign to me", icon: <UserPlus />, shortcut: "a", onSelect: async () => { try { await all((id) => assignCall({ thread_id: id })); toast.success("Assigned to you"); refreshThreads(); } catch { toast.error("Failed"); } } },
+      { id: "assign", label: "Assign to me", icon: <UserPlus />, shortcut: "a", onSelect: async () => { try { await all((id) => assignCall({ thread_id: id })); toast.success("Assigned to you"); refreshThreads(); } catch (err) { toastError(err, "Failed"); } } },
       { id: "ai", label: "AI assist", icon: <Sparkles />, onSelect: () => setTab("ai") },
       { id: "details", label: "Details", icon: <PanelRight />, shortcut: "⌘.", onSelect: () => setDetailsOpen(true) },
     ],
@@ -157,11 +158,11 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
     ],
     [
       archived
-        ? { id: "unarchive", label: "Reopen", icon: <ArchiveRestore />, onSelect: async () => { try { await reopenCall({ omni_identity: contact.id }); toast.success("Reopened — back in the inbox"); refreshThreads(); } catch { try { await all((id) => unarchiveCall({ thread_id: id })); refreshThreads(); } catch { toast.error("Failed"); } } } }
+        ? { id: "unarchive", label: "Reopen", icon: <ArchiveRestore />, onSelect: async () => { try { await reopenCall({ omni_identity: contact.id }); toast.success("Reopened — back in the inbox"); refreshThreads(); } catch (err) { try { await all((id) => unarchiveCall({ thread_id: id })); refreshThreads(); } catch { toastError(err, "Failed"); } } } }
         : { id: "close", label: "Close…", icon: <Archive />, shortcut: "e", onSelect: () => setCloseOpen(true) },
-      ...(!archived ? [{ id: "archive", label: "Archive without outcome", icon: <Archive />, onSelect: async () => { try { await all((id) => archiveCall({ thread_id: id })); toast.success("Archived"); closeRecord(); refreshThreads(); } catch { toast.error("Failed"); } } }] : []),
-      { id: "spam", label: "Mark as spam", icon: <AlertOctagon />, danger: true, onSelect: async () => { try { await all((id) => spamCall({ thread_id: id })); toast.success("Marked as spam"); closeRecord(); refreshThreads(); } catch { toast.error("Failed"); } } },
-      ...(hasRole("System Manager") ? [{ id: "delete", label: "Delete", icon: <Trash2 />, danger: true, onSelect: async () => { if (!window.confirm("Delete this conversation and all its threads?")) return; try { await all((id) => deleteCall({ thread_id: id })); toast.success("Deleted"); closeRecord(); refreshThreads(); } catch { toast.error("Failed"); } } }] : []),
+      ...(!archived ? [{ id: "archive", label: "Archive without outcome", icon: <Archive />, onSelect: async () => { try { await all((id) => archiveCall({ thread_id: id })); toast.success("Archived"); closeRecord(); refreshThreads(); } catch (err) { toastError(err, "Failed"); } } }] : []),
+      { id: "spam", label: "Mark as spam", icon: <AlertOctagon />, danger: true, onSelect: async () => { try { await all((id) => spamCall({ thread_id: id })); toast.success("Marked as spam"); closeRecord(); refreshThreads(); } catch (err) { toastError(err, "Failed"); } } },
+      ...(hasRole("System Manager") ? [{ id: "delete", label: "Delete", icon: <Trash2 />, danger: true, onSelect: async () => { if (!window.confirm("Delete this conversation and all its threads?")) return; try { await all((id) => deleteCall({ thread_id: id })); toast.success("Deleted"); closeRecord(); refreshThreads(); } catch (err) { toastError(err, "Failed"); } } }] : []),
     ],
   ];
 

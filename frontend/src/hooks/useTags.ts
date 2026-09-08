@@ -1,7 +1,7 @@
 import { useFrappePostCall } from "frappe-react-sdk";
 import { useFrappeGetCall } from "@/lib/api";
 import { useCallback } from "react";
-import { toast } from "sonner";
+import { toastError } from "../components/ErrorDialog";
 
 interface ExcomTag {
   name: string;
@@ -48,8 +48,8 @@ export function useThreadTags(threadId: string) {
       try {
         await addCall({ thread_id: threadId, tag_name: tagName });
         mutate();
-      } catch {
-        toast.error("Failed to add tag");
+      } catch (err) {
+        toastError(err, "Failed to add tag");
       }
     },
     [threadId, addCall, mutate]
@@ -61,8 +61,8 @@ export function useThreadTags(threadId: string) {
       try {
         await removeCall({ thread_id: threadId, tag_name: tagName });
         mutate();
-      } catch {
-        toast.error("Failed to remove tag");
+      } catch (err) {
+        toastError(err, "Failed to remove tag");
       }
     },
     [threadId, removeCall, mutate]

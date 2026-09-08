@@ -19,6 +19,7 @@ import { useFrappePostCall, useFrappeFileUpload } from "frappe-react-sdk";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { toast } from "sonner";
+import { toastError } from "./ErrorDialog";
 
 interface WhatsAppTemplatePickerProps {
   threadId: string;
@@ -127,8 +128,8 @@ export function WhatsAppTemplatePicker({
           whatsapp_account: threadWaAccount,
         });
         setTemplates((res as any)?.message || []);
-      } catch {
-        toast.error("Failed to load templates");
+      } catch (err) {
+        toastError(err, "Failed to load templates");
       } finally {
         setLoading(false);
       }
@@ -198,8 +199,8 @@ export function WhatsAppTemplatePicker({
         setHeaderMediaUrl(result.file_url);
         setHeaderFileName(file.name);
         toast.success("File uploaded");
-      } catch {
-        toast.error("Upload failed");
+      } catch (err) {
+        toastError(err, "Upload failed");
       } finally {
         setUploading(false);
         if (fileInputRef.current) fileInputRef.current.value = "";

@@ -1,6 +1,10 @@
+import { errorSummary } from "../../lib/errors";
+
+/**
+ * The one-line form of a server error, for a toast. Everything it knows about reading a Frappe
+ * error — _server_messages, _error_message, exception, bare 403s — lives in lib/errors.ts, so the
+ * toast and the error dialog can never disagree about what went wrong.
+ */
 export function serverMessage(e: unknown): string {
-  const raw = (e as { _server_messages?: string })?._server_messages;
-  try { if (raw) { const m = JSON.parse(raw)[0]; return JSON.parse(m).message?.replace(/<[^>]+>/g, "") || String(m); } } catch { /* fall through */ }
-  const ex = (e as { exception?: string })?.exception; if (ex) return ex.split(":").slice(-1)[0].trim();
-  return (e as { message?: string })?.message || "Something went wrong";
+  return errorSummary(e, "Something went wrong");
 }
