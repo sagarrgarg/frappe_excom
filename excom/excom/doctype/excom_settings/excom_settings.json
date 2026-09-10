@@ -35,7 +35,17 @@
   "enforce_crm_visibility",
   "shared_inbox_team",
   "crm_sla_escalation",
-  "crm_go_live_date"
+  "crm_go_live_date",
+  "calling_tab",
+  "calling_policy_section",
+  "default_allow_international",
+  "blocked_country_codes",
+  "column_break_calling_policy",
+  "daily_international_minutes_cap",
+  "calling_recording_section",
+  "recording_retention_days",
+  "column_break_calling_recording",
+  "require_recording_consent"
  ],
  "fields": [
   {
@@ -239,6 +249,59 @@
    "fieldtype": "Date",
    "label": "CRM Go-live Date",
    "description": "SLA and guardrails ignore records created before this date."
+  },
+  {
+   "fieldname": "calling_tab",
+   "fieldtype": "Tab Break",
+   "label": "Calls"
+  },
+  {
+   "fieldname": "calling_policy_section",
+   "fieldtype": "Section Break",
+   "label": "Dialling Policy"
+  },
+  {
+   "fieldname": "default_allow_international",
+   "fieldtype": "Check",
+   "label": "Allow International Calls by Default",
+   "description": "A line that does not set its own permission falls back to this."
+  },
+  {
+   "fieldname": "blocked_country_codes",
+   "fieldtype": "Small Text",
+   "label": "Blocked Country Codes",
+   "description": "Comma separated, without the plus: 234, 92, 880. Checked before any allowance, so a blocked country stays blocked."
+  },
+  {
+   "fieldname": "column_break_calling_policy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "daily_international_minutes_cap",
+   "fieldtype": "Int",
+   "label": "Daily International Minutes per Agent",
+   "description": "0 for no cap. This is what stops a compromised account running up a five-figure bill overnight."
+  },
+  {
+   "fieldname": "calling_recording_section",
+   "fieldtype": "Section Break",
+   "label": "Recording"
+  },
+  {
+   "fieldname": "recording_retention_days",
+   "fieldtype": "Int",
+   "label": "Recording Retention (days)",
+   "description": "0 keeps recordings indefinitely. Past this age the audio is dropped; the call record, duration and summary are kept."
+  },
+  {
+   "fieldname": "column_break_calling_recording",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "require_recording_consent",
+   "fieldtype": "Check",
+   "label": "Require a Consent Announcement",
+   "description": "Warn when a voice line has no announcement configured."
   }
  ],
  "index_web_pages_for_search": 1,

@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell, RouteFallback } from "../components/shell/AppShell";
 import { InboxProvider } from "../components/shell/InboxProvider";
+import { SoftphoneProvider } from "../components/voice/SoftphoneProvider";
 import { InboxRoute } from "./inbox";
 import { appBasename } from "../lib/ui-flag";
 import { FlaggedRoute } from "./flagged";
@@ -34,7 +35,9 @@ export function NextRouter() {
   return (
     <BrowserRouter basename={appBasename()}>
       <Routes>
-        <Route element={<InboxProvider><AppShell /></InboxProvider>}>
+        {/* The softphone wraps the router, not a page: a SIP registration that drops on navigation
+            means an agent silently stops receiving calls. */}
+        <Route element={<InboxProvider><SoftphoneProvider><AppShell /></SoftphoneProvider></InboxProvider>}>
           <Route index element={<Navigate to="/inbox" replace />} />
           <Route path="/inbox/:view?" element={<InboxRoute />} />
           <Route path="/t/:recordId" element={<InboxRoute />} />

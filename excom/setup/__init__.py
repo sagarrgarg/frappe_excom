@@ -44,6 +44,14 @@ CHANNELS = [
 		"is_enabled": 1,
 		"description": "Embeddable web chat widget for website visitors.",
 	},
+	{
+		# Labelled "Calls", never by vendor: the provider lives in one Select field on the account.
+		"name": "voice",
+		"channel_label": "Calls",
+		"allows_multiple_accounts": 1,
+		"is_enabled": 1,
+		"description": "Voice calls, answered in the browser over WebRTC with the agent's own phone as the fallback.",
+	},
 ]
 
 

@@ -11,6 +11,9 @@ dependencies = [
     # frappe and erpnext are installed and managed by bench, not pip.
     "python-magic",
     "requests",
+    # Voice channel. Used for its webhook signature validator; the REST calls go through requests
+    # so a provider swap does not mean swapping HTTP clients as well.
+    "plivo>=4.60,<5",
 ]
 
 [build-system]

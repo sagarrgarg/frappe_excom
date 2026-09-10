@@ -120,6 +120,8 @@ boot_session = "excom.boot.boot_session"
 
 permission_query_conditions = {
 	"Excom Thread": "excom.excom.doctype.excom_thread.excom_thread.get_permission_query_conditions",
+	# A call is visible to whoever may open the conversation it belongs to.
+	"Excom Call": "excom.excom.doctype.excom_call.excom_call.get_permission_query_conditions",
 	# A lead nobody has been given to is visible to a Sales Master Manager only. See
 	# services/crm_visibility.py; switch it off with Excom Settings > enforce_crm_visibility.
 	"Lead": "excom.excom.services.crm_visibility.lead_query_conditions",
@@ -128,6 +130,7 @@ permission_query_conditions = {
 
 has_permission = {
 	"Excom Thread": "excom.excom.doctype.excom_thread.excom_thread.has_permission",
+	"Excom Call": "excom.excom.doctype.excom_call.excom_call.has_permission",
 	"Lead": "excom.excom.services.crm_visibility.lead_has_permission",
 	"Opportunity": "excom.excom.services.crm_visibility.opportunity_has_permission",
 }
@@ -192,6 +195,20 @@ doc_events = {
 	"Party Link": {
 		"after_insert": "excom.excom.services.identity_hooks.on_party_link_created",
 	},
+	# Who rings is served from cache on the answer URL, so the cache has to die the moment a desk,
+	# a line or a softphone changes. Otherwise somebody removed from a team keeps getting calls for
+	# five minutes and nobody can explain why.
+	"Excom Team": {
+		"on_update": "excom.excom.channels.voice.routing.on_team_changed",
+		"on_trash": "excom.excom.channels.voice.routing.on_team_changed",
+	},
+	"Excom Channel Account": {
+		"on_update": "excom.excom.channels.voice.routing.on_account_changed",
+	},
+	"Excom Voice Endpoint": {
+		"on_update": "excom.excom.channels.voice.routing.on_endpoint_changed",
+		"on_trash": "excom.excom.channels.voice.routing.on_endpoint_changed",
+	},
 }
 
 # Scheduled Tasks
@@ -223,9 +240,13 @@ scheduler_events = {
 		"excom.excom.tasks.guardrails.assert_native_crm_only",
 		"excom.excom.tasks.intake.purge_old_payloads",
 		"excom.excom.tasks.intake.reconcile_meta_leads",
+		"excom.excom.channels.voice.recording.purge_expired_recordings",
 	],
 	"cron": {
 		"*/5 * * * *": ["excom.excom.tasks.intake.pull_due_sources"],
+		# Duration and cost land at the provider a minute or two after a call ends. Without this
+		# sweep, completed calls sit at duration = 0 forever.
+		"*/3 * * * *": ["excom.excom.channels.voice.reconcile.reconcile_pending_calls"],
 	},
 	"daily_maintenance": [
 		"excom.excom.scheduler.daily.sync_invalid_tokens",
