@@ -123,6 +123,26 @@ class TestPlivoSignature(FrappeTestCase):
 		}
 		self.assertFalse(self._verify(headers, form))
 
+	def test_lowercase_headers_are_still_read(self):
+		"""HTTP/2 requires lowercase header names.
+
+		Behind a modern proxy the signature arrives as `x-plivo-signature-v3`, and an exact-case
+		lookup returns nothing — so every genuine webhook was refused as unsigned while a test
+		using the documented capitalisation passed.
+		"""
+		nonce, form = "nonce-lower", {"CallUUID": "abc"}
+		signature = _sign(self.URL, nonce, form)
+		for headers in (
+			{"x-plivo-signature-v3": signature, "x-plivo-signature-v3-nonce": nonce},
+			{"X-Plivo-Signature-V3": signature, "X-Plivo-Signature-V3-Nonce": nonce},
+			{"X-PLIVO-SIGNATURE-V3": signature, "X-PLIVO-SIGNATURE-V3-NONCE": nonce},
+			{"HTTP_X_PLIVO_SIGNATURE_V3": signature, "HTTP_X_PLIVO_SIGNATURE_V3_NONCE": nonce},
+		):
+			self.assertTrue(
+				self.adapter.verify_webhook(self.URL, "POST", headers, form),
+				f"rejected with headers spelled {list(headers)[0]!r}",
+			)
+
 	def test_missing_signature_is_rejected(self):
 		self.assertFalse(self._verify({}, {"CallUUID": "abc"}))
 		self.assertFalse(

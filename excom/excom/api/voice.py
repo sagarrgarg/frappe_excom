@@ -56,13 +56,22 @@ def _verified_account() -> str:
 
 	request = frappe.local.request
 	method = request.method
-	form = params if method == "POST" else {}
-	headers = dict(request.headers)
+
+	# Signed against the raw body, not frappe.local.form_dict.
+	#
+	# Frappe rewrites some values on the way in — `SIP-H-To` arrives as
+	# `<sip:919250333699@phone.plivo.com>` and comes out altered, because it looks like markup. The
+	# signature covers what Plivo sent, so anything that has passed through Frappe's parsing is the
+	# wrong thing to check. `request.form` is werkzeug's own parse of the body and is untouched.
+	form = {k: request.form[k] for k in request.form} if method == "POST" else {}
+	# Not dict(...): werkzeug's header object is case-insensitive and a plain dict is not. HTTP/2
+	# sends header names lowercase, so flattening it here made every signed request look unsigned.
+	headers = request.headers
 
 	# The signature covers the URL the provider sent. Behind a reverse proxy the request we see is
 	# the internal one, so the forwarded headers are checked first — but a site with no proxy, or
 	# one that rewrites the path, still has to work, so `request.url` remains a candidate.
-	from excom.excom.channels.voice.providers.plivo import received_url
+	from excom.excom.channels.voice.providers.plivo import _header, received_url
 
 	candidates = []
 	for url in (received_url(request), request.url):
@@ -79,6 +88,10 @@ def _verified_account() -> str:
 				f"account: {account}\n"
 				f"from ip: {frappe.local.request_ip or 'unknown'}\n"
 				f"method : {method}\n"
+				# Whether the headers were even found is the first thing to check: a missing
+				# signature and a wrong one look identical from the outside.
+				f"signature header present: {bool(_header(headers, 'X-Plivo-Signature-V3'))}\n"
+				f"nonce header present    : {bool(_header(headers, 'X-Plivo-Signature-V3-Nonce'))}\n"
 				f"urls tried:\n  " + "\n  ".join(candidates) + "\n"
 				f"signed param names: {sorted(form)}"
 			),

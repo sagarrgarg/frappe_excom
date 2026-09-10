@@ -391,12 +391,8 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 		implementation below exists so a missing SDK degrades to "verify it ourselves" rather than
 		"accept anything".
 		"""
-		signature = headers.get("X-Plivo-Signature-V3") or headers.get(
-			"HTTP_X_PLIVO_SIGNATURE_V3"
-		)
-		nonce = headers.get("X-Plivo-Signature-V3-Nonce") or headers.get(
-			"HTTP_X_PLIVO_SIGNATURE_V3_NONCE"
-		)
+		signature = _header(headers, "X-Plivo-Signature-V3")
+		nonce = _header(headers, "X-Plivo-Signature-V3-Nonce")
 		token = self.auth_token
 		if not (signature and nonce and token):
 			return False
@@ -596,6 +592,29 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
+
+def _header(headers, name: str) -> str:
+	"""Read a header without caring how it was capitalised.
+
+	HTTP/2 requires lowercase header names, so behind a modern proxy the signature arrives as
+	`x-plivo-signature-v3`. Werkzeug's own header object is case-insensitive, but the moment it is
+	copied into a plain dict that property is lost — and an exact-case lookup then returns nothing,
+	so every signed request is treated as unsigned. Also accepts the WSGI `HTTP_` spelling.
+	"""
+	if headers is None:
+		return ""
+	direct = headers.get(name)
+	if direct:
+		return direct
+
+	wanted = name.lower()
+	wsgi = "http_" + wanted.replace("-", "_")
+	for key, value in dict(headers).items():
+		lowered = str(key).lower()
+		if lowered == wanted or lowered == wsgi:
+			return value
+	return ""
 
 
 def _plain(value):
