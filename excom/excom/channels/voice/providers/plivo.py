@@ -673,16 +673,29 @@ def public_site_url() -> str:
 	return frappe.utils.get_url().rstrip("/")
 
 
-def webhook_url(kind: str, account: str) -> str:
+# Plivo reads its per-URL timeout and retry policy from the fragment. Its default is a 2 second
+# connection timeout, which a Frappe site behind a busy worker misses often enough to drop calls —
+# the answer URL itself computes a routing decision in single-digit milliseconds, but the request
+# never reaches it in time. ct/rt are milliseconds, rc is the retry count, rp says which failures
+# are retried. A fragment is never sent to the server and is excluded from the signed URL, so this
+# affects nothing else.
+WEBHOOK_TUNING = "#ct=10000&rt=15000&rc=2&rp=ct,rt"
+
+
+def webhook_url(kind: str, account: str, tuned: bool = True) -> str:
 	"""The public URL Plivo should call back on.
 
 	The account rides in the query string so a site with several lines can tell them apart before
 	it has parsed anything. It is not a credential — authenticity comes from the signature.
+
+	`tuned` adds the timeout fragment. Pass False where the URL is being shown to a person, so the
+	copy button hands them something readable.
 	"""
-	return (
+	url = (
 		f"{public_site_url()}/api/method/excom.excom.api.voice.{kind}"
 		f"?account={quote(account or '', safe='')}"
 	)
+	return f"{url}{WEBHOOK_TUNING}" if tuned else url
 
 
 def received_url(request) -> str:

@@ -563,7 +563,9 @@ def line_status(account: str):
 		"agents_on_line": len(routing.line_agents(account)),
 		"endpoints": endpoints,
 		"webhooks": {
-			kind: webhook_url(kind, account)
+			# Untuned: the admin screen shows these for a human to read and paste. The timeout
+			# fragment is machine configuration and only clutters the copy button.
+			kind: webhook_url(kind, account, tuned=False)
 			for kind in ("route", "fallback", "hangup", "ringing")
 		},
 	}
