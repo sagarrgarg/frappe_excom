@@ -9,6 +9,7 @@ check in the UI is not a control.
 """
 
 import json
+import re
 
 import frappe
 from frappe import _
@@ -22,6 +23,66 @@ from excom.excom.utils.phone import normalize_phone, validate_phone_number
 _MINUTES = "excom:voice:intl_minutes"
 SECONDS_IN_DAY = 86400
 
+# Country codes we can recognise at the front of a line's own DID, longest first so 91 is not
+# mistaken for 9. Only used to work out what "local" means for that line; anything already in E.164
+# is left alone.
+KNOWN_COUNTRY_CODES = (
+	"971", "966", "880", "852", "353", "351", "268",
+	"91", "92", "94", "60", "62", "63", "65", "66", "81", "82", "86", "84",
+	"27", "31", "32", "33", "34", "39", "41", "44", "46", "48", "49", "61", "64", "20",
+	"1", "7",
+)
+
+# The national significant number length for the codes we care about most. India is 10.
+NSN_LENGTH = {"91": 10, "1": 10, "44": 10, "971": 9, "65": 8}
+
+
+def line_country_code(account_doc) -> str:
+	"""The country this line dials from, read off its own number."""
+	own = normalize_phone(account_doc.get("voice_number") or "").lstrip("+")
+	for code in KNOWN_COUNTRY_CODES:
+		if own.startswith(code):
+			return code
+	return ""
+
+
+def to_e164(raw: str, account_doc) -> str:
+	"""Turn whatever is in the contact record into something a provider will dial.
+
+	Real address books are not in E.164. An Indian mobile is written 9217025599, or 09217025599
+	with the trunk prefix, or 0092170 25599 after a bad import - and a provider takes none of them.
+	The line's own number says which country "no country code" means.
+	"""
+	if not raw or not str(raw).strip():
+		frappe.throw(_("There is no number to call."))
+
+	text = str(raw).strip()
+	cc = line_country_code(account_doc)
+
+	if text.startswith("+"):
+		digits = re.sub(r"\D", "", text)
+	else:
+		digits = re.sub(r"\D", "", text)
+		if digits.startswith("00"):
+			# 00 is the international prefix in most of the world, including India.
+			digits = digits[2:]
+		elif cc:
+			nsn = NSN_LENGTH.get(cc, 10)
+			if digits.startswith("0") and len(digits) == nsn + 1:
+				digits = cc + digits[1:]  # trunk prefix, e.g. 09217025599
+			elif len(digits) == nsn:
+				digits = cc + digits  # bare national number
+			elif not digits.startswith(cc) and len(digits) < nsn:
+				frappe.throw(
+					_("{0} is too short to be a phone number.").format(raw),
+					frappe.ValidationError,
+				)
+
+	if not digits:
+		frappe.throw(_("{0} is not a phone number.").format(raw), frappe.ValidationError)
+
+	return validate_phone_number(f"+{digits}", _("Number to call"))
+
 
 def dial(
 	to_number: str,
@@ -32,7 +93,6 @@ def dial(
 ) -> dict:
 	"""Start an outbound call. Returns what the browser should do next."""
 	user = user or frappe.session.user
-	number = validate_phone_number(to_number, _("Number to call"))
 	account = account or default_voice_account()
 	if not account:
 		frappe.throw(_("No voice line is configured. An administrator can set one up in Admin."))
@@ -40,6 +100,10 @@ def dial(
 	account_doc = frappe.get_cached_doc("Excom Channel Account", account)
 	if account_doc.status != "Active":
 		frappe.throw(_("The voice line {0} is inactive.").format(account_doc.account_name))
+
+	# Contact lists hold national numbers - 09217025599, 9217025599, 092170 25599 - and a provider
+	# only accepts E.164. Validating before converting refused to dial most of the address book.
+	number = to_e164(to_number, account_doc)
 
 	check_dialling_allowed(user, number, account_doc)
 

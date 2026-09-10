@@ -372,6 +372,56 @@ class TestAliasSanitising(FrappeTestCase):
 		self.assertRegex(alias, r"^[A-Za-z0-9_]+$")
 
 
+class TestNumberNormalising(FrappeTestCase):
+	"""A real address book is not in E.164.
+
+	The first live outbound call refused with "09217025599 is not a valid phone number", because
+	validation ran before conversion. Indian contacts are stored with the trunk 0, or bare, or with
+	spaces — a provider takes none of those.
+	"""
+
+	def setUp(self):
+		from excom.excom.channels.voice.outbound import to_e164
+
+		self.convert = lambda raw: to_e164(raw, _account_stub())
+
+	def test_the_number_that_broke_the_first_call(self):
+		self.assertEqual(self.convert("09217025599"), "+919217025599")
+
+	def test_the_shapes_a_contact_list_actually_holds(self):
+		for raw in (
+			"9217025599",
+			"09217025599",
+			"+919217025599",
+			"919217025599",
+			"092170 25599",
+			"+91 92170-25599",
+			"00919217025599",
+		):
+			self.assertEqual(self.convert(raw), "+919217025599", f"failed on {raw!r}")
+
+	def test_double_zero_is_an_international_prefix_not_part_of_the_number(self):
+		"""0092… is a dial-out to Pakistan, not an Indian number with stray zeros. Treating the 00
+		as digits would silently call a different country."""
+		self.assertEqual(self.convert("00929217025599"), "+929217025599")
+
+	def test_an_international_number_keeps_its_own_country(self):
+		self.assertEqual(self.convert("+14155550100"), "+14155550100")
+		self.assertEqual(self.convert("0014155550100"), "+14155550100")
+
+	def test_the_line_decides_what_local_means(self):
+		from excom.excom.channels.voice.outbound import line_country_code, to_e164
+
+		uk = _account_stub(voice_number="+442071838750")
+		self.assertEqual(line_country_code(uk), "44")
+		self.assertEqual(to_e164("2071838750", uk), "+442071838750")
+
+	def test_rubbish_is_refused_rather_than_dialled(self):
+		for raw in ("", "   ", "abc", "12"):
+			with self.assertRaises(frappe.ValidationError):
+				self.convert(raw)
+
+
 class TestCallVisibility(FrappeTestCase):
 	"""A call is as visible as the conversation it belongs to, and no more."""
 
