@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useFrappeGetCall } from "@/lib/api";
 import type { ExcomMessage, Message } from "../types";
 import { parseFrappeDateTime } from "../utils/datetime";
+import { mapMessageType } from "../lib/messages";
 
 /**
  * Fetches messages for a given thread from the Frappe backend and
@@ -76,28 +77,4 @@ function mapDeliveryStatus(
   return map[status] || undefined;
 }
 
-type MessageTypeKey =
-  | "text" | "image" | "video" | "audio" | "document"
-  | "sticker" | "location" | "template" | "email"
-  | "interactive" | "flow" | "reaction" | "contact" | "button" | "call";
-
-function mapMessageType(type: string): MessageTypeKey {
-  const map: Record<string, MessageTypeKey> = {
-    Text: "text",
-    Image: "image",
-    Video: "video",
-    Audio: "audio",
-    Document: "document",
-    Sticker: "sticker",
-    Location: "location",
-    Template: "template",
-    Email: "email",
-    Interactive: "interactive",
-    Flow: "flow",
-    Reaction: "reaction",
-    Contact: "contact",
-    Button: "button",
-    Call: "call",
-  };
-  return map[type] || "text";
-}
+// mapMessageType lives in lib/messages so this hook and useIdentityMessages cannot drift apart.

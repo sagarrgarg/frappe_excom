@@ -102,6 +102,8 @@ class Softphone {
   private client: any = null;
   private booting: Promise<void> | null = null;
   private hooks: Omit<BootOptions, "token" | "options"> = {};
+  /** One record per dial the agent asked for, however many times the SDK reports progress. */
+  private outgoingReported = false;
 
   // ── subscription ──────────────────────────────────────────────────────────
 
@@ -289,11 +291,17 @@ class Softphone {
     this.on("onCalling", (...args: any[]) => {
       const info = pickCallInfo(args);
       const uuid = info.callUUID ?? this.state.call.callUUID;
-      const known = this.state.call.callUUID;
       this.setCall({ phase: "outgoing", callUUID: uuid, direction: "Outbound" });
-      // Fire once, when the uuid first appears. `call()` returns before the SDK has one, so this
-      // is the earliest the server can be told which leg belongs to which conversation.
-      if (uuid && uuid !== known) this.hooks.onOutgoing?.(uuid, this.state.call.peerNumber);
+      // Once per dial the agent actually asked for, not once per event.
+      //
+      // The SDK re-emits onCalling while it retries the INVITE, with a fresh callUUID each time.
+      // Reporting every one of those turned a single click into ten "Outgoing call" rows in the
+      // timeline within four seconds. What the agent did was place one call; that is what gets
+      // recorded, and the webhooks fill in what became of it.
+      if (uuid && !this.outgoingReported) {
+        this.outgoingReported = true;
+        this.hooks.onOutgoing?.(uuid, this.state.call.peerNumber);
+      }
     });
 
     const connected = (...args: any[]) => {
@@ -322,6 +330,7 @@ class Softphone {
 
   private endLocally() {
     const uuid = this.state.call.callUUID;
+    this.outgoingReported = false;
     this.set({ call: EMPTY_CALL });
     this.hooks.onEnded?.(uuid);
   }
@@ -359,6 +368,10 @@ class Softphone {
   /** Place a call. `headers` are the SIP headers the backend told us to attach. */
   call(destination: string, headers: Record<string, string>, meta: Partial<CallState> = {}) {
     if (!this.client) throw new Error("The softphone is not connected.");
+    if (this.state.call.phase !== "none") {
+      throw new Error("You are already on a call.");
+    }
+    this.outgoingReported = false;
     this.setCall({
       phase: "outgoing",
       direction: "Outbound",
