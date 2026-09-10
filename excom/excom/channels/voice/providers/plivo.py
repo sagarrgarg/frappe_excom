@@ -164,6 +164,13 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 					"redirect": "false",
 					"fileFormat": "mp3",
 					"recordChannelType": decision.record_channels or "stereo",
+					# Both of these default to something far too small for a conversation and are
+					# the reason a three-minute call came back as fifty-nine seconds of audio:
+					# maxLength defaults to 60 seconds, and timeout stops the recording after 15
+					# seconds of quiet — which any normal pause will trip. Tie the recording to the
+					# length of the call itself.
+					"maxLength": str(decision.max_conversation_seconds),
+					"timeout": str(decision.max_conversation_seconds),
 					"callbackUrl": webhook_url("recording_ready", self.account.name),
 					"callbackMethod": "POST",
 				},

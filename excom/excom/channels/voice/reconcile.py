@@ -75,6 +75,13 @@ def _reconcile_one(row) -> bool:
 	if row.status not in CLOSED_STATUSES:
 		updates["status"] = "Completed" if details.duration else "Missed"
 
+	# Nothing was said, so nothing was recorded. Without this the card keeps promising a recording
+	# that is never coming.
+	if not details.duration:
+		current = frappe.db.get_value("Excom Call", row.name, "recording_status")
+		if current == "Pending":
+			updates["recording_status"] = "None"
+
 	frappe.db.set_value("Excom Call", row.name, updates)
 
 	if row.agent and details.duration:

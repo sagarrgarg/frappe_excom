@@ -87,7 +87,9 @@ export function CallCard({ call, onCallBack }: { call: CallSummary; onCallBack?:
           </a>
         </div>
       )}
-      {call.recording_status === "Pending" && (
+      {/* Only while a call that actually connected is still waiting for its audio. A missed call
+          has nothing to record, and the spinner sat there for ever promising otherwise. */}
+      {call.recording_status === "Pending" && !missed && Boolean(call.duration) && (
         <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-ink-3">
           <Loader2 className="size-3 animate-spin" />
           Recording is being prepared

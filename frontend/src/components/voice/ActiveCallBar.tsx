@@ -1,27 +1,24 @@
-import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, PhoneOff, Grid3x3, Loader2, SignalLow } from "lucide-react";
-import { useFrappePostCall } from "frappe-react-sdk";
-import { Button, Textarea } from "../primitives";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Mic, MicOff, PhoneOff, Phone, Loader2 } from "lucide-react";
+import { Button } from "../primitives";
 import { cn } from "../ui/utils";
 import type { SoftphoneApi } from "@/hooks/useSoftphone";
 
-const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
-
 /**
- * The in-call bar. Persistent, above the router, so navigating away does not drop the call.
+ * The call, when the agent has walked away from it.
  *
- * Notes are the reason this is a bar and not a floating pill: agents type while they talk, and a
- * note written during the call is the one that is actually accurate.
+ * The full controls live in the conversation itself (`ActiveCallCard`) — a fixed bar across the
+ * bottom sat on top of the composer, which is the one thing an agent needs while talking. This is
+ * only the reminder: who is on the line, how long, and a way back. It hides itself on the thread
+ * the call belongs to, so the two never stack.
  */
 export function ActiveCallBar({ api }: { api: SoftphoneApi }) {
-  const { state, hangup, toggleMute, sendDigit } = api;
+  const { state, hangup, toggleMute } = api;
   const call = state.call;
   const [seconds, setSeconds] = useState(0);
-  const [keypad, setKeypad] = useState(false);
-  const [notes, setNotes] = useState("");
-  const savedFor = useRef<string>("");
-
-  const { call: saveNotes } = useFrappePostCall("excom.excom.api.voice.save_notes");
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (call.phase !== "connected" || !call.startedAt) {
@@ -34,33 +31,18 @@ export function ActiveCallBar({ api }: { api: SoftphoneApi }) {
     return () => window.clearInterval(id);
   }, [call.phase, call.startedAt]);
 
-  // Reset per call, and flush whatever was typed when the call ends.
-  useEffect(() => {
-    if (call.phase === "none") {
-      const name = savedFor.current;
-      const text = notes.trim();
-      if (name && text) {
-        saveNotes({ call: name, notes: text }).catch(() => {
-          /* the call is over; a failed note should not raise a dialog over the next screen */
-        });
-      }
-      savedFor.current = "";
-      setNotes("");
-      setKeypad(false);
-      return;
-    }
-    if (call.callName) savedFor.current = call.callName;
-  }, [call.phase, call.callName]);
-
   if (call.phase === "none" || call.phase === "ringing") return null;
+
+  // On the conversation itself, the in-thread card is showing and this would be a duplicate.
+  const onItsThread = location.pathname.startsWith("/t/");
+  if (onItsThread) return null;
 
   const connecting = call.phase === "outgoing";
   const ending = call.phase === "ending";
-  const poor = isPoor(state.quality);
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface shadow-ex">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 px-3 py-2">
+    <div className="fixed bottom-3 left-1/2 z-40 -translate-x-1/2">
+      <div className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 shadow-ex">
         <span
           className={cn(
             "size-2 shrink-0 rounded-full",
@@ -68,79 +50,39 @@ export function ActiveCallBar({ api }: { api: SoftphoneApi }) {
           )}
           aria-hidden
         />
+        <Phone className="size-3.5 shrink-0 text-ink-2" />
+        <span className="max-w-[12rem] truncate text-sm text-ink-1">
+          {call.displayName || call.peerNumber}
+        </span>
+        <span className="text-xs text-ink-3">
+          {connecting ? <Loader2 className="size-3 animate-spin" /> : <span className="tabular-nums">{mmss(seconds)}</span>}
+        </span>
 
-        <div className="min-w-0">
-          <div className="truncate text-sm text-ink-1">{call.displayName || call.peerNumber}</div>
-          <div className="flex items-center gap-1.5 text-xs text-ink-3">
-            {connecting ? (
-              <>
-                <Loader2 className="size-3 animate-spin" />
-                Connecting
-              </>
-            ) : (
-              <span className="tabular-nums">{mmss(seconds)}</span>
-            )}
-            {poor && (
-              <span className="inline-flex items-center gap-1 text-crayon-amber-text" title="Weak connection">
-                <SignalLow className="size-3" />
-                Weak line
-              </span>
-            )}
-          </div>
-        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={toggleMute}
+          aria-pressed={call.muted}
+          title={call.muted ? "Unmute" : "Mute"}
+        >
+          {call.muted ? <MicOff /> : <Mic />}
+        </Button>
 
-        <div className="ml-auto flex items-center gap-2">
+        {call.threadId && (
           <Button
-            variant={call.muted ? "primary" : "default"}
-            size="touch"
-            onClick={toggleMute}
-            aria-pressed={call.muted}
-            title={call.muted ? "Unmute" : "Mute"}
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate(`/t/${call.threadId}`)}
+            title="Back to the conversation"
           >
-            {call.muted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
-            <span className="hidden sm:inline">{call.muted ? "Muted" : "Mute"}</span>
+            Open
           </Button>
+        )}
 
-          <Button
-            variant={keypad ? "primary" : "default"}
-            size="touch"
-            onClick={() => setKeypad((v) => !v)}
-            aria-expanded={keypad}
-            title="Keypad"
-          >
-            <Grid3x3 className="size-4" />
-          </Button>
-
-          <Button variant="danger" size="touch" onClick={hangup} disabled={ending}>
-            <PhoneOff className="size-4" />
-            <span className="hidden sm:inline">{ending ? "Ending" : "End"}</span>
-          </Button>
-        </div>
+        <Button variant="danger" size="icon-sm" onClick={hangup} disabled={ending} title="End call">
+          <PhoneOff />
+        </Button>
       </div>
-
-      {keypad && (
-        <div className="border-t border-border px-3 py-2">
-          <div className="mx-auto grid max-w-[15rem] grid-cols-3 gap-1">
-            {DIGITS.map((d) => (
-              <Button key={d} variant="subtle" size="touch" onClick={() => sendDigit(d)}>
-                {d}
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {call.callName && (
-        <div className="border-t border-border px-3 py-2">
-          <Textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            placeholder="Notes — saved onto the call when it ends"
-            className="mx-auto block max-w-5xl resize-none text-sm"
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -149,11 +91,4 @@ function mmss(total: number): string {
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-/** The SDK reports MOS on a 1-5 scale; below ~3 is where people start saying "you're breaking up". */
-function isPoor(quality: Record<string, unknown> | null): boolean {
-  if (!quality) return false;
-  const mos = Number((quality as any).mos ?? (quality as any).score);
-  return Number.isFinite(mos) && mos > 0 && mos < 3;
 }

@@ -4,7 +4,7 @@ import { useFrappeEventListener } from "frappe-react-sdk";
 import { PhoneMissed, PhoneIncoming, PhoneOutgoing, Phone, RefreshCw } from "lucide-react";
 import { useFrappeGetCall } from "@/lib/api";
 import { PageFrame } from "../shell/PageFrame";
-import { Avatar, Button, Chip, EmptyState, SegmentedControl } from "../primitives";
+import { Avatar, Button, Chip, EmptyState, Input, SegmentedControl } from "../primitives";
 import { formatServerShortDateTime, parseFrappeDateTime } from "../../utils/datetime";
 import { useSoftphoneContext } from "./SoftphoneProvider";
 import type { CallSummary } from "./CallCard";
@@ -79,6 +79,8 @@ export function CallsPage() {
         </>
       }
     >
+      <Dialler />
+
       {isLoading && rows.length === 0 ? (
         <p className="p-3 text-sm text-ink-3">Loading…</p>
       ) : rows.length === 0 ? (
@@ -112,6 +114,48 @@ export function CallsPage() {
         </ul>
       )}
     </PageFrame>
+  );
+}
+
+/**
+ * Call a number that is not in anyone's thread yet.
+ *
+ * Every other route into a call starts from an existing conversation, which is no help when an
+ * agent has a number on a business card. The contact and the thread are created by the call itself.
+ */
+function Dialler() {
+  const api = useSoftphoneContext();
+  const [number, setNumber] = useState("");
+  if (!api?.config?.enabled) return null;
+
+  const busy = api.state.call.phase !== "none";
+  const start = () => {
+    const trimmed = number.trim();
+    if (!trimmed) return;
+    void api.dial(trimmed).then((plan) => {
+      if (plan) setNumber("");
+    });
+  };
+
+  return (
+    <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+      <Input
+        value={number}
+        onChange={(e) => setNumber(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") start();
+        }}
+        placeholder="Call a number — 9250333699 or +91 92503 33699"
+        className="max-w-sm"
+        inputMode="tel"
+        aria-label="Number to call"
+      />
+      <Button variant="primary" onClick={start} disabled={busy || !number.trim()}>
+        <Phone className="size-4" />
+        Call
+      </Button>
+      {busy && <span className="text-xs text-ink-3">You are already on a call.</span>}
+    </div>
   );
 }
 

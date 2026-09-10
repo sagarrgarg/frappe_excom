@@ -335,6 +335,11 @@ def _on_ended(call, event: CallEvent) -> dict:
 	if event.hangup_source:
 		fields["hangup_source"] = event.hangup_source
 
+	# A call nobody answered has nothing to record. Leaving it Pending left the timeline card
+	# saying "Recording is being prepared" with a spinner, for ever, on a missed call.
+	if not event.duration and call.recording_status == "Pending":
+		fields["recording_status"] = "None"
+
 	changed = _apply(call, fields)
 
 	for user in {call.agent, call.answered_by} | set(call.ring_set_users()):

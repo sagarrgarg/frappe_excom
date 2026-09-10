@@ -15,6 +15,7 @@ import { useInboxMeta } from "../hooks/useInboxMeta";
 import { hasRole } from "../lib/ui-flag";
 import { channelMeta } from "../lib/channels";
 import { FeedbackDialog } from "../components/shell/FeedbackDialog";
+import { CallButton } from "../components/voice/CallButton";
 
 /** Admin pages mount inside the shell; their own header renders the back button on phone/tablet via `embedded`. */
 function useBack() { const navigate = useNavigate(); return () => (window.history.length > 1 ? navigate(-1) : navigate("/inbox")); }
@@ -49,6 +50,11 @@ export function ContactsRoute() {
               <p className="text-xs text-ink-3 truncate flex items-center gap-2">{c.contactInfo.company && <span className="truncate">{c.contactInfo.company}</span>}{c.contactInfo.phone && <span className="inline-flex items-center gap-1 shrink-0"><Phone className="size-3" />{c.contactInfo.phone}</span>}{c.contactInfo.email && <span className="inline-flex items-center gap-1 truncate"><Mail className="size-3" />{c.contactInfo.email}</span>}</p>
             </div>
             <span className="flex items-center gap-0.5 shrink-0">{c.channels.map((ch) => { const m = channelMeta(ch); return <m.icon key={ch} className={`size-3.5 text-crayon-${m.accent}-base`} />; })}</span>
+            {/* Calling someone should not require finding a thread first. Renders nothing when
+                the site has no voice line or the contact has no number. */}
+            <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
+              <CallButton number={c.contactInfo.phone} displayName={c.contactName} size="sm" variant="ghost" />
+            </span>
           </Row>
         ))}
       </div>

@@ -33,6 +33,8 @@ export interface CallState {
   displayName: string;
   muted: boolean;
   startedAt: number | null;
+  /** Only ever "Browser" here — a call on the agent's handset never reaches the SDK. */
+  transport?: "Browser" | "Phone";
 }
 
 export interface SoftphoneState {
@@ -375,6 +377,7 @@ class Softphone {
     this.setCall({
       phase: "outgoing",
       direction: "Outbound",
+      transport: "Browser",
       peerNumber: destination,
       displayName: meta.displayName || destination,
       threadId: meta.threadId ?? null,
