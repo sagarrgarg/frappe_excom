@@ -536,16 +536,22 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 		return token
 
 	def sdk_descriptor(self) -> dict[str, Any]:
-		"""What the browser needs to boot the SDK. Contains no secret."""
+		"""What the browser needs to boot the SDK. Contains no secret.
+
+		Deliberately conservative. `enableNoiseReduction` is attractive but loads a WebAssembly
+		filter the SDK expects to find at `noiseReductionFilePath`, which we do not ship — and a
+		failure there takes the whole client down rather than just losing the filter.
+		"""
 		return {
 			"sdk": "plivo-browser-sdk",
 			"options": {
 				"debug": "ERROR",
+				# Ask for the microphone when a call starts, not on page load: an agent who opens
+				# Excom to read a thread should not be prompted for their mic.
 				"permOnClick": True,
 				"enableTracking": True,
 				"closeProtection": True,
 				"clientRegion": self.account.get("voice_client_region") or "asia",
-				"enableNoiseReduction": True,
 			},
 		}
 

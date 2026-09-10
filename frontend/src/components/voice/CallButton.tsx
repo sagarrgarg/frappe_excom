@@ -69,7 +69,19 @@ export function CallButton({
               icon: <Phone className="size-4" />,
               onSelect: () => start("Browser"),
               disabled: busy || api.state.registration !== "registered",
-              hint: api.state.registration === "registered" ? undefined : "Softphone not connected",
+              // Say why, not just that it is off. "Softphone not connected" leaves an agent with
+              // nothing to act on and nothing useful to report.
+              hint:
+                api.state.registration === "registered"
+                  ? undefined
+                  : api.state.error ||
+                    {
+                      idle: "Turn on 'Taking calls' in the sidebar first",
+                      loading: "Connecting…",
+                      registering: "Connecting…",
+                      unsupported: "This browser or network cannot make calls",
+                      failed: "Could not connect",
+                    }[api.state.registration],
             },
             {
               id: "phone",

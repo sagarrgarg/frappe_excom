@@ -66,6 +66,19 @@ const INITIAL: SoftphoneState = {
 
 type Listener = (state: SoftphoneState) => void;
 
+/**
+ * Lifecycle tracing. On by default: a softphone that silently fails to register is the single
+ * hardest thing to diagnose in this feature, and the agent reporting it cannot see server logs.
+ * Turn it off with `localStorage.excom_softphone_debug = "0"`.
+ */
+const DEBUG = (() => {
+  try {
+    return localStorage.getItem("excom_softphone_debug") !== "0";
+  } catch {
+    return true;
+  }
+})();
+
 export interface BootOptions {
   token: string;
   options: Record<string, unknown>;
@@ -152,12 +165,26 @@ class Softphone {
     }
 
     try {
+      if (DEBUG) console.info("[excom softphone] booting with options", options);
       this.sdk = new Ctor(options);
       this.client = this.sdk.client;
+      if (!this.client) throw new Error("The calling library started but exposed no client.");
       this.wire();
       this.set({ registration: "registering" });
       this.login(token);
+      // A registration that never completes leaves the agent thinking they are on the queue.
+      // Say so instead of sitting on "registering" for ever.
+      window.setTimeout(() => {
+        if (this.state.registration === "registering") {
+          this.set({
+            registration: "failed",
+            error:
+              "The softphone did not connect within 20 seconds. This is usually a network blocking WebSocket or UDP traffic.",
+          });
+        }
+      }, 20_000);
     } catch (e: any) {
+      if (DEBUG) console.error("[excom softphone] boot failed", e);
       this.set({ registration: "failed", error: e?.message || "The softphone could not start." });
     }
   }
@@ -210,7 +237,13 @@ class Softphone {
 
   private on(event: string, handler: (...args: any[]) => void) {
     try {
-      this.client?.on?.(event, handler);
+      this.client?.on?.(event, (...args: any[]) => {
+        // A softphone that will not connect gives the agent nothing to report. This trace is the
+        // difference between "it doesn't work" and a fixable answer, and it costs one console line
+        // per lifecycle event — call events are rare, so it is not noise.
+        if (DEBUG) console.info(`[excom softphone] ${event}`, ...args);
+        handler(...args);
+      });
     } catch {
       /* unknown events differ between SDK versions; an unwired one is not fatal */
     }
@@ -367,3 +400,13 @@ function pickCallInfo(args: any[]): { callUUID: string | null; from: string } {
 }
 
 export const softphone = new Softphone();
+
+// A handle an agent can read in the console when the softphone will not connect:
+//   __excomSoftphone.state()   -> registration, error, mic permission, current call
+// Read-only, and it exposes nothing the page does not already hold.
+if (typeof window !== "undefined") {
+  (window as any).__excomSoftphone = {
+    state: () => softphone.getState(),
+    registered: () => softphone.isRegistered,
+  };
+}
