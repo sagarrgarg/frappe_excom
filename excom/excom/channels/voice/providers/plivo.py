@@ -509,6 +509,11 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 		"""
 		import time
 
+		if not self.app_id:
+			frappe.throw(
+				_("This voice line has no Application ID, so a softphone cannot sign in.")
+			)
+
 		now = int(time.time())
 		ttl = max(180, min(int(ttl_seconds), 24 * 3600))  # Plivo allows 3 minutes to 24 hours
 		payload = {
@@ -518,8 +523,12 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 			"sub": endpoint_username,
 			"nbf": now - 30,
 			"exp": now + ttl,
-			# Plivo fills these in from the endpoint's application when they are omitted. Sent
-			# explicitly so the token says what it is for, rather than depending on a default.
+			# Both of these must be sent. Plivo does NOT infer them from the endpoint: omit `per`
+			# and the token comes back granting incoming_allow=false and outgoing_allow=false, and
+			# omit `app` and the app claim is an empty string. Either way the registrar answers
+			# error 10001, which the SDK surfaces as a bare "INVALID_ACCESS_TOKEN" with no clue
+			# that a claim was missing.
+			"app": self.app_id,
 			"per": {"voice": {"incoming_allow": True, "outgoing_allow": True}},
 		}
 		resp = self._request("POST", "JWT/Token/", json=payload)
