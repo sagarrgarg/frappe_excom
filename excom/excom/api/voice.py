@@ -70,10 +70,18 @@ def _verified_account() -> str:
 			candidates.append(url)
 
 	if not any(provider.verify_webhook(url, method, headers, form) for url in candidates):
+		# Title first, and short: Error Log caps it at 140 characters and *throws* past that, so a
+		# long title turns a clean refusal into a 417 with a stack trace — which is what the caller
+		# then has to debug instead of the actual signature problem.
 		frappe.log_error(
-			f"Rejected an unsigned voice webhook for {account} from "
-			f"{frappe.local.request_ip or 'unknown'}. Tried: {' | '.join(candidates)}",
-			"Excom Voice",
+			title="Excom Voice: webhook signature rejected",
+			message=(
+				f"account: {account}\n"
+				f"from ip: {frappe.local.request_ip or 'unknown'}\n"
+				f"method : {method}\n"
+				f"urls tried:\n  " + "\n  ".join(candidates) + "\n"
+				f"signed param names: {sorted(form)}"
+			),
 		)
 		raise frappe.PermissionError("Unrecognised voice webhook")
 

@@ -48,12 +48,25 @@ def _adapter(**overrides) -> PlivoAdapter:
 	return PlivoAdapter(_account_stub(**overrides))
 
 
-def _sign(url: str, nonce: str, form: dict | None = None, token: str = AUTH_TOKEN) -> str:
-	base = url
-	if form:
-		base += "".join(f"{k}{form[k]}" for k in sorted(form))
-	digest = hmac.new(token.encode(), (base + nonce).encode(), hashlib.sha256).digest()
-	return base64.b64encode(digest).decode()
+def _sign(
+	url: str, nonce: str, form: dict | None = None, token: str = AUTH_TOKEN, method: str = "POST"
+) -> str:
+	"""Sign a request the way Plivo does — using Plivo's own code.
+
+	Deliberately not a hand-rolled signer. A test that signs with the same misreading as the code
+	under test passes while every real webhook is rejected, which is exactly what happened: the
+	published description omits that the query string is rebuilt sorted, separated from the body
+	params by a dot, and joined to the nonce by another dot.
+	"""
+	from plivo.utils.signature_v3 import construct_get_url, construct_post_url, get_signature_v3
+
+	params = dict(form or {})
+	built = (
+		construct_get_url(url, params).decode()
+		if method.upper() == "GET"
+		else construct_post_url(url, params).decode()
+	)
+	return get_signature_v3(token, built, nonce).decode().strip()
 
 
 class TestPlivoSignature(FrappeTestCase):
@@ -116,13 +129,37 @@ class TestPlivoSignature(FrappeTestCase):
 			self.adapter.verify_webhook(self.URL, "POST", {}, {"CallUUID": "abc"})
 		)
 
-	def test_get_signature_ignores_form_body(self):
+	def test_a_get_callback_is_accepted(self):
 		nonce = "nonce-get"
 		headers = {
-			"X-Plivo-Signature-V3": _sign(self.URL, nonce),
+			"X-Plivo-Signature-V3": _sign(self.URL, nonce, method="GET"),
 			"X-Plivo-Signature-V3-Nonce": nonce,
 		}
 		self.assertTrue(self._verify(headers, form={}, method="GET"))
+
+	def test_our_check_agrees_with_plivos_own_validator(self):
+		"""The fence that matters. Ours is only a fallback, but a fallback that disagrees rejects
+		every genuine webhook while looking like an attack in the log."""
+		from plivo.utils.signature_v3 import validate_v3_signature
+
+		cases = [
+			("POST", {"CallUUID": "u-1", "Direction": "outbound", "To": "919250333699"}),
+			("POST", {}),
+			("POST", {"CallerName": "Somil Vaishya", "To": "+919250333699"}),
+			("GET", {}),
+			("GET", {"CallUUID": "u-3"}),
+		]
+		for method, form in cases:
+			nonce = f"n-{method}-{len(form)}"
+			signature = _sign(self.URL, nonce, form, method=method)
+			theirs = validate_v3_signature(
+				method, self.URL, nonce, AUTH_TOKEN, signature, dict(form)
+			)
+			ours = self.adapter._verify_v3_locally(
+				self.URL, method, nonce, AUTH_TOKEN, signature, dict(form)
+			)
+			self.assertTrue(theirs, f"Plivo rejected its own signature for {method} {form}")
+			self.assertEqual(ours, theirs, f"we disagree with Plivo on {method} {form}")
 
 
 class TestPlivoXML(FrappeTestCase):

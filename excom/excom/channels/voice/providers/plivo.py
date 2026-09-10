@@ -419,11 +419,41 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 	def _verify_v3_locally(
 		url: str, method: str, nonce: str, token: str, signature: str, form: dict
 	) -> bool:
-		base = url
-		if method.upper() == "POST" and form:
-			base += "".join(f"{k}{form[k]}" for k in sorted(form))
+		"""The V3 algorithm, as Plivo's SDK actually implements it.
+
+		The published description — "the URL, then the sorted POST parameters, then the nonce" —
+		leaves out the parts that decide whether a signature matches: the query string is rebuilt
+		sorted and separated from the body params by a dot, and the nonce is joined with a dot
+		rather than concatenated. An implementation written from the prose rejects every genuine
+		request, which is indistinguishable from an attack in the logs.
+
+		The SDK's own validator is still preferred; this exists so a missing package degrades to
+		checking the signature rather than to trusting anything that arrives.
+		"""
+		from urllib.parse import parse_qs, urlparse, urlunparse
+
+		parsed = urlparse(url)
+		base = urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
+		query = {k: v for k, v in parse_qs(parsed.query, keep_blank_values=True).items()}
+		post = dict(form or {}) if method.upper() == "POST" else {}
+
+		if method.upper() == "GET":
+			# The query string wins over anything passed in, which is how the SDK merges them.
+			merged = dict(form or {})
+			merged.update(query)
+			qs = _sorted_query_string(merged)
+			if qs:
+				base += f"?{qs}"
+		else:
+			qs = _sorted_query_string(query)
+			if qs or post:
+				base += f"?{qs}"
+			if qs and post:
+				base += "."
+			base += _sorted_params_string(post)
+
 		digest = hmac.new(
-			token.encode("utf-8"), (base + nonce).encode("utf-8"), hashlib.sha256
+			token.encode("utf-8"), f"{base}.{nonce}".encode("utf-8"), hashlib.sha256
 		).digest()
 		expected = base64.b64encode(digest).decode("utf-8")
 		# Plivo may send several comma-separated signatures; any one matching is enough.
@@ -566,6 +596,39 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
+
+def _plain(value):
+	"""A list of one, as parse_qs returns, is just that value."""
+	if isinstance(value, list):
+		return value[0] if len(value) == 1 else sorted(str(v) for v in value)
+	return value
+
+
+def _sorted_query_string(params: dict) -> str:
+	"""key=value pairs, sorted by key, joined with &. Matches Plivo's get_sorted_query_string."""
+	out = []
+	for key in sorted(params):
+		value = _plain(params[key])
+		if isinstance(value, list):
+			out.append("&".join(f"{key}={v}" for v in value))
+		else:
+			out.append(f"{key}={value}")
+	return "&".join(out)
+
+
+def _sorted_params_string(params: dict) -> str:
+	"""keyvalue with no separators at all, sorted by key. Matches get_sorted_params_string."""
+	out = []
+	for key in sorted(params):
+		value = _plain(params[key])
+		if isinstance(value, list):
+			out.append("".join(f"{key}{v}" for v in value))
+		elif isinstance(value, dict):
+			out.append(f"{key}{_sorted_params_string(value)}")
+		else:
+			out.append(f"{key}{value}")
+	return "".join(out)
 
 
 def _int(value) -> int:
