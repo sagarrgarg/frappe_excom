@@ -460,7 +460,11 @@ def get_messages(thread_id: str, limit: int = 50, before: str = ""):
                m.created_by_user, m.is_internal, m.scheduled_at,
                m.is_pinned, m.pinned_by, m.reactions,
                m.failure_reason,
-               CASE WHEN m.message_type = 'Email' THEN m.content_json ELSE NULL END AS content_json,
+               -- content_json is dropped for most types because it can be large and the feed
+               -- never reads it. Email carries its Gmail pointers here; Call carries the id of the
+               -- Excom Call row, without which the timeline cannot render a call as anything more
+               -- than its one-line preview.
+               CASE WHEN m.message_type IN ('Email', 'Call') THEN m.content_json ELSE NULL END AS content_json,
                u.full_name AS sender_name,
                rt.content_text AS reply_to_content,
                rt.direction AS reply_to_direction,
