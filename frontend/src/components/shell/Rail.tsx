@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Plus, Sun, Inbox, KanbanSquare, Users, Radio, BarChart3, Building2, ChevronsUpDown,
-  Shield, GitMerge, ListChecks, Cog, Settings, Rows3, LogOut, Bug, Sparkles, ArrowLeftRight, Keyboard, ListTodo,
+  Shield, GitMerge, ListChecks, Cog, Settings, Rows3, LogOut, Bug, Sparkles, ArrowLeftRight, Keyboard, ListTodo, Phone,
 } from "lucide-react";
 import { hasRole } from "../../lib/ui-flag";
 import { cn } from "../ui/utils";
@@ -12,6 +12,8 @@ import { useCompanies } from "../../hooks/useCompanies";
 import { useInboxMeta } from "../../hooks/useInboxMeta";
 import { useExcomBranding } from "../../hooks/useBranding";
 import { currentUserFullName, currentUserImage } from "../../lib/ui-flag";
+import { AvailabilityToggle } from "../voice/AvailabilityToggle";
+import { useSoftphoneContext } from "../voice/SoftphoneProvider";
 import { MOD } from "../../lib/hotkeys";
 import { FeedbackDialog } from "./FeedbackDialog";
 
@@ -43,6 +45,7 @@ export function Rail() {
   const { companies } = useCompanies();
   const { mergeCount } = useInboxMeta();
   const { branding } = useExcomBranding();
+  const voiceEnabled = Boolean(useSoftphoneContext()?.config?.enabled);
   const [expanded, setExpanded] = useState(false);
   const [feedback, setFeedback] = useState(false);
   const hoverTimer = useRef(0);
@@ -60,6 +63,8 @@ export function Rail() {
     { to: "/contacts", label: "Contacts", icon: <Users /> },
   ];
   const secondary: RailItem[] = [
+    // Only where a voice line exists — an empty Calls page on a site with no telephony is noise.
+    ...(voiceEnabled ? [{ to: "/calls", label: "Calls", icon: <Phone /> } as RailItem] : []),
     { to: "/broadcasts", label: "Broadcasts", icon: <Radio /> },
     { to: "/analytics", label: "Analytics", icon: <BarChart3 /> },
   ];
@@ -140,6 +145,9 @@ export function Rail() {
       <div className="h-px bg-border mx-3 my-2" />
       <div className="flex flex-col gap-0.5">{secondary.map(link)}</div>
       <div className="flex-1" />
+      {/* Sits directly above the avatar so an agent sees whether they are on the queue every time
+          they reach for their own menu. Renders nothing if the site has no voice line. */}
+      <div className="px-1.5"><AvailabilityToggle compact={!expanded} /></div>
       <div className="h-px bg-border mx-3 my-2" />
 
       {/* Avatar menu: Teams, Merge, Subscribers, Rules, Settings, density, switch UI, sign out */}

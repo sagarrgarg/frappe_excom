@@ -8,6 +8,9 @@ import { MessageContextMenu } from "../MessageContextMenu";
 import { Chip, EmptyState } from "../primitives";
 import { useEmailBody } from "../../hooks/useEmailBody";
 import { useIdentityPinnedMessages } from "../../hooks/usePinnedMessages";
+import { useIdentityCalls, callIdFromMessage } from "../../hooks/useCalls";
+import { CallCard } from "../voice/CallCard";
+import { useSoftphoneContext } from "../voice/SoftphoneProvider";
 import { channelMeta, CHANNEL_ORDER } from "../../lib/channels";
 import { cn } from "../ui/utils";
 import type { FeedMessage } from "../../hooks/useIdentityMessages";
@@ -50,6 +53,8 @@ export function MessageFeed({ contact, messages, isLoading, refresh, optimistic,
   const threadIds = useMemo(() => contact.allAccounts.map((a) => a.id), [contact.allAccounts]);
   const { pinnedMessages, refresh: refreshPinned } = useIdentityPinnedMessages(threadIds);
   const { call: retryCall } = useFrappePostCall("excom.excom.api.chat.retry_message");
+  const { byName: callsByName } = useIdentityCalls(contact.id);
+  const softphone = useSoftphoneContext();
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
@@ -154,7 +159,32 @@ export function MessageFeed({ contact, messages, isLoading, refresh, optimistic,
                 <div key={m.id}>
                   {groupHead && (() => { const cm = channelMeta(m.channel); return <div className="flex items-center gap-2 text-xs text-ink-3 my-3"><cm.icon className={`size-3.5 text-crayon-${cm.accent}-base`} />{cm.label}<span className="flex-1 h-px bg-border" /></div>; })()}
                   {showDivider && !groupHead && <div className="text-center text-xs text-ink-3 my-3 tabular-nums">{formatServerDateTimeFull(m.timestamp)}</div>}
-                  {m.isEmail ? (
+                  {m.type === "call" ? (
+                    (() => {
+                      // The message is only a stub; the call record carries duration, recording
+                      // and summary, and they arrive minutes apart. Fall back to the stub's own
+                      // text while the call list is still loading.
+                      const call = callsByName[callIdFromMessage(m.contentJson) || ""];
+                      return call ? (
+                        <CallCard
+                          call={call}
+                          onCallBack={
+                            softphone
+                              ? (number) =>
+                                  void softphone.dial(number, {
+                                    thread: m.threadId,
+                                    displayName: contact.contactName,
+                                  })
+                              : undefined
+                          }
+                        />
+                      ) : (
+                        <div className="rounded-lg border border-border bg-surface p-3 text-sm text-ink-2">
+                          {m.content || "Call"}
+                        </div>
+                      );
+                    })()
+                  ) : m.isEmail ? (
                     <EmailMessageCard
                       messageId={m.id}
                       direction={m.rawDirection || (m.sender === "user" ? "Outbound" : "Inbound")}

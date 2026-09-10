@@ -441,18 +441,46 @@ def call_detail(call: str):
 	)
 
 
+# The statuses that mean a customer tried to reach us and did not get through. Busy and Failed
+# belong here as much as Missed does: from the customer's side they are the same experience.
+UNANSWERED = ["Missed", "No Answer", "Busy", "Failed"]
+
+
 @frappe.whitelist()
-def missed_calls(limit: int = 50):
-	"""The missed-call queue, filtered to what this agent may actually see."""
+def list_calls(view: str = "missed", limit: int = 100):
+	"""The Calls page.
+
+	`get_list`, not `get_all`, so the permission query runs: an agent sees the calls belonging to
+	conversations they can open, and nothing else.
+	"""
 	_check_excom_access()
-	limit = min(frappe.utils.cint(limit) or 50, 200)
+	limit = min(frappe.utils.cint(limit) or 100, 200)
+
+	filters = {}
+	if view == "missed":
+		filters = {"status": ["in", UNANSWERED], "direction": "Inbound"}
+	elif view in ("inbound", "outbound"):
+		filters = {"direction": view.capitalize()}
+	elif view == "mine":
+		filters = {"agent": frappe.session.user}
+	elif view == "recorded":
+		filters = {"recording_status": "Ready"}
+
 	return frappe.get_list(
 		"Excom Call",
-		filters={"status": ["in", ["Missed", "No Answer"]], "direction": "Inbound"},
+		filters=filters,
 		fields=CALL_FIELDS,
 		order_by="creation desc",
 		limit=limit,
 	)
+
+
+@frappe.whitelist()
+def missed_calls(limit: int = 50):
+	"""The missed-call queue. Kept as its own name because that is what it is called everywhere
+	else — the badge, the notification and the worklist."""
+	_check_excom_access()
+	return list_calls(view="missed", limit=limit)
 
 
 @frappe.whitelist(methods=["POST"])

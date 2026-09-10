@@ -79,7 +79,7 @@ function mapDeliveryStatus(
 type MessageTypeKey =
   | "text" | "image" | "video" | "audio" | "document"
   | "sticker" | "location" | "template" | "email"
-  | "interactive" | "flow" | "reaction" | "contact" | "button";
+  | "interactive" | "flow" | "reaction" | "contact" | "button" | "call";
 
 function mapMessageType(type: string): MessageTypeKey {
   const map: Record<string, MessageTypeKey> = {
@@ -97,6 +97,7 @@ function mapMessageType(type: string): MessageTypeKey {
     Reaction: "reaction",
     Contact: "contact",
     Button: "button",
+    Call: "call",
   };
   return map[type] || "text";
 }
