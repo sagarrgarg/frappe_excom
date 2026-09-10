@@ -189,6 +189,16 @@ class SoftphoneProvider(ABC):
 	def provision_endpoint(self, user: str, alias: str) -> EndpointRef:
 		"""Create a SIP identity. Must be safe to call twice for the same agent."""
 
+	def find_endpoint(self, alias: str) -> EndpointRef | None:
+		"""An endpoint this alias already owns at the provider, if there is one.
+
+		Creating an endpoint is a call to somebody else's system; the row recording it is a local
+		transaction. Those two can come apart — a rollback after a successful create leaves an
+		orphan that a naive retry would duplicate. Providers that can look one up override this;
+		the default is "no idea", which is only ever a missed optimisation.
+		"""
+		return None
+
 	@abstractmethod
 	def deprovision_endpoint(self, endpoint_id: str) -> None:
 		"""Remove it. Called when an agent leaves the line."""

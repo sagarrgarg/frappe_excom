@@ -247,10 +247,18 @@ def _is_international(number: str, account_doc) -> bool:
 
 
 def _minutes_used(user: str) -> int:
-	value = frappe.cache.get_value(_key_minutes(user))
+	"""Raw `get`, to match the raw `setex`/`incrby` below.
+
+	`get_value` would prefix the already-made key a second time and try to unpickle a plain integer,
+	so it always reads zero — and a spend cap that always reads zero is not a cap at all. Same
+	pairing the repo's own `utils/ratelimit.py` uses.
+	"""
+	value = frappe.cache.get(_key_minutes(user))
+	if value is None:
+		return 0
 	try:
-		return int(value or 0)
-	except (TypeError, ValueError):
+		return int(value.decode() if isinstance(value, bytes) else value)
+	except (TypeError, ValueError, AttributeError):
 		return 0
 
 
@@ -259,7 +267,7 @@ def record_international_minutes(user: str, seconds: int) -> None:
 	if not user or seconds <= 0:
 		return
 	key = _key_minutes(user)
-	if frappe.cache.get_value(key) is None:
+	if frappe.cache.get(key) is None:
 		frappe.cache.setex(key, SECONDS_IN_DAY, 0)
 	frappe.cache.incrby(key, max(1, seconds // 60))
 

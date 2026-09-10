@@ -20,6 +20,20 @@ from excom.excom.channels.voice.providers.base import CAP_WEBRTC
 TOKEN_TTL = 3600
 
 
+def _safe_alias(full_name: str, account_name: str) -> str:
+	"""A label the provider will accept.
+
+	Plivo allows letters, numbers, hyphen and underscore in an endpoint alias — no spaces and no
+	punctuation. A prettier alias is rejected with a 400 that only says "Invalid Endpoint Alias
+	name", so this is sanitised here rather than left to whoever names a channel account.
+	"""
+	import re
+
+	parts = [re.sub(r"[^A-Za-z0-9]+", "_", str(p or "")).strip("_") for p in (full_name, account_name)]
+	alias = "_".join(["Excom", *[p for p in parts if p]])
+	return re.sub(r"_+", "_", alias)[:60].strip("_") or "Excom_agent"
+
+
 def ensure_endpoint(user: str, account: str) -> str:
 	"""The agent's endpoint on this line, created if it does not exist yet."""
 	existing = frappe.db.get_value(
@@ -40,9 +54,12 @@ def ensure_endpoint(user: str, account: str) -> str:
 		)
 
 	full_name = frappe.db.get_value("User", user, "full_name") or user
-	alias = f"Excom · {full_name} · {account_doc.account_name}"[:60]
+	alias = _safe_alias(full_name, account_doc.account_name)
 
-	ref = provider.provision_endpoint(user, alias)
+	# Reuse before create. The provider call and the row that records it are not one transaction, so
+	# a rollback after a successful create leaves an orphan at the provider; creating again would
+	# quietly give one agent two registrations and send half their calls to a socket nobody watches.
+	ref = provider.find_endpoint(alias) or provider.provision_endpoint(user, alias)
 
 	doc = frappe.new_doc("Excom Voice Endpoint")
 	doc.user = user
@@ -55,6 +72,10 @@ def ensure_endpoint(user: str, account: str) -> str:
 	doc.alias = alias
 	doc.status = "Active"
 	doc.insert(ignore_permissions=True)
+	# The endpoint already exists at the provider by this point, so the row that remembers it must
+	# survive too. Without this an enqueued job or a console run rolls the row back and leaves the
+	# provider holding an endpoint nothing in Excom knows about.
+	frappe.db.commit()
 
 	routing.clear_caches(account)
 	return doc.name

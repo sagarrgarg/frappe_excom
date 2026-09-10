@@ -31,7 +31,20 @@ _BUSY = "excom:voice:busy"
 
 
 def _key(prefix: str, *parts: str) -> str:
-	return frappe.cache.make_key(":".join([prefix, *[p or "" for p in parts]]))
+	"""A plain key. Deliberately NOT `make_key`.
+
+	`set_value` / `get_value` prefix the key themselves and pickle the payload. Pairing a hand-made
+	key and a raw `setex` with `get_value` fails twice over — the key is prefixed a second time and
+	the raw string will not unpickle — so presence reads always came back empty and no agent ever
+	entered a ring set.
+	"""
+	return ":".join([prefix, *[p or "" for p in parts]])
+
+
+# Every read below passes `expires=True`. Without it `get_value` memoises the answer in
+# `frappe.local.cache` for the rest of the request, while `set_value` with a TTL deliberately does
+# not write there — so one read before a heartbeat pins the stale "not registered" for the whole
+# request, and the agent silently drops out of every ring set computed after it.
 
 
 # ── registration ──────────────────────────────────────────────────────────────
@@ -39,7 +52,7 @@ def _key(prefix: str, *parts: str) -> str:
 
 def mark_registered(user: str, account: str, ip: str = "") -> None:
 	"""Called on softphone login and on every heartbeat."""
-	frappe.cache.setex(_key(_REG, user, account), REGISTRATION_TTL, ip or "1")
+	frappe.cache.set_value(_key(_REG, user, account), ip or "1", expires_in_sec=REGISTRATION_TTL)
 
 
 def mark_unregistered(user: str, account: str) -> None:
@@ -49,7 +62,7 @@ def mark_unregistered(user: str, account: str) -> None:
 
 
 def is_registered(user: str, account: str) -> bool:
-	return bool(frappe.cache.get_value(_key(_REG, user, account)))
+	return bool(frappe.cache.get_value(_key(_REG, user, account), expires=True))
 
 
 # ── availability ──────────────────────────────────────────────────────────────
@@ -58,13 +71,13 @@ def is_registered(user: str, account: str) -> bool:
 def set_available(user: str, available: bool) -> None:
 	key = _key(_AVAIL, user)
 	if available:
-		frappe.cache.setex(key, AVAILABILITY_TTL, "1")
+		frappe.cache.set_value(key, "1", expires_in_sec=AVAILABILITY_TTL)
 	else:
 		frappe.cache.delete_value(key)
 
 
 def is_available(user: str) -> bool:
-	return bool(frappe.cache.get_value(_key(_AVAIL, user)))
+	return bool(frappe.cache.get_value(_key(_AVAIL, user), expires=True))
 
 
 # ── busy ──────────────────────────────────────────────────────────────────────
@@ -72,7 +85,7 @@ def is_available(user: str) -> bool:
 
 def mark_busy(user: str, call: str) -> None:
 	if user:
-		frappe.cache.setex(_key(_BUSY, user), BUSY_TTL, call)
+		frappe.cache.set_value(_key(_BUSY, user), call, expires_in_sec=BUSY_TTL)
 
 
 def clear_busy(user: str) -> None:
@@ -81,7 +94,7 @@ def clear_busy(user: str) -> None:
 
 
 def is_busy(user: str) -> bool:
-	return bool(frappe.cache.get_value(_key(_BUSY, user)))
+	return bool(frappe.cache.get_value(_key(_BUSY, user), expires=True))
 
 
 # ── the question routing actually asks ────────────────────────────────────────

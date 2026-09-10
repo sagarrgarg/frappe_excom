@@ -55,14 +55,24 @@ def _verified_account() -> str:
 	provider = providers.for_account(account_doc)
 
 	request = frappe.local.request
-	url = request.url
 	method = request.method
 	form = params if method == "POST" else {}
+	headers = dict(request.headers)
 
-	if not provider.verify_webhook(url, method, dict(request.headers), form):
+	# The signature covers the URL the provider sent. Behind a reverse proxy the request we see is
+	# the internal one, so the forwarded headers are checked first — but a site with no proxy, or
+	# one that rewrites the path, still has to work, so `request.url` remains a candidate.
+	from excom.excom.channels.voice.providers.plivo import received_url
+
+	candidates = []
+	for url in (received_url(request), request.url):
+		if url and url not in candidates:
+			candidates.append(url)
+
+	if not any(provider.verify_webhook(url, method, headers, form) for url in candidates):
 		frappe.log_error(
 			f"Rejected an unsigned voice webhook for {account} from "
-			f"{frappe.local.request_ip or 'unknown'}",
+			f"{frappe.local.request_ip or 'unknown'}. Tried: {' | '.join(candidates)}",
 			"Excom Voice",
 		)
 		raise frappe.PermissionError("Unrecognised voice webhook")

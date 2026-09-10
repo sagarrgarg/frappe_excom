@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from excom.excom.channels.voice import routing
+from excom.excom.channels.voice import presence, routing
 from excom.excom.channels.voice.providers.base import CallDecision, Destination
 from excom.excom.channels.voice.providers.plivo import PlivoAdapter
 
@@ -291,6 +291,85 @@ class TestPhoneVariants(FrappeTestCase):
 	def test_no_wildcards_ever_reach_a_query(self):
 		for value in routing._phone_variants("+919876543210"):
 			self.assertNotIn("%", value)
+
+
+class TestPresence(FrappeTestCase):
+	"""Presence has to survive a write-then-read.
+
+	It did not: the writes used a raw `setex` on a hand-made key while the reads used `get_value`,
+	which prefixes the key a second time and expects a pickle. Every read came back empty, so no
+	agent ever entered a ring set and every inbound call answered "nobody is available". The
+	symptom looked like a routing fault, which is why this is fenced off with a test.
+	"""
+
+	USER = "presence-test@example.com"
+	ACCOUNT = "presence-test-account"
+
+	def tearDown(self):
+		presence.mark_unregistered(self.USER, self.ACCOUNT)
+		presence.set_available(self.USER, False)
+		presence.clear_busy(self.USER)
+
+	def test_registration_round_trips(self):
+		self.assertFalse(presence.is_registered(self.USER, self.ACCOUNT))
+		presence.mark_registered(self.USER, self.ACCOUNT, "1.2.3.4")
+		self.assertTrue(presence.is_registered(self.USER, self.ACCOUNT))
+		presence.mark_unregistered(self.USER, self.ACCOUNT)
+		self.assertFalse(presence.is_registered(self.USER, self.ACCOUNT))
+
+	def test_availability_round_trips(self):
+		self.assertFalse(presence.is_available(self.USER))
+		presence.set_available(self.USER, True)
+		self.assertTrue(presence.is_available(self.USER))
+		presence.set_available(self.USER, False)
+		self.assertFalse(presence.is_available(self.USER))
+
+	def test_busy_round_trips(self):
+		presence.mark_busy(self.USER, "CALL-1")
+		self.assertTrue(presence.is_busy(self.USER))
+		presence.clear_busy(self.USER)
+		self.assertFalse(presence.is_busy(self.USER))
+
+	def test_registration_alone_is_not_enough_to_ring(self):
+		"""All three facts are required. A registered socket on an agent who has signed off, or who
+		is already talking, must not be rung."""
+		presence.mark_registered(self.USER, self.ACCOUNT)
+		self.assertFalse(presence.can_ring_browser(self.USER, self.ACCOUNT))
+
+		presence.set_available(self.USER, True)
+		self.assertTrue(presence.can_ring_browser(self.USER, self.ACCOUNT))
+
+		presence.mark_busy(self.USER, "CALL-1")
+		self.assertFalse(presence.can_ring_browser(self.USER, self.ACCOUNT))
+
+	def test_registration_is_per_line(self):
+		"""An agent signed in on one line is not reachable on another."""
+		presence.mark_registered(self.USER, self.ACCOUNT)
+		self.assertFalse(presence.is_registered(self.USER, "some-other-line"))
+
+
+class TestAliasSanitising(FrappeTestCase):
+	"""Plivo rejects an endpoint alias containing anything but letters, numbers, - and _, with a
+	400 whose message does not say which character was the problem."""
+
+	def test_punctuation_and_spaces_are_stripped(self):
+		from excom.excom.channels.voice.provisioning import _safe_alias
+
+		alias = _safe_alias("Somil Vaishya", "Plivo Sales Line")
+		self.assertRegex(alias, r"^[A-Za-z0-9_]+$")
+		self.assertIn("Somil", alias)
+
+	def test_an_email_shaped_name_is_still_valid(self):
+		from excom.excom.channels.voice.provisioning import _safe_alias
+
+		self.assertRegex(_safe_alias("rohit@gmail.com", "A Line"), r"^[A-Za-z0-9_]+$")
+
+	def test_alias_stays_within_the_provider_limit(self):
+		from excom.excom.channels.voice.provisioning import _safe_alias
+
+		alias = _safe_alias("A Very Long Agent Name Indeed" * 4, "And A Very Long Line Name Too")
+		self.assertLessEqual(len(alias), 60)
+		self.assertRegex(alias, r"^[A-Za-z0-9_]+$")
 
 
 class TestCallVisibility(FrappeTestCase):

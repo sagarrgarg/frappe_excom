@@ -465,6 +465,32 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 			raw=data,
 		)
 
+	def find_endpoint(self, alias: str) -> EndpointRef | None:
+		"""Look for an endpoint we already created under this alias.
+
+		Plivo returns the password only as an MD5 hash, so the reused ref carries no password. That
+		is fine: the browser logs in with a minted token, and the password exists only as a fallback
+		we do not use.
+		"""
+		try:
+			resp = self._request("GET", "Endpoint/?limit=20")
+			if not resp.ok:
+				return None
+			for row in resp.json().get("objects", []):
+				if row.get("alias") == alias:
+					username = row.get("username") or ""
+					return EndpointRef(
+						endpoint_id=row.get("endpoint_id") or "",
+						username=username,
+						password="",
+						sip_uri=f"sip:{username}@{SIP_DOMAIN}",
+						alias=alias,
+						raw=row,
+					)
+		except Exception as exc:
+			frappe.log_error(f"Plivo endpoint lookup failed: {exc}", "Excom Voice")
+		return None
+
 	def deprovision_endpoint(self, endpoint_id: str) -> None:
 		if not endpoint_id:
 			return
@@ -485,7 +511,17 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 
 		now = int(time.time())
 		ttl = max(180, min(int(ttl_seconds), 24 * 3600))  # Plivo allows 3 minutes to 24 hours
-		payload = {"sub": endpoint_username, "nbf": now - 30, "exp": now + ttl}
+		payload = {
+			# `iss` is mandatory and undocumented: without it the API answers
+			# "iss must be present in request" and nothing says what it should be. It is the Auth ID.
+			"iss": self.auth_id,
+			"sub": endpoint_username,
+			"nbf": now - 30,
+			"exp": now + ttl,
+			# Plivo fills these in from the endpoint's application when they are omitted. Sent
+			# explicitly so the token says what it is for, rather than depending on a default.
+			"per": {"voice": {"incoming_allow": True, "outgoing_allow": True}},
+		}
 		resp = self._request("POST", "JWT/Token/", json=payload)
 		if not resp.ok:
 			frappe.throw(
@@ -543,17 +579,54 @@ def _endpoint_username(user: str) -> str:
 	return f"excom{cleaned}"
 
 
+def public_site_url() -> str:
+	"""The URL the outside world reaches this site on.
+
+	Not `frappe.utils.get_url()`. On a bench that is not flagged as a supervisor/systemd install,
+	that helper appends the internal `webserver_port` — so a site published on 443 behind a proxy
+	advertises `https://host:8000`, which the provider cannot connect to at all. `host_name` is the
+	operator's own statement of the public address, so it wins when it is set.
+	"""
+	host = (frappe.conf.get("host_name") or frappe.conf.get("hostname") or "").strip()
+	if host:
+		if not host.startswith(("http://", "https://")):
+			host = f"https://{host}"
+		return host.rstrip("/")
+	return frappe.utils.get_url().rstrip("/")
+
+
 def webhook_url(kind: str, account: str) -> str:
 	"""The public URL Plivo should call back on.
 
 	The account rides in the query string so a site with several lines can tell them apart before
 	it has parsed anything. It is not a credential — authenticity comes from the signature.
 	"""
-	site = frappe.utils.get_url().rstrip("/")
 	return (
-		f"{site}/api/method/excom.excom.api.voice.{kind}"
+		f"{public_site_url()}/api/method/excom.excom.api.voice.{kind}"
 		f"?account={quote(account or '', safe='')}"
 	)
+
+
+def received_url(request) -> str:
+	"""Rebuild the URL the provider actually called, for signature checking.
+
+	The signature covers the URL as the provider sent it. Behind a reverse proxy `request.url` is
+	the *internal* one — usually `http://127.0.0.1:8000/...` — so verifying against it rejects every
+	genuine webhook. The public scheme and host come from the proxy's forwarding headers, and only
+	the path and query come from the request itself.
+	"""
+	forwarded_proto = request.headers.get("X-Forwarded-Proto", "").split(",")[0].strip()
+	forwarded_host = request.headers.get("X-Forwarded-Host", "").split(",")[0].strip()
+
+	scheme = forwarded_proto or request.scheme
+	host = forwarded_host or request.headers.get("Host", "") or ""
+
+	if not host:
+		return request.url
+
+	path = request.full_path if request.query_string else request.path
+	# Werkzeug's full_path leaves a bare "?" when there is no query string.
+	return f"{scheme}://{host}{path.rstrip('?') if not request.query_string else path}"
 
 
 def build_sip_headers(values: dict[str, Any]) -> str:
