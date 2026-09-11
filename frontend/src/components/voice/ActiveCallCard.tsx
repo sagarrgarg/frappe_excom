@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, PhoneOff, Grid3x3, Loader2, SignalLow, Phone } from "lucide-react";
 import { useFrappePostCall } from "frappe-react-sdk";
+import { toast } from "sonner";
+import { toastError } from "../ErrorDialog";
 import { Button, Textarea } from "../primitives";
 import { cn } from "../ui/utils";
 import { useSoftphoneContext } from "./SoftphoneProvider";
@@ -48,9 +50,26 @@ export function ActiveCallCard({ threadIds }: { threadIds?: string[] }) {
     const name = savedFor.current;
     const text = notes.trim();
     if (name && text) {
-      saveNotes({ call: name, notes: text }).catch(() => {
-        /* the call is over; a failed note must not raise a dialog over the next screen */
-      });
+      // This used to swallow the failure. The card unmounts the moment the call ends, so a note
+      // that did not save vanished with it and the agent had no idea — they typed it while
+      // talking and would only find out it was gone much later, if ever.
+      saveNotes({ call: name, notes: text })
+        .then(() => toast.success("Note saved to the call."))
+        .catch((err: unknown) => {
+          toast.error("Your note was not saved", {
+            description: text,
+            duration: 30_000,
+            action: {
+              label: "Retry",
+              onClick: () => {
+                saveNotes({ call: name, notes: text })
+                  .then(() => toast.success("Note saved to the call."))
+                  .catch((again: unknown) => toastError(again, "Your note was still not saved"));
+              },
+            },
+          });
+          if (import.meta.env?.DEV) console.error("[excom] save_notes failed", err);
+        });
     }
     savedFor.current = "";
     setNotes("");

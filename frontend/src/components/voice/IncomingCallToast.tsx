@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Phone, PhoneOff, ExternalLink } from "lucide-react";
+import { Phone, PhoneOff, ExternalLink, Bell, BellOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useFrappeGetCall } from "@/lib/api";
+import { ringtone } from "@/lib/ringtone";
 import { Avatar, Button } from "../primitives";
 import type { SoftphoneApi } from "@/hooks/useSoftphone";
 
@@ -17,6 +18,9 @@ export function IncomingCallToast({ api }: { api: SoftphoneApi }) {
   const { incoming, answeredElsewhere, answer, reject, dismissIncoming } = api;
   const navigate = useNavigate();
   const [elapsed, setElapsed] = useState(0);
+  // Read once and kept here: the preference lives in localStorage, and this pop is the only place
+  // it is ever worth changing — an open-plan desk decides it while the phone is actually ringing.
+  const [ringMuted, setRingMuted] = useState(() => ringtone.muted);
 
   useEffect(() => {
     if (!incoming) {
@@ -61,9 +65,22 @@ export function IncomingCallToast({ api }: { api: SoftphoneApi }) {
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-2xs uppercase tracking-wide text-crayon-green-text">
-            <Phone className="size-3" />
+            <Phone className="size-3 animate-pulse" />
             Incoming call
             <span className="ml-auto tabular-nums text-ink-3">{remaining}s</span>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !ringMuted;
+                ringtone.setMuted(next);
+                setRingMuted(next);
+              }}
+              className="text-ink-3 hover:text-ink-1"
+              aria-pressed={ringMuted}
+              title={ringMuted ? "Ringtone is off — turn it on" : "Silence the ringtone"}
+            >
+              {ringMuted ? <BellOff className="size-3.5" /> : <Bell className="size-3.5" />}
+            </button>
           </div>
 
           <div className="truncate text-md text-ink-1">{name}</div>

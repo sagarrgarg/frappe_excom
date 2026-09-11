@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useFrappeEventListener, useFrappePostCall } from "frappe-react-sdk";
 import { toast } from "sonner";
+import { toastError } from "../components/ErrorDialog";
 import { useFrappeGetCall } from "@/lib/api";
+import { ringtone } from "@/lib/ringtone";
 import { softphone, type SoftphoneState } from "@/lib/softphone";
 
 /**
@@ -64,10 +66,16 @@ export interface EndedEvent {
   duration: number;
   thread: string | null;
   missed: boolean;
+  /** The provider's own cause name, e.g. "Destination Country Barred". */
+  hangup_cause?: string;
+  /** That cause turned into something the agent can act on. Empty when there is nothing to add. */
+  reason?: string;
 }
 
 const HEARTBEAT_FALLBACK = 60;
 const QUALITY_INTERVAL_MS = 60_000;
+/** The title alternates on this beat while the phone is ringing. */
+const TITLE_FLASH_MS = 900;
 
 export function useSoftphone() {
   const lastQualityAt = useRef(0);
@@ -176,8 +184,8 @@ export function useSoftphone() {
       // Refresh well before expiry, so a token never lapses mid-shift.
       const after = Math.max(60, payload.refresh_after || 3000);
       window.setTimeout(() => void start(), after * 1000);
-    } catch (e: any) {
-      toast.error(e?.message || "The softphone could not connect.");
+    } catch (e: unknown) {
+      toastError(e, "The softphone could not connect");
     }
   }, [getToken, postQuality]);
 
@@ -247,20 +255,113 @@ export function useSoftphone() {
   useFrappeEventListener("excom:call_ended", (data: EndedEvent) => {
     setIncoming(null);
     setAnsweredElsewhere("");
+    if (data.reason) {
+      // A carrier refusal and an unanswered call look identical from here — the call simply does
+      // not connect. Saying which is what stops an agent redialling a barred country all day.
+      toast.error(data.hangup_cause || "The call did not connect", {
+        description: data.reason,
+        duration: 12_000,
+      });
+      return;
+    }
     if (data.missed) toast.message("Missed call", { description: "It is in the missed-call queue." });
   });
+
+  // ── the ring ────────────────────────────────────────────────────────────
+  // Driven off `incoming` rather than off the SDK, deliberately. `incoming` is set by whichever of
+  // the two arrives first — the SDK's own event or the server's screen pop — so the phone rings
+  // even when one of those paths is down, and it rings exactly once when both work.
+
+  const silentRingWarned = useRef(false);
+  // The pop appears on the bare number and the name arrives a moment later, from `identify`.
+  // Reading it through a ref lets the tab title catch up without the effect re-running — which
+  // would restart the ring from the top every time a caller turned out to be someone we know.
+  const incomingRef = useRef<RingingEvent | null>(null);
+  incomingRef.current = incoming;
+
+  useEffect(() => {
+    if (!incoming) return;
+
+    if (!ringtone.start() && !silentRingWarned.current) {
+      // Only worth saying once a session, and only when it is actually true: an agent who muted
+      // the ringer on purpose is never told anything.
+      silentRingWarned.current = true;
+      toast.warning("The ringtone is silent", {
+        description: "Your browser blocks sound until you interact with the page. Click anywhere to switch it on.",
+        duration: 10_000,
+      });
+    }
+
+    const original = document.title;
+    let alternate = false;
+    const flash = window.setInterval(() => {
+      alternate = !alternate;
+      const who = incomingRef.current;
+      document.title = alternate
+        ? `📞 ${who?.display_name || who?.from_number || "Incoming call"}`
+        : original;
+    }, TITLE_FLASH_MS);
+
+    // A buried tab is the case the sound alone does not cover — the agent may be in a spreadsheet
+    // with the speakers on somebody else's desk.
+    let note: Notification | null = null;
+    try {
+      if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+        note = new Notification("Incoming call", {
+          body: incoming.display_name || incoming.from_number,
+          tag: `excom-call-${incoming.provider_call_id || "unknown"}`,
+          requireInteraction: true,
+        });
+        note.onclick = () => {
+          window.focus();
+          note?.close();
+        };
+      }
+    } catch {
+      /* notifications are a nicety; the tab title and the ring are the guarantee */
+    }
+
+    return () => {
+      ringtone.stop();
+      window.clearInterval(flash);
+      document.title = original;
+      try {
+        note?.close();
+      } catch {
+        /* already dismissed */
+      }
+    };
+  }, [incoming?.provider_call_id, incoming?.from_number, Boolean(incoming)]);
 
   // ── actions ─────────────────────────────────────────────────────────────
 
   const toggleAvailability = useCallback(
     async (next?: boolean) => {
       const wanted = next ?? !available;
+      if (wanted) {
+        // This runs inside the agent's click, which is the only context a browser will grant these
+        // in — and it is the honest moment to ask, because going on the queue is a request to be
+        // interrupted. Asked on page load instead, both prompts read as spam and get dismissed.
+        ringtone.arm();
+        try {
+          if ("Notification" in window && Notification.permission === "default") {
+            void Notification.requestPermission();
+          }
+        } catch {
+          /* declined or unsupported — the ring and the tab title still do the job */
+        }
+      }
+
       setAvailable(wanted);
       try {
         await postAvailability({ available: wanted ? 1 : 0, account: config?.account ?? "" });
-      } catch (e: any) {
+        // A mode switch with no confirmation is how an agent ends up believing they are on the
+        // queue when the click did not land.
+        if (wanted) toast.success("You are taking calls.");
+        else toast.message("You are off the queue.", { description: "Calls will ring somebody else." });
+      } catch (e: unknown) {
         setAvailable(!wanted);
-        toast.error(e?.message || "That could not be saved.");
+        toastError(e, "Your availability could not be saved");
       }
     },
     [available, config?.account, postAvailability],
@@ -276,10 +377,17 @@ export function useSoftphone() {
           transport: opts.transport ?? "",
         })) as { message: any };
         const plan = res?.message;
-        if (!plan) return null;
+        if (!plan) {
+          toast.error("The call could not be started.", {
+            description: "The server accepted the request but returned no dialling plan.",
+          });
+          return null;
+        }
 
         if (plan.mode === "phone") {
-          toast.success(plan.message || "Your phone will ring.");
+          toast.success(plan.message || "Your phone will ring.", {
+            description: `Answer it and Excom connects you to ${opts.displayName || toNumber}.`,
+          });
           return plan;
         }
 
@@ -290,20 +398,26 @@ export function useSoftphone() {
           threadId: opts.thread ?? null,
         });
         return plan;
-      } catch (e: any) {
-        toast.error(e?.message || "The call could not be started.");
+      } catch (e: unknown) {
+        toastError(e, `Could not call ${opts.displayName || toNumber}`);
         return null;
       }
     },
     [config?.account, postDial, postBrowserCall],
   );
 
+  // Both stop the ring by hand rather than leaving it to the effect's cleanup. The cleanup does run
+  // — but a render later, and a ringtone that carries on past the click on Answer is the first
+  // thing anyone notices.
+
   const answer = useCallback(() => {
+    ringtone.stop();
     softphone.answer();
     setIncoming(null);
   }, []);
 
   const reject = useCallback(() => {
+    ringtone.stop();
     softphone.reject();
     setIncoming(null);
   }, []);
@@ -325,7 +439,10 @@ export function useSoftphone() {
     available,
     incoming,
     answeredElsewhere,
-    dismissIncoming: () => setIncoming(null),
+    dismissIncoming: () => {
+      ringtone.stop();
+      setIncoming(null);
+    },
     toggleAvailability,
     dial,
     answer,

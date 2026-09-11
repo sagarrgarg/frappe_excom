@@ -179,8 +179,12 @@ export function MessageFeed({ contact, messages, isLoading, refresh, optimistic,
                           }
                         />
                       ) : (
-                        <div className="rounded-lg border border-border bg-surface p-3 text-sm text-ink-2">
-                          {m.content || "Call"}
+                        // Same width and same side as the real card, so the bubble does not jump
+                        // across the panel the moment the call record loads.
+                        <div className={cn("flex", m.rawDirection === "Outbound" ? "justify-end" : "justify-start")}>
+                          <div className="min-w-0 max-w-[min(24rem,85%)] rounded-lg border border-border bg-surface px-2.5 py-2 text-sm text-ink-2">
+                            {m.content || "Call"}
+                          </div>
                         </div>
                       );
                     })()

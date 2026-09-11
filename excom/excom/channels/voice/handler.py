@@ -358,6 +358,11 @@ def _on_ended(call, event: CallEvent) -> dict:
 			"duration": call.duration,
 			"thread": call.thread,
 			"missed": call.status in ("Missed", "No Answer"),
+			# Why it failed, when the provider told us something an agent can act on. Without this
+			# an outbound call that a carrier refused is indistinguishable from one nobody picked
+			# up, and the agent redials it.
+			"hangup_cause": call.hangup_cause or "",
+			"reason": event.failure_reason or "",
 		},
 	)
 	if call.thread:

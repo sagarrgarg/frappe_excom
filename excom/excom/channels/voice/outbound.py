@@ -23,13 +23,36 @@ from excom.excom.utils.phone import normalize_phone, validate_phone_number
 _MINUTES = "excom:voice:intl_minutes"
 SECONDS_IN_DAY = 86400
 
-# Country codes we can recognise at the front of a line's own DID, longest first so 91 is not
-# mistaken for 9. Only used to work out what "local" means for that line; anything already in E.164
-# is left alone.
+# Country codes, longest first so +971 is read as the UAE and not as India with a stray 1.
+#
+# The order is load-bearing and the list is the gate's accuracy: a destination whose code is not
+# here cannot be proved domestic, so `_is_international` treats it as international. That is the
+# safe direction to be wrong in — it asks for permission rather than quietly billing for it — but
+# every code missing here is a call an agent gets refused for no visible reason, so the list is
+# worth keeping broad.
 KNOWN_COUNTRY_CODES = (
-	"971", "966", "880", "852", "353", "351", "268",
-	"91", "92", "94", "60", "62", "63", "65", "66", "81", "82", "86", "84",
-	"27", "31", "32", "33", "34", "39", "41", "44", "46", "48", "49", "61", "64", "20",
+	# 3-digit. Each must precede any 2-digit code it starts with.
+	"971", "972", "973", "974", "975", "976", "977", "970",
+	"960", "961", "962", "963", "964", "965", "966", "967", "968",
+	"992", "993", "994", "995", "996", "998",
+	"880", "886", "852", "853", "855", "856",
+	"350", "351", "352", "353", "354", "355", "356", "357", "358", "359",
+	"370", "371", "372", "373", "374", "375", "376", "377", "378", "380", "381",
+	"382", "383", "385", "386", "387", "389",
+	"420", "421", "423",
+	"212", "213", "216", "218", "220", "221", "223", "225", "226", "228", "229",
+	"230", "231", "232", "233", "234", "235", "237", "238", "240", "241", "243",
+	"244", "248", "249", "250", "251", "252", "253", "254", "255", "256", "257",
+	"258", "260", "261", "263", "264", "265", "266", "267", "268", "269",
+	"501", "502", "503", "504", "505", "506", "507", "509",
+	# 2-digit.
+	"20", "27", "30", "31", "32", "33", "34", "36", "39", "40", "41", "43", "44",
+	"45", "46", "47", "48", "49",
+	"51", "52", "53", "54", "55", "56", "57", "58",
+	"60", "61", "62", "63", "64", "65", "66",
+	"81", "82", "84", "86",
+	"90", "91", "92", "93", "94", "95", "98",
+	# 1-digit. +1 is North America, +7 is Russia and Kazakhstan.
 	"1", "7",
 )
 
@@ -315,17 +338,37 @@ def _blocked_codes(settings: dict) -> list[str]:
 	]
 
 
+def country_code_of(number: str) -> str:
+	"""The dialling country code at the front of an E.164 number, or "" if we do not know it."""
+	digits = normalize_phone(number or "").lstrip("+")
+	for code in KNOWN_COUNTRY_CODES:
+		if digits.startswith(code):
+			return code
+	return ""
+
+
 def _is_international(number: str, account_doc) -> bool:
-	"""Compared against the line's own country code, not a hardcoded +91."""
-	home = normalize_phone(account_doc.get("voice_number") or "").lstrip("+")
-	target = number.lstrip("+")
+	"""Whether this number is outside the country the line itself lives in.
+
+	Both sides are resolved to a real country code before being compared. The obvious shortcut —
+	checking whether the target starts with the first one, two or three digits of our own number —
+	is wrong in a way that costs money: from an Indian line (+91…) a single-digit comparison makes
+	every number beginning with 9 look domestic, so Pakistan (+92), Sri Lanka (+94) and the UAE
+	(+971) all slipped past the international gate and the daily minutes cap along with it. Those
+	are not exotic destinations for an Indian desk; they are the ones it dials most.
+	"""
+	home = line_country_code(account_doc)
 	if not home:
+		# A line whose own number we cannot place has no "home" to be international from. Gating
+		# every call on it would take an unconfigured line off the air completely.
 		return False
-	# Compare on the country code length that actually applies to the line's own number.
-	for length in (3, 2, 1):
-		if len(home) > length and target.startswith(home[:length]):
-			return False
-	return True
+
+	target = country_code_of(number)
+	if not target:
+		# Unrecognised: we cannot prove it is domestic, and of the two ways to be wrong, asking for
+		# permission is the recoverable one.
+		return True
+	return target != home
 
 
 def _minutes_used(user: str) -> int:

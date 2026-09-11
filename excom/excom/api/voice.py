@@ -175,6 +175,15 @@ def _route_outbound(provider, account: str, params: dict, call_uuid: str) -> str
 	account_doc = frappe.get_cached_doc("Excom Channel Account", account)
 	policy = account_doc.get("voice_record_policy") or "All"
 
+	# The dialling policy is checked in `dial()` before the browser is told what to call — but this
+	# is the leg that actually bills, and the browser chooses what it sends. Anyone who can open a
+	# console can call the SDK directly with a number `dial()` never approved, and the only thing
+	# standing between that and an international bill is this check. So it runs again here, on the
+	# server, against the number Plivo is really about to ring.
+	refusal = _refuse_outbound(event.sip_headers.get("user", ""), target, account_doc)
+	if refusal:
+		return provider.render_decision(refusal)
+
 	decision = CallDecision(
 		destinations=[Destination(kind="pstn", ref=target, user=event.sip_headers.get("user", ""))],
 		ring_set=[event.sip_headers.get("user", "")],
@@ -201,6 +210,24 @@ def _route_outbound(provider, account: str, params: dict, call_uuid: str) -> str
 		raw=params,
 	)
 	return provider.render_decision(decision)
+
+
+def _refuse_outbound(agent: str, target: str, account_doc):
+	"""A refusal to speak down the line, or None if the call may go ahead.
+
+	Refusing has to be said out loud rather than raised: a throw here is caught by `route()`, which
+	falls back to ringing the whole team — so a blocked number would end up connected to whoever
+	answered. An agent who hears the reason also stops retrying.
+	"""
+	from excom.excom.channels.voice.providers.base import CallDecision
+
+	try:
+		number = outbound.to_e164(target, account_doc)
+		outbound.check_dialling_allowed(agent or frappe.session.user, number, account_doc)
+		return None
+	except Exception as exc:
+		message = getattr(exc, "message", "") or str(exc) or _("That call is not allowed.")
+		return CallDecision(destinations=[], no_answer_message=frappe.utils.strip_html(message))
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST", "GET"])

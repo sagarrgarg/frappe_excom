@@ -115,6 +115,10 @@ class CallEvent:
 	cost: float = 0.0
 	hangup_cause: str = ""
 	hangup_source: str = ""
+	#: Why the call failed, in a sentence an agent can act on. Only the adapter can write this:
+	#: `hangup_cause` is the vendor's own vocabulary ("Destination Country Barred"), and turning
+	#: that into advice needs to know what the vendor means by it.
+	failure_reason: str = ""
 	answered_destination: str = ""
 	digits: str = ""
 	recording_id: str = ""

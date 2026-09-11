@@ -17,7 +17,12 @@ from frappe.tests.utils import FrappeTestCase
 
 from excom.excom.channels.voice import presence, routing
 from excom.excom.channels.voice.providers.base import CallDecision, Destination
-from excom.excom.channels.voice.providers.plivo import PlivoAdapter
+from excom.excom.channels.voice.outbound import (
+	KNOWN_COUNTRY_CODES,
+	_is_international,
+	country_code_of,
+)
+from excom.excom.channels.voice.providers.plivo import PlivoAdapter, endpoint_uri, registered_aor
 
 AUTH_TOKEN = "test-auth-token-not-a-real-one"
 
@@ -208,7 +213,10 @@ class TestPlivoXML(FrappeTestCase):
 		dial = root.find("Dial")
 		self.assertIsNotNone(dial)
 		self.assertEqual([child.tag for child in dial], ["User", "Number"])
-		self.assertEqual(dial.find("User").text, "sip:excompriya123@phone.plivo.com")
+		# The auth id suffix is not decoration: it is the address the browser registered at.
+		self.assertEqual(
+			dial.find("User").text, "sip:excompriya123_MATESTAUTHID000000@phone.plivo.com"
+		)
 		self.assertEqual(dial.find("Number").text, "+919812345678")
 		self.assertEqual(dial.get("callerId"), "+918041234567")
 
@@ -259,6 +267,71 @@ class TestPlivoXML(FrappeTestCase):
 		root = self._render(decision)
 		self.assertEqual(root[0].tag, "Play")
 		self.assertEqual(root[0].text, "https://example.com/consent.mp3")
+
+
+class TestRegisteredAddress(FrappeTestCase):
+	"""An endpoint has two names, and dialling the wrong one is a silent missed call.
+
+	Its identity is ``sip:<username>@phone.plivo.com``. Its live registration — because the Browser
+	SDK builds the SIP user from the JWT as ``sub`` + ``_`` + ``iss`` — is at
+	``sip:<username>_<auth_id>@phone.plivo.com``. Dial the identity and Plivo answers `Endpoint Not
+	Registered` (2020) before a single packet of audio: the caller hears two rings and a drop, and
+	Excom files a miss against an agent who was sitting right there with the tab open.
+	"""
+
+	def setUp(self):
+		self.adapter = _adapter()
+
+	def test_browser_destination_is_dialled_at_the_registered_address(self):
+		decision = CallDecision(
+			destinations=[Destination(kind="sip", ref="sip:excompriya123@phone.plivo.com")],
+			record=False,
+		)
+		root = ET.fromstring(self.adapter.render_decision(decision))
+		self.assertEqual(
+			root.find("Dial/User").text, "sip:excompriya123_MATESTAUTHID000000@phone.plivo.com"
+		)
+
+	def test_phone_destinations_are_left_alone(self):
+		"""The suffix belongs to SIP registration. A mobile number must survive untouched."""
+		decision = CallDecision(
+			destinations=[Destination(kind="pstn", ref="+919812345678")], record=False
+		)
+		root = ET.fromstring(self.adapter.render_decision(decision))
+		self.assertEqual(root.find("Dial/Number").text, "+919812345678")
+
+	def test_suffixing_is_idempotent(self):
+		"""Rendering an already-registered address twice must not stack suffixes."""
+		once = registered_aor("sip:excompriya123@phone.plivo.com", "MATESTAUTHID000000")
+		self.assertEqual(registered_aor(once, "MATESTAUTHID000000"), once)
+
+	def test_the_answered_leg_maps_back_to_the_endpoint(self):
+		"""Plivo echoes the address it dialled. Left suffixed, the Excom Voice Endpoint lookup
+		misses and the call is credited to nobody."""
+		event = self.adapter.normalize_event(
+			"dial_action",
+			{
+				"CallUUID": "uuid-9",
+				"DialStatus": "completed",
+				"DialBLegTo": "sip:excompriya123_MATESTAUTHID000000@phone.plivo.com",
+				"DialBLegDuration": "42",
+			},
+		)
+		self.assertEqual(event.answered_destination, "sip:excompriya123@phone.plivo.com")
+
+	def test_a_phone_leg_is_reported_as_itself(self):
+		event = self.adapter.normalize_event(
+			"dial_action",
+			{"CallUUID": "uuid-9", "DialStatus": "completed", "DialBLegTo": "+919812345678"},
+		)
+		self.assertEqual(event.answered_destination, "+919812345678")
+
+	def test_the_two_names_round_trip(self):
+		identity = "sip:excompriya123@phone.plivo.com"
+		self.assertEqual(
+			endpoint_uri(registered_aor(identity, "MATESTAUTHID000000"), "MATESTAUTHID000000"),
+			identity,
+		)
 
 
 class TestPlivoEvents(FrappeTestCase):
@@ -533,6 +606,114 @@ class TestRingDestinations(FrappeTestCase):
 			self.assertEqual(self.kinds(), [])
 		finally:
 			presence.clear_busy(self.AGENT)
+
+
+class TestInternationalGate(FrappeTestCase):
+	"""Which numbers count as abroad, and therefore need permission and eat the daily cap.
+
+	The gate is only worth having if it agrees with the map. It used to decide by asking whether
+	the target started with the first one, two or three digits of the line's own number — and from
+	an Indian line (+91...) the one-digit case matches every number that begins with 9. Pakistan
+	(+92), Sri Lanka (+94) and the UAE (+971) were all filed as domestic, which meant they skipped
+	the international switch and never counted against the minutes cap. Those are not obscure
+	destinations for an Indian desk; they are among the ones it dials most.
+	"""
+
+	def setUp(self):
+		self.india = _account_stub(voice_number="+912269985738")
+		self.usa = _account_stub(voice_number="+14155550100")
+
+	def _intl(self, number, account=None):
+		return _is_international(number, account or self.india)
+
+	def test_home_country_is_not_international(self):
+		self.assertFalse(self._intl("+919250333699"))
+		self.assertFalse(self._intl("+918795194645"))
+
+	def test_neighbours_sharing_our_first_digit_are_international(self):
+		"""The regression. Every one of these begins with 9, as +91 does."""
+		for number, where in [
+			("+923001234567", "Pakistan"),
+			("+94771234567", "Sri Lanka"),
+			("+971501234567", "UAE"),
+			("+9613456789", "Lebanon"),
+			("+905321234567", "Turkey"),
+			("+989121234567", "Iran"),
+		]:
+			with self.subTest(where=where):
+				self.assertTrue(self._intl(number), f"{where} must count as international")
+
+	def test_the_obvious_ones_are_still_international(self):
+		for number in ("+14155552671", "+442071234567", "+8613800138000", "+61412345678"):
+			self.assertTrue(self._intl(number))
+
+	def test_the_gate_follows_the_line_not_a_hardcoded_country(self):
+		"""From a US line, India is abroad and the US is home — the mirror of the case above."""
+		self.assertFalse(self._intl("+12125551234", self.usa))
+		self.assertTrue(self._intl("+919250333699", self.usa))
+
+	def test_an_unknown_country_code_is_treated_as_international(self):
+		"""Of the two ways to be wrong, asking for permission is the one you can undo."""
+		self.assertTrue(self._intl("+8821612345678"))
+
+	def test_a_line_we_cannot_place_gates_nothing(self):
+		"""Better an ungated line than one that refuses every call it is asked to make."""
+		nowhere = _account_stub(voice_number="")
+		self.assertFalse(self._intl("+14155552671", nowhere))
+
+	def test_country_code_is_read_longest_first(self):
+		"""+971 is the UAE, not India with a stray 1 in front of the number."""
+		self.assertEqual(country_code_of("+971501234567"), "971")
+		self.assertEqual(country_code_of("+919250333699"), "91")
+		self.assertEqual(country_code_of("+14155552671"), "1")
+		self.assertEqual(country_code_of("+442071234567"), "44")
+
+	def test_three_digit_codes_precede_the_two_digit_codes_they_start_with(self):
+		"""A table in the wrong order silently reclassifies whole countries, so check the table."""
+		for i, code in enumerate(KNOWN_COUNTRY_CODES):
+			for longer in KNOWN_COUNTRY_CODES[i + 1 :]:
+				self.assertFalse(
+					longer.startswith(code) and len(longer) > len(code),
+					f"+{longer} is listed after +{code} and will never be matched",
+				)
+
+
+class TestFailureReasons(FrappeTestCase):
+	"""A call that a carrier refused must not look like a call nobody answered."""
+
+	def setUp(self):
+		self.adapter = _adapter()
+
+	def test_a_barred_country_explains_itself(self):
+		event = self.adapter.normalize_event(
+			"hangup",
+			{
+				"CallUUID": "uuid-x",
+				"CallStatus": "failed",
+				"HangupCauseName": "Destination Country Barred",
+			},
+		)
+		self.assertEqual(event.status, "Failed")
+		self.assertIn("Geo Permissions", event.failure_reason)
+
+	def test_an_ordinary_hangup_adds_nothing(self):
+		event = self.adapter.normalize_event(
+			"hangup",
+			{"CallUUID": "uuid-y", "CallStatus": "completed", "HangupCauseName": "Normal Hangup"},
+		)
+		self.assertEqual(event.failure_reason, "")
+
+	def test_the_dial_action_path_explains_itself_too(self):
+		"""The browser transport ends here, not on the hangup URL."""
+		event = self.adapter.normalize_event(
+			"dial_action",
+			{
+				"CallUUID": "uuid-z",
+				"DialStatus": "failed",
+				"DialHangupCause": "Destination Country Barred",
+			},
+		)
+		self.assertIn("Geo Permissions", event.failure_reason)
 
 
 class TestCallVisibility(FrappeTestCase):

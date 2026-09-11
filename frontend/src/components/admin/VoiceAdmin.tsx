@@ -3,8 +3,8 @@ import { useFrappePostCall } from "frappe-react-sdk";
 import { useFrappeGetCall } from "@/lib/api";
 import { Copy, Check, RefreshCw, Phone, AlertTriangle, UserPlus } from "lucide-react";
 import { toast } from "sonner";
+import { toastError } from "../ErrorDialog";
 import { Button, Chip, EmptyState, Select } from "../primitives";
-import { serverMessage } from "./util";
 
 /**
  * Voice line setup.
@@ -106,7 +106,7 @@ export function VoiceAdmin() {
       }
       void mutate();
     } catch (e) {
-      toast.error(serverMessage(e));
+      toastError(e, "The softphones could not be provisioned");
     }
   };
 
@@ -115,7 +115,7 @@ export function VoiceAdmin() {
       await testCreds({ account: active });
       toast.success("Credentials work — the provider answered.");
     } catch (e) {
-      toast.error(serverMessage(e));
+      toastError(e, "The provider rejected these credentials");
     }
   };
 

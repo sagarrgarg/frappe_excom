@@ -174,6 +174,7 @@ class Softphone {
       this.client = this.sdk.client;
       if (!this.client) throw new Error("The calling library started but exposed no client.");
       this.wire();
+      silenceVendorRingtone();
       this.set({ registration: "registering" });
       this.login(token);
       // A registration that never completes leaves the agent thinking they are on the queue.
@@ -275,6 +276,9 @@ class Softphone {
     });
 
     this.on("onIncomingCall", (...args: any[]) => {
+      // Again here, not only at boot: the SDK builds its audio elements lazily, so the one at boot
+      // may have found nothing to silence.
+      silenceVendorRingtone();
       const info = pickCallInfo(args);
       this.setCall({
         phase: "ringing",
@@ -395,6 +399,31 @@ class Softphone {
 
   setPeer(displayName: string) {
     this.setCall({ displayName });
+  }
+}
+
+/**
+ * Take the incoming ring away from the SDK.
+ *
+ * The SDK appends `<audio id="plivo_ringtone" loop src="https://cdn.plivo.com/...">` to the body
+ * and plays it on every incoming call. We ring from `lib/ringtone.ts` instead — locally generated,
+ * so no CDN has to answer at the moment the phone rings — and two ringers at once is worse than
+ * either. Dropping the source leaves the element in place, so the SDK's own `getElementById` still
+ * finds something and its `play()` simply resolves to nothing.
+ *
+ * The ringback on outbound calls is left alone: by then the agent has clicked Call, so the gesture
+ * exists and the vendor's own tone is fine.
+ */
+function silenceVendorRingtone(): void {
+  try {
+    const el = document.getElementById("plivo_ringtone") as HTMLAudioElement | null;
+    if (!el || !el.getAttribute("src")) return;
+    el.pause();
+    el.removeAttribute("src");
+    el.load();
+    if (DEBUG) console.info("[excom softphone] vendor ringtone silenced; Excom rings instead");
+  } catch {
+    /* worst case the vendor tone plays too — noisy, never broken */
   }
 }
 

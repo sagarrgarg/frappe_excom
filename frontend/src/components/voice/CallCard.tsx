@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Download, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "../primitives";
 import { cn } from "../ui/utils";
 
@@ -40,78 +41,93 @@ export function CallCard({ call, onCallBack }: { call: CallSummary; onCallBack?:
     ? "text-crayon-rose-text border-crayon-rose-base/40"
     : "text-crayon-green-text border-border";
 
+  // A call is a message like any other, so it sits where a message sits: the customer's calls on
+  // the left, ours on the right. It used to stretch the full width of the panel whatever it had to
+  // say, which made a two-word missed call look heavier than a paragraph of conversation.
   return (
-    <div className={cn("rounded-lg border bg-surface p-3", tone)}>
-      <div className="flex items-center gap-2">
-        <Icon className="size-4 shrink-0" />
-        <span className="text-sm text-ink-1">{label(call)}</span>
-        {call.duration ? (
-          <span className="text-xs tabular-nums text-ink-3">{mmss(call.duration)}</span>
-        ) : null}
-        {call.transport === "Phone" && (
-          <span className="text-2xs uppercase tracking-wide text-ink-3">on phone</span>
-        )}
-        {missed && onCallBack && call.customer_number && (
-          <Button
-            variant="subtle"
-            size="sm"
-            className="ml-auto"
-            onClick={() => onCallBack(call.customer_number as string)}
-          >
-            Call back
-          </Button>
-        )}
-      </div>
-
-      {call.recording_status === "Ready" && (
-        <div className="mt-2 flex items-center gap-2">
-          {playing ? (
-            <audio
-              controls
-              autoPlay
-              className="h-8 w-full max-w-md"
-              src={recordingUrl(call.name, false)}
-            />
-          ) : (
-            <Button variant="subtle" size="sm" onClick={() => setPlaying(true)}>
-              Play recording
+    <div className={cn("flex", inbound ? "justify-start" : "justify-end")}>
+      <div className={cn("min-w-0 max-w-[min(24rem,85%)] rounded-lg border bg-surface px-2.5 py-2", tone)}>
+        <div className="flex items-center gap-2">
+          <Icon className="size-4 shrink-0" />
+          <span className="min-w-0 flex-1 text-sm text-ink-1">{label(call)}</span>
+          {call.duration ? (
+            <span className="text-xs tabular-nums text-ink-3">{mmss(call.duration)}</span>
+          ) : null}
+          {call.transport === "Phone" && (
+            <span className="text-2xs uppercase tracking-wide text-ink-3">on phone</span>
+          )}
+          {missed && onCallBack && call.customer_number && (
+            <Button
+              variant="subtle"
+              size="sm"
+              className="ml-auto shrink-0"
+              onClick={() => onCallBack(call.customer_number as string)}
+            >
+              Call back
             </Button>
           )}
-          <a
-            href={recordingUrl(call.name, true)}
-            className="text-ink-3 hover:text-ink-1"
-            title="Download"
-            aria-label="Download recording"
-          >
-            <Download className="size-4" />
-          </a>
         </div>
-      )}
-      {/* Only while a call that actually connected is still waiting for its audio. A missed call
-          has nothing to record, and the spinner sat there for ever promising otherwise. */}
-      {call.recording_status === "Pending" && !missed && Boolean(call.duration) && (
-        <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-ink-3">
-          <Loader2 className="size-3 animate-spin" />
-          Recording is being prepared
-        </div>
-      )}
-      {call.recording_status === "Purged" && (
-        <div className="mt-2 text-xs text-ink-3">Recording removed under the retention policy</div>
-      )}
 
-      {call.summary && (
-        <div className="mt-2 border-t border-border pt-2">
-          <div className="text-2xs uppercase tracking-wide text-ink-3">Summary</div>
-          <p className="mt-0.5 whitespace-pre-line text-sm text-ink-2">{call.summary}</p>
-        </div>
-      )}
+        {call.recording_status === "Ready" && (
+          <div className="mt-1.5 flex items-center gap-2">
+            {playing ? (
+              <audio
+                controls
+                autoPlay
+                className="h-8 w-full max-w-[15rem]"
+                src={recordingUrl(call.name, false)}
+                // <audio> swallows its own failures: a 403, an expired provider link or a file the
+                // provider never delivered all render as a player that simply refuses to move, with
+                // nothing said. Say it.
+                onError={() => {
+                  setPlaying(false);
+                  toast.error("That recording would not play", {
+                    description:
+                      "The audio could not be fetched. It may still be uploading at the provider, or the retention policy may have removed it.",
+                  });
+                }}
+              />
+            ) : (
+              <Button variant="subtle" size="sm" onClick={() => setPlaying(true)}>
+                Play recording
+              </Button>
+            )}
+            <a
+              href={recordingUrl(call.name, true)}
+              className="text-ink-3 hover:text-ink-1"
+              title="Download"
+              aria-label="Download recording"
+            >
+              <Download className="size-4" />
+            </a>
+          </div>
+        )}
+        {/* Only while a call that actually connected is still waiting for its audio. A missed call
+            has nothing to record, and the spinner sat there for ever promising otherwise. */}
+        {call.recording_status === "Pending" && !missed && Boolean(call.duration) && (
+          <div className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-ink-3">
+            <Loader2 className="size-3 animate-spin" />
+            Recording is being prepared
+          </div>
+        )}
+        {call.recording_status === "Purged" && (
+          <div className="mt-1.5 text-xs text-ink-3">Recording removed under the retention policy</div>
+        )}
 
-      {call.next_action && (
-        <div className="mt-2 text-sm text-ink-2">
-          <span className="text-2xs uppercase tracking-wide text-ink-3">Next</span>{" "}
-          {call.next_action}
-        </div>
-      )}
+        {call.summary && (
+          <div className="mt-1.5 border-t border-border pt-1.5">
+            <div className="text-2xs uppercase tracking-wide text-ink-3">Summary</div>
+            <p className="mt-0.5 whitespace-pre-line text-sm text-ink-2">{call.summary}</p>
+          </div>
+        )}
+
+        {call.next_action && (
+          <div className="mt-1.5 text-sm text-ink-2">
+            <span className="text-2xs uppercase tracking-wide text-ink-3">Next</span>{" "}
+            {call.next_action}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

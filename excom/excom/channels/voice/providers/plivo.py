@@ -61,6 +61,31 @@ DIAL_STATUS = {
 	"failed": "Failed",
 }
 
+# Plivo hangup cause -> what the agent should do about it.
+#
+# These matter most on international calls, which fail in ways a domestic call never does and
+# which look identical from the outside: the call simply does not connect. "Destination Country
+# Barred" in particular is not a fault on the line or the number — it is a permission on the Plivo
+# account, and without being told so an agent will redial a barred country all afternoon.
+FAILURE_REASONS = {
+	"Destination Country Barred": _(
+		"Plivo is not permitted to call this country from your account. "
+		"Enable it under Voice → Geo Permissions in the Plivo console."
+	),
+	"No Route Destination": _(
+		"Plivo has no route to this number. Check the country code, then the number itself."
+	),
+	"Invalid Number Format": _("That number is not in a form the network accepts."),
+	"Busy Line": _("The line was busy."),
+	"Rejected": _("The other end rejected the call."),
+	"Unallocated Number": _("There is no such number on the network."),
+	"Outbound Call Failed": _("The carrier would not place the call."),
+	"Insufficient Credit": _("The Plivo account is out of credit."),
+	"Endpoint Not Registered": _(
+		"The softphone was not reachable. Check that Excom is open and you are taking calls."
+	),
+}
+
 # CallStatus (hangup URL) -> Excom Call.status
 CALL_STATUS = {
 	"completed": "Completed",
@@ -75,6 +100,77 @@ CALL_STATUS = {
 def _b(value: bool) -> str:
 	"""Plivo wants lowercase string booleans in XML attributes."""
 	return "true" if value else "false"
+
+
+def _explain_refusal(resp) -> str:
+	"""Turn a rejected Call API response into a sentence worth reading.
+
+	Dumping 400 characters of JSON at an agent tells them nothing they can act on. The one that
+	matters here is the 403: Plivo bars outbound calling per country, off by default on a new
+	account, and the fix is a setting in their console rather than anything in Excom — so say that,
+	and say where.
+	"""
+	try:
+		error = (resp.json() or {}).get("error") or ""
+	except ValueError:
+		error = ""
+	error = str(error).strip()
+
+	if resp.status_code == 403 and "barred" in error.lower():
+		return _(
+			"Plivo will not call this country from your account. Enable the destination under "
+			"Voice → Geo Permissions in the Plivo console, then try again."
+		)
+	if resp.status_code == 401:
+		return _("Plivo rejected the credentials on this voice line.")
+	if resp.status_code == 402:
+		return _("The Plivo account is out of credit.")
+	if error:
+		return _("Plivo refused the call: {0}").format(error)
+	return _("Plivo refused the call ({0}).").format(resp.status_code)
+
+
+def registered_aor(sip_uri: str, auth_id: str) -> str:
+	"""The address a token-logged-in browser is actually registered at.
+
+	An endpoint has two names and they are not the same string. Its identity — the one on the
+	Endpoint API, the one we store — is ``sip:<username>@phone.plivo.com``. But the Browser SDK
+	derives the SIP user it registers as from the JWT rather than from the endpoint, and it builds
+	that name by joining two claims::
+
+	    getUsernameFromToken = (t) => t.sub ? `${t.sub}_${t.iss}` : ...
+
+	`sub` is the endpoint username and `iss` is the auth id, so the live registration sits at
+	``sip:<username>_<auth_id>@phone.plivo.com``. Dialling the plain identity finds no contact and
+	Plivo fails the leg instantly with `Endpoint Not Registered` (2020) — which, on a real call,
+	is two rings of ringback and then a drop that lands in the missed-call queue.
+
+	Outbound proved this the whole time and we did not read it: every browser-originated leg shows
+	up in the CDR as ``from_number: sip:<username>_<auth_id>@phone.plivo.com``.
+	"""
+	if not sip_uri or not auth_id:
+		return sip_uri
+	body = sip_uri[4:] if sip_uri.startswith("sip:") else sip_uri
+	user, _, domain = body.partition("@")
+	if not user or user.endswith(f"_{auth_id}"):
+		return sip_uri
+	return f"sip:{user}_{auth_id}@{domain or SIP_DOMAIN}"
+
+
+def endpoint_uri(sip_uri: str, auth_id: str) -> str:
+	"""The inverse: the endpoint identity behind a registered address.
+
+	Plivo reports the address it dialled, so `DialBLegTo` comes back suffixed. Undo it here rather
+	than in the handler, so nothing outside this module ever has to know the suffix exists.
+	"""
+	if not sip_uri or not auth_id:
+		return sip_uri
+	body = sip_uri[4:] if sip_uri.startswith("sip:") else sip_uri
+	user, _, domain = body.partition("@")
+	suffix = f"_{auth_id}"
+	if not user.endswith(suffix):
+		return sip_uri
+	return f"sip:{user[: -len(suffix)]}@{domain or SIP_DOMAIN}"
 
 
 class PlivoAdapter(VoiceProvider, SoftphoneProvider):
@@ -193,11 +289,22 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 		for dest in decision.destinations:
 			if dest.is_browser:
 				node = ET.SubElement(dial, "User")
+				# The endpoint identity is not the address it registered at — see `registered_aor`.
+				node.text = registered_aor(dest.ref, self.auth_id)
 			else:
 				node = ET.SubElement(dial, "Number")
-			node.text = dest.ref
+				node.text = dest.ref
 
 		return self._serialise(response)
+
+	def _answered_destination(self, payload: dict) -> str:
+		"""Who Plivo says picked up, named the way the rest of Excom names them.
+
+		Plivo echoes back the address it dialled, so a browser leg arrives carrying the auth-id
+		suffix. Strip it here and `Excom Voice Endpoint.sip_uri` matches again — leave it on and
+		the lookup misses, the call is credited to nobody, and the thread is never claimed.
+		"""
+		return endpoint_uri(payload.get("DialBLegTo") or "", self.auth_id)
 
 	@staticmethod
 	def _serialise(root: ET.Element) -> str:
@@ -238,9 +345,7 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 
 		resp = self._request("POST", "Call/", json=payload)
 		if resp.status_code not in (200, 201, 202):
-			frappe.throw(
-				_("Plivo refused the call ({0}): {1}").format(resp.status_code, resp.text[:400])
-			)
+			frappe.throw(_explain_refusal(resp))
 		data = resp.json() if resp.content else {}
 		return ProviderCallRef(
 			provider_call_id=data.get("request_uuid") or "",
@@ -350,11 +455,12 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 			action = (payload.get("DialAction") or "").lower()
 			if action in ("answer", "connected"):
 				event.kind = "answered"
-				event.answered_destination = payload.get("DialBLegTo") or ""
+				event.answered_destination = self._answered_destination(payload)
 			elif action == "hangup":
 				event.kind = "ended"
 				event.duration = _int(payload.get("DialBLegDuration"))
 				event.hangup_cause = payload.get("DialBLegHangupCauseName") or ""
+				event.failure_reason = FAILURE_REASONS.get(event.hangup_cause, "")
 			return event
 
 		if kind_hint == "dial_action":
@@ -362,8 +468,9 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 			raw_status = (payload.get("DialStatus") or "").lower()
 			event.status = DIAL_STATUS.get(raw_status, "Completed" if raw_status else "")
 			event.duration = _int(payload.get("DialBLegDuration") or payload.get("Duration"))
-			event.answered_destination = payload.get("DialBLegTo") or ""
+			event.answered_destination = self._answered_destination(payload)
 			event.hangup_cause = payload.get("DialHangupCause") or ""
+			event.failure_reason = FAILURE_REASONS.get(event.hangup_cause, "")
 			return event
 
 		if kind_hint == "hangup":
@@ -375,6 +482,7 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 			event.cost = _float(payload.get("TotalCost"))
 			event.hangup_cause = payload.get("HangupCauseName") or ""
 			event.hangup_source = payload.get("HangupSource") or ""
+			event.failure_reason = FAILURE_REASONS.get(event.hangup_cause, "")
 			return event
 
 		if kind_hint == "recording":
