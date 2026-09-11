@@ -61,7 +61,30 @@
   "webchat_position",
   "webchat_prechat_fields",
   "visibility_section",
-  "allowed_teams"
+  "allowed_teams",
+  "voice_section",
+  "voice_provider",
+  "voice_number",
+  "voice_auth_id",
+  "voice_auth_token",
+  "voice_api_base",
+  "voice_app_id",
+  "voice_client_region",
+  "column_break_voice",
+  "voice_allow_browser_calls",
+  "voice_allow_phone_calls",
+  "voice_ring_both",
+  "voice_ring_strategy",
+  "voice_sticky_ring_seconds",
+  "voice_team_ring_seconds",
+  "voice_max_call_seconds",
+  "voice_allow_international",
+  "voice_recording_section",
+  "voice_record_policy",
+  "voice_recording_channels",
+  "column_break_voice_rec",
+  "voice_consent_prompt",
+  "voice_status"
  ],
  "fields": [
   {
@@ -456,6 +479,148 @@
    "label": "Allowed Teams",
    "options": "Excom Account Team",
    "description": "If empty, all teams can see this account. Otherwise only the listed teams (and their sub-teams) can use it for new conversations and broadcasts."
+  },
+  {
+   "fieldname": "voice_section",
+   "fieldtype": "Section Break",
+   "label": "Calls",
+   "depends_on": "eval:doc.channel=='voice'"
+  },
+  {
+   "fieldname": "voice_provider",
+   "fieldtype": "Select",
+   "label": "Provider",
+   "options": "\nPlivo\nExotel\nAirtel IQ",
+   "default": "Plivo",
+   "description": "Only Plivo is implemented. Whatever is chosen here, the label agents see is always 'Calls'."
+  },
+  {
+   "fieldname": "voice_number",
+   "fieldtype": "Data",
+   "label": "Business Number (DID)",
+   "description": "The number customers dial, and the caller id they see on outbound calls."
+  },
+  {
+   "fieldname": "voice_auth_id",
+   "fieldtype": "Data",
+   "label": "Auth ID"
+  },
+  {
+   "fieldname": "voice_auth_token",
+   "fieldtype": "Password",
+   "label": "Auth Token"
+  },
+  {
+   "fieldname": "voice_api_base",
+   "fieldtype": "Data",
+   "label": "API Base",
+   "description": "Leave blank for https://api.plivo.com."
+  },
+  {
+   "fieldname": "voice_app_id",
+   "fieldtype": "Data",
+   "label": "Application ID",
+   "description": "The provider Application that softphone endpoints attach to."
+  },
+  {
+   "fieldname": "voice_client_region",
+   "fieldtype": "Select",
+   "label": "Media Region",
+   "options": "\nasia\nusa_west\nusa_east\neurope",
+   "default": "asia"
+  },
+  {
+   "fieldname": "column_break_voice",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "voice_allow_browser_calls",
+   "fieldtype": "Check",
+   "label": "Allow Browser Calls",
+   "default": "1",
+   "description": "Agents answer in the Excom tab over WebRTC."
+  },
+  {
+   "fieldname": "voice_allow_phone_calls",
+   "fieldtype": "Check",
+   "label": "Allow Calls on Agent Phones",
+   "default": "1",
+   "description": "The fallback: the provider rings the agent's own mobile and bridges to the customer. Keep this on."
+  },
+  {
+   "fieldname": "voice_ring_strategy",
+   "fieldtype": "Select",
+   "label": "Ring Strategy",
+   "options": "Sticky then Team\nTeam only\nSticky only",
+   "default": "Sticky then Team",
+   "description": "Sticky is the agent who last handled this contact on any channel, not just by phone."
+  },
+  {
+   "fieldname": "voice_sticky_ring_seconds",
+   "fieldtype": "Int",
+   "label": "Sticky Ring Seconds",
+   "default": "20"
+  },
+  {
+   "fieldname": "voice_team_ring_seconds",
+   "fieldtype": "Int",
+   "label": "Team Ring Seconds",
+   "default": "30"
+  },
+  {
+   "fieldname": "voice_max_call_seconds",
+   "fieldtype": "Int",
+   "label": "Max Call Seconds",
+   "default": "3600"
+  },
+  {
+   "fieldname": "voice_allow_international",
+   "fieldtype": "Check",
+   "label": "Allow International Calls",
+   "description": "Off by default. This is the ceiling for everyone on this line."
+  },
+  {
+   "fieldname": "voice_recording_section",
+   "fieldtype": "Section Break",
+   "label": "Call Recording",
+   "depends_on": "eval:doc.channel=='voice'"
+  },
+  {
+   "fieldname": "voice_record_policy",
+   "fieldtype": "Select",
+   "label": "Record",
+   "options": "Never\nInbound only\nOutbound only\nAll",
+   "default": "All"
+  },
+  {
+   "fieldname": "voice_recording_channels",
+   "fieldtype": "Select",
+   "label": "Recording Channels",
+   "options": "Mixed\nDual",
+   "default": "Dual",
+   "description": "Dual puts the agent and the customer on separate channels, so a transcript can attribute speakers from the file instead of guessing."
+  },
+  {
+   "fieldname": "column_break_voice_rec",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "voice_consent_prompt",
+   "fieldtype": "Data",
+   "label": "Consent Announcement URL",
+   "description": "Played to the caller before the call connects. Blank for none."
+  },
+  {
+   "fieldname": "voice_status",
+   "fieldtype": "HTML",
+   "label": "Line Status"
+  },
+  {
+   "fieldname": "voice_ring_both",
+   "fieldtype": "Check",
+   "label": "Ring the Agent's Phone as Well as Their Browser",
+   "depends_on": "eval:doc.voice_allow_phone_calls",
+   "description": "Off by default. The phone is a fallback for when the softphone is not connected; ringing both means an agent's personal mobile goes off for every call they are already sitting in front of."
   }
  ],
  "index_web_pages_for_search": 1,

@@ -18,6 +18,8 @@ GUARDS = {
 	"has_permission", "only_for", "check_permission", "_validate_session", "_verify_hmac_signature",
 	"_caller_ok", "parse_signed_request", "_check_identity_access", "_check_record_access",
 	"_check_admin_access",
+	# Voice webhooks: verifies the provider's HMAC signature and returns the line it belongs to.
+	"_verified_account",
 }
 # Public by design. Each line says why it is safe to leave open.
 ALLOWED = {

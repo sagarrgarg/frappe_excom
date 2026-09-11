@@ -1,0 +1,177 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-09-09 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "identity_section",
+  "user",
+  "channel_account",
+  "provider",
+  "column_break_identity",
+  "status",
+  "alias",
+  "credentials_section",
+  "endpoint_id",
+  "sip_uri",
+  "column_break_credentials",
+  "endpoint_username",
+  "endpoint_password",
+  "registration_section",
+  "last_registered_at",
+  "column_break_registration",
+  "last_seen_ip",
+  "last_error"
+ ],
+ "fields": [
+  {
+   "fieldname": "identity_section",
+   "fieldtype": "Section Break",
+   "label": "Endpoint"
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Agent",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "fieldname": "channel_account",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Channel Account",
+   "options": "Excom Channel Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Data",
+   "label": "Provider",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_identity",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Provisioning",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Provisioning\nActive\nSuspended\nDeprovisioned"
+  },
+  {
+   "fieldname": "alias",
+   "fieldtype": "Data",
+   "label": "Alias"
+  },
+  {
+   "fieldname": "credentials_section",
+   "fieldtype": "Section Break",
+   "label": "Credentials"
+  },
+  {
+   "fieldname": "endpoint_id",
+   "fieldtype": "Data",
+   "label": "Endpoint ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sip_uri",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "SIP URI",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_credentials",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "endpoint_username",
+   "fieldtype": "Data",
+   "label": "Endpoint Username",
+   "read_only": 1
+  },
+  {
+   "description": "Encrypted at rest and never sent to a browser. The softphone logs in with a short-lived token instead.",
+   "fieldname": "endpoint_password",
+   "fieldtype": "Password",
+   "label": "Endpoint Password"
+  },
+  {
+   "fieldname": "registration_section",
+   "fieldtype": "Section Break",
+   "label": "Registration"
+  },
+  {
+   "description": "Last heartbeat from the agent's browser. Liveness itself lives in the cache, not here.",
+   "fieldname": "last_registered_at",
+   "fieldtype": "Datetime",
+   "label": "Last Registered At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_registration",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_seen_ip",
+   "fieldtype": "Data",
+   "label": "Last Seen IP",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-09 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom",
+ "name": "Excom Voice Endpoint",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "alias",
+ "track_changes": 1
+}
