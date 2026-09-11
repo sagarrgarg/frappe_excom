@@ -479,6 +479,62 @@ class TestNumberNormalising(FrappeTestCase):
 				self.convert(raw)
 
 
+class TestRingDestinations(FrappeTestCase):
+	"""The phone is a fallback, not a second doorbell.
+
+	Ringing a connected agent's browser and their personal mobile together meant their own phone
+	went off for every call they were already sitting in front of. That is what the first day of
+	real inbound traffic produced, and it is the complaint this fences off.
+	"""
+
+	AGENT = "ring-test@example.com"
+	ACCOUNT = "ring-test-account"
+	SIP = "sip:ringtest@phone.plivo.com"
+	MOBILE = "+919000000001"
+
+	def agent_row(self):
+		return {"user": self.AGENT, "sip_uri": self.SIP, "mobile": self.MOBILE, "team": None}
+
+	def tearDown(self):
+		presence.mark_unregistered(self.AGENT, self.ACCOUNT)
+		presence.set_available(self.AGENT, False)
+
+	def kinds(self, ring_both=False):
+		return [
+			d.kind
+			for d in routing._destinations_for(
+				self.agent_row(), True, True, self.ACCOUNT, ring_both
+			)
+		]
+
+	def test_a_connected_softphone_takes_the_call_alone(self):
+		presence.mark_registered(self.AGENT, self.ACCOUNT)
+		presence.set_available(self.AGENT, True)
+		self.assertEqual(self.kinds(), ["sip"])
+
+	def test_the_mobile_steps_in_when_the_browser_cannot(self):
+		presence.set_available(self.AGENT, True)  # available, but never registered
+		self.assertEqual(self.kinds(), ["pstn"])
+
+	def test_a_line_may_ask_for_both(self):
+		presence.mark_registered(self.AGENT, self.ACCOUNT)
+		presence.set_available(self.AGENT, True)
+		self.assertEqual(self.kinds(ring_both=True), ["sip", "pstn"])
+
+	def test_signing_off_silences_both(self):
+		presence.mark_registered(self.AGENT, self.ACCOUNT)
+		self.assertEqual(self.kinds(), [])
+
+	def test_a_call_in_progress_silences_both(self):
+		presence.mark_registered(self.AGENT, self.ACCOUNT)
+		presence.set_available(self.AGENT, True)
+		presence.mark_busy(self.AGENT, "CALL-1")
+		try:
+			self.assertEqual(self.kinds(), [])
+		finally:
+			presence.clear_busy(self.AGENT)
+
+
 class TestCallVisibility(FrappeTestCase):
 	"""A call is as visible as the conversation it belongs to, and no more."""
 

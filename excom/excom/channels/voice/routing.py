@@ -311,6 +311,7 @@ def build_decision(
 
 	allow_browser = bool(account.get("voice_allow_browser_calls"))
 	allow_phone = bool(account.get("voice_allow_phone_calls"))
+	ring_both = bool(account.get("voice_ring_both"))
 	strategy = account.get("voice_ring_strategy") or "Sticky then Team"
 
 	sticky_first = strategy in ("Sticky then Team", "Sticky only") and sticky in by_user
@@ -326,7 +327,9 @@ def build_decision(
 	ring_set: list[str] = []
 	for agent in ordered:
 		user = agent["user"]
-		reachable = _destinations_for(agent, allow_browser, allow_phone, account_name)
+		reachable = _destinations_for(
+			agent, allow_browser, allow_phone, account_name, ring_both
+		)
 		if not reachable:
 			continue
 		destinations.extend(reachable)
@@ -359,21 +362,31 @@ def build_decision(
 
 
 def _destinations_for(
-	agent: dict, allow_browser: bool, allow_phone: bool, account: str
+	agent: dict, allow_browser: bool, allow_phone: bool, account: str, ring_both: bool = False
 ) -> list[Destination]:
-	"""Both transports for one agent, in the same dial.
+	"""How to reach one agent.
 
-	This is the whole two-transport model: a browser leg and a mobile leg for the same person go
-	into one parallel dial and whichever answers first wins. Every WebRTC failure — mic denied, tab
-	closed, laptop asleep, UDP blocked — is handled by the other row being there, with no branch in
-	the routing engine.
+	The phone is a fallback, not a second doorbell. Ringing a connected agent's browser AND their
+	personal mobile on every call means their own phone goes off all day for work they are already
+	sitting in front of — which is what happened on the first day of real inbound traffic.
+
+	So: if their softphone is connected, that is where the call goes. The mobile is added only when
+	the browser cannot take it — mic denied, tab closed, laptop asleep, UDP blocked — which is
+	exactly the set of failures the two-transport model exists for. A line that genuinely wants both
+	at once can say so with `voice_ring_both`.
 	"""
 	user = agent["user"]
 	out: list[Destination] = []
-	if allow_browser and agent.get("sip_uri") and presence.can_ring_browser(user, account):
+
+	browser_ready = bool(
+		allow_browser and agent.get("sip_uri") and presence.can_ring_browser(user, account)
+	)
+	if browser_ready:
 		out.append(Destination(kind="sip", ref=agent["sip_uri"], user=user, label="browser"))
+
 	if allow_phone and agent.get("mobile") and presence.can_ring_phone(user):
-		out.append(Destination(kind="pstn", ref=agent["mobile"], user=user, label="phone"))
+		if not browser_ready or ring_both:
+			out.append(Destination(kind="pstn", ref=agent["mobile"], user=user, label="phone"))
 	return out
 
 

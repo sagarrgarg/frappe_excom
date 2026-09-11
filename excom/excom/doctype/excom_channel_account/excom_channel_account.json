@@ -73,6 +73,7 @@
   "column_break_voice",
   "voice_allow_browser_calls",
   "voice_allow_phone_calls",
+  "voice_ring_both",
   "voice_ring_strategy",
   "voice_sticky_ring_seconds",
   "voice_team_ring_seconds",
@@ -613,6 +614,13 @@
    "fieldname": "voice_status",
    "fieldtype": "HTML",
    "label": "Line Status"
+  },
+  {
+   "fieldname": "voice_ring_both",
+   "fieldtype": "Check",
+   "label": "Ring the Agent's Phone as Well as Their Browser",
+   "depends_on": "eval:doc.voice_allow_phone_calls",
+   "description": "Off by default. The phone is a fallback for when the softphone is not connected; ringing both means an agent's personal mobile goes off for every call they are already sitting in front of."
   }
  ],
  "index_web_pages_for_search": 1,

@@ -167,8 +167,26 @@ def _dial_via_phone(user, number, account_doc, thread, provider) -> dict:
 
 	mobile = normalize_phone(frappe.db.get_value("User", user, "mobile_no") or "")
 	if not mobile:
+		# Say which of the two ways in is missing. "Add a mobile number" sent an administrator
+		# looking for a setting, when the real answer was that this account has no softphone on
+		# this line and was never going to place a browser call either.
+		has_endpoint = frappe.db.exists(
+			"Excom Voice Endpoint",
+			{"user": user, "channel_account": account_doc.name, "status": "Active"},
+		)
+		if has_endpoint:
+			frappe.throw(
+				_(
+					"Your softphone is not connected, and there is no mobile number on your profile "
+					"to fall back to. Reload Excom and allow the microphone, or add a mobile number."
+				)
+			)
 		frappe.throw(
-			_("Add a mobile number to your user profile before calling from your phone.")
+			_(
+				"{0} cannot place calls on this line: no softphone and no mobile number. "
+				"An administrator can create a softphone in Admin → Calls, or add a mobile number "
+				"to this user."
+			).format(user)
 		)
 
 	caller_id = normalize_phone(account_doc.get("voice_number") or "")
