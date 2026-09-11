@@ -19,6 +19,8 @@ from excom.excom.doctype.excom_call.excom_call import CLOSED_STATUSES
 SETTLE_SECONDS = 120
 # A call still open long after the provider's own time limit was never going to close itself.
 STUCK_MINUTES = 90
+# How long to keep promising a recording before admitting none is coming.
+RECORDING_GIVE_UP_MINUTES = 20
 BATCH = 50
 
 
@@ -117,6 +119,22 @@ def close_stuck_calls() -> int:
 	from excom.excom.channels.voice import presence
 
 	cutoff = add_to_date(now_datetime(), minutes=-STUCK_MINUTES)
+	# A recording that has not arrived long after the call ended is not coming. A very short call
+	# often produces none at all, and leaving the row Pending shows the agent a spinner promising
+	# audio for ever.
+	abandoned = frappe.get_all(
+		"Excom Call",
+		filters={
+			"recording_status": "Pending",
+			"status": ["in", list(CLOSED_STATUSES)],
+			"creation": ["<", add_to_date(now_datetime(), minutes=-RECORDING_GIVE_UP_MINUTES)],
+		},
+		pluck="name",
+		limit=BATCH,
+	)
+	for name in abandoned:
+		frappe.db.set_value("Excom Call", name, "recording_status", "None", update_modified=False)
+
 	stuck = frappe.get_all(
 		"Excom Call",
 		filters={"status": ["in", ["Ringing", "In Progress"]], "creation": ["<", cutoff]},

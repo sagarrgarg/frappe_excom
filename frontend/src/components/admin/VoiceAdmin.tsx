@@ -31,6 +31,7 @@ interface LineStatus {
   capabilities: string[];
   credentials_present: boolean;
   agents_on_line: number;
+  provider_error?: string;
   endpoints: EndpointRow[];
   webhooks: Record<string, string>;
 }
@@ -45,19 +46,24 @@ const WEBHOOK_LABELS: Record<string, string> = {
 export function VoiceAdmin() {
   const [account, setAccount] = useState<string>("");
 
-  const { data: linesData } = useFrappeGetCall<{ message: { name: string; account_name: string }[] }>(
+  const { data: linesData } = useFrappeGetCall<{
+    message: { name: string; account_name: string; voice_provider?: string }[];
+  }>(
     "frappe.client.get_list",
     {
       doctype: "Excom Channel Account",
       filters: JSON.stringify([["channel", "=", "voice"]]),
-      fields: JSON.stringify(["name", "account_name"]),
+      fields: JSON.stringify(["name", "account_name", "voice_provider"]),
       limit_page_length: 50,
     },
     "voice-lines",
     { revalidateOnFocus: false },
   );
   const lines = linesData?.message ?? [];
-  const active = account || lines[0]?.name || "";
+  // Open on a line that can actually place a call. A site with an old Exotel row sitting first in
+  // the list had this page open on it every time, and Exotel has no adapter yet.
+  const usable = lines.find((l) => l.voice_provider === "Plivo");
+  const active = account || usable?.name || lines[0]?.name || "";
 
   const { data, isLoading, mutate } = useFrappeGetCall<{ message: LineStatus }>(
     active ? "excom.excom.api.voice.line_status" : null,
@@ -126,6 +132,16 @@ export function VoiceAdmin() {
       )}
 
       {isLoading && <p className="text-sm text-ink-3">Loading…</p>}
+
+      {status?.provider_error && (
+        <p className="flex items-start gap-1.5 rounded-lg border border-crayon-amber-base/40 bg-crayon-amber-tint px-3 py-2 text-xs text-crayon-amber-text">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            This line cannot place or receive calls: {status.provider_error} Everything below is
+            read from the record; nothing has been asked of the provider.
+          </span>
+        </p>
+      )}
 
       {status && (
         <>

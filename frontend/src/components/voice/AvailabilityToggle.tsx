@@ -60,13 +60,24 @@ export function AvailabilityToggle({ compact = false }: { compact?: boolean }) {
       title={detail ? `${label} — ${detail}` : label}
       className={cn("shrink-0", !compact && "gap-2")}
     >
-      {busy ? (
-        <Loader2 className="animate-spin" />
-      ) : available ? (
-        <Headphones />
-      ) : (
-        <HeadphoneOff />
-      )}
+      {/* Collapsed, the icon alone does not say whether the agent is on the queue — and thinking
+          you are reachable when you are not is the worst state this feature has. The dot rides on
+          the icon so the answer is visible at any rail width. */}
+      <span className="relative inline-flex">
+        {busy ? (
+          <Loader2 className="animate-spin" />
+        ) : available ? (
+          <Headphones />
+        ) : (
+          <HeadphoneOff />
+        )}
+        {compact && (
+          <span
+            className={cn("absolute -right-0.5 -top-0.5 size-1.5 rounded-full ring-2 ring-surface", dot)}
+            aria-hidden
+          />
+        )}
+      </span>
       {!compact && (
         <span className="flex items-center gap-1.5 min-w-0">
           <span className={cn("size-1.5 rounded-full shrink-0", dot)} aria-hidden />

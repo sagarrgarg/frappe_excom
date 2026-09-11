@@ -554,7 +554,18 @@ def line_status(account: str):
 	"""Credential check and endpoint roster for the admin screen."""
 	_check_admin_access()
 	account_doc = frappe.get_doc("Excom Channel Account", account)
-	provider = providers.for_account(account_doc)
+
+	# A line whose provider has no adapter yet is a thing an administrator needs to SEE, not an
+	# error that blanks the page. The site had an old Exotel line sitting first in the list, and
+	# opening Admin → Calls raised through to a 417 and showed nothing at all.
+	try:
+		provider = providers.for_account(account_doc)
+		capabilities = sorted(provider.capabilities())
+		provider_error = ""
+	except Exception as exc:
+		provider = None
+		capabilities = []
+		provider_error = str(exc)
 
 	endpoints = frappe.get_all(
 		"Excom Voice Endpoint",
@@ -571,7 +582,8 @@ def line_status(account: str):
 	return {
 		"account": account,
 		"provider": account_doc.get("voice_provider"),
-		"capabilities": sorted(provider.capabilities()),
+		"capabilities": capabilities,
+		"provider_error": provider_error,
 		"credentials_present": bool(account_doc.get("voice_auth_id")),
 		"agents_on_line": len(routing.line_agents(account)),
 		"endpoints": endpoints,
