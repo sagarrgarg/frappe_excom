@@ -299,6 +299,43 @@ def my_presence(account: str = ""):
 
 
 @frappe.whitelist()
+@user_rate_limit(limit=60, seconds=60)
+def identify_caller(number: str):
+	"""Who is calling, for the screen pop.
+
+	The pop can arrive by two routes: the server's `excom:call_ringing`, which carries the identity
+	already, and the softphone SDK's own incoming-call event, which carries only a number. The
+	second route is the one that still works when Frappe's realtime is down, so it needs a way to
+	put a name on the card.
+
+	Read-only and rate-limited. It answers for a number the agent could already have reached by
+	searching, and says nothing at all about one nobody has spoken to.
+	"""
+	_check_excom_access()
+	from excom.excom.channels.voice.routing import resolve_identity_readonly
+
+	identity = resolve_identity_readonly(number or "")
+	if not identity:
+		return {"found": False}
+
+	row = frappe.db.get_value(
+		"Omni Identity", identity, ["name", "display_name", "primary_phone"], as_dict=True
+	)
+	thread = frappe.db.get_value(
+		"Excom Thread",
+		{"omni_identity": identity},
+		"name",
+		order_by="last_message_at desc",
+	)
+	return {
+		"found": True,
+		"omni_identity": row.name,
+		"display_name": row.display_name or row.primary_phone,
+		"thread": thread,
+	}
+
+
+@frappe.whitelist()
 def softphone_config():
 	"""What the browser needs before it can show a dialler at all."""
 	_check_excom_access()

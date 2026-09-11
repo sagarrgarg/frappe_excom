@@ -85,6 +85,7 @@ export function useSoftphone() {
   const { call: postBrowserCall } = useFrappePostCall("excom.excom.api.voice.browser_call_started");
   const { call: postQuality } = useFrappePostCall("excom.excom.api.voice.report_quality");
   const { call: postEndCall } = useFrappePostCall("excom.excom.api.voice.end_call");
+  const { call: identify } = useFrappePostCall("excom.excom.api.voice.identify_caller");
 
   const [available, setAvailable] = useState(false);
   const [incoming, setIncoming] = useState<RingingEvent | null>(null);
@@ -116,7 +117,9 @@ export function useSoftphone() {
         options: payload.options ?? {},
         onIncoming: (_uuid, from) => {
           // The SDK ringing and the server's screen pop race. Whichever lands first shows a card;
-          // the other fills in the detail.
+          // the other fills in the detail. The SDK route is also the one that survives Frappe's
+          // realtime being down, so it looks the caller up itself rather than showing a bare
+          // number — a name is most of what a screen pop is for.
           setIncoming((prev) =>
             prev ?? {
               provider_call_id: "",
@@ -129,6 +132,19 @@ export function useSoftphone() {
               ring_seconds: 30,
             },
           );
+          identify({ number: from })
+            .then((res: any) => {
+              const who = res?.message;
+              if (!who?.found) return;
+              setIncoming((prev) =>
+                prev && !prev.omni_identity
+                  ? { ...prev, display_name: who.display_name, omni_identity: who.omni_identity }
+                  : prev,
+              );
+            })
+            .catch(() => {
+              /* a nameless pop still rings; this only adds the name */
+            });
         },
         onOutgoing: (uuid) => {
           const { peerNumber, threadId } = softphone.getState().call;
