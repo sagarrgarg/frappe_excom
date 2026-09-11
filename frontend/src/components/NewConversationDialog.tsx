@@ -6,6 +6,11 @@ import { toast } from "sonner";
 import { showError } from "./ErrorDialog";
 import { useSoftphoneContext } from "./voice/SoftphoneProvider";
 
+/** Enough digits to be worth offering to dial. Deliberately loose — the server validates. */
+function looksLikeNumber(text: string): boolean {
+  return (text || "").replace(/\D/g, "").length >= 6;
+}
+
 interface NewConversationDialogProps {
   onClose: () => void;
   onConversationCreated: (threadId: string, identityName: string) => void;
@@ -392,6 +397,30 @@ export function NewConversationDialog({
                 ))}
               </div>
 
+              {/* Searching a number that nobody has spoken to yet is the normal way to reach a new
+                  lead. Leaving the agent at "No identities found" with a dead button made them
+                  guess that the answer was a different tab. */}
+              {channel === "voice" && !selectedIdentity && looksLikeNumber(searchText) && (
+                <div className="flex items-center gap-2 rounded-lg border border-crayon-teal-base/40 bg-crayon-teal-tint p-3">
+                  <Phone className="w-4 h-4 shrink-0 text-crayon-teal-text" />
+                  <p className="min-w-0 flex-1 text-sm text-ink-1">
+                    Call <span className="font-medium">{searchText.trim()}</span> without saving a
+                    contact first
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={submitting || softphone?.state.call.phase !== "none"}
+                    onClick={() => {
+                      setTab("create");
+                      setNewPhone(searchText.trim());
+                    }}
+                  >
+                    Use this number
+                  </Button>
+                </div>
+              )}
+
               {selectedIdentity && (
                 <div className="bg-crayon-blue-tint border border-crayon-blue-base/40 rounded-lg p-3 flex items-center gap-3">
                   <User className="w-4 h-4 text-crayon-blue-text shrink-0" />
@@ -429,7 +458,7 @@ export function NewConversationDialog({
                   autoFocus
                 />
               </div>
-              {channel === "whatsapp" && (
+              {(channel === "whatsapp" || channel === "voice") && (
                 <div>
                   <label className="text-xs text-ink-3 mb-1 block">
                     Phone Number <span className="text-crayon-rose-text">*</span>
@@ -439,9 +468,14 @@ export function NewConversationDialog({
                     value={newPhone}
                     onChange={(e) => setNewPhone(e.target.value)}
                     className="bg-surface-sunken border-border-strong text-ink-1"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && channel === "voice" && canSubmit) handleSubmit();
+                    }}
                   />
                   <p className="text-xs text-ink-3 mt-1">
-                    Include country code (e.g. +91)
+                    {channel === "voice"
+                      ? "A local number is fine — 9876543210 works."
+                      : "Include country code (e.g. +91)"}
                   </p>
                 </div>
               )}
