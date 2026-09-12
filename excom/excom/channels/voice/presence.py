@@ -65,6 +65,20 @@ def is_registered(user: str, account: str) -> bool:
 	return bool(frappe.cache.get_value(_key(_REG, user, account), expires=True))
 
 
+def registered_line(user: str, accounts) -> str | None:
+	"""Whichever of these lines the agent's softphone is signed in to, if any.
+
+	The browser holds one line at a time — the SDK gives us a single client — so "is this agent
+	reachable in the browser" and "is this agent on *this* line" are different questions. Ringing
+	an agent needs the second. Letting them place a call needs the first, because the client can
+	move to another line before it dials.
+	"""
+	for account in accounts or []:
+		if account and is_registered(user, account):
+			return account
+	return None
+
+
 # ── availability ──────────────────────────────────────────────────────────────
 
 

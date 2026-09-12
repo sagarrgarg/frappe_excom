@@ -13,6 +13,7 @@ import { useInboxMeta } from "../../hooks/useInboxMeta";
 import { useExcomBranding } from "../../hooks/useBranding";
 import { currentUserFullName, currentUserImage } from "../../lib/ui-flag";
 import { AvailabilityToggle } from "../voice/AvailabilityToggle";
+import { LinePicker } from "../voice/LinePicker";
 import { useSoftphoneContext } from "../voice/SoftphoneProvider";
 import { MOD } from "../../lib/hotkeys";
 import { FeedbackDialog } from "./FeedbackDialog";
@@ -147,6 +148,7 @@ export function Rail() {
       <div className="flex-1" />
       {/* Sits directly above the avatar so an agent sees whether they are on the queue every time
           they reach for their own menu. Renders nothing if the site has no voice line. */}
+      <div className="px-1.5"><LinePicker compact={!expanded} /></div>
       <div className="px-1.5"><AvailabilityToggle compact={!expanded} /></div>
       <div className="h-px bg-border mx-3 my-2" />
 

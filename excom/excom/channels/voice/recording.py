@@ -106,7 +106,7 @@ def purge_expired_recordings() -> dict:
 			purged += 1
 		except Exception as exc:
 			frappe.log_error(
-				f"Could not purge the recording for {row.name}: {exc}", "Excom Voice Retention"
+				title="Excom Voice: could not purge a recording", message=f"{row.name}: {exc}"
 			)
 	frappe.db.commit()
 	return {"purged": purged, "retention_days": days}

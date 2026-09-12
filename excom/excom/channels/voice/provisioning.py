@@ -117,8 +117,8 @@ def sync_line(account: str) -> dict:
 		except Exception as exc:
 			failed.append({"user": user, "error": str(exc)[:200]})
 			frappe.log_error(
-				f"Could not provision a softphone for {user} on {account}: {exc}",
-				"Excom Voice Provisioning",
+				title="Excom Voice: could not provision a softphone",
+				message=f"{user} on {account}: {exc}",
 			)
 
 	for user in sorted(set(existing) - agents):

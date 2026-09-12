@@ -362,7 +362,7 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 			self._request("DELETE", f"Call/{quote(provider_call_id, safe='')}/")
 		except Exception as exc:
 			frappe.log_error(
-				f"Plivo hangup failed for {provider_call_id}: {exc}", "Excom Voice"
+				title="Excom Voice: Plivo hangup failed", message=f"{provider_call_id}: {exc}"
 			)
 
 	def fetch_call_details(self, provider_call_id: str) -> CallDetails:
@@ -372,7 +372,8 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 			resp = self._request("GET", f"Call/{quote(provider_call_id, safe='')}/")
 		except Exception as exc:
 			frappe.log_error(
-				f"Plivo CDR fetch failed for {provider_call_id}: {exc}", "Excom Voice Reconcile"
+				title="Excom Voice: Plivo CDR fetch failed",
+				message=f"{provider_call_id}: {exc}",
 			)
 			return CallDetails(provider_call_id=provider_call_id, found=False)
 
@@ -521,7 +522,9 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 		except ImportError:
 			pass
 		except Exception as exc:
-			frappe.log_error(f"Plivo signature check errored: {exc}", "Excom Voice")
+			frappe.log_error(
+				title="Excom Voice: Plivo signature check errored", message=str(exc)
+			)
 			return False
 
 		return self._verify_v3_locally(url, method, nonce, token, signature, form)
@@ -629,7 +632,9 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 						raw=row,
 					)
 		except Exception as exc:
-			frappe.log_error(f"Plivo endpoint lookup failed: {exc}", "Excom Voice")
+			frappe.log_error(
+				title="Excom Voice: Plivo endpoint lookup failed", message=str(exc)
+			)
 		return None
 
 	def deprovision_endpoint(self, endpoint_id: str) -> None:
@@ -639,7 +644,8 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 			self._request("DELETE", f"Endpoint/{quote(endpoint_id, safe='')}/")
 		except Exception as exc:
 			frappe.log_error(
-				f"Plivo endpoint delete failed for {endpoint_id}: {exc}", "Excom Voice"
+				title="Excom Voice: Plivo endpoint delete failed",
+				message=f"{endpoint_id}: {exc}",
 			)
 
 	def mint_access_token(self, endpoint_username: str, ttl_seconds: int) -> str:

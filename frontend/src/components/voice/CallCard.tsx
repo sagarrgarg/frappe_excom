@@ -3,6 +3,7 @@ import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Download, Loader2 } from "lu
 import { toast } from "sonner";
 import { Button } from "../primitives";
 import { cn } from "../ui/utils";
+import { formatServerTime, parseFrappeDateTime } from "../../utils/datetime";
 
 /**
  * A call, rendered in the thread timeline beside WhatsApp and email.
@@ -53,19 +54,33 @@ export function CallCard({ call, onCallBack }: { call: CallSummary; onCallBack?:
           {call.duration ? (
             <span className="text-xs tabular-nums text-ink-3">{mmss(call.duration)}</span>
           ) : null}
-          {call.transport === "Phone" && (
-            <span className="text-2xs uppercase tracking-wide text-ink-3">on phone</span>
-          )}
           {missed && onCallBack && call.customer_number && (
             <Button
               variant="subtle"
               size="sm"
-              className="ml-auto shrink-0"
+              className="shrink-0"
               onClick={() => onCallBack(call.customer_number as string)}
             >
               Call back
             </Button>
           )}
+        </div>
+
+        {/* The same footer a message bubble carries, so a call reads as one more thing that
+            happened at a time rather than a panel of its own. "on phone" belongs down here too:
+            which handset took the call is a detail, not the headline. */}
+        <div
+          className={cn(
+            "mt-0.5 flex items-center gap-1.5 text-xs text-ink-3",
+            inbound ? "" : "flex-row-reverse",
+          )}
+        >
+          {call.creation && (
+            <span className="tabular-nums shrink-0">
+              {formatServerTime(parseFrappeDateTime(call.creation))}
+            </span>
+          )}
+          {call.transport === "Phone" && <span className="shrink-0">on phone</span>}
         </div>
 
         {call.recording_status === "Ready" && (
@@ -138,12 +153,37 @@ function recordingUrl(call: string, download: boolean): string {
   return `/api/method/excom.excom.api.voice.get_recording?${params}`;
 }
 
+/**
+ * What the call is, in a conversation that is already about one person.
+ *
+ * Deliberately does not name them. Inside their thread the name was on the bubble, in the header
+ * above it and on the row that got you here — and now that direction is carried by which side the
+ * bubble sits on, "Missed call from Voice Test Contact" says one useful word out of five. Every
+ * chat app settles on the same shape: what happened, and how long it took.
+ *
+ * The outcome is kept specific rather than flattened into "missed", because a busy line and a
+ * number that never rang call for different things next.
+ */
 function label(call: CallSummary): string {
-  const who = call.display_name || call.customer_number || "Unknown";
-  if (MISSED.has(call.status)) {
-    return call.direction === "Inbound" ? `Missed call from ${who}` : `No answer from ${who}`;
+  const inbound = call.direction === "Inbound";
+  switch (call.status) {
+    case "Busy":
+      return inbound ? "Missed call" : "Line busy";
+    case "Failed":
+      return "Call failed";
+    case "Canceled":
+      return inbound ? "Missed call" : "Cancelled";
+    case "No Answer":
+      return inbound ? "Missed call" : "No answer";
+    case "Missed":
+      return "Missed call";
+    case "Ringing":
+      return inbound ? "Incoming call" : "Calling…";
+    case "In Progress":
+      return "On the call";
+    default:
+      return inbound ? "Incoming call" : "Outgoing call";
   }
-  return call.direction === "Inbound" ? `Call from ${who}` : `Call to ${who}`;
 }
 
 function mmss(total: number): string {

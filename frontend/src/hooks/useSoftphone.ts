@@ -17,9 +17,25 @@ import { softphone, type SoftphoneState } from "@/lib/softphone";
  *   - exposes the actions a component needs
  */
 
+/** One voice line this agent works. An agent may work several — India and the US, say. */
+export interface SoftphoneLine {
+  account: string;
+  account_name: string;
+  business_number?: string;
+  country_code?: string;
+  has_endpoint?: boolean;
+  browser_calls?: boolean;
+  phone_calls?: boolean;
+  allows_international?: boolean;
+  capabilities?: string[];
+  presence?: { available: boolean; registered: boolean; busy: boolean };
+}
+
 export interface SoftphoneConfig {
   enabled: boolean;
   reason?: string;
+  /** Every line the agent works. The top-level fields below describe the first of them. */
+  lines?: SoftphoneLine[];
   account?: string;
   account_name?: string;
   business_number?: string;
@@ -72,6 +88,25 @@ export interface EndedEvent {
   reason?: string;
 }
 
+/** Which line the agent last chose to be signed in on. Survives a reload. */
+const PREFERRED_LINE_KEY = "excom_voice_line";
+
+function rememberLine(account: string) {
+  try {
+    localStorage.setItem(PREFERRED_LINE_KEY, account);
+  } catch {
+    /* the preference is a convenience; the first line is a fine default */
+  }
+}
+
+function rememberedLine(): string {
+  try {
+    return localStorage.getItem(PREFERRED_LINE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
 const HEARTBEAT_FALLBACK = 60;
 const QUALITY_INTERVAL_MS = 60_000;
 /** The title alternates on this beat while the phone is ringing. */
@@ -99,21 +134,21 @@ export function useSoftphone() {
   const [incoming, setIncoming] = useState<RingingEvent | null>(null);
   const [answeredElsewhere, setAnsweredElsewhere] = useState<string>("");
 
-  const accountRef = useRef<string>("");
-  accountRef.current = config?.account ?? "";
+  const linesRef = useRef<SoftphoneLine[]>([]);
+  linesRef.current = config?.lines ?? [];
 
   useEffect(() => {
     if (config?.presence) setAvailable(config.presence.available);
   }, [config?.presence?.available]);
 
   // ── boot ────────────────────────────────────────────────────────────────
-  // Runs once the config says this agent has a softphone. Re-running is safe: boot() is idempotent
-  // and an existing client just gets the fresh token.
+  // One line at a time. The SDK keeps a single client on `window._PlivoInstance` and returns it to
+  // every later construction, so a second line cannot sit alongside the first — it replaces it.
+  // The agent therefore picks a line to be signed in on, and outbound switches as needed.
 
-  const bootedFor = useRef<string>("");
+  const bootedFor = useRef<Set<string>>(new Set());
 
-  const start = useCallback(async () => {
-    const account = accountRef.current;
+  const start = useCallback(async (account: string) => {
     if (!account) return;
     try {
       const res = (await getToken({ account })) as { message: TokenResponse };
@@ -121,6 +156,7 @@ export function useSoftphone() {
       if (!payload?.token) return;
 
       await softphone.boot({
+        account,
         token: payload.token,
         options: payload.options ?? {},
         onIncoming: (_uuid, from) => {
@@ -180,50 +216,93 @@ export function useSoftphone() {
         },
       });
 
-      bootedFor.current = account;
+      bootedFor.current.add(account);
       // Refresh well before expiry, so a token never lapses mid-shift.
       const after = Math.max(60, payload.refresh_after || 3000);
-      window.setTimeout(() => void start(), after * 1000);
+      window.setTimeout(() => void start(account), after * 1000);
     } catch (e: unknown) {
       toastError(e, "The softphone could not connect");
     }
   }, [getToken, postQuality]);
 
+  const bootable = (config?.lines ?? []).filter((l) => l.browser_calls && l.has_endpoint);
+  const bootableKey = bootable.map((l) => l.account).join("|");
+
+  /** The line to sign in on: whatever the agent last chose, else the first one they work. */
+  const preferredLine =
+    bootable.find((l) => l.account === rememberedLine())?.account || bootable[0]?.account || "";
+
   useEffect(() => {
-    if (!config?.enabled || !config.has_endpoint || !config.browser_calls) return;
-    if (bootedFor.current === config.account) return;
-    void start();
-  }, [config?.enabled, config?.has_endpoint, config?.browser_calls, config?.account, start]);
+    if (!config?.enabled || !preferredLine) return;
+    if (bootedFor.current.has(preferredLine)) return;
+    void start(preferredLine);
+  }, [config?.enabled, bootableKey, preferredLine, start]);
+
+  /** Sign the browser in on another line. Resolves true once that line is actually reachable. */
+  const switchLine = useCallback(
+    async (account: string): Promise<boolean> => {
+      if (!account) return false;
+      if (softphone.getState().activeAccount === account) {
+        return softphone.isRegisteredOn(account);
+      }
+      try {
+        await start(account);
+        return await softphone.waitUntilRegistered(account);
+      } catch (e: unknown) {
+        toastError(e, "Could not switch line");
+        return false;
+      }
+    },
+    [start],
+  );
 
   // ── heartbeat ───────────────────────────────────────────────────────────
   // A registered socket is not proof the agent is reachable — the tab could be gone and the socket
   // half-open. The heartbeat is what actually keeps them in a ring set, and stopping it is what
   // takes them out.
 
+  // Only the line the browser is actually signed in to gets a heartbeat. The others must fall out
+  // of their ring sets, or a caller is put through to a desk that cannot answer.
+  const liveAccount =
+    state.registration === "registered" ? state.activeAccount ?? "" : "";
+
   useEffect(() => {
-    const account = config?.account;
-    if (!account || state.registration !== "registered") return;
+    if (!liveAccount) return;
 
     const every = (config?.heartbeat_seconds || HEARTBEAT_FALLBACK) * 1000;
     const beat = () => {
-      postHeartbeat({ account, registered: 1 }).catch(() => {
+      postHeartbeat({ account: liveAccount, registered: 1 }).catch(() => {
         /* one missed beat is tolerated by the TTL; noise here helps nobody */
       });
     };
     beat();
     const id = window.setInterval(beat, every);
     return () => window.clearInterval(id);
-  }, [config?.account, config?.heartbeat_seconds, state.registration, postHeartbeat]);
+  }, [liveAccount, config?.heartbeat_seconds, postHeartbeat]);
+
+  // Leaving a line must take the agent out of its ring set at once, rather than 150 seconds later.
+  const previousLive = useRef<string>("");
+  useEffect(() => {
+    const left = previousLive.current;
+    previousLive.current = liveAccount;
+    if (left && left !== liveAccount) {
+      postHeartbeat({ account: left, registered: 0 }).catch(() => {
+        /* the TTL will retire it anyway */
+      });
+    }
+  }, [liveAccount, postHeartbeat]);
 
   // Signing off should be instant, not "within 150 seconds".
   useEffect(() => {
-    const account = config?.account;
-    if (!account) return;
+    const accounts = (config?.lines ?? []).map((l) => l.account);
+    if (!accounts.length) return;
     const onLeave = () => {
       try {
-        navigator.sendBeacon?.(
-          `/api/method/excom.excom.api.voice.heartbeat?account=${encodeURIComponent(account)}&registered=0`,
-        );
+        for (const account of accounts) {
+          navigator.sendBeacon?.(
+            `/api/method/excom.excom.api.voice.heartbeat?account=${encodeURIComponent(account)}&registered=0`,
+          );
+        }
       } catch {
         /* best effort — the TTL is the real guarantee */
       }
@@ -368,11 +447,18 @@ export function useSoftphone() {
   );
 
   const dial = useCallback(
-    async (toNumber: string, opts: { thread?: string; displayName?: string; transport?: string } = {}) => {
+    async (
+      toNumber: string,
+      opts: { thread?: string; displayName?: string; transport?: string; account?: string } = {},
+    ) => {
       try {
         const res = (await postDial({
+          // Deliberately not naming a line. The server picks by destination — the Indian number on
+          // the Indian line, the American one on the American line — and naming one here would
+          // short-circuit that and bill an international call to whichever line happened to load
+          // first. `opts.account` exists for the caller who really does mean a specific line.
           to_number: toNumber,
-          account: config?.account ?? "",
+          account: opts.account ?? "",
           thread: opts.thread ?? "",
           transport: opts.transport ?? "",
         })) as { message: any };
@@ -391,11 +477,30 @@ export function useSoftphone() {
           return plan;
         }
 
+        // `plan.account` is the line the server chose from the destination. The browser can only
+        // be signed in to one line at a time, so if that is not the line we are on, sign in there
+        // first — dialling an American number while signed in to the Indian account puts the call
+        // out over the wrong provider, and it comes back as a bare "Busy".
+        if (softphone.getState().activeAccount !== plan.account) {
+          const name =
+            linesRef.current.find((l) => l.account === plan.account)?.account_name || plan.account;
+          const switching = toast.loading(`Switching to ${name}…`);
+          const ready = await switchLine(plan.account);
+          toast.dismiss(switching);
+          if (!ready) {
+            toast.error(`Could not sign in to ${name}`, {
+              description: "The call was not placed. Try again in a moment.",
+            });
+            return null;
+          }
+        }
+
         // The leg is registered from the `onOutgoing` hook, not here: the SDK has no call uuid yet
         // at this point, so reading one back now would always be null.
         softphone.call(plan.dial_string, plan.extra_headers ?? {}, {
           displayName: opts.displayName || toNumber,
           threadId: opts.thread ?? null,
+          account: plan.account,
         });
         return plan;
       } catch (e: unknown) {
@@ -403,12 +508,23 @@ export function useSoftphone() {
         return null;
       }
     },
-    [config?.account, postDial, postBrowserCall],
+    [postDial, postBrowserCall, switchLine],
   );
 
   // Both stop the ring by hand rather than leaving it to the effect's cleanup. The cleanup does run
   // — but a render later, and a ringtone that carries on past the click on Answer is the first
   // thing anyone notices.
+
+  // After a call placed on another line, come home. The line the browser is signed in to is the
+  // only line it can receive on, so staying on the American desk after one American call would
+  // quietly stop Indian calls from ringing at all.
+  useEffect(() => {
+    if (state.call.phase !== "none") return;
+    if (!preferredLine || !state.activeAccount) return;
+    if (state.activeAccount === preferredLine) return;
+    const id = window.setTimeout(() => void switchLine(preferredLine), 1500);
+    return () => window.clearTimeout(id);
+  }, [state.call.phase, state.activeAccount, preferredLine, switchLine]);
 
   const answer = useCallback(() => {
     ringtone.stop();
@@ -450,8 +566,17 @@ export function useSoftphone() {
     hangup,
     toggleMute: () => softphone.toggleMute(),
     sendDigit: (tone: string) => softphone.sendDigit(tone),
-    canCallInBrowser: Boolean(config?.browser_calls && config?.has_endpoint),
-    canCallOnPhone: Boolean(config?.phone_calls),
+    lines: config?.lines ?? [],
+    activeLine: state.activeAccount,
+    /** Sign in on another line. The agent's choice is remembered across reloads. */
+    chooseLine: async (account: string) => {
+      rememberLine(account);
+      return switchLine(account);
+    },
+    // Asked across every line, not just the first: an agent whose Indian desk is phone-only can
+    // still call from the browser if their American desk has a softphone.
+    canCallInBrowser: (config?.lines ?? []).some((l) => l.browser_calls && l.has_endpoint),
+    canCallOnPhone: (config?.lines ?? []).some((l) => l.phone_calls),
   };
 }
 

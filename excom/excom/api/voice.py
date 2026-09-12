@@ -364,29 +364,63 @@ def identify_caller(number: str):
 
 @frappe.whitelist()
 def softphone_config():
-	"""What the browser needs before it can show a dialler at all."""
+	"""What the browser needs before it can show a dialler at all.
+
+	Reports every line this agent works, not just the first. An agent on both the Indian and the
+	American line has to be reachable on both — a caller who dials the New York number does not
+	care which desk the agent happens to have registered on — so the browser registers once per
+	line and this is the list it registers from.
+
+	The top-level fields describe the primary line and are kept for anything still reading them.
+	"""
 	_check_excom_access()
 	user = frappe.session.user
-	account = outbound.default_voice_account(user)
-	if not account:
+	names = outbound.agent_lines(user)
+	if not names:
 		return {"enabled": False, "reason": "no_line"}
 
-	account_doc = frappe.get_cached_doc("Excom Channel Account", account)
-	provider = providers.for_account(account_doc)
-	endpoint = frappe.db.exists(
-		"Excom Voice Endpoint", {"user": user, "channel_account": account, "status": "Active"}
-	)
+	lines = []
+	for name in names:
+		account_doc = frappe.get_cached_doc("Excom Channel Account", name)
+		try:
+			capabilities = sorted(providers.for_account(account_doc).capabilities())
+		except Exception:
+			# A line with a provider we have no adapter for must not blank the dialler for the
+			# lines that do work.
+			capabilities = []
+		lines.append(
+			{
+				"account": name,
+				"account_name": account_doc.account_name,
+				"business_number": account_doc.get("voice_number"),
+				"country_code": outbound.line_country_code(account_doc),
+				"has_endpoint": bool(
+					frappe.db.exists(
+						"Excom Voice Endpoint",
+						{"user": user, "channel_account": name, "status": "Active"},
+					)
+				),
+				"browser_calls": bool(account_doc.get("voice_allow_browser_calls")),
+				"phone_calls": bool(account_doc.get("voice_allow_phone_calls")),
+				"allows_international": bool(account_doc.get("voice_allow_international")),
+				"capabilities": capabilities,
+				"presence": presence.snapshot(user, name),
+			}
+		)
+
+	primary = lines[0]
 	return {
 		"enabled": True,
-		"account": account,
-		"account_name": account_doc.account_name,
-		"business_number": account_doc.get("voice_number"),
-		"has_endpoint": bool(endpoint),
-		"browser_calls": bool(account_doc.get("voice_allow_browser_calls")),
-		"phone_calls": bool(account_doc.get("voice_allow_phone_calls")),
-		"capabilities": sorted(provider.capabilities()),
-		"presence": presence.snapshot(user, account),
+		"lines": lines,
 		"heartbeat_seconds": presence.HEARTBEAT_SECONDS,
+		"account": primary["account"],
+		"account_name": primary["account_name"],
+		"business_number": primary["business_number"],
+		"has_endpoint": primary["has_endpoint"],
+		"browser_calls": primary["browser_calls"],
+		"phone_calls": primary["phone_calls"],
+		"capabilities": primary["capabilities"],
+		"presence": primary["presence"],
 	}
 
 

@@ -116,17 +116,23 @@ def dial(
 ) -> dict:
 	"""Start an outbound call. Returns what the browser should do next."""
 	user = user or frappe.session.user
-	account = account or default_voice_account()
-	if not account:
-		frappe.throw(_("No voice line is configured. An administrator can set one up in Admin."))
 
-	account_doc = frappe.get_cached_doc("Excom Channel Account", account)
-	if account_doc.status != "Active":
-		frappe.throw(_("The voice line {0} is inactive.").format(account_doc.account_name))
+	# Two steps that look circular and are not. Normalising a bare number needs a line, because
+	# "9250333699" only means India if the agent's own line is Indian; choosing a line needs the
+	# number, because the destination country decides. So the agent's usual line resolves what they
+	# typed, and the resulting country then picks the line that will actually carry the call.
+	home = account or default_voice_account(user)
+	if not home:
+		frappe.throw(_("No voice line is configured. An administrator can set one up in Admin."))
 
 	# Contact lists hold national numbers - 09217025599, 9217025599, 092170 25599 - and a provider
 	# only accepts E.164. Validating before converting refused to dial most of the address book.
-	number = to_e164(to_number, account_doc)
+	number = to_e164(to_number, frappe.get_cached_doc("Excom Channel Account", home))
+
+	account = account or line_for_destination(user, number) or home
+	account_doc = frappe.get_cached_doc("Excom Channel Account", account)
+	if account_doc.status != "Active":
+		frappe.throw(_("The voice line {0} is inactive.").format(account_doc.account_name))
 
 	check_dialling_allowed(user, number, account_doc)
 
@@ -147,8 +153,13 @@ def _dial_from_browser(user, number, account_doc, thread, provider) -> dict:
 	"""
 	from excom.excom.channels.voice.providers.plivo import SIP_HEADER_PREFIX
 
+	# Each of these names the line. With one line "this line" was unambiguous; with two, an agent
+	# told their softphone is not connected has to know which desk to go and look at — and the line
+	# is chosen by the destination, so it is rarely the one they were last looking at.
+	line = account_doc.account_name or account_doc.name
+
 	if not account_doc.get("voice_allow_browser_calls"):
-		frappe.throw(_("Browser calling is switched off for this line."))
+		frappe.throw(_("Browser calling is switched off on {0}.").format(line))
 
 	endpoint = frappe.db.get_value(
 		"Excom Voice Endpoint",
@@ -157,10 +168,24 @@ def _dial_from_browser(user, number, account_doc, thread, provider) -> dict:
 	)
 	if not endpoint:
 		frappe.throw(
-			_("You do not have a softphone on this line yet. An administrator can set one up.")
+			_("You do not have a softphone on {0} yet. An administrator can set one up.").format(
+				line
+			)
 		)
-	if not presence.is_registered(user, account_doc.name):
-		frappe.throw(_("Your softphone is not connected. Reload Excom and allow the microphone."))
+	# Not "are you on this line" but "is your softphone working at all".
+	#
+	# The line comes from the destination, and the browser can only be signed in to one line at a
+	# time — so an agent dialling an Indian number while signed in to the American desk is the
+	# normal case, not an error. Refusing here made it unreachable: the client switches line on the
+	# plan we return, so throwing before we return it meant the switch could never happen and the
+	# call was rejected for a condition the client was about to fix.
+	#
+	# The guard that actually matters is in the browser: `softphone.call` refuses if the switch did
+	# not land, so a call can never go out over the wrong provider account.
+	if not presence.registered_line(user, agent_lines(user)):
+		frappe.throw(
+			_("Your softphone is not connected. Reload Excom and allow the microphone.")
+		)
 
 	# The browser SDK takes headers as an object, not the comma-joined string the REST API wants.
 	headers = {
@@ -413,35 +438,94 @@ def _log_denial(user: str, number: str, reason: str) -> None:
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
-def default_voice_account(user: str = "") -> str | None:
-	"""The line this agent should dial out on: the one they have a softphone on, else the default
-	outgoing line, else the only active one."""
+def agent_lines(user: str = "") -> list[str]:
+	"""Every voice line this agent is allowed to dial out on, the preferred one first.
+
+	Which agents work a line is already a property of the line: `Excom Channel Account` carries a
+	table of teams, and an empty table means everybody. That is the same rule the inbound ring set
+	obeys, so obeying it here is what makes a line a permission rather than a suggestion — put the
+	international desk on the American line and only they can spend on it, in either direction.
+
+	Ordered, not merely collected. With one line the order never mattered; with two, "whichever row
+	the database happened to return" decides which country a call is billed in.
+	"""
+	from excom.excom.channels.voice.routing import line_agents
+
 	user = user or frappe.session.user
-	mine = frappe.get_all(
-		"Excom Voice Endpoint",
-		filters={"user": user, "status": "Active"},
-		pluck="channel_account",
-		limit=1,
+	mine = set(
+		frappe.get_all(
+			"Excom Voice Endpoint",
+			filters={"user": user, "status": "Active"},
+			pluck="channel_account",
+		)
 	)
-	if mine:
-		return mine[0]
-
-	preferred = frappe.get_all(
-		"Excom Channel Account",
-		filters={"channel": "voice", "status": "Active", "is_default_outgoing": 1},
-		pluck="name",
-		limit=1,
-	)
-	if preferred:
-		return preferred[0]
-
-	any_line = frappe.get_all(
+	lines = frappe.get_all(
 		"Excom Channel Account",
 		filters={"channel": "voice", "status": "Active"},
-		pluck="name",
-		limit=1,
+		fields=["name", "is_default_outgoing"],
+		order_by="is_default_outgoing desc, creation asc",
 	)
-	return any_line[0] if any_line else None
+
+	allowed = []
+	for row in lines:
+		try:
+			if any(agent.get("user") == user for agent in line_agents(row.name)):
+				allowed.append(row.name)
+		except Exception:
+			# A line whose team list cannot be read must not take the agent's other lines down
+			# with it — they may be mid-call on one of them.
+			continue
+
+	# A line the agent has a softphone on comes before one they do not, and the default-outgoing
+	# line comes before the rest. Both orderings are stable, so the same call always picks the same
+	# line.
+	return [n for n in allowed if n in mine] + [n for n in allowed if n not in mine]
+
+
+def default_voice_account(user: str = "") -> str | None:
+	"""The line this agent dials out on when nothing says otherwise."""
+	lines = agent_lines(user)
+	return lines[0] if lines else None
+
+
+def line_for_destination(user: str, number: str, candidates: list[str] | None = None) -> str | None:
+	"""Which line should carry a call to this number.
+
+	A provider account is tied to a country: ours can dial India and not America, the American one
+	can dial America and not India, and each has its own caller id. So the destination decides the
+	line, in this order:
+
+	  1. a line that lives in the destination's own country — a local call, right caller id, and
+	     it can never be refused as a barred destination;
+	  2. failing that, a line permitted to dial abroad;
+	  3. failing that, the agent's usual line, which will refuse with a reason rather than
+	     silently picking one that cannot place the call.
+
+	Without this, two lines means the database decides, and it decides differently each time: an
+	Indian number goes out on the American line at international rates showing a +1 caller id, or
+	an American number goes out on the Indian line and the carrier bars it.
+	"""
+	# `is None` rather than a falsy test: an empty list means "this agent has no line", and `or`
+	# would quietly turn that into "go and find one", which is the opposite answer.
+	if candidates is None:
+		candidates = agent_lines(user)
+	if not candidates:
+		return None
+
+	# An unrecognised country code matches no line, so it falls through to the international one —
+	# the same call `_is_international` makes. A number we cannot place is far more likely to be
+	# abroad than at home, and the domestic line would only have it barred by the carrier.
+	target = country_code_of(number)
+
+	abroad = None
+	for name in candidates:
+		doc = frappe.get_cached_doc("Excom Channel Account", name)
+		if target and line_country_code(doc) == target:
+			return name
+		if abroad is None and doc.get("voice_allow_international"):
+			abroad = name
+
+	return abroad or candidates[0]
 
 
 def preferred_transport(user: str, account: str, account_doc=None) -> str:
@@ -452,7 +536,18 @@ def preferred_transport(user: str, account: str, account_doc=None) -> str:
 	failing.
 	"""
 	account_doc = account_doc or frappe.get_cached_doc("Excom Channel Account", account)
-	if account_doc.get("voice_allow_browser_calls") and presence.is_registered(user, account):
+
+	# A softphone signed in to a *different* line still counts. It is one client that can move, and
+	# the destination is what chose this line — so asking "are you registered here" would send an
+	# Indian call to the agent's handset merely because their browser happened to be sitting on the
+	# American desk. What disqualifies the browser is a softphone that is not running anywhere.
+	softphone_alive = bool(presence.registered_line(user, agent_lines(user)))
+	has_endpoint = bool(
+		frappe.db.exists(
+			"Excom Voice Endpoint", {"user": user, "channel_account": account, "status": "Active"}
+		)
+	)
+	if account_doc.get("voice_allow_browser_calls") and softphone_alive and has_endpoint:
 		return "Browser"
 	if account_doc.get("voice_allow_phone_calls"):
 		return "Phone"

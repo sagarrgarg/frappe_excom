@@ -121,6 +121,16 @@ def persist_call(
 		)
 		contact_number = normalize_phone(caller_number)
 
+		# The last line of defence against a conversation opened with ourselves. A SIP address is
+		# one of our own softphones, and our own DID is the line the call arrived on; neither is a
+		# customer, and an identity built from either is junk that lands in everybody's inbox and
+		# cannot sensibly be merged away. A call with no contact is the better failure.
+		if str(caller_number or "").startswith("sip:"):
+			contact_number = ""
+		own_number = _digits((account_doc.get("voice_number") if account_doc else "") or "")
+		if own_number and _digits(contact_number) == own_number:
+			contact_number = ""
+
 		if not identity and contact_number:
 			from excom.excom.doctype.omni_identity.omni_identity import resolve_identity
 
@@ -203,7 +213,7 @@ def _write_timeline_stub(call, thread: str, identity: str, account: str, directi
 		message.insert(ignore_permissions=True)
 	except Exception as exc:
 		frappe.log_error(
-			f"Call {call.name}: timeline stub failed: {exc}", "Excom Voice"
+			title="Excom Voice: timeline stub failed", message=f"Call {call.name}: {exc}"
 		)
 
 
@@ -232,6 +242,56 @@ def _trim(payload: dict, limit: int = 60) -> dict:
 # ── events ────────────────────────────────────────────────────────────────────
 
 
+def _participants(event: CallEvent, account: str) -> tuple[str, str, str]:
+	"""Work out the direction, the customer and our own number from one webhook.
+
+	A webhook can describe either leg of a call, and neither leg puts the customer in a fixed
+	field. Reading `From` as "the customer" — which is what this used to do — is wrong twice over:
+
+	* On the B leg of a ``<Dial>``, `From` is the caller id we asked Plivo to present, so the
+	  customer came out as **our own business number** and every such call opened a conversation
+	  with ourselves.
+	* On a leg the browser placed, `From` is a SIP address like
+	  ``sip:<endpoint>_<auth id>@phone.plivo.com``. Stripped of its punctuation that becomes an
+	  eighteen-digit contact — a conversation named after our own softphone.
+
+	So rather than trusting a field, eliminate: whichever of the two numbers is neither a SIP
+	address of ours nor this line's own number is the customer. If both are ours we return nothing
+	and the record is created without a contact, which is a call with a missing name rather than a
+	junk contact in everybody's inbox.
+	"""
+	line_number = normalize_phone(
+		frappe.db.get_value("Excom Channel Account", account, "voice_number") or ""
+	)
+	raw_from = str(event.from_number or "")
+	raw_to = str(event.to_number or "")
+
+	# Plivo calls a browser-originated leg "inbound" — it is inbound to Plivo. The SIP address is
+	# what actually says the call came from one of our own softphones, which makes it outbound.
+	from_browser = raw_from.startswith("sip:")
+	direction = "Outbound" if (from_browser or event.direction == "outbound") else "Inbound"
+
+	customer = ""
+	for candidate in (raw_from, raw_to):
+		if candidate.startswith("sip:"):
+			continue
+		# Compared as bare digits, deliberately. We store a line in E.164 with its `+` and the
+		# provider sends the same number without one; compared as strings those never matched,
+		# which is precisely why our own number kept arriving in the inbox as a customer.
+		digits = _digits(candidate)
+		if not digits or digits == _digits(line_number):
+			continue
+		customer = f"+{digits}"
+		break
+
+	return direction, customer, line_number
+
+
+def _digits(value: str) -> str:
+	"""A phone number reduced to the only part two spellings of it agree on."""
+	return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
 def apply_event(event: CallEvent, account: str) -> dict:
 	"""Fold one normalised provider event into the call record.
 
@@ -248,12 +308,14 @@ def apply_event(event: CallEvent, account: str) -> dict:
 		)
 		if not name:
 			# The answer URL's enqueued write has not landed yet, or this is a leg we never saw.
+			direction, customer, business = _participants(event, account)
 			name = persist_call(
 				provider_call_id=event.provider_call_id,
 				account=account,
-				direction="Inbound" if event.direction != "outbound" else "Outbound",
-				caller_number=event.from_number,
-				business_number=event.business_number or event.to_number,
+				direction=direction,
+				caller_number=customer,
+				business_number=business,
+				transport="Browser" if str(event.from_number or "").startswith("sip:") else "Phone",
 				raw=event.raw,
 			)
 			if not name:

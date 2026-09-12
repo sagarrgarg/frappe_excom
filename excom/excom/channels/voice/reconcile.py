@@ -48,7 +48,7 @@ def reconcile_pending_calls() -> dict:
 		except Exception as exc:
 			failed += 1
 			frappe.log_error(
-				f"Reconcile failed for {row.name}: {exc}", "Excom Voice Reconcile"
+				title="Excom Voice: reconcile failed", message=f"{row.name}: {exc}"
 			)
 	frappe.db.commit()
 

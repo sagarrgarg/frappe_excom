@@ -22,7 +22,7 @@ from frappe.utils import cint
 
 from excom.excom.channels.voice import presence
 from excom.excom.channels.voice.providers.base import CallDecision, Destination
-from excom.excom.utils.phone import normalize_phone
+from excom.excom.utils.phone import normalize_phone, phone_variants
 
 CACHE_TTL = 300
 _ACCOUNT_BY_DID = "excom:voice:did"
@@ -131,7 +131,7 @@ def resolve_identity_readonly(caller_number: str) -> str | None:
 	if not normalized:
 		return None
 
-	for candidate in _phone_variants(normalized):
+	for candidate in phone_variants(normalized):
 		found = frappe.db.get_value(
 			"Omni Identity",
 			{"normalized_phone": candidate, "status": ["!=", "Merged"]},
@@ -140,7 +140,7 @@ def resolve_identity_readonly(caller_number: str) -> str | None:
 		if found:
 			return found
 
-	for candidate in _phone_variants(normalized):
+	for candidate in phone_variants(normalized):
 		alias_parent = frappe.db.get_value(
 			"Omni Identity Alias",
 			{
@@ -153,21 +153,6 @@ def resolve_identity_readonly(caller_number: str) -> str | None:
 		if alias_parent:
 			return alias_parent
 	return None
-
-
-def _phone_variants(normalized: str) -> list[str]:
-	"""The same number as different systems write it. Bounded and exact — never a LIKE."""
-	bare = normalized.lstrip("+")
-	variants = [normalized, bare, f"+{bare}"]
-	if len(bare) > 10:
-		national = bare[-10:]
-		variants += [national, f"+91{national}", f"91{national}", f"0{national}"]
-	seen, out = set(), []
-	for value in variants:
-		if value and value not in seen:
-			seen.add(value)
-			out.append(value)
-	return out
 
 
 def sticky_agent(identity: str) -> str | None:

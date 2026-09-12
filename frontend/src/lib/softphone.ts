@@ -35,15 +35,32 @@ export interface CallState {
   startedAt: number | null;
   /** Only ever "Browser" here — a call on the agent's handset never reaches the SDK. */
   transport?: "Browser" | "Phone";
+  /** Which line is carrying this call. Every control has to act on that line's own client. */
+  account: string | null;
+}
+
+/** One line's own registration, so the UI can say which desk is down rather than "the softphone". */
+export interface LineState {
+  account: string;
+  registration: RegistrationState;
+  error: string;
 }
 
 export interface SoftphoneState {
   registration: RegistrationState;
+  /**
+   * The line the browser is currently signed in to. Exactly one, ever: the Plivo SDK keeps a
+   * single client on `window._PlivoInstance` and hands it back to every later construction, so a
+   * second line cannot be registered alongside the first — it replaces it.
+   */
+  activeAccount: string | null;
   error: string;
   micDenied: boolean;
   call: CallState;
   /** Last quality sample the SDK reported, for the "the line was terrible" conversation. */
   quality: Record<string, unknown> | null;
+  /** Per line, keyed by account name. */
+  lines: Record<string, LineState>;
 }
 
 const EMPTY_CALL: CallState = {
@@ -56,6 +73,7 @@ const EMPTY_CALL: CallState = {
   displayName: "",
   muted: false,
   startedAt: null,
+  account: null,
 };
 
 const INITIAL: SoftphoneState = {
@@ -64,7 +82,19 @@ const INITIAL: SoftphoneState = {
   micDenied: false,
   call: EMPTY_CALL,
   quality: null,
+  lines: {},
+  activeAccount: null,
 };
+
+/** Worst to best. The agent is as reachable as their best line. */
+const REGISTRATION_RANK: RegistrationState[] = [
+  "unsupported",
+  "failed",
+  "idle",
+  "loading",
+  "registering",
+  "registered",
+];
 
 type Listener = (state: SoftphoneState) => void;
 
@@ -82,6 +112,8 @@ const DEBUG = (() => {
 })();
 
 export interface BootOptions {
+  /** The line this client serves. Boot once per line the agent works. */
+  account: string;
   token: string;
   options: Record<string, unknown>;
   /** Called when the SDK reports an incoming call, so the app can resolve the caller. */
@@ -100,10 +132,11 @@ export interface BootOptions {
 class Softphone {
   private state: SoftphoneState = INITIAL;
   private listeners = new Set<Listener>();
+  /** The one client the SDK will give us, whichever line it is currently signed in to. */
   private sdk: any = null;
   private client: any = null;
   private booting: Promise<void> | null = null;
-  private hooks: Omit<BootOptions, "token" | "options"> = {};
+  private hooks: Omit<BootOptions, "token" | "options" | "account"> = {};
   /** One record per dial the agent asked for, however many times the SDK reports progress. */
   private outgoingReported = false;
 
@@ -125,32 +158,150 @@ class Softphone {
     this.set({ call: { ...this.state.call, ...patch } });
   }
 
+  /** Record one line's registration and recompute the aggregate the UI reads. */
+  private setLine(account: string, patch: Partial<Omit<LineState, "account">>) {
+    const previous = this.state.lines[account] ?? {
+      account,
+      registration: "idle" as RegistrationState,
+      error: "",
+    };
+    const lines = { ...this.state.lines, [account]: { ...previous, ...patch, account } };
+    const best = Object.values(lines).reduce<RegistrationState>(
+      (winner, line) =>
+        REGISTRATION_RANK.indexOf(line.registration) > REGISTRATION_RANK.indexOf(winner)
+          ? line.registration
+          : winner,
+      "idle",
+    );
+    // Only surface an error while nothing is working. One failed line out of two is worth showing
+    // on that line, not as "the softphone is broken".
+    const broken = Object.values(lines).filter((l) => l.error);
+    this.set({
+      lines,
+      registration: best,
+      error: best === "registered" ? "" : broken[0]?.error || "",
+    });
+  }
+
+  /** Is the browser signed in to this particular line right now? */
+  isRegisteredOn(account: string): boolean {
+    return (
+      this.state.activeAccount === account && this.state.registration === "registered"
+    );
+  }
+
+  /**
+   * Resolves once this line is actually registered, or false if it does not get there in time.
+   *
+   * Switching line is not instant — the client signs out, signs back in and re-registers — and
+   * dialling into that gap fails with no useful error. Anything that switches in order to place a
+   * call has to wait here first.
+   */
+  waitUntilRegistered(account: string, timeoutMs = 12_000): Promise<boolean> {
+    if (this.isRegisteredOn(account)) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (ok: boolean) => {
+        if (done) return;
+        done = true;
+        unsubscribe();
+        window.clearTimeout(timer);
+        resolve(ok);
+      };
+      const timer = window.setTimeout(() => finish(false), timeoutMs);
+      const unsubscribe = this.subscribe((state) => {
+        if (state.activeAccount !== account) return;
+        if (state.registration === "registered") finish(true);
+        if (state.registration === "failed" || state.registration === "unsupported") finish(false);
+      });
+    });
+  }
+
   // ── lifecycle ─────────────────────────────────────────────────────────────
 
   get isRegistered() {
     return this.state.registration === "registered";
   }
 
-  /** Idempotent. Calling it again while a boot is in flight joins that boot. */
-  async boot({ token, options, ...hooks }: BootOptions): Promise<void> {
+  /**
+   * Sign the browser in to a line.
+   *
+   * Calling it for a second line is a *switch*, not an addition: the SDK's single client is signed
+   * out of the first and in to the second. That is forced on us — `new Plivo()` returns the
+   * existing `window._PlivoInstance` and discards the options — and pretending otherwise put a
+   * call to an Indian number out over the American account.
+   */
+  async boot({ account, token, options, ...hooks }: BootOptions): Promise<void> {
     this.hooks = hooks;
+
+    if (this.client && this.state.activeAccount === account) {
+      // Already signed in to this line: just refresh the credential.
+      return this.relogin(account, token);
+    }
     if (this.client) {
-      // Already up: just refresh the credential.
-      return this.relogin(token);
+      // A different line. The client cannot be handed over, so it is replaced.
+      if (this.state.call.phase !== "none") {
+        throw new Error("Finish the current call before switching line.");
+      }
+      return this.switchTo(account, token, options);
     }
     if (this.booting) return this.booting;
 
-    this.booting = this.doBoot(token, options).finally(() => {
+    this.booting = this.doBoot(account, token, options).finally(() => {
       this.booting = null;
     });
     return this.booting;
   }
 
-  private async doBoot(token: string, options: Record<string, unknown>) {
-    this.set({ registration: "loading", error: "" });
+  /**
+   * Move to another line by throwing the client away and building a new one.
+   *
+   * Logging the same client out and back in as a different Plivo account does not work: it
+   * re-registers happily and then fails the first INVITE with `Authentication Error`, because the
+   * credentials it answers the auth challenge with belong to the account it used to be. It also
+   * keeps the options it was constructed with, so the American line would go on using the Indian
+   * line's `clientRegion`.
+   *
+   * `new Plivo()` returns `window._PlivoInstance` whenever that exists, so clearing it is what
+   * makes a second construction real.
+   */
+  private async switchTo(
+    account: string,
+    token: string,
+    options: Record<string, unknown>,
+  ): Promise<void> {
+    const previous = this.state.activeAccount;
+    if (previous) this.setLine(previous, { registration: "idle", error: "" });
+
+    try {
+      this.client?.logout?.();
+    } catch {
+      /* a client that will not log out cleanly is about to be discarded anyway */
+    }
+    teardownVendorAudio();
+    try {
+      delete (window as any)._PlivoInstance;
+    } catch {
+      /* if the global cannot be cleared the SDK hands back the old client and login still runs */
+    }
+
+    this.sdk = null;
+    this.client = null;
+    this.booting = null;
+    this.set({ activeAccount: null });
+
+    return this.doBoot(account, token, options);
+  }
+
+  private async doBoot(account: string, token: string, options: Record<string, unknown>) {
+    this.set({ activeAccount: account });
+    this.setLine(account, { registration: "loading", error: "" });
 
     if (typeof window === "undefined" || !window.RTCPeerConnection) {
-      this.set({ registration: "unsupported", error: "This browser cannot make calls." });
+      this.setLine(account, {
+        registration: "unsupported",
+        error: "This browser cannot make calls.",
+      });
       return;
     }
 
@@ -164,24 +315,31 @@ class Softphone {
       Ctor = (window as any).Plivo;
     }
     if (typeof Ctor !== "function") {
-      this.set({ registration: "unsupported", error: "The calling library could not be loaded." });
+      this.setLine(account, {
+        registration: "unsupported",
+        error: "The calling library could not be loaded.",
+      });
       return;
     }
 
     try {
-      if (DEBUG) console.info("[excom softphone] booting with options", options);
+      if (DEBUG) console.info(`[excom softphone] booting ${account} with options`, options);
       this.sdk = new Ctor(options);
       this.client = this.sdk.client;
       if (!this.client) throw new Error("The calling library started but exposed no client.");
+
+      // Wired per client, and the handlers still read the active line from state rather than
+      // closing over it: a switch replaces the client but the events it fires on the way out
+      // belong to the line being left.
       this.wire();
       silenceVendorRingtone();
-      this.set({ registration: "registering" });
-      this.login(token);
+      this.setLine(account, { registration: "registering" });
+      this.login(account, token);
       // A registration that never completes leaves the agent thinking they are on the queue.
       // Say so instead of sitting on "registering" for ever.
       window.setTimeout(() => {
-        if (this.state.registration === "registering") {
-          this.set({
+        if (this.state.lines[account]?.registration === "registering") {
+          this.setLine(account, {
             registration: "failed",
             error:
               "The softphone did not connect within 20 seconds. This is usually a network blocking WebSocket or UDP traffic.",
@@ -189,12 +347,15 @@ class Softphone {
         }
       }, 20_000);
     } catch (e: any) {
-      if (DEBUG) console.error("[excom softphone] boot failed", e);
-      this.set({ registration: "failed", error: e?.message || "The softphone could not start." });
+      if (DEBUG) console.error(`[excom softphone] boot failed for ${account}`, e);
+      this.setLine(account, {
+        registration: "failed",
+        error: e?.message || "The softphone could not start.",
+      });
     }
   }
 
-  private login(token: string) {
+  private login(account: string, token: string) {
     const c = this.client;
     if (!c) return;
     // The docs name this differently across SDK versions and platforms, so try the token methods in
@@ -207,7 +368,7 @@ class Softphone {
           ? c.loginWithJwtToken
           : null;
     if (!fn) {
-      this.set({
+      this.setLine(account, {
         registration: "failed",
         error: "This version of the calling library cannot use a login token.",
       });
@@ -217,10 +378,10 @@ class Softphone {
   }
 
   /** Swap in a fresh token without dropping an active call. */
-  async relogin(token: string) {
+  async relogin(account: string, token: string) {
     if (!this.client) return;
     try {
-      this.login(token);
+      this.login(account, token);
     } catch {
       /* the SDK re-registers on its own timer; a failed refresh is not fatal mid-call */
     }
@@ -246,7 +407,9 @@ class Softphone {
         // A softphone that will not connect gives the agent nothing to report. This trace is the
         // difference between "it doesn't work" and a fixable answer, and it costs one console line
         // per lifecycle event — call events are rare, so it is not noise.
-        if (DEBUG) console.info(`[excom softphone] ${event}`, ...args);
+        if (DEBUG) {
+          console.info(`[excom softphone] ${this.state.activeAccount ?? "?"} ${event}`, ...args);
+        }
         handler(...args);
       });
     } catch {
@@ -254,28 +417,39 @@ class Softphone {
     }
   }
 
+  /**
+   * Wire this client's events.
+   *
+   * Every handler asks state for the active line rather than closing over one — a handler that
+   * captured the line it was wired for would keep naming the line the agent has already left.
+   * Wiring belongs to the client, not the page: stacking handlers on one shared emitter is what
+   * made every event appear twice when two lines were booted together.
+   */
   private wire() {
-    this.on("onLogin", () => this.set({ registration: "registered", error: "" }));
-    this.on("onLoginFailed", (reason: any) =>
-      this.set({
+    const on = (event: string, handler: (...args: any[]) => void) => this.on(event, handler);
+    const active = () => this.state.activeAccount ?? "";
+
+    on("onLogin", () => this.setLine(active(), { registration: "registered", error: "" }));
+    on("onLoginFailed", (reason: any) =>
+      this.setLine(active(), {
         registration: "failed",
         error: typeof reason === "string" ? reason : "The softphone could not sign in.",
       }),
     );
-    this.on("onLogout", () => this.set({ registration: "idle" }));
-    this.on("onWebrtcNotSupported", () =>
-      this.set({
+    on("onLogout", () => this.setLine(active(), { registration: "idle" }));
+    on("onWebrtcNotSupported", () =>
+      this.setLine(active(), {
         registration: "unsupported",
         error: "Calling in the browser is not available on this network or browser.",
       }),
     );
 
-    this.on("onMediaPermission", (result: any) => {
+    on("onMediaPermission", (result: any) => {
       const denied = result?.status === "failure" || result?.error;
       this.set({ micDenied: Boolean(denied) });
     });
 
-    this.on("onIncomingCall", (...args: any[]) => {
+    on("onIncomingCall", (...args: any[]) => {
       // Again here, not only at boot: the SDK builds its audio elements lazily, so the one at boot
       // may have found nothing to silence.
       silenceVendorRingtone();
@@ -288,16 +462,17 @@ class Softphone {
         displayName: info.from,
         muted: false,
         startedAt: null,
+        account: active(),
       });
       this.hooks.onIncoming?.(info.callUUID ?? "", info.from);
     });
 
-    this.on("onIncomingCallCanceled", () => this.endLocally());
+    on("onIncomingCallCanceled", () => this.endLocally());
 
-    this.on("onCalling", (...args: any[]) => {
+    on("onCalling", (...args: any[]) => {
       const info = pickCallInfo(args);
       const uuid = info.callUUID ?? this.state.call.callUUID;
-      this.setCall({ phase: "outgoing", callUUID: uuid, direction: "Outbound" });
+      this.setCall({ phase: "outgoing", callUUID: uuid, direction: "Outbound", account: active() });
       // Once per dial the agent actually asked for, not once per event.
       //
       // The SDK re-emits onCalling while it retries the INVITE, with a fresh callUUID each time.
@@ -318,16 +493,16 @@ class Softphone {
         startedAt: this.state.call.startedAt ?? Date.now(),
       });
     };
-    this.on("onCallAnswered", connected);
-    this.on("onCallConnected", connected);
+    on("onCallAnswered", connected);
+    on("onCallConnected", connected);
 
-    this.on("onCallTerminated", () => this.endLocally());
-    this.on("onCallFailed", (reason: any) => {
+    on("onCallTerminated", () => this.endLocally());
+    on("onCallFailed", (reason: any) => {
       this.set({ error: typeof reason === "string" ? reason : "" });
       this.endLocally();
     });
 
-    this.on("mediaMetrics", (metrics: any) => {
+    on("mediaMetrics", (metrics: any) => {
       if (!metrics || typeof metrics !== "object") return;
       this.set({ quality: metrics });
       this.hooks.onQuality?.(this.state.call.callUUID, metrics);
@@ -371,9 +546,27 @@ class Softphone {
     this.client?.sendDtmf?.(tone);
   }
 
-  /** Place a call. `headers` are the SIP headers the backend told us to attach. */
-  call(destination: string, headers: Record<string, string>, meta: Partial<CallState> = {}) {
-    if (!this.client) throw new Error("The softphone is not connected.");
+  /**
+   * Place a call on a named line. `headers` are the SIP headers the backend told us to attach.
+   *
+   * The account is not optional in spirit: the server decides which line carries a destination —
+   * an Indian number on the Indian line, an American one on the American line — and dialling the
+   * American number through the Indian client would have the carrier bar it.
+   */
+  call(
+    destination: string,
+    headers: Record<string, string>,
+    meta: Partial<CallState> & { account: string },
+  ) {
+    if (!this.client) {
+      throw new Error("The softphone is not connected.");
+    }
+    // The guard that the logs earned. The one client is signed in to one line; dialling while it
+    // is signed in to another sends the call out over the wrong provider account, which fails as a
+    // bare "Busy" with nothing to say the number was never the problem.
+    if (this.state.activeAccount !== meta.account) {
+      throw new Error("The softphone is signed in to a different line.");
+    }
     if (this.state.call.phase !== "none") {
       throw new Error("You are already on a call.");
     }
@@ -388,6 +581,7 @@ class Softphone {
       callName: null,
       muted: false,
       startedAt: null,
+      account: meta.account,
     });
     this.client.call(destination, headers);
   }
@@ -399,6 +593,22 @@ class Softphone {
 
   setPeer(displayName: string) {
     this.setCall({ displayName });
+  }
+}
+
+/**
+ * Remove the audio elements the SDK appends to the body.
+ *
+ * Its setup appends a handful of `<audio>` tags with fixed ids — ringtone, ringback, connect tone,
+ * the remote stream — and building a second client appends another set. Duplicate ids mean
+ * `getElementById` picks whichever came first, so the tone we silenced is not the one that plays.
+ * The SDK tags each with `data-devicetype`, which is enough to find them all.
+ */
+function teardownVendorAudio(): void {
+  try {
+    for (const el of document.querySelectorAll("audio[data-devicetype]")) el.remove();
+  } catch {
+    /* a stale element is noisy, never fatal */
   }
 }
 
@@ -453,5 +663,8 @@ if (typeof window !== "undefined") {
   (window as any).__excomSoftphone = {
     state: () => softphone.getState(),
     registered: () => softphone.isRegistered,
+    lines: () => softphone.getState().lines,
+    activeLine: () => softphone.getState().activeAccount,
+    registeredOn: (account: string) => softphone.isRegisteredOn(account),
   };
 }

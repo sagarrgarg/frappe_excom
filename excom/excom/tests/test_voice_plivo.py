@@ -15,12 +15,15 @@ import xml.etree.ElementTree as ET
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from excom.excom.channels.voice import presence, routing
-from excom.excom.channels.voice.providers.base import CallDecision, Destination
+from excom.excom.channels.voice import outbound, presence, routing
+from excom.excom.channels.voice.handler import _participants
+from excom.excom.utils.phone import phone_variants
+from excom.excom.channels.voice.providers.base import CallDecision, CallEvent, Destination
 from excom.excom.channels.voice.outbound import (
 	KNOWN_COUNTRY_CODES,
 	_is_international,
 	country_code_of,
+	line_for_destination,
 )
 from excom.excom.channels.voice.providers.plivo import PlivoAdapter, endpoint_uri, registered_aor
 
@@ -406,21 +409,47 @@ class TestPlivoEvents(FrappeTestCase):
 
 
 class TestPhoneVariants(FrappeTestCase):
-	"""Caller lookup is exact matching against a bounded set of spellings, never a LIKE."""
+	"""Caller lookup is exact matching against a bounded set of spellings, never a LIKE.
+
+	One number, four spellings, and different parts of the system pick different ones: a telephony
+	webhook sends 919876543210, an imported contact list holds 09876543210, somebody types
+	9876543210, and an E.164 field stores +919876543210. Matched as strings those are four people,
+	which is how one contact ended up with two conversations.
+	"""
 
 	def test_variants_cover_the_ways_a_number_is_written(self):
-		variants = routing._phone_variants("+919876543210")
-		for expected in ("+919876543210", "919876543210", "9876543210", "09876543210"):
-			self.assertIn(expected, variants)
+		for given in ("+919876543210", "919876543210", "09876543210", "9876543210"):
+			variants = phone_variants(given)
+			for expected in ("+919876543210", "919876543210", "9876543210", "09876543210"):
+				self.assertIn(expected, variants, f"{given} did not offer {expected}")
 
 	def test_variants_are_deduplicated_and_bounded(self):
-		variants = routing._phone_variants("+919876543210")
+		variants = phone_variants("+919876543210")
 		self.assertEqual(len(variants), len(set(variants)))
 		self.assertLess(len(variants), 10)
 
 	def test_no_wildcards_ever_reach_a_query(self):
-		for value in routing._phone_variants("+919876543210"):
+		for value in phone_variants("+919876543210"):
 			self.assertNotIn("%", value)
+
+	def test_a_foreign_number_is_not_given_indian_spellings(self):
+		"""The trap in the obvious implementation.
+
+		"Anything sharing the last ten digits" would fold +1 921 702 5599 into +91 92170 25599:
+		same final ten digits, different continent, different person. A US number gets its own two
+		spellings and nothing else.
+		"""
+		variants = phone_variants("+19217025599")
+		self.assertIn("19217025599", variants)
+		self.assertNotIn("919217025599", variants)
+		self.assertNotIn("09217025599", variants)
+
+	def test_a_number_we_cannot_place_is_left_alone(self):
+		self.assertEqual(phone_variants("+442071234567"), ["442071234567", "+442071234567"])
+
+	def test_nothing_in_nothing_out(self):
+		self.assertEqual(phone_variants(""), [])
+		self.assertEqual(phone_variants("not a number"), [])
 
 
 class TestPresence(FrappeTestCase):
@@ -620,7 +649,7 @@ class TestInternationalGate(FrappeTestCase):
 	"""
 
 	def setUp(self):
-		self.india = _account_stub(voice_number="+912269985738")
+		self.india = _account_stub(voice_number="+918041234567")
 		self.usa = _account_stub(voice_number="+14155550100")
 
 	def _intl(self, number, account=None):
@@ -628,7 +657,7 @@ class TestInternationalGate(FrappeTestCase):
 
 	def test_home_country_is_not_international(self):
 		self.assertFalse(self._intl("+919250333699"))
-		self.assertFalse(self._intl("+918795194645"))
+		self.assertFalse(self._intl("+919812345678"))
 
 	def test_neighbours_sharing_our_first_digit_are_international(self):
 		"""The regression. Every one of these begins with 9, as +91 does."""
@@ -678,6 +707,144 @@ class TestInternationalGate(FrappeTestCase):
 				)
 
 
+class TestLineForDestination(FrappeTestCase):
+	"""With two provider accounts, the destination decides which one carries the call.
+
+	A provider account is tied to a country: the Indian one can dial India and not America, the
+	American one can dial America and not India, and each shows its own caller id. Before this, the
+	line came from an unordered `limit=1` over the agent's endpoints — so with two lines the
+	database chose, and chose differently each time. An Indian number went out on the American line
+	at international rates showing a +1 caller id, or an American number went out on the Indian line
+	and the carrier barred it.
+	"""
+
+	INDIA = "VOICE-TEST-IN"
+	USA = "VOICE-TEST-US"
+
+	def setUp(self):
+		self.lines = {
+			self.INDIA: _account_stub(name=self.INDIA, voice_number="+918041234567"),
+			self.USA: _account_stub(
+				name=self.USA, voice_number="+12125550143", voice_allow_international=1
+			),
+		}
+		# line_for_destination reads each candidate through the document cache; stand in for it so
+		# the test needs no fixtures and cannot be perturbed by whatever the site happens to hold.
+		self._real = frappe.get_cached_doc
+		frappe.get_cached_doc = lambda dt, name=None, *a, **k: (
+			self.lines[name] if dt == "Excom Channel Account" and name in self.lines
+			else self._real(dt, name, *a, **k)
+		)
+		self.addCleanup(setattr, frappe, "get_cached_doc", self._real)
+
+	def _line(self, number):
+		return line_for_destination("agent@example.com", number, [self.INDIA, self.USA])
+
+	def test_a_domestic_number_stays_on_the_domestic_line(self):
+		self.assertEqual(self._line("+919250333699"), self.INDIA)
+
+	def test_an_american_number_goes_out_on_the_american_line(self):
+		"""Local call, right caller id, and it can never be refused as a barred destination."""
+		self.assertEqual(self._line("+14155552671"), self.USA)
+
+	def test_a_country_neither_line_lives_in_goes_to_the_international_one(self):
+		"""Only one of these two lines is allowed to dial abroad at all."""
+		self.assertEqual(self._line("+442071234567"), self.USA)
+
+	def test_the_country_match_wins_over_the_ordering(self):
+		"""India is first in the list, but an American number must not take it."""
+		self.assertEqual(
+			line_for_destination("agent@example.com", "+14155552671", [self.INDIA, self.USA]),
+			self.USA,
+		)
+		self.assertEqual(
+			line_for_destination("agent@example.com", "+919250333699", [self.USA, self.INDIA]),
+			self.INDIA,
+		)
+
+	def test_with_one_line_everything_goes_to_it(self):
+		"""The single-line site, which is every site until a second account is added."""
+		self.assertEqual(
+			line_for_destination("agent@example.com", "+14155552671", [self.INDIA]), self.INDIA
+		)
+
+	def test_an_unrecognised_number_falls_back_rather_than_guessing(self):
+		self.assertEqual(self._line("+8821612345678"), self.USA)
+
+	def test_no_lines_at_all_returns_nothing(self):
+		self.assertIsNone(line_for_destination("agent@example.com", "+14155552671", []))
+
+
+class TestTransportAcrossLines(FrappeTestCase):
+	"""A softphone signed in to one line must not disqualify the agent from dialling on another.
+
+	The browser holds one line at a time — the SDK hands out a single client — and the line is
+	chosen from the destination. So an agent signed in to the American desk who dials an Indian
+	number is the ordinary case. Asking "are you registered on *this* line" refused that call
+	outright, before the client was ever handed the plan it would have switched on, so the switch
+	could never happen: the call was rejected for a condition the client was about to fix.
+	"""
+
+	US = "VOICE-US"
+	INDIA = "VOICE-IN"
+
+	def setUp(self):
+		self.lines = [self.INDIA, self.US]
+		self.registered = set()
+		self.endpoints = {(u, a) for u in ("agent@example.com",) for a in self.lines}
+
+		self._lines = outbound.agent_lines
+		self._is_reg = presence.is_registered
+		self._exists = frappe.db.exists
+		outbound.agent_lines = lambda user="": list(self.lines)
+		presence.is_registered = lambda user, account: account in self.registered
+		frappe.db.exists = lambda dt, filters=None, *a, **k: (
+			((filters or {}).get("user"), (filters or {}).get("channel_account")) in self.endpoints
+			if dt == "Excom Voice Endpoint"
+			else self._exists(dt, filters, *a, **k)
+		)
+		self.addCleanup(setattr, outbound, "agent_lines", self._lines)
+		self.addCleanup(setattr, presence, "is_registered", self._is_reg)
+		self.addCleanup(setattr, frappe.db, "exists", self._exists)
+
+	def _transport(self, target_line, account_doc):
+		return outbound.preferred_transport("agent@example.com", target_line, account_doc)
+
+	def test_signed_in_elsewhere_still_dials_in_the_browser(self):
+		"""The regression. Registered on the American line, dialling out on the Indian one."""
+		self.registered = {self.US}
+		india = _account_stub(name=self.INDIA, voice_allow_browser_calls=1, voice_allow_phone_calls=1)
+		self.assertEqual(self._transport(self.INDIA, india), "Browser")
+
+	def test_signed_in_on_the_line_itself_dials_in_the_browser(self):
+		self.registered = {self.INDIA}
+		india = _account_stub(name=self.INDIA, voice_allow_browser_calls=1, voice_allow_phone_calls=1)
+		self.assertEqual(self._transport(self.INDIA, india), "Browser")
+
+	def test_no_softphone_anywhere_falls_back_to_the_handset(self):
+		"""The fallback that must survive: a closed tab still rings the agent's phone."""
+		self.registered = set()
+		india = _account_stub(name=self.INDIA, voice_allow_browser_calls=1, voice_allow_phone_calls=1)
+		self.assertEqual(self._transport(self.INDIA, india), "Phone")
+
+	def test_a_line_with_no_softphone_for_this_agent_is_not_browser(self):
+		"""Registered somewhere, but no endpoint on the line being dialled."""
+		self.registered = {self.US}
+		self.endpoints = {("agent@example.com", self.US)}
+		india = _account_stub(name=self.INDIA, voice_allow_browser_calls=1, voice_allow_phone_calls=1)
+		self.assertEqual(self._transport(self.INDIA, india), "Phone")
+
+	def test_registered_line_reports_which_desk_the_browser_is_on(self):
+		self.registered = {self.US}
+		self.assertEqual(presence.registered_line("agent@example.com", self.lines), self.US)
+		self.registered = set()
+		self.assertIsNone(presence.registered_line("agent@example.com", self.lines))
+
+	def test_registered_line_copes_with_nothing_to_check(self):
+		self.assertIsNone(presence.registered_line("agent@example.com", []))
+		self.assertIsNone(presence.registered_line("agent@example.com", None))
+
+
 class TestFailureReasons(FrappeTestCase):
 	"""A call that a carrier refused must not look like a call nobody answered."""
 
@@ -714,6 +881,78 @@ class TestFailureReasons(FrappeTestCase):
 			},
 		)
 		self.assertIn("Geo Permissions", event.failure_reason)
+
+
+class TestWhoTheCustomerIs(FrappeTestCase):
+	"""Given a webhook for a leg we have no record of, who is the call actually with?
+
+	Every one of these produced a real junk conversation on the live site. A webhook can describe
+	either leg, and neither leg puts the customer in a fixed field, so reading `From` as "the
+	customer" opened conversations with ourselves: with our own DID, because that is the caller id
+	we ask Plivo to present on the B leg of a dial; and with an eighteen-digit number, which is what
+	is left of `sip:<endpoint>_<auth id>@phone.plivo.com` once the punctuation is stripped out of
+	it.
+	"""
+
+	LINE = "VOICE-TEST"
+	OURS = "+918041234567"
+
+	def setUp(self):
+		self._real = frappe.db.get_value
+		frappe.db.get_value = lambda dt, name=None, fieldname=None, *a, **k: (
+			self.OURS
+			if (dt == "Excom Channel Account" and fieldname == "voice_number")
+			else self._real(dt, name, fieldname, *a, **k)
+		)
+		self.addCleanup(setattr, frappe.db, "get_value", self._real)
+
+	def _who(self, **kwargs):
+		event = CallEvent(kind="ended", provider_call_id="uuid-1", **kwargs)
+		return _participants(event, self.LINE)
+
+	def test_a_stranger_calling_in_is_the_customer(self):
+		direction, customer, business = self._who(
+			from_number="918542866684", to_number="918041234567", direction="inbound"
+		)
+		self.assertEqual(direction, "Inbound")
+		self.assertEqual(customer, "+918542866684")
+		self.assertEqual(business, "+918041234567")
+
+	def test_our_own_caller_id_on_the_b_leg_is_not_a_customer(self):
+		"""<Dial callerId="+91804..."> makes `From` our own number on the leg to the customer."""
+		direction, customer, _business = self._who(
+			from_number="918041234567", to_number="918542866684", direction="outbound"
+		)
+		self.assertEqual(direction, "Outbound")
+		self.assertEqual(customer, "+918542866684")
+
+	def test_a_softphone_is_never_a_customer(self):
+		"""The leg the browser placed. Plivo calls it inbound, because it is inbound to Plivo."""
+		direction, customer, _business = self._who(
+			from_number="sip:excompriya123_MATESTAUTHID000000@phone.plivo.com",
+			to_number="919250333699",
+			direction="inbound",
+		)
+		self.assertEqual(direction, "Outbound", "a call from our own softphone is outbound")
+		self.assertEqual(customer, "+919250333699")
+
+	def test_both_ends_ours_yields_no_contact_rather_than_a_wrong_one(self):
+		_direction, customer, _business = self._who(
+			from_number="sip:excompriya123_MATESTAUTHID000000@phone.plivo.com",
+			to_number="918041234567",
+			direction="inbound",
+		)
+		self.assertEqual(customer, "", "better a call with no contact than a contact that is us")
+
+	def test_the_sip_username_never_becomes_a_phone_number(self):
+		"""The exact shape that reached production: 18 digits of endpoint username."""
+		_direction, customer, _business = self._who(
+			from_number="sip:excompriya123456789012345678_MATESTAUTHID000000@phone.plivo.com",
+			to_number="918787879696",
+			direction="inbound",
+		)
+		self.assertNotIn("123456789012345678", customer)
+		self.assertEqual(customer, "+918787879696")
 
 
 class TestCallVisibility(FrappeTestCase):
