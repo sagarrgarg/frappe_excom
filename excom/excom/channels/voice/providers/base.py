@@ -185,6 +185,19 @@ class VoiceProvider(ABC):
 	def supports(self, capability: str) -> bool:
 		return capability in self.capabilities()
 
+	def action_response(self) -> str | None:
+		"""What this vendor requires back from the dial action URL, if anything.
+
+		Vendors disagree about what that response means. Plivo can be told the action URL is a
+		notification — `redirect="false"` — and then ignores whatever comes back. Twilio has no
+		such switch: the action response is always executed as call control, so returning our
+		ordinary JSON there is an error (12300, invalid content type) and the call falls through to
+		the fallback URL mid-dial.
+
+		None means "the response is ignored, send the normal one".
+		"""
+		return None
+
 
 class SoftphoneProvider(ABC):
 	"""Browser calling. Implemented only where a real WebRTC SDK exists."""

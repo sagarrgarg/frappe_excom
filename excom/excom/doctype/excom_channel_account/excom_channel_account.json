@@ -67,6 +67,8 @@
   "voice_number",
   "voice_auth_id",
   "voice_auth_token",
+  "voice_api_key_sid",
+  "voice_api_key_secret",
   "voice_api_base",
   "voice_app_id",
   "voice_client_region",
@@ -490,9 +492,9 @@
    "fieldname": "voice_provider",
    "fieldtype": "Select",
    "label": "Provider",
-   "options": "\nPlivo\nExotel\nAirtel IQ",
+   "options": "\nPlivo\nTwilio\nExotel\nAirtel IQ",
    "default": "Plivo",
-   "description": "Only Plivo is implemented. Whatever is chosen here, the label agents see is always 'Calls'."
+   "description": "Plivo and Twilio are implemented. Whatever is chosen here, the label agents see is always 'Calls'."
   },
   {
    "fieldname": "voice_number",
@@ -509,6 +511,20 @@
    "fieldname": "voice_auth_token",
    "fieldtype": "Password",
    "label": "Auth Token"
+  },
+  {
+   "depends_on": "eval:doc.voice_provider=='Twilio'",
+   "description": "Twilio only. Signs the browser softphone token. Created under Account \u2192 API keys \u2014 this is not the account auth token.",
+   "fieldname": "voice_api_key_sid",
+   "fieldtype": "Data",
+   "label": "API Key SID"
+  },
+  {
+   "depends_on": "eval:doc.voice_provider=='Twilio'",
+   "description": "Shown once when the API key is created. Cannot be read back from the provider.",
+   "fieldname": "voice_api_key_secret",
+   "fieldtype": "Password",
+   "label": "API Key Secret"
   },
   {
    "fieldname": "voice_api_base",

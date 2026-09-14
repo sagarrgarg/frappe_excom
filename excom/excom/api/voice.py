@@ -258,8 +258,15 @@ def dial_event():
 
 @frappe.whitelist(allow_guest=True, methods=["POST", "GET"])
 def dial_action():
-	"""Dial action URL. The dial finished, with a status saying how."""
-	return _handle_event("dial_action", _verified_account())
+	"""Dial action URL. The dial finished, with a status saying how.
+
+	What goes back depends on the vendor: some ignore it, others execute it as call control.
+	The provider decides, because getting it wrong drops a live call.
+	"""
+	account = _verified_account()
+	result = _handle_event("dial_action", account)
+	document = providers.for_account(account).action_response()
+	return _xml(document) if document is not None else result
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST", "GET"])

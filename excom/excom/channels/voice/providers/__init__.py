@@ -4,8 +4,10 @@ One place that maps `Excom Channel Account.voice_provider` onto an adapter. Ever
 `for_account()` and never names a vendor — the same discipline `crm_gateway.py` applies to native
 CRM doctypes, for the same reason.
 
-Only Plivo is implemented. Exotel and Airtel IQ are declared so the Select field has somewhere to
-point and a misconfigured line fails with a sentence rather than a KeyError.
+Plivo and Twilio are implemented. Plivo carries India, where a Twilio account may not; Twilio
+carries everywhere else, where Plivo would want an enterprise agreement. Exotel and Airtel IQ
+are declared so the Select field has somewhere to point and a misconfigured line fails with a
+sentence rather than a KeyError.
 """
 
 import frappe
@@ -23,10 +25,11 @@ from excom.excom.channels.voice.providers.base import (  # noqa: F401  (re-expor
 )
 
 PLIVO = "Plivo"
+TWILIO = "Twilio"
 EXOTEL = "Exotel"
 AIRTEL = "Airtel IQ"
 
-IMPLEMENTED = (PLIVO,)
+IMPLEMENTED = (PLIVO, TWILIO)
 
 
 def for_account(account_doc) -> VoiceProvider:
@@ -40,6 +43,11 @@ def for_account(account_doc) -> VoiceProvider:
 		from excom.excom.channels.voice.providers.plivo import PlivoAdapter
 
 		return PlivoAdapter(account_doc)
+
+	if provider == TWILIO:
+		from excom.excom.channels.voice.providers.twilio import TwilioAdapter
+
+		return TwilioAdapter(account_doc)
 
 	if not provider:
 		frappe.throw(
