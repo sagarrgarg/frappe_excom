@@ -143,8 +143,8 @@ class ExcomSticker(Document):
                 )
         except http_requests.exceptions.RequestException as e:
             frappe.log_error(
-                f"Sticker upload failed for {self.name}: {e}",
                 "Excom Sticker Upload Error",
+                f"{self.name}: {e}",
             )
             frappe.msgprint(
                 _("Failed to upload sticker to Meta: {0}").format(str(e)),
@@ -167,8 +167,8 @@ class ExcomSticker(Document):
             except Exception:
                 err = resp.text[:300]
             frappe.log_error(
-                f"Sticker upload failed ({resp.status_code}): {err}",
                 "Excom Sticker Upload Error",
+                f"HTTP {resp.status_code}: {err}",
             )
             frappe.msgprint(
                 _("Meta rejected the sticker upload: {0}").format(err),

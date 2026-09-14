@@ -658,7 +658,7 @@ class WhatsAppFlow(Document):
             return None
 
         except Exception as e:
-            frappe.log_error(f"Failed to fetch flow JSON: {str(e)}")
+            frappe.log_error("Excom: WhatsApp Flow JSON fetch failed", str(e))
             return None
 
 
@@ -781,7 +781,7 @@ def fetch_flow_json_by_id(whatsapp_account, flow_id):
         return None
 
     except Exception as e:
-        frappe.log_error(f"Failed to fetch flow JSON: {str(e)}")
+        frappe.log_error("Excom: WhatsApp Flow JSON fetch failed", str(e))
         return None
 
 
@@ -842,7 +842,7 @@ def sync_all_flows(whatsapp_account):
                     flow_doc.save(ignore_permissions=True)
                     result["updated"] += 1
                 except Exception as e:
-                    frappe.log_error(f"Failed to update flow {flow_id}: {str(e)}")
+                    frappe.log_error("Excom: WhatsApp Flow update failed", f"{flow_id}: {e}")
                     result["skipped"] += 1
             else:
                 # Import new flow
@@ -867,7 +867,7 @@ def sync_all_flows(whatsapp_account):
                     flow_doc.insert(ignore_permissions=True)
                     result["imported"] += 1
                 except Exception as e:
-                    frappe.log_error(f"Failed to import flow {flow_id}: {str(e)}")
+                    frappe.log_error("Excom: WhatsApp Flow import failed", f"{flow_id}: {e}")
                     result["skipped"] += 1
 
         frappe.db.commit()

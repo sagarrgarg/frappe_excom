@@ -76,7 +76,7 @@ def handle_flow_request():
         }
 
     except Exception as e:
-        frappe.log_error(f"Flow endpoint error: {str(e)}", "WhatsApp Flow Error")
+        frappe.log_error("Excom: WhatsApp Flow endpoint error", str(e))
         return {
             "data": {
                 "error": str(e)
@@ -141,7 +141,7 @@ def save_flow_data(flow_token, screen, form_data):
                 "WhatsApp Flow Data"
             )
     except Exception as e:
-        frappe.log_error(f"save_flow_data error: {str(e)}")
+        frappe.log_error("Excom: WhatsApp Flow save failed", str(e))
 
 
 def verify_signature(payload, signature, app_secret):
