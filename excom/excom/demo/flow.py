@@ -77,7 +77,7 @@ def stage1():
 	print("\n=== 3. a second lead, handed straight to the Export desk ===")
 	exp = _lead("Demo Export Enquiry", email_id="demo.export.buyer@example.com", mobile_no="+919900000902")
 	from frappe.desk.form.assign_to import add
-	add({"assign_to": ["demo.export.a@example.com"], "doctype": "Lead", "name": exp, "description": "export"}, ignore_permissions=True)
+	add({"assign_to": ["demo.export.a@example.com"], "doctype": "Lead", "name": exp, "description": "export"})
 	frappe.db.commit()
 	print(f"  {exp}  {_state(exp)}")
 	print(f"  visible to: {_see(exp)}")
