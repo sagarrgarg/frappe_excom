@@ -10,6 +10,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import now_datetime
 
+from excom.excom.tests.fixtures import purge_user
 from excom.excom.api import chat
 from excom.excom.doctype.excom_thread import excom_thread as td
 
@@ -78,8 +79,7 @@ class TestThreadVisibilityAgreement(FrappeTestCase):
 			team.flags.ignore_permissions = True
 			team.save()
 		for email in USERS:
-			if frappe.db.exists("User", email):
-				frappe.delete_doc("User", email, force=True, ignore_permissions=True)
+			purge_user(email)
 		frappe.db.commit()
 
 	def test_the_shared_inbox_answers_yes_everywhere(self):

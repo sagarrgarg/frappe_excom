@@ -13,6 +13,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import now_datetime
 
+from excom.excom.tests.fixtures import purge_user
 from excom.excom.api import chat
 
 ADMIN = "qa.tier.admin@example.com"
@@ -34,8 +35,7 @@ def _cleanup():
 		if frappe.db.exists("Excom Team", t):
 			frappe.delete_doc("Excom Team", t, force=True, ignore_permissions=True)
 	for u in USERS:
-		if frappe.db.exists("User", u):
-			frappe.delete_doc("User", u, force=True, ignore_permissions=True)
+		purge_user(u)
 	frappe.db.commit()
 
 
