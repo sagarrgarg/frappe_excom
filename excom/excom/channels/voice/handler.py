@@ -164,7 +164,15 @@ def persist_call(
 			call.provider_events = json.dumps([_trim(raw)], default=str)
 		if agent:
 			call.team = _team_for(agent)
-		call.insert(ignore_permissions=True)
+		try:
+			call.insert(ignore_permissions=True)
+		except frappe.UniqueValidationError:
+			# The other worker won. Two webhooks for one call race through the existence check above,
+			# both find nothing and both insert; the unique index is what makes that safe, but only if
+			# the loser returns the winner's row rather than raising out of the enqueued job.
+			return frappe.db.get_value(
+				"Excom Call", {"provider_call_id": provider_call_id}, "name"
+			)
 
 		if thread:
 			_write_timeline_stub(call, thread, identity, account, direction)

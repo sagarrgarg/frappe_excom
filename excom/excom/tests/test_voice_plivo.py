@@ -14,6 +14,7 @@ import xml.etree.ElementTree as ET
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from frappe.utils import add_to_date, now_datetime
 
 from excom.excom.channels.voice import outbound, presence, routing
 from excom.excom.channels.voice.handler import _participants
@@ -996,3 +997,133 @@ def _user_without_excom_roles() -> str:
 			}
 		).insert(ignore_permissions=True)
 	return email
+
+
+class TestCallSurvivesOurOwnFailures(FrappeTestCase):
+	"""What the caller hears when our bookkeeping breaks mid-call.
+
+	The vendor is waiting on the dial action URL and, on Twilio, will execute whatever comes back
+	as call control. A Frappe error page is not call control: the caller gets "an application error
+	has occurred" and the line drops. This reached production as an HTTP 417 on a live call.
+	"""
+
+	def test_a_failure_still_answers_in_the_vendors_language(self):
+		from unittest.mock import patch
+
+		from excom.excom.api import voice
+
+		with patch.object(voice, "_verified_account", return_value="VOICE-TEST"), patch.object(
+			voice.providers, "for_account"
+		) as for_account, patch.object(
+			voice, "_handle_event", side_effect=RuntimeError("the database went away")
+		):
+			for_account.return_value.action_response.return_value = "<Response></Response>"
+			response = voice.dial_action()
+
+		self.assertEqual(response.status_code, 200)
+		self.assertIn("xml", response.content_type)
+		self.assertEqual(response.get_data(as_text=True), "<Response></Response>")
+
+	def test_a_forged_webhook_is_still_refused(self):
+		"""The signature check sits outside the guard deliberately. Answering a probe with valid
+		call control would hand a stranger the phone line."""
+		from unittest.mock import patch
+
+		from excom.excom.api import voice
+
+		with patch.object(
+			voice, "_verified_account", side_effect=frappe.PermissionError("Unrecognised")
+		):
+			with self.assertRaises(frappe.PermissionError):
+				voice.dial_action()
+
+
+class TestReconcileGivesUp(FrappeTestCase):
+	"""A row whose answer cannot change must leave the queue.
+
+	The sweep takes the fifty oldest unreconciled calls. Sixteen legacy rows on a line with no
+	adapter were therefore picked first every single time, threw, logged, and stayed — so they held
+	sixteen of the fifty slots for ever and would have starved real calls once the backlog grew.
+	"""
+
+	def test_a_provider_with_no_adapter_is_permanent(self):
+		from excom.excom.channels.voice.reconcile import _permanent
+
+		row = frappe._dict(name="CALL-1", creation=now_datetime())
+		exc = frappe.ValidationError("Exotel is not implemented yet. This line cannot place calls.")
+		self.assertTrue(_permanent(row, exc))
+
+	def test_a_transient_failure_is_retried(self):
+		from excom.excom.channels.voice.reconcile import _permanent
+
+		row = frappe._dict(name="CALL-2", creation=now_datetime())
+		self.assertFalse(_permanent(row, ConnectionError("provider API timed out")))
+
+	def test_a_call_older_than_the_cdr_retention_is_given_up_on(self):
+		from excom.excom.channels.voice.reconcile import GIVE_UP_DAYS, _permanent
+
+		row = frappe._dict(
+			name="CALL-3", creation=add_to_date(now_datetime(), days=-(GIVE_UP_DAYS + 1))
+		)
+		self.assertTrue(_permanent(row, ConnectionError("still not in the CDR store")))
+
+
+class TestOneCallOneRow(FrappeTestCase):
+	"""persist_call promises in its docstring that it is safe to call twice.
+
+	The unique index on provider_call_id is what makes that true, but only if losing the race
+	returns the winner's row. It used to raise instead, so two webhooks for one call took the
+	enqueued job down and wrote an Error Log row — three times on the live site.
+	"""
+
+	def tearDown(self):
+		for name in frappe.get_all(
+			"Excom Call", {"provider_call_id": ["like", "race-test-%"]}, pluck="name"
+		):
+			frappe.delete_doc("Excom Call", name, force=True, ignore_permissions=True)
+		frappe.db.commit()
+
+	def test_losing_the_insert_race_returns_the_row_that_won(self):
+		from unittest.mock import patch
+
+		from excom.excom.channels.voice import handler
+
+		uid = "race-test-1"
+		winner = frappe.get_doc(
+			{"doctype": "Excom Call", "provider_call_id": uid, "direction": "Inbound", "status": "Ringing"}
+		).insert(ignore_permissions=True)
+		frappe.db.commit()
+
+		# The existence check is only an optimisation, and under a race it sees nothing. Forcing
+		# that is the only way to reach the insert the index then refuses.
+		#
+		# It must lie exactly once: the recovery path looks the same row up again, and a stub that
+		# always answered None would make the fixed code return None instead of the winner.
+		real = frappe.db.get_value
+		looked = {"times": 0}
+
+		def blind(doctype, filters=None, fieldname="name", *args, **kwargs):
+			if doctype == "Excom Call" and filters == {"provider_call_id": uid}:
+				looked["times"] += 1
+				if looked["times"] == 1:
+					return None
+			return real(doctype, filters, fieldname, *args, **kwargs)
+
+		with patch("frappe.db.get_value", side_effect=blind):
+			got = handler.persist_call(
+				provider_call_id=uid,
+				account="",
+				direction="Inbound",
+				caller_number="+919900000123",
+				business_number="+918041234567",
+			)
+
+		self.assertEqual(got, winner.name)
+		self.assertEqual(
+			frappe.db.count("Excom Call", {"provider_call_id": uid}),
+			1,
+			"the race must not leave a second row behind",
+		)
+		self.assertGreater(
+			looked["times"], 1, "the stub never fired, so the insert was never reached"
+		)

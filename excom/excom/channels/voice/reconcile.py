@@ -21,6 +21,9 @@ SETTLE_SECONDS = 120
 STUCK_MINUTES = 90
 # How long to keep promising a recording before admitting none is coming.
 RECORDING_GIVE_UP_MINUTES = 20
+# Providers age their CDRs out. Past this, "not found" is not "not yet" — it is the final answer,
+# and asking again every few minutes for ever only costs API calls and Error Log rows.
+GIVE_UP_DAYS = 7
 BATCH = 50
 
 
@@ -35,7 +38,7 @@ def reconcile_pending_calls() -> dict:
 			"provider_call_id": ["is", "set"],
 			"channel_account": ["is", "set"],
 		},
-		fields=["name", "provider_call_id", "channel_account", "status", "agent"],
+		fields=["name", "provider_call_id", "channel_account", "status", "agent", "creation"],
 		order_by="creation asc",
 		limit=BATCH,
 	)
@@ -47,6 +50,17 @@ def reconcile_pending_calls() -> dict:
 				done += 1
 		except Exception as exc:
 			failed += 1
+			if _permanent(row, exc):
+				# Out of the queue, not into it. These rows are the oldest, so `creation asc` hands
+				# them back first on every single sweep; leaving them means re-throwing and re-logging
+				# the same failure for ever while they occupy slots real calls need.
+				frappe.db.set_value(
+					"Excom Call",
+					row.name,
+					{"reconciled": 1, "hangup_cause": f"Not reconcilable: {str(exc)[:80]}"},
+					update_modified=False,
+				)
+				continue
 			frappe.log_error(
 				title="Excom Voice: reconcile failed", message=f"{row.name}: {exc}"
 			)
@@ -54,6 +68,20 @@ def reconcile_pending_calls() -> dict:
 
 	stuck = close_stuck_calls()
 	return {"reconciled": done, "failed": failed, "closed_stuck": stuck}
+
+
+def _permanent(row, exc: Exception) -> bool:
+	"""Would another sweep give a different answer?
+
+	Only retry while it might. A line whose provider has no adapter will throw identically until
+	somebody deploys one, and a call older than the provider's CDR retention is never going to be
+	found.
+	"""
+	if isinstance(exc, frappe.ValidationError) and "not implemented" in str(exc):
+		return True
+	return bool(row.get("creation")) and row.creation < add_to_date(
+		now_datetime(), days=-GIVE_UP_DAYS
+	)
 
 
 def _reconcile_one(row) -> bool:

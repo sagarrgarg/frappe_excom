@@ -264,8 +264,20 @@ def dial_action():
 	The provider decides, because getting it wrong drops a live call.
 	"""
 	account = _verified_account()
-	result = _handle_event("dial_action", account)
-	document = providers.for_account(account).action_response()
+	provider = providers.for_account(account)
+	document = provider.action_response()
+
+	try:
+		result = _handle_event("dial_action", account)
+	except Exception:
+		# The call is still up, and on a vendor that executes this reply as call control a Frappe
+		# error page is not call control — Twilio plays "an application error has occurred" and
+		# drops it. Our bookkeeping failing must not take the caller with it, so the vendor still
+		# gets a well-formed answer and the reason goes to the log.
+		frappe.log_error(frappe.get_traceback(), "Excom Voice: dial action failed")
+		frappe.db.rollback()
+		return _xml(document) if document is not None else {"ok": False}
+
 	return _xml(document) if document is not None else result
 
 
