@@ -8,11 +8,18 @@ import { cn } from "../ui/utils";
 
 function stripHtml(s: string) { return (s || "").replace(/<[^>]+>/g, "").trim(); }
 
-/** Tasks tab — core ToDo against the linked party (E7). Add inline; toggle done. */
+/** Tasks tab — core ToDo against the linked party (E7). Add inline; toggle done.
+ *
+ * The due date stays a date. That is what `ToDo.date` means to Frappe's assignment rules and to
+ * every other app on the site, and a task is usually due on a day rather than at a minute. A time
+ * is optional beside it, and when given it becomes a Reminder — Frappe's own doctype for "tell me
+ * at", which is already scheduled and already fires.
+ */
 export function TasksTab({ record }: { record: RecordRef | null }) {
   const { tasks, isLoading, creating, addTask, setStatus } = useTasks(record);
   const [text, setText] = useState("");
   const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
   const [priority, setPriority] = useState<Task["priority"]>("Medium");
   const [showDone, setShowDone] = useState(false);
   const open = tasks.filter((t) => t.status === "Open");
@@ -21,8 +28,8 @@ export function TasksTab({ record }: { record: RecordRef | null }) {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim() || !record) return;
-    await addTask(text.trim(), date, priority);
-    setText(""); setDate("");
+    await addTask(text.trim(), date, priority, undefined, time);
+    setText(""); setDate(""); setTime("");
   };
 
   return (
@@ -31,6 +38,16 @@ export function TasksTab({ record }: { record: RecordRef | null }) {
         <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={record ? `Add a task for ${record.title}` : "Add a task"} className="flex-1" disabled={!record} />
         <div className="flex items-center gap-2">
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-[140px]" aria-label="Due date" />
+          {/* A time with no date would have nothing to be a time on, so it waits for one. */}
+          <Input
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+            className="w-[108px]"
+            aria-label="Remind me at"
+            title={date ? "Remind me at this time" : "Pick a due date first"}
+            disabled={!date}
+          />
           <Select value={priority} onChange={(e) => setPriority(e.target.value as Task["priority"])} className="w-[100px]" aria-label="Priority"><option>High</option><option>Medium</option><option>Low</option></Select>
           <Button type="submit" variant="primary" disabled={!text.trim() || creating || !record}>{creating ? <Loader2 className="animate-spin" /> : <Plus />}Add</Button>
         </div>
@@ -61,7 +78,12 @@ function TaskRow({ t, onToggle }: { t: Task; onToggle: () => void }) {
       <div className="flex-1 min-w-0">
         <p className={cn("text-sm text-ink-1 break-words", closed && "line-through text-ink-3")}>{stripHtml(t.description)}</p>
         <div className="flex items-center gap-1.5 mt-0.5 text-xs text-ink-3 min-w-0 flex-wrap">
-          {t.date && <span className={cn("tabular-nums", overdue && "text-crayon-rose-text font-medium")}>{overdue ? "Overdue · " : "Due "}{t.date}</span>}
+          {t.date && (
+            <span className={cn("tabular-nums", overdue && "text-crayon-rose-text font-medium")}>
+              {overdue ? "Overdue · " : "Due "}{t.date}
+              {t.remind_at && <> · {t.remind_at.slice(11, 16)}</>}
+            </span>
+          )}
           {t.priority === "High" && <Chip size="sm" accent="rose" label="High" />}
           {t.allocated_to && <span className="truncate">→ {t.allocated_to}</span>}
           <a href={deskUrl("ToDo", t.name)} target="_blank" rel="noreferrer" className="t2-reveal inline-flex items-center gap-0.5 hover:text-ink-1"><ExternalLink className="size-3" />Desk</a>
