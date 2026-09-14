@@ -8,6 +8,7 @@ REST API all go through, because the Excom UI is not the only way into a lead.
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+from excom.excom.tests.fixtures import purge_user
 from excom.excom.services import crm_gateway as gw
 from excom.excom.services import crm_visibility as vis
 
@@ -20,6 +21,7 @@ USERS = (SMM, HEAD, MEMBER, STRANGER)
 
 
 def _user(email: str, roles: list[str]) -> None:
+	purge_user(email)
 	doc = frappe.get_doc({"doctype": "User", "email": email, "first_name": email.split("@")[0], "send_welcome_email": 0})
 	doc.flags.ignore_permissions = True
 	doc.insert(ignore_permissions=True)
@@ -97,8 +99,7 @@ class TestCrmVisibility(FrappeTestCase):
 			if frappe.db.exists("Excom Team", team):
 				frappe.delete_doc("Excom Team", team, force=1, ignore_permissions=True)
 		for user in USERS:
-			if frappe.db.exists("User", user):
-				frappe.delete_doc("User", user, force=1, ignore_permissions=True)
+			purge_user(user)
 		frappe.db.set_single_value("Excom Settings", "enforce_crm_visibility", 0)
 		frappe.db.commit()
 
@@ -148,7 +149,7 @@ class TestCrmVisibility(FrappeTestCase):
 
 		lead = _lead("QA Vis Auto Assigned")
 		self.assertNotIn(lead, _visible(MEMBER))
-		add({"assign_to": [MEMBER], "doctype": gw.LEAD, "name": lead, "description": "QA"}, ignore_permissions=True)
+		add({"assign_to": [MEMBER], "doctype": gw.LEAD, "name": lead, "description": "QA"})
 		frappe.db.commit()
 		self.assertEqual(frappe.db.get_value(gw.LEAD, lead, "excom_team"), CHILD)
 		self.assertIn(lead, _visible(MEMBER))

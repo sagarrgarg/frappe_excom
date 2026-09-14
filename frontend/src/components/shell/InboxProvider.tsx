@@ -5,6 +5,7 @@ import { useThreads } from "../../hooks/useContacts";
 export interface NewPrefill { name: string; display_name: string; primary_phone: string; primary_email: string; primary_whatsapp: string }
 import { useRealtimeThreads } from "../../hooks/useRealtimeThreads";
 import { useNotifications } from "../../hooks/useNotifications";
+import { useTaskReminders } from "../../hooks/useTaskReminders";
 import { useBreakpoint, useCoarsePointer, type Breakpoint } from "../../hooks/useBreakpoint";
 import {
   DEFAULT_VIEWS, EMPTY_FILTERS, filtersFromParams, loadSavedViews, paramsFromFilters, persistSavedViews,
@@ -144,6 +145,8 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
 
   const totalUnread = useMemo(() => unifiedContacts.reduce((s, c) => s + c.totalUnreadCount, 0), [unifiedContacts]);
   useNotifications(totalUnread);
+  // A reminder is no use in a bell the agent never opens.
+  useTaskReminders();
   const refreshCb = useCallback(() => { refresh(); }, [refresh]);
   useRealtimeThreads(refreshCb);
 

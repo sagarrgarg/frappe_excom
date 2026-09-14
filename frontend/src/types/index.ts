@@ -82,7 +82,7 @@ export interface Message {
   sender: "user" | "contact" | "ai";
   status?: "sent" | "delivered" | "read" | "failed" | "queued" | "scheduled";
   scheduledAt?: Date;
-  type?: "text" | "image" | "video" | "audio" | "document" | "sticker" | "location" | "template" | "email" | "interactive" | "flow" | "reaction" | "contact" | "button";
+  type?: "text" | "image" | "video" | "audio" | "document" | "sticker" | "location" | "template" | "email" | "interactive" | "flow" | "reaction" | "contact" | "button" | "call";
   mediaUrl?: string;
   channel?: string;
   isInternal?: boolean;

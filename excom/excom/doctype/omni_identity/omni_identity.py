@@ -5,6 +5,10 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
+# Note: this module defines its own  below, which keeps digits only and
+# drops the +.  works from digits, so the two agree.
+from excom.excom.utils.phone import phone_variants
+
 
 class OmniIdentity(Document):
 	def validate(self):
@@ -155,6 +159,11 @@ class OmniIdentity(Document):
 				key = f"{key}:merged:{t.name}"
 			frappe.db.set_value("Excom Thread", t.name, {"thread_key": key, "display_name": master_identity.display_name, "primary_phone": master_identity.primary_phone}, update_modified=False)
 		frappe.db.set_value("Excom Message", {"omni_identity": self.name}, "omni_identity", master_identity.name, update_modified=False)
+		# Calls follow too. This doctype arrived with the voice channel, after merging was written,
+		# so a merge used to leave every call behind pointing at an identity nobody can open — the
+		# call history simply vanished from the contact it belonged to.
+		if frappe.db.table_exists("Excom Call"):
+			frappe.db.set_value("Excom Call", {"omni_identity": self.name}, "omni_identity", master_identity.name, update_modified=False)
 
 		self.linked_entities = []
 		self.status = "Merged"
@@ -208,12 +217,19 @@ def resolve_identity(phone: str = "", email: str = "", channel: str = "", channe
 	identity_name = None
 
 	# --- Step 1: normalized_phone on Omni Identity ---
+	# Every spelling of the number, not just the one we were handed. An exact match is why the same
+	# person arrived twice: a telephony webhook says 919250333699, an older import of the same
+	# contact says 09250333699, and as strings those never met — so a second identity was created
+	# and the conversation split in half. The variants are exact and bounded, never a LIKE.
 	if norm_phone:
-		identity_name = frappe.db.get_value(
-			"Omni Identity",
-			{"normalized_phone": norm_phone, "status": ["!=", "Merged"]},
-			"name",
-		)
+		for candidate in phone_variants(norm_phone):
+			identity_name = frappe.db.get_value(
+				"Omni Identity",
+				{"normalized_phone": candidate, "status": ["!=", "Merged"]},
+				"name",
+			)
+			if identity_name:
+				break
 
 	# --- Step 2: phone/WhatsApp alias ---
 	if not identity_name and norm_phone:
@@ -221,12 +237,12 @@ def resolve_identity(phone: str = "", email: str = "", channel: str = "", channe
 			"""
 			SELECT oia.parent FROM `tabOmni Identity Alias` oia
 			JOIN `tabOmni Identity` oi ON oi.name = oia.parent
-			WHERE oia.alias_value_normalized = %(val)s
+			WHERE oia.alias_value_normalized IN %(vals)s
 			AND oia.alias_type IN ('Phone', 'WhatsApp')
 			AND oi.status != 'Merged'
 			LIMIT 1
 			""",
-			{"val": norm_phone},
+			{"vals": tuple(phone_variants(norm_phone))},
 			as_dict=True,
 		)
 		if alias_hit:

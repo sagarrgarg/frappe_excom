@@ -1,0 +1,466 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-09-09 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "identity_section",
+  "omni_identity",
+  "thread",
+  "display_name",
+  "column_break_identity",
+  "customer_number",
+  "business_number",
+  "channel_account",
+  "routing_section",
+  "direction",
+  "transport",
+  "sticky_agent",
+  "answered_by",
+  "column_break_routing",
+  "agent",
+  "team",
+  "ivr_selection",
+  "ring_set",
+  "state_section",
+  "status",
+  "outcome",
+  "hangup_cause",
+  "hangup_source",
+  "column_break_state",
+  "ring_seconds",
+  "duration",
+  "talk_time",
+  "cost",
+  "reconciled",
+  "recording_section",
+  "recording_status",
+  "recording_id",
+  "recording_channels",
+  "column_break_recording",
+  "recording_duration_ms",
+  "consent_played",
+  "recording_url",
+  "intelligence_section",
+  "transcript_status",
+  "transcript_engine",
+  "summary_status",
+  "column_break_intelligence",
+  "sentiment",
+  "next_action",
+  "summary",
+  "transcript",
+  "transcript_json",
+  "provider_section",
+  "provider",
+  "provider_call_id",
+  "column_break_provider",
+  "quality_score",
+  "provider_events",
+  "quality_json",
+  "relations_section",
+  "reference_doctype",
+  "reference_name",
+  "column_break_relations",
+  "created_by_user",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "identity_section",
+   "fieldtype": "Section Break",
+   "label": "Identity"
+  },
+  {
+   "fieldname": "omni_identity",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Omni Identity",
+   "options": "Omni Identity"
+  },
+  {
+   "fieldname": "thread",
+   "fieldtype": "Link",
+   "label": "Excom Thread",
+   "options": "Excom Thread"
+  },
+  {
+   "fieldname": "display_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Contact"
+  },
+  {
+   "fieldname": "column_break_identity",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "customer_number",
+   "fieldtype": "Data",
+   "label": "Customer Number"
+  },
+  {
+   "fieldname": "business_number",
+   "fieldtype": "Data",
+   "label": "Business Number (DID)"
+  },
+  {
+   "fieldname": "channel_account",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Channel Account",
+   "options": "Excom Channel Account"
+  },
+  {
+   "fieldname": "routing_section",
+   "fieldtype": "Section Break",
+   "label": "Routing"
+  },
+  {
+   "default": "Inbound",
+   "fieldname": "direction",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Direction",
+   "options": "Inbound\nOutbound",
+   "reqd": 1
+  },
+  {
+   "default": "Browser",
+   "description": "Browser = answered over WebRTC in the Excom tab. Phone = the provider bridged the agent's own mobile.",
+   "fieldname": "transport",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Transport",
+   "options": "Browser\nPhone"
+  },
+  {
+   "description": "The agent who last handled this contact, rung first.",
+   "fieldname": "sticky_agent",
+   "fieldtype": "Link",
+   "label": "Sticky Agent",
+   "options": "User"
+  },
+  {
+   "fieldname": "answered_by",
+   "fieldtype": "Link",
+   "label": "Answered By",
+   "options": "User"
+  },
+  {
+   "fieldname": "column_break_routing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "agent",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Agent",
+   "options": "User"
+  },
+  {
+   "fieldname": "team",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Team",
+   "options": "Excom Team"
+  },
+  {
+   "fieldname": "ivr_selection",
+   "fieldtype": "Data",
+   "label": "IVR Selection"
+  },
+  {
+   "description": "Who Excom decided should ring. Drives the \"picked up by\" fan-out.",
+   "fieldname": "ring_set",
+   "fieldtype": "Code",
+   "label": "Ring Set",
+   "options": "JSON"
+  },
+  {
+   "fieldname": "state_section",
+   "fieldtype": "Section Break",
+   "label": "State"
+  },
+  {
+   "default": "Ringing",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Ringing\nIn Progress\nCompleted\nMissed\nNo Answer\nBusy\nFailed\nCanceled",
+   "reqd": 1
+  },
+  {
+   "fieldname": "outcome",
+   "fieldtype": "Data",
+   "label": "Outcome"
+  },
+  {
+   "fieldname": "hangup_cause",
+   "fieldtype": "Data",
+   "label": "Hangup Cause"
+  },
+  {
+   "fieldname": "hangup_source",
+   "fieldtype": "Data",
+   "label": "Hangup Source"
+  },
+  {
+   "fieldname": "column_break_state",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ring_seconds",
+   "fieldtype": "Int",
+   "label": "Ring Seconds"
+  },
+  {
+   "fieldname": "duration",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Duration (sec)"
+  },
+  {
+   "fieldname": "talk_time",
+   "fieldtype": "Int",
+   "label": "Talk Time (sec)"
+  },
+  {
+   "fieldname": "cost",
+   "fieldtype": "Currency",
+   "label": "Cost"
+  },
+  {
+   "default": "0",
+   "description": "Set once the provider's call detail record has been read back.",
+   "fieldname": "reconciled",
+   "fieldtype": "Check",
+   "label": "Reconciled"
+  },
+  {
+   "fieldname": "recording_section",
+   "fieldtype": "Section Break",
+   "label": "Recording"
+  },
+  {
+   "default": "None",
+   "fieldname": "recording_status",
+   "fieldtype": "Select",
+   "label": "Recording Status",
+   "options": "None\nPending\nReady\nFailed\nPurged"
+  },
+  {
+   "fieldname": "recording_id",
+   "fieldtype": "Data",
+   "label": "Recording ID"
+  },
+  {
+   "fieldname": "recording_channels",
+   "fieldtype": "Select",
+   "label": "Recording Channels",
+   "options": "\nmono\nstereo"
+  },
+  {
+   "fieldname": "column_break_recording",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "recording_duration_ms",
+   "fieldtype": "Int",
+   "label": "Recording Duration (ms)"
+  },
+  {
+   "default": "0",
+   "fieldname": "consent_played",
+   "fieldtype": "Check",
+   "label": "Consent Announcement Played"
+  },
+  {
+   "description": "Provider-side URL. Never handed to a browser — playback goes through the authenticated proxy.",
+   "fieldname": "recording_url",
+   "fieldtype": "Small Text",
+   "label": "Recording URL"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "intelligence_section",
+   "fieldtype": "Section Break",
+   "label": "Transcript and Summary"
+  },
+  {
+   "default": "None",
+   "fieldname": "transcript_status",
+   "fieldtype": "Select",
+   "label": "Transcript Status",
+   "options": "None\nPending\nReady\nFailed\nSkipped"
+  },
+  {
+   "fieldname": "transcript_engine",
+   "fieldtype": "Data",
+   "label": "Transcript Engine"
+  },
+  {
+   "default": "None",
+   "fieldname": "summary_status",
+   "fieldtype": "Select",
+   "label": "Summary Status",
+   "options": "None\nPending\nReady\nFailed\nSkipped"
+  },
+  {
+   "fieldname": "column_break_intelligence",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sentiment",
+   "fieldtype": "Data",
+   "label": "Sentiment"
+  },
+  {
+   "fieldname": "next_action",
+   "fieldtype": "Small Text",
+   "label": "Next Action"
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Small Text",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "transcript",
+   "fieldtype": "Long Text",
+   "label": "Transcript"
+  },
+  {
+   "fieldname": "transcript_json",
+   "fieldtype": "Code",
+   "label": "Transcript Turns",
+   "options": "JSON"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "provider_section",
+   "fieldtype": "Section Break",
+   "label": "Provider"
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Provider"
+  },
+  {
+   "description": "The provider's own call id. Unique — this is what makes duplicate webhooks free.",
+   "fieldname": "provider_call_id",
+   "fieldtype": "Data",
+   "label": "Provider Call ID",
+   "unique": 1
+  },
+  {
+   "fieldname": "column_break_provider",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "quality_score",
+   "fieldtype": "Float",
+   "label": "Quality Score (MOS)",
+   "precision": "2"
+  },
+  {
+   "fieldname": "provider_events",
+   "fieldtype": "Code",
+   "label": "Provider Events",
+   "options": "JSON"
+  },
+  {
+   "fieldname": "quality_json",
+   "fieldtype": "Code",
+   "label": "Media Metrics",
+   "options": "JSON"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "relations_section",
+   "fieldtype": "Section Break",
+   "label": "Relations"
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference Type",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Reference Name",
+   "options": "reference_doctype"
+  },
+  {
+   "fieldname": "column_break_relations",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "created_by_user",
+   "fieldtype": "Link",
+   "label": "Created By",
+   "options": "User"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text Editor",
+   "label": "Call Notes"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-09 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom",
+ "name": "Excom Call",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Agent",
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "display_name",
+ "track_changes": 0
+}

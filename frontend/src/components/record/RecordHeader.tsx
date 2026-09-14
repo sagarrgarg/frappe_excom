@@ -3,6 +3,7 @@ import { Avatar, Button, Chip, OverflowMenu, Toolbar, useContainerWidth, Context
 import type { UnifiedContact } from "../../types";
 import type { RecordRef } from "../../hooks/useRecordLinks";
 import { deskUrl } from "../../hooks/useRecordLinks";
+import { CallButton } from "../voice/CallButton";
 import type { Accent } from "../primitives/Chip";
 
 /** Actions worth a visible icon once the pane is wide enough (≥ 720 px); the rest stay under ⋯. */
@@ -58,6 +59,15 @@ export function RecordHeader({ contact, record, onBack, showBack, menuGroups, on
         </div>
         {sub && <p className="text-xs text-ink-3 truncate">{sub}</p>}
       </div>
+      {/* Renders nothing unless this site has a voice line and the contact has a number. */}
+      <CallButton
+        number={contact.contactInfo.phone}
+        thread={contact.activeAccountId}
+        displayName={contact.contactName}
+        variant="ghost"
+        size={narrow ? "icon" : "md"}
+        label={narrow ? "" : undefined}
+      />
       {detailsToggleVisible && (
         <Button variant="ghost" size="icon" aria-label="Toggle details (⌘.)" title="Details  ⌘." onClick={onToggleDetails}><PanelRight /></Button>
       )}

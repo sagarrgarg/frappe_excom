@@ -7,6 +7,7 @@ import { RecordHeader } from "./RecordHeader";
 import { ContextStrip } from "./ContextStrip";
 import { MessageFeed } from "./MessageFeed";
 import { Composer, type EmailDraft } from "./Composer";
+import { ActiveCallCard } from "../voice/ActiveCallCard";
 import { TasksTab } from "./TasksTab";
 import { NotesTab } from "./NotesTab";
 import { ActivityTab } from "./ActivityTab";
@@ -208,6 +209,8 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
             dragHandlers={{ onDragOver: fileUpload.handleDragOver, onDragLeave: fileUpload.handleDragLeave, onDrop: fileUpload.handleDrop }}
           />
           )}
+          {/* Above the composer, not over it: the agent takes notes and keeps typing mid-call. */}
+          <ActiveCallCard threadIds={threadIds} />
           {((contact.threads?.length ?? 0) > 0 || archived) && (
           <Composer contact={contact} via={via} setVia={setVia} prefill={pendingText} onPrefillConsumed={() => setPendingText(null)} replyingTo={replyingTo} clearReply={() => setReplyingTo(null)} emailDraft={emailDraft} setEmailDraft={setEmailDraft} onSent={onSent} onOptimistic={onOptimistic} fileUpload={fileUpload} />
           )}

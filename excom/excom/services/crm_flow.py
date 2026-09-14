@@ -235,11 +235,36 @@ def sticky_owner(identity: str) -> str | None:
 
 
 def _assign(doc, user: str) -> None:
+	"""Hand the record back to whoever owned this contact last.
+
+	Runs as the system, deliberately. Frappe's public `add` checks that *the current user* may read
+	the record, and the current user here is whoever happened to trigger the flow — a webhook, a
+	scheduler job, an agent who cannot see this lead at all. The rule is about the contact's
+	history, not about them, so the session is elevated for the one call and the real user is still
+	recorded as having made the assignment.
+
+	`add` takes exactly one argument. It used to be called with `ignore_permissions=True` as well,
+	which is a keyword it has never accepted: every call raised TypeError, the except below logged
+	it, and sticky assignment silently never happened.
+	"""
 	from frappe.desk.form.assign_to import add
+
+	previous = frappe.session.user
 	try:
-		add({"assign_to": [user], "doctype": doc.doctype, "name": doc.name, "description": _("Sticky assignment: prior owner on this contact")}, ignore_permissions=True)
+		frappe.set_user("Administrator")
+		add(
+			{
+				"assign_to": [user],
+				"doctype": doc.doctype,
+				"name": doc.name,
+				"assigned_by": previous,
+				"description": _("Sticky assignment: prior owner on this contact"),
+			}
+		)
 	except Exception:
 		frappe.log_error(title="Excom sticky assignment failed", message=frappe.get_traceback())
+	finally:
+		frappe.set_user(previous)
 
 
 def on_todo_assigned(doc, method=None) -> None:

@@ -1,433 +1,214 @@
-# Phase C: Voice Channel
+# Phase C: Voice Channel — Browser-First
 
-Priority: HIGH
-Estimated Effort: 12-18 days
-Dependency: Phases 0-3 (complete), Phase A (security in place)
+**Version:** 2.0 (2026-09-09) — supersedes v1, which planned PSTN click-to-call only
+**Design:** `roadmap/design/HLD_004_voice_webrtc.md`
+**Priority:** HIGH
+**Estimated effort:** 30–42 days
+**Depends on:** Phases 0–3 (done), Phase A security (done), P1 UI (done)
+**Soft-depends on:** Phase B LLM client — for call summaries only
 
 ---
 
 ## Objective
 
-Add calls as a first-class Excom channel, sitting alongside WhatsApp, Email and Web Chat in the same threads, with the same identity layer and the same teams.
+Calls become a first-class Excom channel, in the same threads, with the same identity layer and the same teams as WhatsApp and email — **answered in the browser**.
 
-**Excom is the brain. The provider is a dumb pipe.** It supplies phone numbers and executes instructions. Every decision — who rings, in what order, whether to record, what the IVR does — is computed in Excom from live data.
+An agent puts on a headset, opens Excom, and takes calls. Every call is recorded, transcribed, summarised and filed onto the contact's timeline without anyone typing a note.
 
-**No vendor name is ever visible.** The UI says "Calls". Provider identity exists in one Select field and one adapter module. Swapping Exotel for Airtel IQ means writing one file.
+**Provider: Plivo**, chosen because it is the only vendor with a public-npm WebRTC browser SDK, cryptographically signed webhooks, and the ability to ring a browser endpoint and a mobile number in the same parallel dial. Exotel and Airtel IQ stay configurable as PSTN-only providers on their own channel accounts.
 
----
+### What v1 said and why it changed
 
-## C.0 Design Rules
+v1 planned click-to-call over PSTN: the agent's own mobile rings, they answer the handset, the carrier bridges them to the customer. That is built and working on branch `somil-dev` against Exotel. It is a real feature and it is not being thrown away — but the agent is answering a phone, not using Excom.
 
-1. Everything lives in `excom`. No separate app.
-2. One new standalone doctype. Everything else is fields on doctypes that already exist.
-3. Nobody is enumerated twice. Teams ring, not hand-maintained agent lists.
-4. Agent phone numbers come from core `User.mobile_no`. No new user config.
-5. The provider console holds a static skeleton flow, configured once, never touched again.
+v2 makes the browser the phone and demotes the PSTN bridge to a **fallback transport**. Both live behind one routing decision; see HLD-004 §2.
 
 ---
 
-## C.1 Code Layout
+## The One Thing That Can Kill This Phase
 
-Mirrors the existing `channels/email/` and `channels/whatsapp/` convention.
+**India's regulatory position on connecting a WebRTC leg to the domestic PSTN.**
 
-```
-excom/excom/channels/voice/
-├── __init__.py
-├── routing.py          # the decision engine (provider-agnostic)
-├── handler.py          # inbound webhook, async, does the writing
-├── outbound.py         # click-to-call, hangup, transfer
-├── recording.py        # authenticated recording proxy
-└── providers/
-    ├── base.py         # VoiceProvider ABC + CallDecision + CallEvent
-    ├── exotel.py       # Connect Dynamic URL adapter
-    └── airtel.py       # stub
+Plivo's own India documentation requires that both call legs originate and terminate within India, and TRAI's long-standing position restricts domestic VoIP-to-PSTN interconnection. A browser leg is IP, not PSTN.
 
-excom/excom/api/voice.py   # whitelisted endpoints
-```
+**Get written confirmation from Plivo India — sales *and* compliance — before writing code.** Ask three questions explicitly:
 
-`excom/setup.py::seed_channels()` gains:
+1. Can a Plivo WebRTC endpoint registered from a browser in India originate a call to an Indian mobile or landline, with an India DID as caller ID?
+2. Can an inbound call to an Indian Plivo DID be `<Dial>`-ed to a WebRTC `<User>` endpoint?
+3. Which media POP anchors that call, and does it satisfy the both-legs-in-India requirement?
 
-```python
-{"name": "voice", "channel_label": "Calls",
- "allows_multiple_accounts": 1, "is_enabled": 1,
- "description": "Voice calling channel."}
-```
+If the answer to 1 or 2 is no, the phase becomes **V1 + V2-Phone only**: the `somil-dev` PSTN model on a better foundation, with recording, transcript and summary — still a large win, and no rework, because transport is a property of a destination in this design.
+
+This is question **G1** in the gates below. Nothing else starts until it is answered.
 
 ---
 
-## C.2 Provider Abstraction
+## Requirements
 
-```python
-class VoiceProvider(ABC):
-    def execute_ring(decision: CallDecision) -> ProviderResponse
-    def initiate_call(from_number, to_number, caller_id, opts) -> ProviderCallRef
-    def hangup(provider_call_id) -> None
-    def fetch_call_details(provider_call_id) -> CallDetails
-    def fetch_recording(provider_call_id) -> stream
-    def normalize_event(raw_payload) -> CallEvent
-    def capabilities() -> set[str]
-```
+### R1 — Commercial and regulatory (lead time: 2–4 weeks, start now)
 
-`CallDecision` is produced by `routing.py` and is identical regardless of provider:
+| # | Requirement | Owner | Blocks |
+|---|---|---|---|
+| R1.1 | Plivo account, India-registered business entity | Business | everything |
+| R1.2 | KYC complete and approved. **Outbound does not work until this clears.** | Business | V1 |
+| R1.3 | Written answer to the three WebRTC-PSTN questions above | Business | **G1 — everything** |
+| R1.4 | Indian DID rented — correct series for the use case (landline series for service/transactional; 140-series is promotional-only; 160-series is BFSI-only) | Business | V1 |
+| R1.5 | Confirm which media POP / `clientRegion` serves India and its latency | Business + Eng | V1 |
+| R1.6 | Recording-consent legal position per state / customer type | Legal | V2 |
+| R1.7 | Data-residency requirement for recordings and transcripts — decides the transcription vendor | Legal | V2 |
+| R1.8 | Per-minute pricing for India domestic in/out, plus recording storage beyond 90 days | Business | V1 |
+| R1.9 | Monthly spend ceiling and a billing alert on the Plivo account | Business | V1 |
 
-```python
-CallDecision(
-    destinations=[...],      # E.164, ordered
-    parallel=True,
-    ring_seconds=25,
-    record=True,
-    max_conversation_seconds=3600,
-    ring_set=[users...],     # for notifications
-)
-```
+### R2 — Plivo configuration (half a day, once R1 clears)
 
-**Two Exotel delivery adapters, same decision object:**
-
-| Adapter | Mechanism | Status |
-|---|---|---|
-| `ExotelConnectAdapter` | One JSON response, `parallel_ringing: true` | Documented REST, build now |
-| `ExotelLegsAdapter` | N independent legs, bridge on first answer | gRPC/ExoML, needs Exotel sales access — add later |
-
-Capability flags gate the UI: `webrtc`, `transfer`, `hold`, `dual_recording`. Unsupported actions grey out rather than break.
-
-Complexity: Medium
-
----
-
-## C.3 Data Model
-
-### One new doctype: `Excom Call`
-
-Autoname `hash`. `provider_call_id` unique-indexed, so a provider switch never fractures naming.
-
-```
-identity_section    omni_identity (Link), thread (Link), display_name,
-                    customer_number
-routing_section     channel_account (Link), business_number,
-                    direction (Inbound|Outbound),
-                    ring_set (JSON), sticky_agent (Link User),
-                    answered_by (Link User), team (Link Excom Team),
-                    ivr_selection (Data)
-state_section       status (Ringing|In Progress|Completed|Missed|Failed|
-                            Busy|No Answer|Canceled),
-                    outcome, ring_seconds, duration, cost
-recording_section   recording_url, recording_status, recording_channels
-provider_section    provider, provider_call_id (unique),
-                    provider_events (JSON), reconciled (Check)
-relations_section   reference_doctype, reference_name, notes,
-                    created_by_user
-```
-
-`ring_set` is our own decision record — it drives the "picked up by X" fan-out.
-
-### `Excom Channel Account` — new `voice_section`
-
-`depends_on: channel == "voice"`, so it is invisible when configuring other channels.
-
-| Field | Type | Notes |
-|---|---|---|
-| voice_provider | Select | Exotel / Airtel IQ |
-| voice_number | Data | Business number customers see |
-| voice_account_sid | Data | |
-| voice_api_base | Data | Regional cluster |
-| voice_api_key | Data | |
-| voice_api_secret | Password | |
-| voice_webhook_token | Data | Mirrors `wa_webhook_verify_token` |
-| voice_ring_strategy | Select | Sticky then Team / Team only / Sticky only |
-| voice_sticky_ring_seconds | Int | default 20 |
-| voice_team_ring_seconds | Int | default 30, provider cap 60 |
-| voice_record_policy | Select | Never / Inbound only / Outbound only / All |
-| voice_recording_channels | Select | Mixed / Dual |
-| voice_allow_international | Check | Account-level ceiling |
-| voice_max_call_seconds | Int | provider cap 4500 |
-| voice_no_answer_action | Select | Log missed only / Voicemail (Phase 2) |
-| voice_status | HTML | Credential check + copyable webhook URLs |
-
-### `Excom Account Team` — one field added
-
-| voice_priority | Int | Ring order when a line serves multiple teams |
-|---|---|---|
-
-### `Excom Message` — two changes
-
-- `message_type` gains `Call`
-- `content_json` holds `{"call": "<Excom Call name>"}`
-
-This is the timeline stub. Calls render inline with WhatsApp and email in the same thread.
-
-### `Excom Settings` — new `calling_tab`
-
-Global defaults; account-level always wins.
-
-| Field | Type |
+| # | Requirement |
 |---|---|
-| default_record_policy | Select |
-| default_allow_international | Check |
-| blocked_country_codes | Small Text |
-| daily_international_minutes_cap | Int |
-| recording_retention_days | Int |
-| require_recording_consent | Check |
+| R2.1 | A Plivo **Application** with `answer_url`, `hangup_url`, `fallback_url` pointing at the Excom site |
+| R2.2 | The DID assigned to that Application |
+| R2.3 | **HTTP Basic Auth enabled for recording media** in Voice Settings — recordings are public URLs by default |
+| R2.4 | Auth ID + Auth Token stored in `Excom Channel Account` (`Password` field, never in `site_config.json` in plaintext) |
+| R2.5 | Webhook retry policy tuned via URL fragment (`#ct=2000&rc=3&rp=ct,rt`) |
+| R2.6 | Plivo egress IP ranges obtained for the allowlist |
+| R2.7 | Sandbox / test credentials for CI |
 
-### Nothing else
+### R3 — Infrastructure
 
-Agent numbers: `User.mobile_no` (core). Eligibility: `User.enabled` (core).
-Availability and spend counters: `frappe.cache()`, not the database.
-
-Complexity: Low
-
----
-
-## C.4 Routing Engine
-
-No hand-maintained agent lists. `Excom Channel Account.allowed_teams` already declares which teams work a line; those are the teams that ring.
-
-```
-Excom Channel Account "Sales Line" (+91-80-xxxx)
-└── allowed_teams: [Sales, Presales]     ← already exists
-        └── Excom Team.members            ← already exists
-                └── User.mobile_no        ← already exists
-```
-
-Add someone to the team and they start ringing. Remove them and they stop. One place.
-
-### Two stages
-
-**Stage 1 — the person they know**
-
-```
-sticky = last agent who handled this Omni Identity
-eligible if:  User.enabled = 1
-          AND still a member of one of the line's teams
-          AND has a mobile number
-          AND marked available
-
-eligible     → ring sticky alone, voice_sticky_ring_seconds
-not eligible → fall straight through to Stage 2
-```
-
-Resolution is by **Omni Identity, not phone number** — so a customer calling from a different number, or last handled over WhatsApp, still reaches the rep who knows them.
-
-**Stage 2 — the team**
-
-```
-ring everyone else on the line's teams, in parallel, first answer wins
-```
-
-### Notifications
-
-Excom computed the ring set, so it can pop every team member's screen before the provider finishes dialling.
-
-| Event | Realtime event | Audience |
+| # | Requirement | Why |
 |---|---|---|
-| Call arrives | `excom:call_ringing` | Everyone in ring set |
-| Answered | `excom:call_answered` | Everyone else — "Picked up by Priya" |
-| Caller hung up | `excom:call_missed` | Everyone — "Caller hung up · call back" |
-| Nobody answered | `excom:call_missed` | Everyone + missed-call queue |
-
-Complexity: Medium
-
----
-
-## C.5 The 5-Second Rule
-
-The routing endpoint sits on the critical path of a live call. Exotel waits **5 seconds**, then falls to the Fallback URL, then drops to "we didn't dial anyone".
-
-**Hard constraints on `/api/method/excom.excom.api.voice.route`:**
-
-- No record creation. No identity writes. No outbound provider calls.
-- Team → numbers map served from `frappe.cache()`, invalidated on team change.
-- Everything else `frappe.enqueue()`d after the response is returned.
-- Fallback URL points at a cache-only variant returning the raw team list.
-
-A naive implementation that logs first and responds second will drop calls under load. This is the single most important non-obvious constraint in the phase.
-
-Complexity: Medium
-
----
-
-## C.6 Provider Flow Skeleton
-
-Configured once in the provider console. Contains no teams, no numbers, no names, no business logic.
-
-```
-Incoming call
-  → Greeting
-  → Gather        (IVR prompt, collects keypress)
-  → Connect       [Dynamic URL → Excom]   ← every decision happens here
-  → Passthru      [async → Excom]         ← logging only
-```
-
-### Endpoint contracts
-
-**Routing** — synchronous, 5s budget, zero writes:
-
-```
-GET /api/method/excom.excom.api.voice.route?key=<token>&stage=1
-    ← CallSid, CallFrom, CallTo, Direction, digits, CustomField
-
-→ {"destination": ["+9198..."], "parallel_ringing": true,
-   "max_ringing_duration": 20, "record": true}
-```
-
-**Events** — async, does all the writing:
-
-```
-GET /api/method/excom.excom.api.voice.events?key=<token>
-→ upsert Excom Call, publish realtime, enqueue reconcile
-```
-
-**Plus:** `initiate`, `hangup`, `get_recording`, `set_availability`.
-
-Complexity: Low
-
----
-
-## C.7 IVR
-
-**v1: provider-managed.** The Gather applet plays the prompt and captures the keypress; Excom receives it as `digits` and routes on it. Menu-to-team mapping lives in Excom from day one.
-
-**The routing endpoint accepts and ignores `digits` in v1.** That is the IVR seam — turning it on later changes no signatures and requires no re-architecture.
-
-**Phase 3: Excom-managed tree.** An `Excom IVR Flow` doctype rendered into whatever shape the provider needs. Only prompt audio and DTMF capture stay carrier-side, because the carrier holds the phone leg.
-
-Complexity: Low (v1) / Medium (Phase 3)
-
----
-
-## C.8 Calling Over the Web
-
-**Click-to-call over PSTN.** Agent clicks in Excom, their own phone rings, answering connects them to the customer. This is what Frappe CRM and Helpdesk ship and it is production-grade.
-
-**WebRTC softphone is deferred to Phase 3**, behind a capability flag. Exotel's SDK is not on public npm, requires a separate VoIP agreement with Veeno Communications, an MVN with IP capability, and additional KYC. It is also the most vendor-locked component in the stack — an Airtel switch would mean a full rewrite.
-
-When `capabilities()` returns `webrtc`, the UI shows a softphone panel; otherwise "Your phone will ring." One adapter method and one React component.
-
-Complexity: Low (v1) / High (Phase 3)
-
----
-
-## C.9 Recording
-
-Admin-controlled at three levels, most specific wins: **account → team → agent**.
-
-- `record` is set per call in the routing response, so policy is dynamic, not fixed in the provider.
-- Dual-channel option (separate agent/customer tracks) — prerequisite for future transcription.
-- Consent announcement toggle — legally required in several jurisdictions.
-- **Authenticated proxy playback.** Provider recording URLs need Basic Auth and must never reach a browser. Streamed through `excom.excom.api.voice.get_recording` with a permission check.
-- Retention purge wired into the existing `cleanup_channels` machinery.
-- Download permission is separate from playback permission.
-
-Complexity: Low
-
----
-
-## C.10 International Controls
-
-Three server-side layers. A UI-only check is not a control.
-
-1. **Per agent** — permission stored per user, checked at dial time.
-2. **Per account** — `voice_allow_international` caps everyone on that line regardless.
-3. **Global default** — `Excom Settings` for anyone without an explicit setting.
-
-Backed by:
-- Country detection via existing `utils/phone.py` (E.164 parse), not string prefixes.
-- Blocked-country list evaluated **before** any allowlist.
-- Daily international minute cap per agent, counter in cache. Alert at threshold, hard block at limit. This is what stops a compromised account generating a five-figure bill overnight.
-- Every denied attempt logged with agent, number, reason.
-
-Complexity: Low
-
----
-
-## C.11 Frontend
-
-**Active-call widget** — floating, draggable, survives navigation:
-- Caller identity, photo, linked Customer/Lead/Supplier, resolved before answering
-- Live status: Ringing → Connecting → In progress with timer → Ended with duration
-- Accept / Reject / Mute / Hold / Transfer / Hangup, capability-gated
-- Note-taking during the call, saved onto the call record
-- Last 3 conversations across any channel, plus open ERP documents
-
-**Incoming screen pop** — browser notification + widget the moment the phone rings. Realtime publishes *before* the DB write so the pop is instant under load.
-
-**Calls in the unified timeline** — a call renders as a card inside the same thread as that contact's WhatsApp and email: direction, duration, outcome, inline recording player, notes, call-back button. One scroll shows the whole relationship.
-
-**Call views:**
-- Calls tab in `LeftSidebar.tsx` with filters (direction, outcome, agent, team, date, recorded-only)
-- **Missed-call queue** as a first-class worklist with claim/assign/callback
-- Per-identity call history on `OmniIdentityPanel.tsx`
-- Mobile: `components/mobile/CallScreen.tsx` is already scaffolded
-
-Complexity: High
-
----
-
-## C.12 Security and Operations
-
-- Webhook auth: token in query string (no provider signs requests) **plus** a provider IP allowlist, since a URL-borne token leaks via logs and referrers.
-- Every inbound webhook recorded as an `Integration Request` for replay and debugging. No separate event doctype — Frappe already does this.
-- Idempotent upsert on `provider_call_id`. Duplicate webhooks are free.
-- Rate limiting on click-to-call per agent.
-- Credentials passed via `auth=` tuple, **never** embedded in the URL. Frappe CRM's version builds `https://key:token@host/...` and leaks the API token into every traceback — do not copy this.
-- Recording access, download, and international dialling are three distinct permissions.
-- **Async reconcile job.** Duration, price and end-time populate ~2 minutes after the call. A scheduled task backfills unreconciled calls. None of the three existing Frappe implementations do this, which is why their logs show `duration = 0` on completed calls.
-
-Complexity: Medium
-
----
-
-## C.13 Phasing
-
-**C1 — Calls exist (4-6 days)**
-Provider abstraction, Exotel Connect adapter, `voice_section` config, routing engine, routing + events endpoints, `Excom Call`, timeline stub, recording storage + proxied playback, async reconcile.
-
-**C2 — Calls are usable (5-7 days)**
-Click-to-call, active-call widget, screen pop, ring-set notifications, missed-call queue, international controls + spend caps, three-level recording policy, availability toggle, call history views.
-
-**C3 — Later, on demand**
-Excom-managed IVR tree, WebRTC softphone, Exotel Legs adapter, warm transfer, voicemail, call analytics dashboard, Airtel IQ adapter, live transcription via the audio-stream hook.
-
----
-
-## C.14 Provider Onboarding Checklist
-
-Do these before writing code — several have lead times.
-
-- [ ] Complete KYC. **Outbound calls do not work until this clears.**
-- [ ] Confirm regional cluster (`api.exotel.com` vs `api.in.exotel.com`)
-- [ ] Request `parallel_ringing` be enabled — it is an opt-in feature, capped at 10 numbers
-- [ ] Ask about Legs API access and whether race-to-answer bridging is supported
-- [ ] Confirm Voice API version (v1 documented; v2 is CCM/agent-context; v3 beta)
-- [ ] Obtain Exotel egress IP ranges for the webhook allowlist
-- [ ] Agent emails in the provider console must match Frappe user emails exactly
-- [ ] Build the skeleton flow and assign it to the ExoPhone
-
----
-
-## C.15 Decisions Taken
-
-| Decision | Rationale |
+| R3.1 | **Site served over HTTPS with a valid certificate** | `getUserMedia` needs a secure context. No microphone on `http://`, ever. |
+| R3.2 | Outbound **WSS** and **UDP** permitted from every agent's network to Plivo media POPs | Registration and audio. A blocked port is a silently dead softphone. |
+| R3.3 | Per-site network check before each pilot rollout | Corporate firewalls are the number-one cause of "it rings but there's no audio" |
+| R3.4 | Redis available for presence keys (already a bench dependency) | Registration heartbeat, availability, spend counters |
+| R3.5 | Background workers with a `short` queue not saturated | Every call write is enqueued |
+| R3.6 | Realtime (Socket.IO) healthy — already used by the inbox | Screen pop, call state |
+| R3.7 | Object storage or disk headroom for transcripts | Recordings stay at Plivo; transcripts come to us |
+
+### R4 — Hardware and browser (per agent)
+
+| # | Requirement |
 |---|---|
-| One doctype, not five | Routing and agent config collapse into existing `allowed_teams` + `User.mobile_no` |
-| `Excom Call` stays separate from `Excom Message` | Analytics needs indexed columns; calls mutate 4-6 times; duration/cost/outcome have no home in the message schema |
-| No `Excom Call Event` doctype | `Integration Request` already is the webhook audit trail |
-| Teams ring, not agent lists | "I don't want to keep adding people everywhere" |
-| Sticky-then-team, parallel | Matches how the business actually works |
-| Click-to-call before WebRTC | WebRTC is beta, gated, and the most vendor-locked piece |
-| Connect adapter before Legs adapter | Connect is documented REST today; Legs needs sales access |
-| Availability in cache, not a doctype | Ephemeral high-write runtime state |
-| Voicemail deferred to C3 | Missed-call queue covers the need; voicemail adds a storage/playback path |
+| R4.1 | USB or Bluetooth headset with a boom mic. Laptop mics produce unusable recordings and echo. |
+| R4.2 | Chrome or Edge (current or previous 10 versions), or Safari (current or previous 5) |
+| R4.3 | Microphone permission granted to the Excom origin |
+| R4.4 | Wired ethernet or strong Wi-Fi; ~100 kbps sustained per concurrent call |
+| R4.5 | `User.mobile_no` populated — this is the fallback transport, and it is not optional |
+
+### R5 — Software dependencies
+
+| # | Dependency | Version | Where |
+|---|---|---|---|
+| R5.1 | `plivo` (Python SDK) | 4.62.0 | `pyproject.toml` — brings `requests`, `six`, `decorator`, `lxml`, `PyJWT` |
+| R5.2 | `plivo-browser-sdk` | 2.2.21 | `frontend/package.json` |
+| R5.3 | Transcription SDK / HTTP client | TBD — see D4 | after the bake-off |
+| R5.4 | Phase B LLM client | — | summaries only; transcript ships without it |
+
+### R6 — People and process
+
+| # | Requirement |
+|---|---|
+| R6.1 | 2–3 pilot agents on the Export or Distributor desk who take real calls daily |
+| R6.2 | An admin who owns the Plivo console |
+| R6.3 | Agent training: headset, availability toggle, what "Take calls: in browser / on my phone / off" means |
+| R6.4 | A written call-recording notice for customers, and the announcement audio clip |
+| R6.5 | An escalation path for the pilot's first bad week |
+
+---
+
+## Build Plan
+
+### V1 — Calls exist and ring in the browser (12–16 days)
+
+The narrowest thing that proves the premise: a real call, answered in a tab, filed on a thread.
+
+| # | Work | Complexity |
+|---|---|---|
+| V1.1 | `voice` channel seeded; `Excom Channel Account.voice_section`; `message_type` gains `Call` | Low |
+| V1.2 | `Excom Call` doctype, `provider_call_id` unique-indexed | Low |
+| V1.3 | `Excom Voice Endpoint` doctype + idempotent provisioning against the Plivo Endpoint API | Medium |
+| V1.4 | `providers/base.py` — `VoiceProvider` + `SoftphoneProvider` ABCs, `CallDecision`, `Destination`, `CallEvent` | Medium |
+| V1.5 | `providers/plivo.py` — PlivoXML render, Calls API, Endpoint API, JWT minting, **V3 signature validation** | High |
+| V1.6 | `routing.py` — sticky-then-team, presence filter, cache-backed, zero writes, p99 < 800 ms | High |
+| V1.7 | `api/voice.py` — `route`, `dial_events`, `dial_action`, `hangup`, `dial`, `get_softphone_token`. Access check on line one of every authenticated endpoint. | Medium |
+| V1.8 | `handler.py` — async persistence, idempotent upsert, thread + timeline stub | Medium |
+| V1.9 | `presence.py` — registration heartbeat, availability toggle, Redis TTLs | Medium |
+| V1.10 | `lib/softphone.ts` + `SoftphoneProvider.tsx` — singleton SDK, login by JWT, silent refresh, event bridge | High |
+| V1.11 | `IncomingCallToast` + `ActiveCallBar` — answer, reject, mute, hangup, timer, resolved identity | High |
+| V1.12 | `reconcile.py` + scheduler entry — CDR backfill so `duration` is never 0 | Low |
+| V1.13 | Tests: signature validation, routing decision, idempotency, endpoint guards | Medium |
+
+**V1 exit:** an inbound call to the DID rings a registered agent's browser, is answered there, and appears as a card on the right thread with the right duration.
+
+### V2 — Calls are usable (10–14 days)
+
+| # | Work | Complexity |
+|---|---|---|
+| V2.1 | Outbound dial from thread / contact / lead, both transports, one endpoint | Medium |
+| V2.2 | Recording: `<Record>` config, `recording_ready` webhook, authenticated playback proxy, download as a separate permission, retention purge | Medium |
+| V2.3 | `TranscriptionProvider` ABC + the chosen engine; stereo channel split into speaker-attributed turns | High |
+| V2.4 | `summary.py` — LLM summary, next action, sentiment; posted to the timeline | Medium |
+| V2.5 | `CallCard` in the thread timeline: player, transcript disclosure, summary, call-back | Medium |
+| V2.6 | Missed-call queue as a first-class worklist with claim / assign / call back | Medium |
+| V2.7 | Ring-set notifications: "Picked up by Priya", "Caller hung up · call back" | Low |
+| V2.8 | International controls: agent -> account -> global, blocklist first, daily minute cap, denial log | Medium |
+| V2.9 | `DeviceSettings` — mic/speaker picker, test tone, permission repair flow | Medium |
+| V2.10 | Admin: voice section in `AdminLayout`, credential check, endpoint roster, copyable webhook URLs | Medium |
+| V2.11 | Call history on `OmniIdentityPanel` and a Calls view in the inbox with filters | Medium |
+| V2.12 | Quality metrics captured from `mediaMetrics` | Low |
+
+**V2 exit:** the pilot desk works a full day on it, and the summaries are good enough that nobody types a call note.
+
+### V3 — On demand (8–12 days, not scheduled)
+
+Warm transfer and consult. Hold with music. Excom-managed IVR tree. Airtel IQ adapter. Real-time transcription over Plivo's audio-streaming hook. Voicemail. Call analytics dashboard. Native mobile softphone.
+
+---
+
+## Gates
+
+| Gate | Question | Until answered |
+|---|---|---|
+| **G1** | Does Plivo support WebRTC <-> Indian PSTN for our entity, in writing? | **Nothing starts.** |
+| **G2** | KYC cleared and DID live? | No outbound testing |
+| **G3** | Does the routing endpoint hold p99 < 800 ms with the team cache cold? | V1 does not ship |
+| **G4** | Does the chosen transcription engine beat 85% on 20 real Hinglish calls? | V2.4 summary does not ship; transcript ships alone |
+| **G5** | Network check passed at the pilot site (WSS + UDP)? | That site uses Phone transport |
+| **G6** | Security review of `api/voice.py` — access check on every endpoint, signature validation, scoped realtime? | V1 does not ship |
+
+---
+
+## Non-Negotiables
+
+Each of these exists because the reference branch got it wrong. See HLD-004 §12.
+
+1. **Realtime call events go only to the computed ring set.** Never a broadcast. Every user in the ERP seeing a caller's number breaks the visibility model the whole app is built on.
+2. **Every `@frappe.whitelist()` endpoint starts with an access check.** Guardrail #2 is not optional because it is telephony.
+3. **Webhooks are verified by HMAC signature**, not a token in the query string.
+4. **No "ring some random System Managers" fallback.** No destination means a missed call and a loud notification.
+5. **The routing endpoint writes nothing.** Every write is enqueued after the response.
+6. **The browser never receives a SIP password.** Short-lived JWT only.
+7. **Recording URLs are never handed to a browser.** Proxied, permission-checked, `auth=` tuple.
+8. **`provider_call_id` is unique-indexed.** Duplicate webhooks must be free.
+9. **The reconcile job ships in V1.** Without it, completed calls show `duration = 0` — the bug in every existing Frappe telephony integration.
 
 ---
 
 ## Anti-Scope
 
-Not building unless real usage demands it:
+Not building unless real usage demands it: call queues with position announcements, predictive or power dialler, call scoring and QA workflows, supervisor barge-in and whisper, skills-based routing, multi-provider failover, voicemail transcription, conference calling.
 
-- Call queues with position announcements
-- Predictive/power dialler
-- Call scoring or QA workflows
-- Supervisor barge-in / whisper
-- Voicemail transcription
-- Multi-provider failover
-- Skills-based routing
+---
+
+## Decisions Taken
+
+| Decision | Rationale |
+|---|---|
+| Browser is the phone; PSTN is a transport | The agent should be *in* Excom during the call, not on a handset next to it |
+| Both transports in one parallel `<Dial>` | One code path answers every WebRTC failure mode |
+| Plivo for the pilot | Only vendor with a public browser SDK, signed webhooks and mixed SIP + PSTN dial |
+| Provider per channel account, not global | A site can run Plivo on sales and keep Exotel on support |
+| Two new doctypes, not five | `Excom Call` and `Excom Voice Endpoint`. Routing collapses into existing `allowed_teams` + `User.mobile_no` |
+| Presence in Redis, not a doctype | Ephemeral high-write runtime state |
+| Not Plivo's transcription | English-only, short clips. This desk speaks Hinglish. |
+| Stereo recording from day one | Speaker attribution comes from the file, not from a model guessing |
+| Transcript ships before summary | Summary depends on Phase B; the transcript does not |
+| `somil-dev` is a reference, not a base | Its architecture is sound; its security and realtime scoping are not |

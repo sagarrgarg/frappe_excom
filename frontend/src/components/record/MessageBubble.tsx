@@ -8,6 +8,7 @@ import { ReactionBar } from "../MessageContextMenu";
 import type { FeedMessage } from "../../hooks/useIdentityMessages";
 import { formatServerTime } from "../../utils/datetime";
 import { toastError } from "../ErrorDialog";
+import { awaitsDeliveryReceipt } from "../../lib/messages";
 
 const DELIVERY_TIMEOUT_MS = 10 * 60 * 1000;
 /** Product rule: a failed message can be resent for 6 hours; after that it is flagged Unsent, no retry. */
@@ -160,7 +161,11 @@ export const MessageBubble = memo(function MessageBubble({ message: m, contactNa
           {isUser && m.sentBy && (m.sender === "ai"
             ? <span className="inline-flex items-center gap-0.5 text-crayon-violet-text"><Bot className="size-3" />AI</span>
             : <span className="truncate max-w-[140px]">{m.sentBy.name}</span>)}
-          {isUser && (m.status === "sent" || m.status === "queued") && <DeliveryTimer sentAt={m.timestamp} />}
+          {/* Calls have no delivery receipt, so the "waiting to be delivered" timer would count
+              upward for as long as the tab stayed open. */}
+          {isUser && awaitsDeliveryReceipt(m.type) && (m.status === "sent" || m.status === "queued") && (
+            <DeliveryTimer sentAt={m.timestamp} />
+          )}
         </div>
 
         {m.status === "scheduled" && isUser && (

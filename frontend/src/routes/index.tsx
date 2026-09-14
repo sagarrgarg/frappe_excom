@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell, RouteFallback } from "../components/shell/AppShell";
 import { InboxProvider } from "../components/shell/InboxProvider";
+import { SoftphoneProvider } from "../components/voice/SoftphoneProvider";
 import { InboxRoute } from "./inbox";
 import { appBasename } from "../lib/ui-flag";
 import { FlaggedRoute } from "./flagged";
@@ -19,6 +20,7 @@ const SettingsRoute = lazy(() => import("./pages").then((m) => ({ default: m.Set
 const ContactsRoute = lazy(() => import("./pages").then((m) => ({ default: m.ContactsRoute })));
 const MoreRoute = lazy(() => import("./pages").then((m) => ({ default: m.MoreRoute })));
 const StressRoute = lazy(() => import("./stress").then((m) => ({ default: m.StressRoute })));
+const CallsRoute = lazy(() => import("../components/voice/CallsPage").then((m) => ({ default: m.CallsPage })));
 
 const L = (el: React.ReactNode) => <Suspense fallback={<RouteFallback />}>{el}</Suspense>;
 
@@ -34,7 +36,9 @@ export function NextRouter() {
   return (
     <BrowserRouter basename={appBasename()}>
       <Routes>
-        <Route element={<InboxProvider><AppShell /></InboxProvider>}>
+        {/* The softphone wraps the router, not a page: a SIP registration that drops on navigation
+            means an agent silently stops receiving calls. */}
+        <Route element={<InboxProvider><SoftphoneProvider><AppShell /></SoftphoneProvider></InboxProvider>}>
           <Route index element={<Navigate to="/inbox" replace />} />
           <Route path="/inbox/:view?" element={<InboxRoute />} />
           <Route path="/t/:recordId" element={<InboxRoute />} />
@@ -43,6 +47,7 @@ export function NextRouter() {
           <Route path="/intake" element={L(<IntakeRoute />)} />
           <Route path="/p3" element={<FlaggedRoute name="P3 placeholder" />} />
           <Route path="/contacts" element={L(<ContactsRoute />)} />
+          <Route path="/calls" element={L(<CallsRoute />)} />
           <Route path="/broadcasts" element={L(<BroadcastsRoute />)} />
           <Route path="/analytics" element={L(<AnalyticsRoute />)} />
           <Route path="/teams" element={<Navigate to="/admin/teams" replace />} />

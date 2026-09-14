@@ -1,10 +1,10 @@
 """Tests for Excom Push Token doctype."""
 
 import frappe
-from frappe.tests import IntegrationTestCase
+from frappe.tests.utils import FrappeTestCase
 
 
-class TestExcomPushToken(IntegrationTestCase):
+class TestExcomPushToken(FrappeTestCase):
 	def test_create_push_token(self) -> None:
 		token = frappe.get_doc({
 			"doctype": "Excom Push Token",

@@ -4,6 +4,12 @@ import { useFrappePostCall } from "frappe-react-sdk";
 import { Button, Input, Modal, Select, Avatar } from "./primitives";
 import { toast } from "sonner";
 import { showError } from "./ErrorDialog";
+import { useSoftphoneContext } from "./voice/SoftphoneProvider";
+
+/** Enough digits to be worth offering to dial. Deliberately loose — the server validates. */
+function looksLikeNumber(text: string): boolean {
+  return (text || "").replace(/\D/g, "").length >= 6;
+}
 
 interface NewConversationDialogProps {
   onClose: () => void;
@@ -38,7 +44,11 @@ export function NewConversationDialog({
   initialIdentity,
 }: NewConversationDialogProps) {
   const [tab, setTab] = useState<TabMode>("search");
-  const [channel, setChannel] = useState<"whatsapp" | "email">("whatsapp");
+  const [channel, setChannel] = useState<"whatsapp" | "email" | "voice">("whatsapp");
+  // Calling is not a conversation to start, it is an action to take, so it does not go through
+  // initiate_outbound — the number is handed to the softphone the same way the call button on a
+  // thread does it, and the contact and thread are created by the call.
+  const softphone = useSoftphoneContext();
 
   const [searchText, setSearchText] = useState("");
   const [identities, setIdentities] = useState<IdentityResult[]>([]);
@@ -86,6 +96,8 @@ export function NewConversationDialog({
   );
 
   useEffect(() => {
+    // No account list for a call: the line is decided server-side from the agent's own softphone.
+    if (channel === "voice") return;
     loadAccounts(channel);
   }, [channel, loadAccounts]);
 
@@ -117,6 +129,26 @@ export function NewConversationDialog({
   }, [searchText, doSearch]);
 
   const handleSubmit = async () => {
+    if (channel === "voice") {
+      const number =
+        tab === "create" ? newPhone.trim() : selectedIdentity?.primary_phone?.trim() || "";
+      if (!number) {
+        toast.error("This contact has no phone number to call.");
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const plan = await softphone?.dial(number, {
+          displayName:
+            tab === "create" ? newName.trim() || number : selectedIdentity?.display_name,
+        });
+        if (plan) onClose();
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     if (!selectedAccount) {
       toast.error("Please select an account to send from");
       return;
@@ -168,11 +200,19 @@ export function NewConversationDialog({
   };
 
   const canSubmit =
-    selectedAccount &&
-    ((tab === "search" && selectedIdentity) ||
-      (tab === "create" &&
-        ((channel === "whatsapp" && newPhone.trim()) ||
-          (channel === "email" && newEmail.trim()))));
+    channel === "voice"
+      ? // A call needs a number and a free line, not an account to send from.
+        Boolean(softphone?.config?.enabled) &&
+        softphone?.state.call.phase === "none" &&
+        Boolean(
+          (tab === "search" && selectedIdentity?.primary_phone) ||
+            (tab === "create" && newPhone.trim()),
+        )
+      : selectedAccount &&
+        ((tab === "search" && selectedIdentity) ||
+          (tab === "create" &&
+            ((channel === "whatsapp" && newPhone.trim()) ||
+              (channel === "email" && newEmail.trim()))));
 
   const getAccountLabel = (acc: ChannelAccount): string => {
     const identifier = (acc as ChannelAccount & { identifier?: string; wa_display_phone?: string }).identifier || acc.email_address || (acc as ChannelAccount & { wa_display_phone?: string }).wa_display_phone || acc.wa_phone_id;
@@ -190,7 +230,10 @@ export function NewConversationDialog({
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!canSubmit || submitting} onClick={handleSubmit}>{submitting ? <Loader2 className="animate-spin" /> : <MessageCircle />}Start chat</Button>
+          <Button variant="primary" disabled={!canSubmit || submitting} onClick={handleSubmit}>
+            {submitting ? <Loader2 className="animate-spin" /> : channel === "voice" ? <Phone /> : <MessageCircle />}
+            {channel === "voice" ? "Call" : "Start chat"}
+          </Button>
         </>
       }
     >
@@ -221,11 +264,25 @@ export function NewConversationDialog({
                 <Mail className="w-4 h-4" />
                 Email
               </button>
+              {softphone?.config?.enabled && (
+                <button
+                  onClick={() => setChannel("voice")}
+                  className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
+                    channel === "voice"
+                      ? "bg-crayon-teal-tint text-crayon-teal-text border-crayon-teal-base/40"
+                      : "bg-surface-sunken text-ink-3 border-border-strong hover:text-ink-2"
+                  }`}
+                >
+                  <Phone className="w-4 h-4" />
+                  Call
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Account Selection */}
-          <div>
+          {/* Account Selection — a call goes out on the agent's own line, chosen by the server,
+              so there is nothing to pick here. */}
+          <div hidden={channel === "voice"}>
             <label className="text-xs text-ink-3 mb-1.5 block font-medium">
               Send From Account
             </label>
@@ -340,6 +397,30 @@ export function NewConversationDialog({
                 ))}
               </div>
 
+              {/* Searching a number that nobody has spoken to yet is the normal way to reach a new
+                  lead. Leaving the agent at "No identities found" with a dead button made them
+                  guess that the answer was a different tab. */}
+              {channel === "voice" && !selectedIdentity && looksLikeNumber(searchText) && (
+                <div className="flex items-center gap-2 rounded-lg border border-crayon-teal-base/40 bg-crayon-teal-tint p-3">
+                  <Phone className="w-4 h-4 shrink-0 text-crayon-teal-text" />
+                  <p className="min-w-0 flex-1 text-sm text-ink-1">
+                    Call <span className="font-medium">{searchText.trim()}</span> without saving a
+                    contact first
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={submitting || softphone?.state.call.phase !== "none"}
+                    onClick={() => {
+                      setTab("create");
+                      setNewPhone(searchText.trim());
+                    }}
+                  >
+                    Use this number
+                  </Button>
+                </div>
+              )}
+
               {selectedIdentity && (
                 <div className="bg-crayon-blue-tint border border-crayon-blue-base/40 rounded-lg p-3 flex items-center gap-3">
                   <User className="w-4 h-4 text-crayon-blue-text shrink-0" />
@@ -377,7 +458,7 @@ export function NewConversationDialog({
                   autoFocus
                 />
               </div>
-              {channel === "whatsapp" && (
+              {(channel === "whatsapp" || channel === "voice") && (
                 <div>
                   <label className="text-xs text-ink-3 mb-1 block">
                     Phone Number <span className="text-crayon-rose-text">*</span>
@@ -387,9 +468,14 @@ export function NewConversationDialog({
                     value={newPhone}
                     onChange={(e) => setNewPhone(e.target.value)}
                     className="bg-surface-sunken border-border-strong text-ink-1"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && channel === "voice" && canSubmit) handleSubmit();
+                    }}
                   />
                   <p className="text-xs text-ink-3 mt-1">
-                    Include country code (e.g. +91)
+                    {channel === "voice"
+                      ? "A local number is fine — 9876543210 works."
+                      : "Include country code (e.g. +91)"}
                   </p>
                 </div>
               )}

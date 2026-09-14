@@ -3,6 +3,7 @@ import useSWR from "swr";
 import { FrappeContext, useFrappeEventListener } from "frappe-react-sdk";
 import type { ExcomMessage, Message, UnifiedContact } from "../types";
 import { parseFrappeDateTime } from "../utils/datetime";
+import { mapDeliveryStatus, mapMessageType } from "../lib/messages";
 
 const POLL_MS = 10_000;
 const PAGE = 100;
@@ -13,13 +14,8 @@ export interface FeedMessage extends Message {
   raw?: { creation: string; provider_timestamp?: string };
 }
 
-/** Same mapping as useMessages, kept local so the legacy hook stays untouched. */
+/** Mapping comes from lib/messages — a second private copy is how `Call` went missing here. */
 function mapMessage(msg: ExcomMessage, threadId: string, account: { id: string; name: string; identifier: string; channel: string }): FeedMessage {
-  const statusMap: Record<string, Message["status"]> = { Sent: "sent", Delivered: "delivered", Read: "read", Failed: "failed", Queued: "queued", Scheduled: "scheduled" };
-  const typeMap: Record<string, Message["type"]> = {
-    Text: "text", Image: "image", Video: "video", Audio: "audio", Document: "document", Sticker: "sticker", Location: "location",
-    Template: "template", Email: "email", Interactive: "interactive", Flow: "flow", Reaction: "reaction", Contact: "contact", Button: "button",
-  };
   return {
     id: msg.name,
     threadId,
@@ -27,8 +23,8 @@ function mapMessage(msg: ExcomMessage, threadId: string, account: { id: string; 
     content: msg.content_text || "",
     timestamp: parseFrappeDateTime(msg.provider_timestamp || msg.creation),
     sender: msg.direction === "Inbound" ? "contact" : "user",
-    status: statusMap[msg.delivery_status],
-    type: typeMap[msg.message_type] || "text",
+    status: mapDeliveryStatus(msg.delivery_status),
+    type: mapMessageType(msg.message_type),
     mediaUrl: msg.media_file || undefined,
     channel: account.channel,
     isInternal: Boolean(msg.is_internal),

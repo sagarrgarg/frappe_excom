@@ -1,3 +1,4 @@
+from excom.excom.tests.fixtures import purge_user
 """A user who has the Excom Agent role but belongs to no team sees an empty inbox and cannot
 open or answer anything. Granting the role therefore puts the agent in the shared inbox."""
 
@@ -31,8 +32,7 @@ class TestAgentOnboarding(FrappeTestCase):
 	def tearDown(self):
 		frappe.set_user("Administrator")
 		_drop_from_teams(USER)
-		if frappe.db.exists("User", USER):
-			frappe.delete_doc("User", USER, force=1, ignore_permissions=True)
+		purge_user(USER)
 		frappe.db.commit()
 
 	def test_granting_the_agent_role_joins_the_shared_inbox(self):

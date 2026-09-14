@@ -80,3 +80,44 @@ def validate_phone_number(number: str, field_label: str = "Phone") -> str:
         )
 
     return cleaned
+
+
+# India writes the same mobile four ways, and different parts of a CRM pick different ones: a
+# telephony webhook sends 919876543210, an imported contact list holds 09876543210, somebody types
+# 9876543210, and an E.164 field stores +919876543210. Matched as strings those are four people.
+_NATIONAL_DIGITS = 10
+_INDIA = "91"
+
+
+def phone_variants(number: str) -> list[str]:
+    """Every spelling of one number, exactly — never a LIKE.
+
+    Deliberately narrow. The obvious version, "anything sharing the last ten digits", quietly
+    merges a foreign number into an Indian one: +1 921 702 5599 ends in the same ten digits as
+    +91 92170 25599 and is a different person. So the national-format variants are only produced
+    for numbers that actually read as Indian — a 12-digit 91…, an 11-digit 0…, or a bare 10-digit
+    national number — and anything else gets only its own two spellings.
+    """
+    bare = "".join(ch for ch in str(number or "") if ch.isdigit())
+    if not bare:
+        return []
+
+    out = [bare, f"+{bare}"]
+
+    national = ""
+    if len(bare) == len(_INDIA) + _NATIONAL_DIGITS and bare.startswith(_INDIA):
+        national = bare[len(_INDIA) :]
+    elif len(bare) == _NATIONAL_DIGITS + 1 and bare.startswith("0"):
+        national = bare[1:]
+    elif len(bare) == _NATIONAL_DIGITS:
+        national = bare
+
+    if national:
+        out += [national, f"0{national}", f"{_INDIA}{national}", f"+{_INDIA}{national}"]
+
+    seen, unique = set(), []
+    for value in out:
+        if value and value not in seen:
+            seen.add(value)
+            unique.append(value)
+    return unique

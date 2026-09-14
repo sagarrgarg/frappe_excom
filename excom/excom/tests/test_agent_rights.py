@@ -1,3 +1,4 @@
+from excom.excom.tests.fixtures import purge_user
 """An agent must be able to do an agent's job with an agent's permissions.
 
 Every one of these worked before only because the API passed ignore_permissions, which meant the
@@ -66,8 +67,7 @@ class TestAgentRights(FrappeTestCase):
 		for name in (TEAM, OTHER):
 			if frappe.db.exists("Excom Team", name):
 				frappe.delete_doc("Excom Team", name, force=True, ignore_permissions=True)
-		if frappe.db.exists("User", AGENT):
-			frappe.delete_doc("User", AGENT, force=True, ignore_permissions=True)
+		purge_user(AGENT)
 		frappe.db.commit()
 
 	def setUp(self):

@@ -1,3 +1,4 @@
+from excom.excom.tests.fixtures import purge_user
 """
 Core flows that money depends on. Every test builds its own synthetic data (QA-… names) and
 rolls back; nothing is sent to WhatsApp or email (the outbound client is not exercised).
@@ -48,7 +49,7 @@ def _cleanup():
 	for t in frappe.get_all("Excom Team", {"team_name": ["like", "QA %"]}, pluck="name"):
 		frappe.delete_doc("Excom Team", t, force=True, ignore_permissions=True)
 	for u in frappe.get_all("User", {"name": ["like", "qa.core.%@example.com"]}, pluck="name"):
-		frappe.delete_doc("User", u, force=True, ignore_permissions=True)
+		purge_user(u)
 	frappe.db.commit()
 
 
@@ -185,6 +186,66 @@ class TestRateLimit(_Base):
 				f()
 		finally:
 			frappe.cache.delete_keys("rl:user:qa_rl_probe")
+			frappe.local.request = had_request
+			frappe.local.form_dict = frappe._dict()
+
+	def test_the_counter_always_expires(self):
+		"""A counter with no expiry is a permanent ban, not a rate limit.
+
+		Reading the counter before seeding it with an expiry loses a race it eventually meets: the
+		key expires between the read and the increment, and `incrby` recreates it with no TTL. From
+		then on the count only climbs, so once it passes the limit the endpoint is refused for that
+		user for ever. A 600-per-minute allowance on the thread list became a permanent 429 that way,
+		with the client's own retries walking the count further up.
+		"""
+		from excom.excom.utils.ratelimit import user_rate_limit
+
+		@user_rate_limit(limit=5, seconds=30)
+		def f():
+			return 1
+
+		had_request = getattr(frappe.local, "request", None)
+		frappe.local.request = frappe._dict(path="/api/method/qa_rl_ttl")
+		frappe.local.form_dict = frappe._dict(cmd="qa_rl_ttl")
+		key = frappe.cache.make_key("rl:user:qa_rl_ttl:" + (frappe.session.user or "Guest"))
+		frappe.cache.delete_keys("rl:user:qa_rl_ttl")
+		try:
+			f()
+			self.assertGreater(frappe.cache.ttl(key), 0, "the first call must set an expiry")
+
+			f()
+			self.assertGreater(frappe.cache.ttl(key), 0, "later calls must keep it")
+
+			# Exactly the state the race leaves behind.
+			frappe.cache.persist(key)
+			self.assertEqual(frappe.cache.ttl(key), -1)
+			f()
+			self.assertGreater(
+				frappe.cache.ttl(key), 0, "a counter found without an expiry must be repaired"
+			)
+		finally:
+			frappe.cache.delete_keys("rl:user:qa_rl_ttl")
+			frappe.local.request = had_request
+			frappe.local.form_dict = frappe._dict()
+
+	def test_a_missing_counter_starts_at_one(self):
+		"""Incrementing first is what makes the expiry safe, so check it still counts correctly."""
+		from excom.excom.utils.ratelimit import user_rate_limit
+
+		@user_rate_limit(limit=3, seconds=30)
+		def f():
+			return 1
+
+		had_request = getattr(frappe.local, "request", None)
+		frappe.local.request = frappe._dict(path="/api/method/qa_rl_count")
+		frappe.local.form_dict = frappe._dict(cmd="qa_rl_count")
+		frappe.cache.delete_keys("rl:user:qa_rl_count")
+		try:
+			f(); f(); f()
+			with self.assertRaises(frappe.RateLimitExceededError):
+				f()
+		finally:
+			frappe.cache.delete_keys("rl:user:qa_rl_count")
 			frappe.local.request = had_request
 			frappe.local.form_dict = frappe._dict()
 

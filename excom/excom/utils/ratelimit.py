@@ -24,10 +24,27 @@ def user_rate_limit(limit: int = 60, seconds: int = 60):
 			user = frappe.session.user or "Guest"
 			cmd = frappe.form_dict.get("cmd") or f"{fn.__module__}.{fn.__name__}"
 			cache_key = frappe.cache.make_key(f"rl:user:{cmd}:{user}")
-			value = frappe.cache.get(cache_key) or 0
-			if not value:
-				frappe.cache.setex(cache_key, seconds, 0)
+
+			# Count first, then make sure the count expires.
+			#
+			# Reading the counter and only then seeding it with an expiry loses a race it will
+			# eventually meet: the key expires in the gap between the read and the increment, and
+			# `incrby` recreates it with no TTL at all. From that moment the counter only grows,
+			# so once it passes the limit the endpoint is refused for that user *for ever* — which
+			# is how a 600-per-minute allowance became a permanent 429 on the thread list, with
+			# the client's retries walking it further up.
+			#
+			# Incrementing first cannot lose that race: a missing key comes back as 1, and the
+			# expiry is then set on a key that certainly exists. The TTL check repairs any key
+			# already stuck without one.
 			value = frappe.cache.incrby(cache_key, 1)
+			try:
+				if value == 1 or frappe.cache.ttl(cache_key) < 0:
+					frappe.cache.expire(cache_key, seconds)
+			except Exception:
+				# A cache that cannot expire a key must not take the endpoint down with it.
+				pass
+
 			if value > limit:
 				frappe.throw(
 					_("You hit the rate limit because of too many requests. Please try after sometime."),
