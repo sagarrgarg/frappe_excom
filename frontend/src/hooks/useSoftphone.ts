@@ -50,6 +50,8 @@ export interface SoftphoneConfig {
 interface TokenResponse {
   token: string;
   account: string;
+  /** Which vendor SDK this line speaks, so the right driver is loaded. */
+  sdk: string;
   options: Record<string, unknown>;
   refresh_after: number;
   capabilities: string[];
@@ -142,9 +144,9 @@ export function useSoftphone() {
   }, [config?.presence?.available]);
 
   // ── boot ────────────────────────────────────────────────────────────────
-  // One line at a time. The SDK keeps a single client on `window._PlivoInstance` and returns it to
-  // every later construction, so a second line cannot sit alongside the first — it replaces it.
-  // The agent therefore picks a line to be signed in on, and outbound switches as needed.
+  // Every line the agent works, together. Whether two can be live at once is each vendor's rule,
+  // not ours: Plivo keeps one client per page, Twilio has no such limit — so the Indian desk and
+  // the international one register side by side, and a caller on either reaches the agent.
 
   const bootedFor = useRef<Set<string>>(new Set());
 
@@ -157,6 +159,7 @@ export function useSoftphone() {
 
       await softphone.boot({
         account,
+        sdk: payload.sdk || "",
         token: payload.token,
         options: payload.options ?? {},
         onIncoming: (_uuid, from) => {
@@ -228,28 +231,38 @@ export function useSoftphone() {
   const bootable = (config?.lines ?? []).filter((l) => l.browser_calls && l.has_endpoint);
   const bootableKey = bootable.map((l) => l.account).join("|");
 
-  /** The line to sign in on: whatever the agent last chose, else the first one they work. */
+  /** Where the agent prefers to be, when a vendor only lets one of its lines be live. */
   const preferredLine =
     bootable.find((l) => l.account === rememberedLine())?.account || bootable[0]?.account || "";
 
   useEffect(() => {
-    if (!config?.enabled || !preferredLine) return;
-    if (bootedFor.current.has(preferredLine)) return;
-    void start(preferredLine);
+    if (!config?.enabled) return;
+    // The preferred line first, so that if two lines share a vendor that allows only one, the one
+    // the agent chose is the one that survives.
+    const order = [...bootable].sort((a, b) =>
+      a.account === preferredLine ? -1 : b.account === preferredLine ? 1 : 0,
+    );
+    for (const line of order) {
+      if (bootedFor.current.has(line.account)) continue;
+      void start(line.account);
+    }
   }, [config?.enabled, bootableKey, preferredLine, start]);
 
-  /** Sign the browser in on another line. Resolves true once that line is actually reachable. */
+  /**
+   * Make sure a line is reachable, bringing it up if it is not.
+   *
+   * Normally a no-op: both lines are already registered. It earns its keep when two lines share a
+   * vendor that allows only one live client, where reaching the second means giving up the first.
+   */
   const switchLine = useCallback(
     async (account: string): Promise<boolean> => {
       if (!account) return false;
-      if (softphone.getState().activeAccount === account) {
-        return softphone.isRegisteredOn(account);
-      }
+      if (softphone.isRegisteredOn(account)) return true;
       try {
         await start(account);
         return await softphone.waitUntilRegistered(account);
       } catch (e: unknown) {
-        toastError(e, "Could not switch line");
+        toastError(e, "Could not reach that line");
         return false;
       }
     },
@@ -261,36 +274,45 @@ export function useSoftphone() {
   // half-open. The heartbeat is what actually keeps them in a ring set, and stopping it is what
   // takes them out.
 
-  // Only the line the browser is actually signed in to gets a heartbeat. The others must fall out
-  // of their ring sets, or a caller is put through to a desk that cannot answer.
-  const liveAccount =
-    state.registration === "registered" ? state.activeAccount ?? "" : "";
+  // Every line that is actually up gets a heartbeat, because the ring set is per line. A line
+  // whose client is down must drop out of its own ring set without taking the others with it, or a
+  // caller is put through to a desk that cannot answer.
+  const liveAccounts = Object.values(state.lines)
+    .filter((l) => l.registration === "registered")
+    .map((l) => l.account)
+    .sort();
+  const liveKey = liveAccounts.join("|");
 
   useEffect(() => {
-    if (!liveAccount) return;
+    if (!liveKey) return;
+    const accounts = liveKey.split("|");
 
     const every = (config?.heartbeat_seconds || HEARTBEAT_FALLBACK) * 1000;
     const beat = () => {
-      postHeartbeat({ account: liveAccount, registered: 1 }).catch(() => {
-        /* one missed beat is tolerated by the TTL; noise here helps nobody */
-      });
+      for (const account of accounts) {
+        postHeartbeat({ account, registered: 1 }).catch(() => {
+          /* one missed beat is tolerated by the TTL; noise here helps nobody */
+        });
+      }
     };
     beat();
     const id = window.setInterval(beat, every);
     return () => window.clearInterval(id);
-  }, [liveAccount, config?.heartbeat_seconds, postHeartbeat]);
+  }, [liveKey, config?.heartbeat_seconds, postHeartbeat]);
 
-  // Leaving a line must take the agent out of its ring set at once, rather than 150 seconds later.
+  // A line that goes down must leave its ring set at once, rather than 150 seconds later.
   const previousLive = useRef<string>("");
   useEffect(() => {
-    const left = previousLive.current;
-    previousLive.current = liveAccount;
-    if (left && left !== liveAccount) {
-      postHeartbeat({ account: left, registered: 0 }).catch(() => {
-        /* the TTL will retire it anyway */
-      });
+    const before = previousLive.current ? previousLive.current.split("|") : [];
+    previousLive.current = liveKey;
+    for (const account of before) {
+      if (account && !liveAccounts.includes(account)) {
+        postHeartbeat({ account, registered: 0 }).catch(() => {
+          /* the TTL will retire it anyway */
+        });
+      }
     }
-  }, [liveAccount, postHeartbeat]);
+  }, [liveKey, postHeartbeat]);
 
   // Signing off should be instant, not "within 150 seconds".
   useEffect(() => {
@@ -481,14 +503,16 @@ export function useSoftphone() {
         // be signed in to one line at a time, so if that is not the line we are on, sign in there
         // first — dialling an American number while signed in to the Indian account puts the call
         // out over the wrong provider, and it comes back as a bare "Busy".
-        if (softphone.getState().activeAccount !== plan.account) {
+        if (!softphone.isRegisteredOn(plan.account)) {
+          // Usually already up — both desks register together. This is the case where two lines
+          // share a vendor that allows only one live client, so reaching one gives up the other.
           const name =
             linesRef.current.find((l) => l.account === plan.account)?.account_name || plan.account;
-          const switching = toast.loading(`Switching to ${name}…`);
+          const switching = toast.loading(`Connecting ${name}…`);
           const ready = await switchLine(plan.account);
           toast.dismiss(switching);
           if (!ready) {
-            toast.error(`Could not sign in to ${name}`, {
+            toast.error(`Could not reach ${name}`, {
               description: "The call was not placed. Try again in a moment.",
             });
             return null;
@@ -514,17 +538,6 @@ export function useSoftphone() {
   // Both stop the ring by hand rather than leaving it to the effect's cleanup. The cleanup does run
   // — but a render later, and a ringtone that carries on past the click on Answer is the first
   // thing anyone notices.
-
-  // After a call placed on another line, come home. The line the browser is signed in to is the
-  // only line it can receive on, so staying on the American desk after one American call would
-  // quietly stop Indian calls from ringing at all.
-  useEffect(() => {
-    if (state.call.phase !== "none") return;
-    if (!preferredLine || !state.activeAccount) return;
-    if (state.activeAccount === preferredLine) return;
-    const id = window.setTimeout(() => void switchLine(preferredLine), 1500);
-    return () => window.clearTimeout(id);
-  }, [state.call.phase, state.activeAccount, preferredLine, switchLine]);
 
   const answer = useCallback(() => {
     ringtone.stop();
