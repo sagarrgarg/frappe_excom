@@ -123,7 +123,11 @@ def route():
 	params = _payload()
 
 	provider = providers.for_account(account)
-	call_uuid = params.get("CallUUID") or params.get("RequestUUID") or ""
+	# Which field names the call is a vendor question, and the adapter already answers it: these
+	# used to be read here as CallUUID/RequestUUID, which are Plivo's. Twilio sends CallSid, so the
+	# id came out empty and persist_call — which returns on an empty id — silently did nothing.
+	# Every Twilio call was then recorded by whichever statusCallback arrived, with no agent on it.
+	call_uuid = provider.normalize_event("ringing", params).provider_call_id
 	direction = (params.get("Direction") or "inbound").lower()
 
 	try:

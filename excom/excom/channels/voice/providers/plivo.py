@@ -49,6 +49,30 @@ HTTP_TIMEOUT = 15
 # uuid to correlate on until the answer URL fires.
 SIP_HEADER_PREFIX = "X-PH-"
 
+
+def _encode(value: str) -> str:
+	"""A SIP header value, from any string. base64url without padding: letters, digits, - and _."""
+	import base64
+
+	return base64.urlsafe_b64encode(str(value).encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _decode(value: str) -> str:
+	"""The inverse, tolerant of a value that was never encoded — older legs are still in flight, and
+	a header that arrives as a plain phone number should stay one rather than become mojibake."""
+	import base64
+	import binascii
+
+	raw = str(value or "")
+	if not raw:
+		return ""
+	try:
+		decoded = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)).decode("utf-8")
+	except (binascii.Error, ValueError, UnicodeDecodeError):
+		return raw
+	# A value that decodes into control characters was not base64 to begin with.
+	return decoded if decoded.isprintable() else raw
+
 # DialStatus (action URL) -> Excom Call.status
 DIAL_STATUS = {
 	"completed": "Completed",
@@ -432,7 +456,7 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 			or ""
 		)
 		sip_headers = {
-			key[len(SIP_HEADER_PREFIX) :].lower(): value
+			key[len(SIP_HEADER_PREFIX) :].lower(): _decode(value)
 			for key, value in payload.items()
 			if key.startswith(SIP_HEADER_PREFIX)
 		}
@@ -692,9 +716,19 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 		return token
 
 	def browser_context(self, context: dict[str, str]) -> dict[str, str]:
-		"""Plivo's browser SDK takes SIP headers as an object, and Plivo echoes them back to the
-		answer URL under the same names."""
-		return {f"{SIP_HEADER_PREFIX}{key}": value for key, value in context.items() if value}
+		"""Plivo's browser SDK takes SIP headers as an object and echoes them to the answer URL.
+
+		Encoded, because a SIP header value is not free text. Of the four we send, the live line
+		received only the two that happened to be alphanumeric: the agent never arrived, because an
+		email address contains `@`, and neither did the account, because a line name contains
+		spaces. Plivo drops such a header without saying so, so the agent was simply never recorded
+		on a browser call.
+		"""
+		return {
+			f"{SIP_HEADER_PREFIX}{key}": _encode(value)
+			for key, value in context.items()
+			if value
+		}
 
 	def sdk_descriptor(self) -> dict[str, Any]:
 		"""What the browser needs to boot the SDK. Contains no secret.

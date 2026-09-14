@@ -1207,9 +1207,14 @@ class TestBrowserContextReachesTheAnswerUrl(FrappeTestCase):
 	}
 
 	def test_plivo_sends_sip_headers(self):
-		out = PlivoAdapter(_account_stub()).browser_context(dict(self.CONTEXT))
-		self.assertEqual(out["X-PH-to"], "+918795194645")
-		self.assertEqual(out["X-PH-user"], "agent@example.com")
+		"""The names are Plivo's; the values are encoded, so assert the round trip, not the bytes."""
+		adapter = PlivoAdapter(_account_stub())
+		out = adapter.browser_context(dict(self.CONTEXT))
+		self.assertEqual(sorted(out), ["X-PH-account", "X-PH-thread", "X-PH-to", "X-PH-user"])
+
+		back = adapter.normalize_event("ringing", {"CallUUID": "u1", **out})
+		self.assertEqual(back.sip_headers.get("to"), "+918795194645")
+		self.assertEqual(back.sip_headers.get("user"), "agent@example.com")
 
 	def test_twilio_sends_parameters_its_own_reader_strips_back(self):
 		from excom.excom.channels.voice.providers.twilio import TwilioAdapter
@@ -1416,3 +1421,143 @@ class TestTheWriteThatKnowsWins(FrappeTestCase):
 			self.assertEqual(direction, "Outbound", "%s must read as outbound" % label)
 			self.assertEqual(customer, "+918542866684", "our own caller id is not the customer")
 			self.assertEqual(business, ours)
+
+
+class TestTheCallIsIdentifiedTheVendorsWay(FrappeTestCase):
+	"""`route()` used to read the call id as CallUUID or RequestUUID — both Plivo's names.
+
+	On a Twilio line neither exists, so the id came out empty, and persist_call returns immediately
+	on an empty id. The answer URL's entire write — the one that knows the direction, the transport
+	and which agent placed the call — did nothing at all, on every Twilio call ever made.
+	"""
+
+	PLIVO_PAYLOAD = {
+		"CallUUID": "22283d0f-14df-4195-abe6-56678ed3dfc5",
+		"From": "sip:agent@phone.plivo.com", "To": "918542866684", "Direction": "inbound",
+	}
+	TWILIO_PAYLOAD = {
+		"CallSid": "CAf276a3ad55517bd3d99cd69d8bdac34c",
+		"From": "client:excom_somilsearchosis_gmail_com", "To": "918542866684",
+		"Direction": "inbound",
+	}
+
+	def test_plivo_call_is_identified(self):
+		event = PlivoAdapter(_account_stub()).normalize_event("ringing", self.PLIVO_PAYLOAD)
+		self.assertEqual(event.provider_call_id, self.PLIVO_PAYLOAD["CallUUID"])
+
+	def test_twilio_call_is_identified(self):
+		from excom.excom.channels.voice.providers.twilio import TwilioAdapter
+
+		adapter = TwilioAdapter(_account_stub(voice_provider="Twilio"))
+		event = adapter.normalize_event("ringing", self.TWILIO_PAYLOAD)
+		self.assertEqual(
+			event.provider_call_id,
+			self.TWILIO_PAYLOAD["CallSid"],
+			"reading Plivo's field names here left the id empty and the answer URL's write a no-op",
+		)
+
+	def test_neither_id_is_empty(self):
+		"""An empty id is not a near miss: persist_call returns on it and writes nothing."""
+		from excom.excom.channels.voice.providers.twilio import TwilioAdapter
+
+		for adapter, payload in (
+			(PlivoAdapter(_account_stub()), self.PLIVO_PAYLOAD),
+			(TwilioAdapter(_account_stub(voice_provider="Twilio")), self.TWILIO_PAYLOAD),
+		):
+			self.assertTrue(adapter.normalize_event("ringing", payload).provider_call_id)
+
+	def _enqueued_by_route(self, payload, provider):
+		"""Run route() against one answer-URL payload and return what it queued for persist_call.
+
+		The adapter was always right about the id; `route()` was the one reading it by hand, so this
+		has to go through route() to mean anything.
+		"""
+		from unittest.mock import patch
+
+		from excom.excom.api import voice
+
+		captured = {}
+
+		def fake_enqueue(method, **kwargs):
+			if "persist_call" in str(method):
+				captured.update(kwargs)
+
+		with patch.object(voice, "_verified_account", return_value="VOICE-TEST"), patch.object(
+			voice, "_payload", return_value=payload
+		), patch.object(voice.providers, "for_account", return_value=provider), patch.object(
+			voice.frappe, "enqueue", side_effect=fake_enqueue
+		), patch.object(
+			voice, "_refuse_outbound", return_value=None
+		), patch.object(
+			voice.frappe, "get_cached_doc", return_value=frappe._dict(_account_stub())
+		):
+			voice.route()
+		return captured
+
+	def test_route_queues_the_twilio_call_under_the_id_twilio_gave_it(self):
+		from excom.excom.channels.voice.providers.twilio import TwilioAdapter
+
+		adapter = TwilioAdapter(_account_stub(voice_provider="Twilio"))
+		queued = self._enqueued_by_route(dict(self.TWILIO_PAYLOAD), adapter)
+		self.assertEqual(
+			queued.get("provider_call_id"),
+			self.TWILIO_PAYLOAD["CallSid"],
+			"an empty id here makes the answer URL's whole write a no-op",
+		)
+
+	def test_route_still_queues_the_plivo_call_correctly(self):
+		adapter = PlivoAdapter(_account_stub())
+		queued = self._enqueued_by_route(dict(self.PLIVO_PAYLOAD), adapter)
+		self.assertEqual(queued.get("provider_call_id"), self.PLIVO_PAYLOAD["CallUUID"])
+
+
+class TestContextSurvivesTheWire(FrappeTestCase):
+	"""Two of the four context headers never reached the live answer URL.
+
+	It received X-PH-to and X-PH-thread and nothing else, and the two that vanished are the two a
+	SIP header cannot carry: the agent is an email address, so it has an `@`, and the account is a
+	line name, so it has spaces. Plivo drops those without a word — which is why no browser call
+	has ever recorded which agent placed it.
+	"""
+
+	CONTEXT = {
+		"to": "+918542866684",
+		"thread": "7mrsqqndas",
+		"user": "somilsearchosis@gmail.com",
+		"account": "Plivo Sales Line",
+	}
+
+	def test_every_value_survives_a_sip_header(self):
+		adapter = PlivoAdapter(_account_stub())
+		wire = adapter.browser_context(dict(self.CONTEXT))
+
+		for key, value in wire.items():
+			self.assertRegex(
+				value, r"^[A-Za-z0-9_-]+$",
+				"%s carries %r, which a SIP header would drop" % (key, value),
+			)
+
+		back = adapter.normalize_event("ringing", {"CallUUID": "u1", **wire})
+		self.assertEqual(back.sip_headers, self.CONTEXT, "what went out must come back unchanged")
+
+	def test_the_agent_specifically_makes_it_through(self):
+		"""The one that mattered: an email address, with its @."""
+		adapter = PlivoAdapter(_account_stub())
+		wire = adapter.browser_context({"user": "somilsearchosis@gmail.com"})
+		back = adapter.normalize_event("ringing", {"CallUUID": "u1", **wire})
+		self.assertEqual(back.sip_headers.get("user"), "somilsearchosis@gmail.com")
+
+	def test_a_line_named_with_punctuation_also_survives(self):
+		adapter = PlivoAdapter(_account_stub())
+		name = "GGIL Export — Delhi (North)"
+		wire = adapter.browser_context({"account": name})
+		back = adapter.normalize_event("ringing", {"CallUUID": "u1", **wire})
+		self.assertEqual(back.sip_headers.get("account"), name)
+
+	def test_a_header_that_was_never_encoded_is_left_alone(self):
+		"""Legs placed before this change are still in flight; their headers are plain text."""
+		adapter = PlivoAdapter(_account_stub())
+		back = adapter.normalize_event(
+			"ringing", {"CallUUID": "u1", "X-PH-to": "+918542866684"}
+		)
+		self.assertEqual(back.sip_headers.get("to"), "+918542866684")
