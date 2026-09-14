@@ -1285,3 +1285,134 @@ class TestOneConversationOneRecord(FrappeTestCase):
 			"dial_event", {"CallUUID": uuid, "From": "sip:agent@phone.plivo.com", "To": "919326002507"}
 		)
 		self.assertEqual(event.provider_call_id, uuid)
+
+
+class TestTheWriteThatKnowsWins(FrappeTestCase):
+	"""Which webhook reaches us first must not decide what the call says it was.
+
+	`route()` enqueues the write that has dial()'s decision in hand, because the caller is listening
+	to silence while the answer URL runs. The statusCallback on the leg `<Dial>` raises is handled
+	inline, so it frequently lands first — and persist_call being idempotent then meant the guess
+	stuck and the truth was discarded. A browser call to India was recorded as an inbound call on a
+	handset that way.
+	"""
+
+	UID = "race-order-1"
+
+	def tearDown(self):
+		for name in frappe.get_all(
+			"Excom Call", {"provider_call_id": ["like", "race-order-%"]}, pluck="name"
+		):
+			frappe.delete_doc("Excom Call", name, force=True, ignore_permissions=True)
+		frappe.db.commit()
+
+	def test_the_child_leg_arriving_first_does_not_settle_the_call(self):
+		from excom.excom.channels.voice import handler
+
+		# 1. The statusCallback on the dialled leg gets there first and opens the row.
+		first = handler.persist_call(
+			provider_call_id=self.UID,
+			account="",
+			direction="Inbound",
+			caller_number="+918542866684",
+			business_number="+13185911821",
+			transport="",
+		)
+		self.assertTrue(first)
+
+		# 2. The answer URL's write lands afterwards, carrying what dial() decided.
+		second = handler.persist_call(
+			provider_call_id=self.UID,
+			account="",
+			direction="Outbound",
+			caller_number="+918542866684",
+			business_number="+13185911821",
+			agent="somilsearchosis@gmail.com",
+			transport="Browser",
+			authoritative=True,
+		)
+		self.assertEqual(second, first, "still one call, not two")
+
+		row = frappe.db.get_value(
+			"Excom Call", first, ["direction", "transport", "agent"], as_dict=True
+		)
+		self.assertEqual(row.direction, "Outbound")
+		self.assertEqual(row.transport, "Browser")
+		self.assertEqual(row.agent, "somilsearchosis@gmail.com")
+
+	def test_a_guess_never_overwrites_the_truth(self):
+		"""The other order must be safe too: the authoritative write first, a later guess second."""
+		from excom.excom.channels.voice import handler
+
+		name = handler.persist_call(
+			provider_call_id=self.UID,
+			account="",
+			direction="Outbound",
+			caller_number="+918542866684",
+			business_number="+13185911821",
+			transport="Browser",
+			authoritative=True,
+		)
+		handler.persist_call(
+			provider_call_id=self.UID,
+			account="",
+			direction="Inbound",
+			caller_number="+918542866684",
+			business_number="+13185911821",
+			transport="Phone",
+		)
+		row = frappe.db.get_value("Excom Call", name, ["direction", "transport"], as_dict=True)
+		self.assertEqual(row.direction, "Outbound")
+		self.assertEqual(row.transport, "Browser")
+
+	def test_how_the_agent_answered_outranks_the_answer_url(self):
+		"""Once somebody has answered, the transport is an observation, not a plan."""
+		from excom.excom.channels.voice import handler
+
+		name = handler.persist_call(
+			provider_call_id=self.UID, account="", direction="Inbound",
+			caller_number="+918542866684", business_number="+13185911821", transport="",
+		)
+		frappe.db.set_value(
+			"Excom Call", name,
+			{"answered_by": "somilsearchosis@gmail.com", "transport": "Phone"},
+			update_modified=False,
+		)
+		handler.persist_call(
+			provider_call_id=self.UID, account="", direction="Inbound",
+			caller_number="+918542866684", business_number="+13185911821",
+			transport="Browser", authoritative=True,
+		)
+		self.assertEqual(
+			frappe.db.get_value("Excom Call", name, "transport"),
+			"Phone",
+			"they picked up the handset; the plan does not get to say otherwise",
+		)
+
+	def test_outbound_dial_is_recognised_as_outbound(self):
+		"""Twilio labels these legs outbound-dial and outbound-api, never a bare 'outbound'.
+
+		Testing the bare word sent every one of them to Inbound, which is how a call placed from
+		the browser came back as a call arriving.
+		"""
+		from excom.excom.channels.voice.handler import _participants
+
+		ours = "+13185911821"
+		real = frappe.db.get_value
+		frappe.db.get_value = lambda dt, name=None, fieldname=None, *a, **k: (
+			ours
+			if (dt == "Excom Channel Account" and fieldname == "voice_number")
+			else real(dt, name, fieldname, *a, **k)
+		)
+		self.addCleanup(setattr, frappe.db, "get_value", real)
+
+		for label in ("outbound-dial", "outbound-api", "outbound"):
+			event = CallEvent(
+				kind="ringing", provider_call_id="CA1",
+				from_number=ours, to_number="+918542866684",
+				direction=label, raw={},
+			)
+			direction, customer, business = _participants(event, "VOICE-TEST")
+			self.assertEqual(direction, "Outbound", "%s must read as outbound" % label)
+			self.assertEqual(customer, "+918542866684", "our own caller id is not the customer")
+			self.assertEqual(business, ours)

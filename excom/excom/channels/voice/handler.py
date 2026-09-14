@@ -111,11 +111,18 @@ def persist_call(
 	transport: str = "Browser",
 	ivr_selection: str = "",
 	raw: dict | None = None,
+	authoritative: bool = False,
 ) -> str | None:
 	"""Create the call record, its identity and its thread. Enqueued, never inline.
 
 	Safe to call twice: the unique index on `provider_call_id` is the idempotency guarantee and the
 	existence check in front of it is only an optimisation.
+
+	`authoritative` marks the one caller that knows rather than infers — the answer URL, which has
+	`dial()`'s own decision in hand. Its write completes a row somebody else opened. Without that,
+	being idempotent meant first writer wins, and the first writer is often the statusCallback on
+	the leg `<Dial>` raised: handled inline, while the write that knows waits in a queue. A call
+	placed from the browser was recorded as having arrived on a handset that way.
 	"""
 	if not provider_call_id:
 		return None
@@ -125,6 +132,8 @@ def persist_call(
 			"Excom Call", {"provider_call_id": provider_call_id}, "name"
 		)
 		if existing:
+			if authoritative:
+				_complete_row(existing, direction, caller_number, business_number, agent, transport)
 			return existing
 
 		account_doc = (
@@ -192,6 +201,35 @@ def persist_call(
 
 		frappe.db.commit()
 		return call.name
+
+
+def _complete_row(
+	name: str, direction: str, customer: str, business: str, agent: str | None, transport: str
+) -> None:
+	"""Correct a row opened by a leg that could only infer these.
+
+	Only the fields the answer URL genuinely settles, and only where they differ — a call already
+	answered has an agent and a transport of its own by then, and this must not walk over them.
+	"""
+	row = frappe.db.get_value(
+		"Excom Call", name, ["direction", "transport", "customer_number", "agent", "answered_by"],
+		as_dict=True,
+	)
+	if not row:
+		return
+
+	fields = {}
+	if direction and row.direction != direction:
+		fields["direction"] = direction
+	# Whoever answered has already said how, and that observation outranks this one.
+	if transport and not row.answered_by and row.transport != transport:
+		fields["transport"] = transport
+	if customer and not row.customer_number:
+		fields["customer_number"] = normalize_phone(customer)
+	if agent and not row.agent:
+		fields["agent"] = agent
+	if fields:
+		frappe.db.set_value("Excom Call", name, fields, update_modified=False)
 
 
 def _records(account_doc, direction: str) -> bool:
@@ -289,8 +327,11 @@ def _participants(event: CallEvent, account: str) -> tuple[str, str, str]:
 
 	# Every vendor calls a browser-originated leg "inbound" — it is inbound to them. The address is
 	# what actually says the call came from one of our own softphones, which makes it outbound.
+	# `startswith`, not equality: a vendor labels these legs `outbound-dial` and `outbound-api` as
+	# well as plain `outbound`, and testing for the bare word sent every one of them to Inbound.
 	from_browser = is_softphone(raw_from)
-	direction = "Outbound" if (from_browser or event.direction == "outbound") else "Inbound"
+	outbound = str(event.direction or "").startswith("outbound")
+	direction = "Outbound" if (from_browser or outbound) else "Inbound"
 
 	customer = ""
 	for candidate in (raw_from, raw_to):
@@ -329,6 +370,12 @@ def apply_event(event: CallEvent, account: str) -> dict:
 		)
 		if not name:
 			# The answer URL's enqueued write has not landed yet, or this is a leg we never saw.
+			#
+			# Claim only what this payload can support. A leg `<Dial>` raised carries our own
+			# caller id as its From, which is not a softphone and never was, so "Phone" was not an
+			# observation but a guess — and it recorded browser calls as coming from a handset.
+			# Where the leg cannot say, the row keeps the field's default until the write that
+			# knows arrives.
 			direction, customer, business = _participants(event, account)
 			name = persist_call(
 				provider_call_id=event.provider_call_id,
@@ -336,7 +383,7 @@ def apply_event(event: CallEvent, account: str) -> dict:
 				direction=direction,
 				caller_number=customer,
 				business_number=business,
-				transport="Browser" if is_softphone(event.from_number) else "Phone",
+				transport="Browser" if is_softphone(event.from_number) else "",
 				raw=event.raw,
 			)
 			if not name:

@@ -160,6 +160,9 @@ def _route_inbound(provider, account: str, params: dict, call_uuid: str) -> str:
 		sticky_agent=context.get("sticky_agent"),
 		identity=context.get("identity"),
 		ivr_selection=digits,
+		# Same reasoning as the outbound side: <Dial><Client> raises a leg of its own here, and its
+		# statusCallback is handled inline while this write waits in a queue.
+		authoritative=True,
 		raw=params,
 	)
 	return provider.render_decision(decision)
@@ -207,6 +210,9 @@ def _route_outbound(provider, account: str, params: dict, call_uuid: str) -> str
 		decision_users=[u for u in [event.sip_headers.get("user")] if u],
 		agent=event.sip_headers.get("user") or None,
 		transport="Browser",
+		# This write knows; the statusCallback on the leg <Dial> raises can only infer, and being
+		# handled inline it often lands first.
+		authoritative=True,
 		raw=params,
 	)
 	return provider.render_decision(decision)
