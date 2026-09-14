@@ -151,8 +151,6 @@ def _dial_from_browser(user, number, account_doc, thread, provider) -> dict:
 	SDK — we have no call uuid to correlate on until Plivo hits the answer URL, and by then the
 	number alone is not enough to pick the right conversation.
 	"""
-	from excom.excom.channels.voice.providers.plivo import SIP_HEADER_PREFIX
-
 	# Each of these names the line. With one line "this line" was unambiguous; with two, an agent
 	# told their softphone is not connected has to know which desk to go and look at — and the line
 	# is chosen by the destination, so it is rarely the one they were last looking at.
@@ -187,17 +185,17 @@ def _dial_from_browser(user, number, account_doc, thread, provider) -> dict:
 			_("Your softphone is not connected. Reload Excom and allow the microphone.")
 		)
 
-	# The browser SDK takes headers as an object, not the comma-joined string the REST API wants.
-	headers = {
-		f"{SIP_HEADER_PREFIX}{key}": value
-		for key, value in (
-			("to", number),
-			("thread", thread or ""),
-			("user", user),
-			("account", account_doc.name),
-		)
-		if value
-	}
+	# What the context is called on the wire is the vendor's business, not ours. Sending Plivo's
+	# header names to Twilio meant none of this reached its answer URL, so the leg arrived with no
+	# destination, no thread and no agent attached to it.
+	headers = provider.browser_context(
+		{
+			"to": number,
+			"thread": thread or "",
+			"user": user,
+			"account": account_doc.name,
+		}
+	)
 	return {
 		"mode": "browser",
 		"dial_string": number.lstrip("+"),

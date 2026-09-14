@@ -82,6 +82,19 @@ def announce_ringing(decision: CallDecision, context: dict, provider_call_id: st
 	)
 
 
+SOFTPHONE_SCHEMES = ("sip:", "client:")
+
+
+def is_softphone(address: str | None) -> bool:
+	"""Is this address one of our own softphones rather than a person's number?
+
+	Providers name them differently — Plivo issues SIP URIs, Twilio issues Client identities — and
+	testing for one vendor's scheme means the other's softphones read as customers. That is how an
+	agent's own endpoint ends up saved as a contact.
+	"""
+	return str(address or "").startswith(SOFTPHONE_SCHEMES)
+
+
 # ── persistence ───────────────────────────────────────────────────────────────
 
 
@@ -125,7 +138,7 @@ def persist_call(
 		# one of our own softphones, and our own DID is the line the call arrived on; neither is a
 		# customer, and an identity built from either is junk that lands in everybody's inbox and
 		# cannot sensibly be merged away. A call with no contact is the better failure.
-		if str(caller_number or "").startswith("sip:"):
+		if is_softphone(caller_number):
 			contact_number = ""
 		own_number = _digits((account_doc.get("voice_number") if account_doc else "") or "")
 		if own_number and _digits(contact_number) == own_number:
@@ -274,14 +287,14 @@ def _participants(event: CallEvent, account: str) -> tuple[str, str, str]:
 	raw_from = str(event.from_number or "")
 	raw_to = str(event.to_number or "")
 
-	# Plivo calls a browser-originated leg "inbound" — it is inbound to Plivo. The SIP address is
+	# Every vendor calls a browser-originated leg "inbound" — it is inbound to them. The address is
 	# what actually says the call came from one of our own softphones, which makes it outbound.
-	from_browser = raw_from.startswith("sip:")
+	from_browser = is_softphone(raw_from)
 	direction = "Outbound" if (from_browser or event.direction == "outbound") else "Inbound"
 
 	customer = ""
 	for candidate in (raw_from, raw_to):
-		if candidate.startswith("sip:"):
+		if is_softphone(candidate):
 			continue
 		# Compared as bare digits, deliberately. We store a line in E.164 with its `+` and the
 		# provider sends the same number without one; compared as strings those never matched,
@@ -323,7 +336,7 @@ def apply_event(event: CallEvent, account: str) -> dict:
 				direction=direction,
 				caller_number=customer,
 				business_number=business,
-				transport="Browser" if str(event.from_number or "").startswith("sip:") else "Phone",
+				transport="Browser" if is_softphone(event.from_number) else "Phone",
 				raw=event.raw,
 			)
 			if not name:
@@ -363,10 +376,8 @@ def _on_answered(call, event: CallEvent) -> dict:
 		team = _team_for(answered_by)
 		if team:
 			fields["team"] = team
-		# A SIP destination means they took it in the browser; a number means their handset rang.
-		fields["transport"] = (
-			"Browser" if str(event.answered_destination or "").startswith("sip:") else "Phone"
-		)
+		# A softphone destination means they took it in the browser; a number means their handset rang.
+		fields["transport"] = "Browser" if is_softphone(event.answered_destination) else "Phone"
 
 	changed = _apply(call, fields)
 	if answered_by:
@@ -481,7 +492,7 @@ def _user_for_destination(call, destination: str) -> str | None:
 		return None
 
 	target = str(destination).strip()
-	if target.startswith("sip:"):
+	if is_softphone(target):
 		user = frappe.db.get_value(
 			"Excom Voice Endpoint",
 			{"sip_uri": target, "channel_account": call.channel_account},

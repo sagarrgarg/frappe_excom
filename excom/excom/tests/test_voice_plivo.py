@@ -1127,3 +1127,104 @@ class TestOneCallOneRow(FrappeTestCase):
 		self.assertGreater(
 			looked["times"], 1, "the stub never fired, so the insert was never reached"
 		)
+
+
+class TestABrowserLegIsNotACustomer(FrappeTestCase):
+	"""A call the agent placed must never be answered as a call arriving.
+
+	This reached a live line. A browser call from the Twilio softphone came back to the answer URL
+	as `From: client:excom_pranav..., Direction: inbound` — Twilio calls such a leg inbound because
+	it is inbound to Twilio — and the test for a browser leg looked for `sip:`, which is Plivo's
+	shape. So Excom took the inbound path and rang the whole team about a call one of them was
+	placing, while the customer's number was never dialled at all.
+	"""
+
+	def test_twilio_knows_its_own_softphone(self):
+		from excom.excom.channels.voice.providers.twilio import TwilioAdapter
+
+		adapter = TwilioAdapter(_account_stub(voice_provider="Twilio"))
+		self.assertTrue(
+			adapter.originates_from_softphone(
+				{"From": "client:excom_pranav_ggil_rbcolour_com", "Direction": "inbound"}
+			),
+			"a leg the browser placed must be recognised however the vendor labels its direction",
+		)
+		self.assertFalse(
+			adapter.originates_from_softphone({"From": "+918979818152", "Direction": "inbound"}),
+			"a real customer calling in is not a softphone",
+		)
+
+	def test_plivo_still_knows_its_own(self):
+		adapter = PlivoAdapter(_account_stub())
+		self.assertTrue(
+			adapter.originates_from_softphone({"From": "sip:excomsomil_MATEST@phone.plivo.com"})
+		)
+		self.assertFalse(adapter.originates_from_softphone({"From": "+919900000123"}))
+
+	def test_a_softphone_address_is_recognised_whatever_the_vendor_calls_it(self):
+		from excom.excom.channels.voice.handler import is_softphone
+
+		self.assertTrue(is_softphone("sip:excomsomil_MATEST@phone.plivo.com"))
+		self.assertTrue(is_softphone("client:excom_pranav_ggil_rbcolour_com"))
+		self.assertFalse(is_softphone("+918795194645"))
+		self.assertFalse(is_softphone(""))
+		self.assertFalse(is_softphone(None))
+
+	def test_the_twilio_browser_leg_is_outbound_with_no_contact_made_from_it(self):
+		"""The exact payload that misfired, run through the participant rule."""
+		from excom.excom.channels.voice.handler import _participants
+
+		event = CallEvent(
+			kind="ringing",
+			provider_call_id="CA77d89d674a42ea345f98fd89b0f83972",
+			from_number="client:excom_pranav_ggil_rbcolour_com",
+			to_number="+918795194645",
+			direction="inbound",
+			raw={},
+		)
+		direction, customer, business = _participants(event, "VOICE-TEST-TWILIO")
+		self.assertEqual(direction, "Outbound")
+		self.assertEqual(
+			customer,
+			"+918795194645",
+			"the dialled number is the customer; the softphone that dialled it is not",
+		)
+
+
+class TestBrowserContextReachesTheAnswerUrl(FrappeTestCase):
+	"""The leg is created by the SDK, so the call's context can only travel on the leg itself.
+
+	Each vendor carries it differently, and sending Plivo's header names to Twilio meant the
+	destination, thread, user and account never arrived — which is why the leg reached the answer
+	URL with nothing attached to it.
+	"""
+
+	CONTEXT = {
+		"to": "+918795194645",
+		"thread": "THREAD-1",
+		"user": "agent@example.com",
+		"account": "Twilio International",
+	}
+
+	def test_plivo_sends_sip_headers(self):
+		out = PlivoAdapter(_account_stub()).browser_context(dict(self.CONTEXT))
+		self.assertEqual(out["X-PH-to"], "+918795194645")
+		self.assertEqual(out["X-PH-user"], "agent@example.com")
+
+	def test_twilio_sends_parameters_its_own_reader_strips_back(self):
+		from excom.excom.channels.voice.providers.twilio import TwilioAdapter
+
+		adapter = TwilioAdapter(_account_stub(voice_provider="Twilio"))
+		out = adapter.browser_context(dict(self.CONTEXT))
+		self.assertEqual(out["ExcomTo"], "+918795194645")
+
+		# The round trip is the point: whatever browser_context emits, normalize_event must read.
+		event = adapter.normalize_event("ringing", {"CallSid": "CA1", "From": "client:x", **out})
+		self.assertEqual(event.sip_headers.get("to"), "+918795194645")
+		self.assertEqual(event.sip_headers.get("user"), "agent@example.com")
+		self.assertEqual(event.sip_headers.get("thread"), "THREAD-1")
+		self.assertEqual(event.sip_headers.get("account"), "Twilio International")
+
+	def test_empty_values_are_left_out_rather_than_sent_blank(self):
+		out = PlivoAdapter(_account_stub()).browser_context({"to": "+911", "thread": ""})
+		self.assertNotIn("X-PH-thread", out)

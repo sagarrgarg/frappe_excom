@@ -518,6 +518,21 @@ class TwilioAdapter(VoiceProvider, SoftphoneProvider):
 		)
 		return token.to_jwt()
 
+	def originates_from_softphone(self, payload: dict[str, Any]) -> bool:
+		"""Twilio's softphones are Client identities, not SIP endpoints, so a leg the browser placed
+		arrives as ``From: client:<identity>``."""
+		return str(payload.get("From") or payload.get("Caller") or "").startswith("client:")
+
+	def browser_context(self, context: dict[str, str]) -> dict[str, str]:
+		"""Twilio has no SIP headers on a browser leg. Context rides as ordinary parameters, which
+		come back to the answer URL prefixed exactly as sent — so the names here are the ones
+		``normalize_event`` strips back down."""
+		return {
+			f"{PARAM_PREFIX}{key.capitalize()}": value
+			for key, value in context.items()
+			if value
+		}
+
 	def sdk_descriptor(self) -> dict[str, Any]:
 		"""What the browser needs to boot the SDK. Contains no secret."""
 		region = (self.account.get("voice_client_region") or "").strip()

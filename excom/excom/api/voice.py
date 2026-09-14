@@ -127,7 +127,7 @@ def route():
 	direction = (params.get("Direction") or "inbound").lower()
 
 	try:
-		if direction == "outbound" or str(params.get("From") or "").startswith("sip:"):
+		if direction == "outbound" or provider.originates_from_softphone(params):
 			return _xml(_route_outbound(provider, account, params, call_uuid))
 		return _xml(_route_inbound(provider, account, params, call_uuid))
 	except Exception:

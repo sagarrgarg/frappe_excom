@@ -691,6 +691,11 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 			frappe.throw(_("Plivo returned no softphone token."))
 		return token
 
+	def browser_context(self, context: dict[str, str]) -> dict[str, str]:
+		"""Plivo's browser SDK takes SIP headers as an object, and Plivo echoes them back to the
+		answer URL under the same names."""
+		return {f"{SIP_HEADER_PREFIX}{key}": value for key, value in context.items() if value}
+
 	def sdk_descriptor(self) -> dict[str, Any]:
 		"""What the browser needs to boot the SDK. Contains no secret.
 

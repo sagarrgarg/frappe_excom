@@ -185,6 +185,18 @@ class VoiceProvider(ABC):
 	def supports(self, capability: str) -> bool:
 		return capability in self.capabilities()
 
+	def originates_from_softphone(self, payload: dict[str, Any]) -> bool:
+		"""Is this webhook about a leg one of our own softphones placed?
+
+		It cannot be read off the direction. Every vendor calls such a leg "inbound", because it is
+		inbound to them; what distinguishes it is the address it came from. Plivo uses a SIP URI and
+		that is the default here; a vendor whose softphones are not SIP says so by overriding.
+
+		Getting this wrong is not subtle: the call is treated as a customer ringing in, and the
+		whole team is alerted about a call one of them is placing.
+		"""
+		return str(payload.get("From") or "").startswith("sip:")
+
 	def action_response(self) -> str | None:
 		"""What this vendor requires back from the dial action URL, if anything.
 
@@ -227,3 +239,15 @@ class SoftphoneProvider(ABC):
 	@abstractmethod
 	def sdk_descriptor(self) -> dict[str, Any]:
 		"""Everything the browser needs to boot the SDK, minus secrets."""
+
+	@abstractmethod
+	def browser_context(self, context: dict[str, str]) -> dict[str, str]:
+		"""Rename call context into whatever this vendor carries on a browser-placed leg.
+
+		That leg is created by the SDK, so there is no provider call for us to attach anything to
+		and no uuid to correlate on until the answer URL fires — by which time the dialled number
+		alone cannot say which conversation the call belongs to. The context therefore has to
+		travel with the leg itself, and each vendor has its own vehicle: SIP headers on one,
+		ordinary parameters on another. Keys in are plain words: ``to``, ``thread``, ``user``,
+		``account``.
+		"""
