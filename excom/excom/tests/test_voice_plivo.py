@@ -1228,3 +1228,60 @@ class TestBrowserContextReachesTheAnswerUrl(FrappeTestCase):
 	def test_empty_values_are_left_out_rather_than_sent_blank(self):
 		out = PlivoAdapter(_account_stub()).browser_context({"to": "+911", "thread": ""})
 		self.assertNotIn("X-PH-thread", out)
+
+
+class TestOneConversationOneRecord(FrappeTestCase):
+	"""`<Dial>` creates a second leg, and Twilio gives it its own CallSid.
+
+	Five of the twelve rows on the live Twilio line were that second leg recorded as a call in its
+	own right — the far end of a conversation already saved, with its direction and transport read
+	off the wrong leg. An outbound browser call to India appeared a second time as an inbound call
+	on a handset.
+	"""
+
+	# Verbatim from the live account: the browser leg, then the leg <Dial> raised from it.
+	PARENT = "CAfc6ce44f813ebf13c749fb41e1f8e083"
+	CHILD = "CA8fa6a0fd03c72f8e8ea94333278d38bf"
+
+	def _adapter(self):
+		from excom.excom.channels.voice.providers.twilio import TwilioAdapter
+
+		return TwilioAdapter(_account_stub(voice_provider="Twilio"))
+
+	def test_a_child_leg_reports_the_call_we_already_hold(self):
+		event = self._adapter().normalize_event(
+			"dial_event",
+			{
+				"CallSid": self.CHILD,
+				"ParentCallSid": self.PARENT,
+				"From": "+13185911821",
+				"To": "+919326002507",
+				"Direction": "outbound-dial",
+				"CallStatus": "in-progress",
+			},
+		)
+		self.assertEqual(
+			event.provider_call_id,
+			self.PARENT,
+			"a webhook carrying ParentCallSid is about a leg of a call already recorded",
+		)
+
+	def test_the_parent_leg_still_reports_itself(self):
+		event = self._adapter().normalize_event(
+			"ringing",
+			{
+				"CallSid": self.PARENT,
+				"From": "client:excom_somilsearchosis_gmail_com",
+				"To": "919326002507",
+				"Direction": "inbound",
+			},
+		)
+		self.assertEqual(event.provider_call_id, self.PARENT)
+
+	def test_plivo_reports_one_uuid_throughout(self):
+		"""The same conversation on Plivo never had this problem, and must not acquire it."""
+		uuid = "67dec1c8-e444-4e52-bd2f-a23b6a764b45"
+		event = PlivoAdapter(_account_stub()).normalize_event(
+			"dial_event", {"CallUUID": uuid, "From": "sip:agent@phone.plivo.com", "To": "919326002507"}
+		)
+		self.assertEqual(event.provider_call_id, uuid)

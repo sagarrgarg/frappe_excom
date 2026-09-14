@@ -366,15 +366,22 @@ class TwilioAdapter(VoiceProvider, SoftphoneProvider):
 	def normalize_event(self, kind_hint: str, payload: dict[str, Any]) -> CallEvent:
 		"""Map a Twilio webhook onto a CallEvent.
 
-		Twilio names the parent call `CallSid` everywhere, so unlike Plivo there is no hunting for
-		which of several uuid fields identifies the leg we hold a record for.
+		Which uuid names the call we hold is not always `CallSid`. `<Dial>` puts a statusCallback on
+		the leg it creates, and that webhook reports the *child* leg as `CallSid` and the call we
+		actually have a record of as `ParentCallSid`. Reading `CallSid` there finds no row and
+		creates a second one for the far end of a call already recorded, taking its direction and
+		transport from the wrong leg — an outbound browser call to India came back as an inbound
+		call on a handset that way.
+
+		So ParentCallSid wins where it is present: its presence is precisely the statement that this
+		webhook is about a leg of something we already track.
 		"""
 		params = {k: v for k, v in (payload or {}).items() if k.startswith(PARAM_PREFIX)}
 		extras = {k[len(PARAM_PREFIX) :].lower(): v for k, v in params.items()}
 
 		event = CallEvent(
 			kind="unknown",
-			provider_call_id=payload.get("CallSid") or payload.get("ParentCallSid") or "",
+			provider_call_id=payload.get("ParentCallSid") or payload.get("CallSid") or "",
 			from_number=payload.get("From") or payload.get("Caller") or "",
 			to_number=payload.get("To") or payload.get("Called") or "",
 			direction=(payload.get("Direction") or "").lower(),
