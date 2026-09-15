@@ -483,6 +483,9 @@ export function useSoftphone() {
           account: opts.account ?? "",
           thread: opts.thread ?? "",
           transport: opts.transport ?? "",
+          // What the agent typed into the dialler. Without it the contact this call creates can
+          // only be named after its own number, which is how a contact list fills up with digits.
+          display_name: opts.displayName ?? "",
         })) as { message: any };
         const plan = res?.message;
         if (!plan) {
