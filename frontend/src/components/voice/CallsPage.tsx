@@ -174,26 +174,36 @@ function Row({
   const when = call.creation ? parseFrappeDateTime(call.creation) : null;
 
   return (
-    <li className="flex items-center gap-3 px-3 py-2 hover:bg-surface-hover min-w-0">
+    // The whole row highlights on hover, so the whole row has to answer to a click. It used to
+    // light up edge to edge while only the middle was a button, and clicking the icon, the avatar,
+    // the agent or the status did nothing — which reads as the app ignoring you.
+    <li
+      className="flex items-center gap-3 px-3 py-2 hover:bg-surface-hover min-w-0 cursor-pointer"
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      title="Open the conversation"
+    >
       <Icon
         className={"size-4 shrink-0 " + (missed ? "text-crayon-rose-text" : "text-ink-3")}
         aria-hidden
       />
       <Avatar name={name} size={28} />
 
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex-1 min-w-0 text-left"
-        title="Open the conversation"
-      >
+      <div className="flex-1 min-w-0 text-left">
         <div className="text-sm text-ink-1 truncate">{name}</div>
         <div className="text-xs text-ink-3 truncate">
           {call.customer_number}
           {when ? " · " + formatServerShortDateTime(when) : ""}
           {call.duration ? " · " + mmss(call.duration) : ""}
         </div>
-      </button>
+      </div>
 
       {(call.answered_by || call.agent) && (
         <span className="hidden laptop:inline text-xs text-ink-3 truncate max-w-[10rem]">
@@ -206,7 +216,16 @@ function Row({
       )}
 
       {onCallBack && (
-        <Button size="sm" variant={missed ? "primary" : "subtle"} onClick={onCallBack}>
+        // Inside a clickable row now, so it has to stop the click from also opening the
+        // conversation behind it.
+        <Button
+          size="sm"
+          variant={missed ? "primary" : "subtle"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCallBack();
+          }}
+        >
           <Phone className="size-3.5" />
           Call back
         </Button>

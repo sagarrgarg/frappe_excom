@@ -108,6 +108,7 @@ def persist_call(
 	sticky_agent: str | None = None,
 	identity: str | None = None,
 	agent: str | None = None,
+	display_name: str = "",
 	transport: str = "Browser",
 	ivr_selection: str = "",
 	raw: dict | None = None,
@@ -156,9 +157,15 @@ def persist_call(
 		if not identity and contact_number:
 			from excom.excom.doctype.omni_identity.omni_identity import resolve_identity
 
+			# Falling back to the number is what makes a contact list read as a list of phone
+			# numbers. Use the name the agent typed when there is one; the number remains the
+			# fallback, because an inbound call from a stranger has nothing else to offer.
 			identity = resolve_identity(
-				phone=contact_number, channel="voice", display_name=contact_number
+				phone=contact_number,
+				channel="voice",
+				display_name=(display_name or "").strip() or contact_number,
 			)
+			_name_if_unnamed(identity, display_name, contact_number)
 
 		thread = None
 		if identity and account:
@@ -230,6 +237,23 @@ def _complete_row(
 		fields["agent"] = agent
 	if fields:
 		frappe.db.set_value("Excom Call", name, fields, update_modified=False)
+
+
+def _name_if_unnamed(identity: str, typed: str, number: str) -> None:
+	"""Give a contact the agent's name for it, but never take one away.
+
+	`resolve_identity` returns an existing contact where one matches, and that contact may already
+	be properly named — by an import, by the CRM, by somebody who met them. Renaming it from the
+	dialler would let the last person to type a number overwrite that. So this only fills in a
+	contact whose name is still its own phone number, which is exactly the ones this used to make.
+	"""
+	typed = (typed or "").strip()
+	if not identity or not typed or typed == number:
+		return
+	current = (frappe.db.get_value("Omni Identity", identity, "display_name") or "").strip()
+	if current and _digits(current) != _digits(number):
+		return
+	frappe.db.set_value("Omni Identity", identity, "display_name", typed, update_modified=False)
 
 
 def _records(account_doc, direction: str) -> bool:
