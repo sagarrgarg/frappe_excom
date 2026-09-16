@@ -113,6 +113,7 @@ def dial(
 	thread: str = "",
 	transport: str = "",
 	user: str = "",
+	display_name: str = "",
 ) -> dict:
 	"""Start an outbound call. Returns what the browser should do next."""
 	user = user or frappe.session.user
@@ -140,11 +141,11 @@ def dial(
 	transport = transport or preferred_transport(user, account, account_doc)
 
 	if transport == "Browser":
-		return _dial_from_browser(user, number, account_doc, thread, provider)
+		return _dial_from_browser(user, number, account_doc, thread, provider, display_name)
 	return _dial_via_phone(user, number, account_doc, thread, provider)
 
 
-def _dial_from_browser(user, number, account_doc, thread, provider) -> dict:
+def _dial_from_browser(user, number, account_doc, thread, provider, display_name="") -> dict:
 	"""The browser places the leg itself, so there is no provider call to make here.
 
 	The thread and identity ride out as SIP headers because that outgoing leg is created by the
@@ -194,6 +195,7 @@ def _dial_from_browser(user, number, account_doc, thread, provider) -> dict:
 			"thread": thread or "",
 			"user": user,
 			"account": account_doc.name,
+			"name": display_name or "",
 		}
 	)
 	return {

@@ -3,6 +3,11 @@ Add missing database indexes for query performance.
 
 Phase 1.3.1 — covers WhatsApp Message, WhatsApp Notification Log,
 Excom Message, and Excom Thread.
+
+The first two belong to `frappe_whatsapp`, the app Excom grew out of. A site upgraded from it has
+them; a site where Excom was installed fresh never did, and asking MariaDB about an index on a
+table that does not exist raises rather than answering no. That took a whole migration down with
+it — and with it every Excom patch that comes after.
 """
 
 import frappe
@@ -31,6 +36,10 @@ def execute():
     ]
 
     for table, idx_name, columns in indexes:
+        # `table_exists` takes the doctype, so strip the prefix back off. An index is only ever
+        # worth anything against rows, and a table that was never created has none.
+        if not frappe.db.table_exists(table[len("tab"):], cached=False):
+            continue
         if not frappe.db.has_index(table, idx_name):
             col_str = ", ".join(columns)
             frappe.db.sql_ddl(

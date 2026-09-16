@@ -1561,3 +1561,103 @@ class TestContextSurvivesTheWire(FrappeTestCase):
 			"ringing", {"CallUUID": "u1", "X-PH-to": "+918542866684"}
 		)
 		self.assertEqual(back.sip_headers.get("to"), "+918542866684")
+
+
+class TestACallCanNameTheContact(FrappeTestCase):
+	"""A contact list full of phone numbers.
+
+	The New conversation dialog asks for a name and then spent it on a toast — `dial()` posted the
+	number, the account, the thread and the transport, and nothing else — so the server had only
+	digits when it created the contact and named it after them. Seven of the ten newest contacts on
+	the live site are their own phone number.
+	"""
+
+	NUMBER = "+919900000881"
+	TYPED = "Kamal Traders"
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+		for oi in frappe.get_all("Omni Identity", {"primary_phone": ["like", "%9900000881%"]},
+								 pluck="name"):
+			for child in ("Omni Identity Link", "Omni Identity Channel", "Omni Identity Alias"):
+				frappe.db.delete(child, {"parent": oi})
+			frappe.delete_doc("Omni Identity", oi, force=True, ignore_permissions=True)
+		for c in frappe.get_all("Excom Call", {"provider_call_id": ["like", "name-test-%"]},
+								pluck="name"):
+			frappe.delete_doc("Excom Call", c, force=True, ignore_permissions=True)
+		frappe.db.commit()
+
+	def _name_of(self, number):
+		oi = frappe.db.get_value("Omni Identity", {"primary_phone": number}, "display_name")
+		return oi
+
+	def test_the_typed_name_becomes_the_contacts_name(self):
+		from excom.excom.channels.voice import handler
+
+		handler.persist_call(
+			provider_call_id="name-test-1", account="", direction="Outbound",
+			caller_number=self.NUMBER, business_number="+912269985738",
+			display_name=self.TYPED,
+		)
+		self.assertEqual(self._name_of(self.NUMBER), self.TYPED)
+
+	def test_without_a_name_the_number_is_still_the_fallback(self):
+		"""An inbound call from a stranger has nothing else to offer."""
+		from excom.excom.channels.voice import handler
+
+		handler.persist_call(
+			provider_call_id="name-test-2", account="", direction="Inbound",
+			caller_number=self.NUMBER, business_number="+912269985738",
+		)
+		self.assertEqual(self._name_of(self.NUMBER), self.NUMBER)
+
+	def test_a_contact_that_already_has_a_name_keeps_it(self):
+		"""Whoever last typed into the dialler must not rewrite a record somebody built up."""
+		from excom.excom.channels.voice import handler
+
+		handler.persist_call(
+			provider_call_id="name-test-3", account="", direction="Outbound",
+			caller_number=self.NUMBER, business_number="+912269985738",
+			display_name="Kamal Traders Pvt Ltd",
+		)
+		handler.persist_call(
+			provider_call_id="name-test-4", account="", direction="Outbound",
+			caller_number=self.NUMBER, business_number="+912269985738",
+			display_name="kamal",
+		)
+		self.assertEqual(
+			self._name_of(self.NUMBER), "Kamal Traders Pvt Ltd",
+			"the second call must not rename a contact that was already named",
+		)
+
+	def test_a_contact_still_called_after_its_number_does_get_named(self):
+		"""The ones this bug already made are exactly the ones worth fixing on the next call."""
+		from excom.excom.channels.voice import handler
+
+		handler.persist_call(
+			provider_call_id="name-test-5", account="", direction="Inbound",
+			caller_number=self.NUMBER, business_number="+912269985738",
+		)
+		self.assertEqual(self._name_of(self.NUMBER), self.NUMBER)
+
+		handler.persist_call(
+			provider_call_id="name-test-6", account="", direction="Outbound",
+			caller_number=self.NUMBER, business_number="+912269985738",
+			display_name=self.TYPED,
+		)
+		self.assertEqual(self._name_of(self.NUMBER), self.TYPED)
+
+	def test_the_name_travels_on_the_leg_the_browser_places(self):
+		"""It has to reach the answer URL, which is a different request from the one that dialled."""
+		adapter = PlivoAdapter(_account_stub())
+		wire = adapter.browser_context({"to": self.NUMBER, "name": self.TYPED, "user": "a@b.com"})
+		back = adapter.normalize_event("ringing", {"CallUUID": "u1", **wire})
+		self.assertEqual(back.sip_headers.get("name"), self.TYPED)
+
+	def test_it_travels_on_twilio_too(self):
+		from excom.excom.channels.voice.providers.twilio import TwilioAdapter
+
+		adapter = TwilioAdapter(_account_stub(voice_provider="Twilio"))
+		wire = adapter.browser_context({"to": self.NUMBER, "name": self.TYPED})
+		back = adapter.normalize_event("ringing", {"CallSid": "CA1", **wire})
+		self.assertEqual(back.sip_headers.get("name"), self.TYPED)

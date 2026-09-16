@@ -179,6 +179,9 @@ def _route_outbound(provider, account: str, params: dict, call_uuid: str) -> str
 
 	event = provider.normalize_event("ringing", params)
 	target = event.sip_headers.get("to") or params.get("To") or ""
+	# Typed into the dialler alongside the number, and the only chance this call has of naming the
+	# contact it is about to create after a person rather than a phone number.
+	typed_name = event.sip_headers.get("name") or ""
 	account_doc = frappe.get_cached_doc("Excom Channel Account", account)
 	policy = account_doc.get("voice_record_policy") or "All"
 
@@ -213,6 +216,7 @@ def _route_outbound(provider, account: str, params: dict, call_uuid: str) -> str
 		business_number=account_doc.get("voice_number") or "",
 		decision_users=[u for u in [event.sip_headers.get("user")] if u],
 		agent=event.sip_headers.get("user") or None,
+		display_name=typed_name,
 		transport="Browser",
 		# This write knows; the statusCallback on the leg <Dial> raises can only infer, and being
 		# handled inline it often lands first.
@@ -458,13 +462,24 @@ def softphone_config():
 
 @frappe.whitelist(methods=["POST"])
 @user_rate_limit(limit=20, seconds=60)
-def dial(to_number: str, account: str = "", thread: str = "", transport: str = ""):
-	"""Start an outbound call. Returns `{mode: browser|phone}` and what to do with it."""
+def dial(
+	to_number: str,
+	account: str = "",
+	thread: str = "",
+	transport: str = "",
+	display_name: str = "",
+):
+	"""Start an outbound call. Returns `{mode: browser|phone}` and what to do with it.
+
+	`display_name` is what the agent typed into the New conversation dialog. Without it the contact
+	this call creates can only be named after its own number.
+	"""
 	_check_excom_access()
 	if thread:
 		_check_thread_access(thread)
 	return outbound.dial(
 		to_number=to_number,
+		display_name=display_name,
 		account=account,
 		thread=thread,
 		transport=transport,
