@@ -1,16 +1,18 @@
 import { useState } from "react";
-import { BarChart3, Download, FileSpreadsheet, FileText, Loader2, RefreshCw } from "lucide-react";
+import { BarChart3, FileSpreadsheet, FileText, Loader2, RefreshCw } from "lucide-react";
 import { useFrappeGetCall } from "@/lib/api";
-import { PageFrame } from "../shell/PageFrame";
 import { Button, EmptyState, SegmentedControl, Select } from "../primitives";
 import { cn } from "../ui/utils";
 
 /**
  * Activity — what a person actually did, over a day, a week or a month.
  *
+ * A tab of Analytics, because it answers the same question as the rest of that page — how is the
+ * desk doing — only per person rather than per channel.
+ *
  * An agent sees themselves and nobody else; that is decided on the server, not by hiding the
- * dropdown, because a report is the sort of screen somebody tries by editing the URL. The page only
- * shows the picker when the server says there is more than one person to pick.
+ * dropdown, because a report is the sort of screen somebody tries by editing the URL. The picker
+ * appears only when the server says there is more than one person to pick.
  */
 
 type Period = "daily" | "weekly" | "monthly";
@@ -54,7 +56,7 @@ function mmss(seconds: number) {
   return `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}m`;
 }
 
-export function ReportsPage() {
+export function ActivityTab() {
   const [period, setPeriod] = useState<Period>("weekly");
   const [on, setOn] = useState(() => new Date().toISOString().slice(0, 10));
   const [who, setWho] = useState("");
@@ -82,59 +84,56 @@ export function ReportsPage() {
   };
 
   return (
-    <PageFrame
-      title="Activity"
-      icon={<BarChart3 />}
-      wide
-      actions={
-        <>
-          <SegmentedControl<Period>
-            value={period}
-            onChange={setPeriod}
-            ariaLabel="Over what period"
-            segments={[
-              { value: "daily", label: "Day" },
-              { value: "weekly", label: "Week" },
-              { value: "monthly", label: "Month" },
-            ]}
-          />
-          <input
-            type="date"
-            value={on}
-            onChange={(e) => setOn(e.target.value)}
-            aria-label="Which day to report on"
-            className="h-8 rounded-md border border-border bg-surface px-2 text-sm text-ink-1"
-          />
-          {/* Only where there is a choice: an agent has exactly one person to report on. */}
-          {people.length > 1 && (
-            <Select
-              value={who}
-              onChange={(e) => setWho(e.target.value)}
-              aria-label="Whose activity"
-              className="w-[190px]"
-            >
-              <option value="">Everyone</option>
-              {people.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.full_name}
-                </option>
-              ))}
-            </Select>
-          )}
-          <Button variant="ghost" size="icon" aria-label="Refresh" onClick={() => void mutate()}>
-            <RefreshCw className={isLoading ? "animate-spin" : ""} />
-          </Button>
-          <Button size="sm" variant="subtle" onClick={() => download("xlsx")}>
-            <FileSpreadsheet className="size-4" />
-            Excel
-          </Button>
-          <Button size="sm" variant="subtle" onClick={() => download("pdf")}>
-            <FileText className="size-4" />
-            PDF
-          </Button>
-        </>
-      }
-    >
+    <div>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <SegmentedControl<Period>
+          value={period}
+          onChange={setPeriod}
+          variant="segmented"
+          ariaLabel="Over what period"
+          segments={[
+            { value: "daily", label: "Day" },
+            { value: "weekly", label: "Week" },
+            { value: "monthly", label: "Month" },
+          ]}
+        />
+        <input
+          type="date"
+          value={on}
+          onChange={(e) => setOn(e.target.value)}
+          aria-label="Which day to report on"
+          className="h-8 rounded-md border border-border bg-surface px-2 text-sm text-ink-1"
+        />
+        {/* Only where there is a choice: an agent has exactly one person to report on. */}
+        {people.length > 1 && (
+          <Select
+            value={who}
+            onChange={(e) => setWho(e.target.value)}
+            aria-label="Whose activity"
+            className="w-[190px]"
+          >
+            <option value="">Everyone</option>
+            {people.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.full_name}
+              </option>
+            ))}
+          </Select>
+        )}
+        <div className="flex-1" />
+        <Button variant="ghost" size="icon" aria-label="Refresh" onClick={() => void mutate()}>
+          <RefreshCw className={isLoading ? "animate-spin" : ""} />
+        </Button>
+        <Button size="sm" variant="subtle" onClick={() => download("xlsx")}>
+          <FileSpreadsheet className="size-4" />
+          Excel
+        </Button>
+        <Button size="sm" variant="subtle" onClick={() => download("pdf")}>
+          <FileText className="size-4" />
+          PDF
+        </Button>
+      </div>
+
       {isLoading && !report ? (
         <div className="flex justify-center py-10 text-ink-3">
           <Loader2 className="size-5 animate-spin" />
@@ -207,7 +206,7 @@ export function ReportsPage() {
           )}
         </>
       )}
-    </PageFrame>
+    </div>
   );
 }
 

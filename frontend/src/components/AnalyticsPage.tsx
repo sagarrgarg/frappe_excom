@@ -3,6 +3,7 @@ import { BarChart3, TrendingUp, MessageCircle, DollarSign, Clock, Users, Activit
 import { useFrappeGetCall } from "@/lib/api";
 import { Button, Select, SegmentedControl } from "./primitives";
 import { AdminPage } from "./shell/AdminPage";
+import { ActivityTab } from "./reports/ActivityTab";
 import { chartTheme } from "../lib/chart-theme";
 import { toast } from "sonner";
 import {
@@ -26,7 +27,7 @@ interface AnalyticsPageProps {
   embedded?: boolean;
 }
 
-type AnalyticsTab = "overview" | "messaging" | "conversations" | "pricing";
+type AnalyticsTab = "overview" | "messaging" | "conversations" | "pricing" | "activity";
 type Period = "7" | "14" | "30" | "90";
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -197,6 +198,7 @@ export function AnalyticsPage({ onNavigateBack, embedded }: AnalyticsPageProps) 
     { id: "messaging", label: "Messages", icon: MessageCircle },
     { id: "conversations", label: "Conversations", icon: Users },
     { id: "pricing", label: "Costs", icon: DollarSign },
+    { id: "activity", label: "Activity", icon: Activity },
   ];
 
   return (
@@ -257,6 +259,7 @@ export function AnalyticsPage({ onNavigateBack, embedded }: AnalyticsPageProps) 
             {activeTab === "pricing" && (
               <PricingTab overview={overview} />
             )}
+            {activeTab === "activity" && <ActivityTab />}
           </>
         )}
       </div>

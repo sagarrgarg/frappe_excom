@@ -4,7 +4,6 @@ import {
   Plus, Sun, Inbox, KanbanSquare, Users, Radio, BarChart3, Building2, ChevronsUpDown,
   Shield, GitMerge, ListChecks, Cog, Settings, Rows3, LogOut, Bug, Sparkles, ArrowLeftRight, Keyboard, ListTodo, Phone,
   CheckSquare,
-  FileBarChart,
 } from "lucide-react";
 import { hasRole } from "../../lib/ui-flag";
 import { cn } from "../ui/utils";
@@ -77,7 +76,6 @@ export function Rail() {
     ...(voiceEnabled ? [{ to: "/calls", label: "Calls", icon: <Phone /> } as RailItem] : []),
     { to: "/broadcasts", label: "Broadcasts", icon: <Radio /> },
     { to: "/analytics", label: "Analytics", icon: <BarChart3 /> },
-    { to: "/reports", label: "Activity", icon: <FileBarChart /> },
   ];
 
   const inboxActive = location.pathname.startsWith("/inbox") || location.pathname.startsWith("/t/");

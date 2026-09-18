@@ -22,7 +22,6 @@ const MoreRoute = lazy(() => import("./pages").then((m) => ({ default: m.MoreRou
 const StressRoute = lazy(() => import("./stress").then((m) => ({ default: m.StressRoute })));
 const CallsRoute = lazy(() => import("../components/voice/CallsPage").then((m) => ({ default: m.CallsPage })));
 const TasksRoute = lazy(() => import("../components/tasks/TasksPage").then((m) => ({ default: m.TasksPage })));
-const ReportsRoute = lazy(() => import("../components/reports/ReportsPage").then((m) => ({ default: m.ReportsPage })));
 
 const L = (el: React.ReactNode) => <Suspense fallback={<RouteFallback />}>{el}</Suspense>;
 
@@ -51,7 +50,6 @@ export function NextRouter() {
           <Route path="/contacts" element={L(<ContactsRoute />)} />
           <Route path="/calls" element={L(<CallsRoute />)} />
           <Route path="/tasks" element={L(<TasksRoute />)} />
-          <Route path="/reports" element={L(<ReportsRoute />)} />
           <Route path="/broadcasts" element={L(<BroadcastsRoute />)} />
           <Route path="/analytics" element={L(<AnalyticsRoute />)} />
           <Route path="/teams" element={<Navigate to="/admin/teams" replace />} />
