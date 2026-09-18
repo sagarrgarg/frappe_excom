@@ -174,6 +174,67 @@ class OmniIdentity(Document):
 		self.save(ignore_permissions=True)
 
 
+def is_unnamed(display_name: str, phone: str = "", email: str = "") -> bool:
+	"""Has this contact ever really been named?
+
+	A contact created by a call is named after the number it dialled, because at that moment there
+	is nothing else to call it. The same is true of one created from a bare email address. Those are
+	placeholders wearing the shape of a name, and telling them apart from a real one is what decides
+	whether it is safe to write a better name over the top.
+	"""
+	name = (display_name or "").strip()
+	if not name or name == "Unknown":
+		return True
+	digits = re.sub(r"\D", "", name)
+	if digits and digits == re.sub(r"\D", "", phone or ""):
+		return True
+	if digits and not re.sub(r"[\d\s+()\-]", "", name):
+		# All digits and punctuation, so it is a number even if it is not the one we hold.
+		return True
+	return name.lower() == (email or "").strip().lower()
+
+
+def name_if_unnamed(identity: str, proposed: str) -> bool:
+	"""Give a contact a name, but never take one away.
+
+	Returns whether anything changed. A contact may already have been named by an import, by the
+	CRM, or by somebody who actually met them; the rule is that a placeholder can become a name and
+	a name never becomes something else.
+	"""
+	proposed = (proposed or "").strip()
+	if not identity or not proposed:
+		return False
+	row = frappe.db.get_value(
+		"Omni Identity", identity, ["display_name", "primary_phone", "primary_email"], as_dict=True
+	)
+	if not row:
+		return False
+	if not is_unnamed(row.display_name, row.primary_phone, row.primary_email):
+		return False
+	if is_unnamed(proposed, row.primary_phone, row.primary_email):
+		return False  # swapping one placeholder for another helps nobody
+	frappe.db.set_value("Omni Identity", identity, "display_name", proposed, update_modified=False)
+	rename_threads(identity, proposed)
+	return True
+
+
+def rename_threads(identity: str, display_name: str) -> None:
+	"""Every conversation keeps its own copy of the contact's name, taken when it was created.
+
+	Nothing told them when the contact was renamed, so a conversation went on showing the number
+	long after the contact had a name — and the inbox searches that copy, so the contact could not
+	be found by name either.
+	"""
+	for thread in frappe.get_all("Excom Thread", filters={"omni_identity": identity}, pluck="name"):
+		frappe.db.set_value("Excom Thread", thread, "display_name", display_name, update_modified=False)
+
+
+def on_identity_renamed(doc, method=None) -> None:
+	"""Hook: keep the conversations' copy of the name in step with the contact's own."""
+	if doc.has_value_changed("display_name") and doc.display_name:
+		rename_threads(doc.name, doc.display_name)
+
+
 def normalize_phone(phone: str) -> str:
 	"""Strip everything except digits from a phone number."""
 	if not phone:

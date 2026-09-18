@@ -128,6 +128,8 @@ def sync_single_customer(
 
     phone, email = _extract_contact_details(contacts, customer_name, "Customer")
 
+    display = customer.customer_name or customer_name
+
     existing = _find_existing_identity(phone, email)
     if existing:
         links = [("Customer", customer_name, "Primary Contact")]
@@ -139,7 +141,7 @@ def sync_single_customer(
                 links.append(("Contact", contact.name, "Primary Contact"))
                 processed.add(_entity_key("Contact", contact.name))
         processed.add(_entity_key("Customer", customer_name))
-        return _attach_to_existing(existing, links, phone, email)
+        return _attach_to_existing(existing, links, phone, email, display)
 
     identity = frappe.get_doc({
         "doctype": "Omni Identity",
@@ -199,6 +201,8 @@ def sync_single_supplier(
     contacts = _get_contacts_for_party("Supplier", supplier_name)
     phone, email = _extract_contact_details(contacts, supplier_name, "Supplier")
 
+    display = supplier.supplier_name or supplier_name
+
     existing = _find_existing_identity(phone, email)
     if existing:
         links = [("Supplier", supplier_name, "Primary Contact")]
@@ -207,7 +211,7 @@ def sync_single_supplier(
                 links.append(("Contact", contact.name, "Primary Contact"))
                 processed.add(_entity_key("Contact", contact.name))
         processed.add(_entity_key("Supplier", supplier_name))
-        return _attach_to_existing(existing, links, phone, email)
+        return _attach_to_existing(existing, links, phone, email, display)
 
     identity = frappe.get_doc({
         "doctype": "Omni Identity",
@@ -276,7 +280,7 @@ def sync_single_lead(
                 links.append(("Contact", contact.name, "Primary Contact"))
                 processed.add(_entity_key("Contact", contact.name))
         processed.add(_entity_key("Lead", lead_name))
-        return _attach_to_existing(existing, links, phone, email)
+        return _attach_to_existing(existing, links, phone, email, display)
 
     identity = frappe.get_doc({
         "doctype": "Omni Identity",
@@ -367,6 +371,17 @@ def sync_single_contact(
                 processed.add(_entity_key("Contact", contact_name))
                 return oi_doc.name
 
+    # Both branches want it, so it is worked out before them. `contact_name` is the document's own
+    # name, which Frappe builds from the parts, so it keeps a surname the first name alone drops.
+    display = (
+        (contact.get("full_name") or "").strip()
+        or " ".join(p for p in [contact.first_name, contact.get("last_name")] if p).strip()
+        or contact_name
+        or email
+        or phone
+        or "Unknown"
+    )
+
     existing = _find_existing_identity(phone, email)
     if existing:
         links = [("Contact", contact_name, "Primary Contact")]
@@ -375,9 +390,8 @@ def sync_single_contact(
                 links.append((dl.link_doctype, dl.link_name, "Primary Contact"))
                 processed.add(_entity_key(dl.link_doctype, dl.link_name))
         processed.add(_entity_key("Contact", contact_name))
-        return _attach_to_existing(existing, links, phone, email)
+        return _attach_to_existing(existing, links, phone, email, display)
 
-    display = contact.first_name or email or phone or "Unknown"
     identity = frappe.get_doc({
         "doctype": "Omni Identity",
         "display_name": display,
@@ -437,8 +451,15 @@ def _find_existing_identity(phone: str = "", email: str = "") -> Optional[str]:
     return None
 
 
-def _attach_to_existing(identity_name: str, links: list, phone: str = "", email: str = "") -> str:
-    """Add entity links to an existing identity (deduped), filling missing phone/email."""
+def _attach_to_existing(
+    identity_name: str, links: list, phone: str = "", email: str = "", display: str = ""
+) -> str:
+    """Add entity links to an existing identity (deduped), filling in what it is missing.
+
+    The name is filled on the same terms as the phone and the email: only where the contact has
+    none of its own. A contact a call created is named after the number it dialled, and this is
+    where the record that actually knows who they are gets to say so.
+    """
     oi = frappe.get_doc("Omni Identity", identity_name)
     have = {(l.linked_doctype, l.linked_name) for l in oi.get("linked_entities", [])}
     for dt, name, role in links:
@@ -451,6 +472,10 @@ def _attach_to_existing(identity_name: str, links: list, phone: str = "", email:
         oi.primary_email = email
     oi.flags.ignore_validate = True
     oi.save(ignore_permissions=True)
+    if display:
+        from excom.excom.doctype.omni_identity.omni_identity import name_if_unnamed
+
+        name_if_unnamed(oi.name, display)
     return oi.name
 
 
