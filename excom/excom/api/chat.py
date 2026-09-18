@@ -137,6 +137,39 @@ def _thread_ownership_detail(thread_id: str) -> str:
     return _("It is unclaimed, and you are not in the shared inbox team.")
 
 
+def _is_manager() -> bool:
+	"""Running people and desks, which here means seeing every conversation on the site."""
+	return bool(set(frappe.get_roles(frappe.session.user)) & MANAGER_ROLES)
+
+
+def visible_threads_clause(params: dict, alias: str = "t") -> str:
+	"""SQL for "conversations this person may see", or "" when they may see them all.
+
+	One rule, in one place. Counting conversations, listing them and opening one all have to agree
+	about which are yours — and a second copy of this is exactly how a badge comes to promise
+	something the list then refuses to show.
+
+	Adds what it needs to `params`, so the caller passes the same dict to `frappe.db.sql`.
+	"""
+	if _is_manager():
+		return ""
+
+	from excom.excom.doctype.excom_team.excom_team import get_user_teams
+
+	params["current_user"] = frappe.session.user
+	teams = get_user_teams()
+	if not teams:
+		return f"{alias}.assigned_to = %(current_user)s"
+
+	params["user_teams"] = teams
+	# General members may claim unassigned conversations, so they have to be able to see them.
+	unassigned = f" OR {alias}.assigned_team IS NULL" if "General" in teams else ""
+	return (
+		f"({alias}.assigned_team IN %(user_teams)s"
+		f" OR {alias}.assigned_to = %(current_user)s{unassigned})"
+	)
+
+
 def _check_manager_access() -> None:
     """Running people and desks: teams, members, roles, reassignment, the audit log."""
     if not MANAGER_ROLES.intersection(frappe.get_roles(frappe.session.user)):
@@ -234,8 +267,7 @@ def get_threads(
         )
         params["broadcast"] = broadcast
 
-    user_roles = set(frappe.get_roles(frappe.session.user))
-    is_manager = bool(user_roles & {"System Manager", "Excom Admin"})
+    is_manager = _is_manager()
 
     if team == "__general__":
         if not is_manager:
@@ -250,22 +282,10 @@ def get_threads(
                 frappe.throw(_("You are not a member of {0}").format(team), frappe.PermissionError)
         conditions += " AND t.assigned_team = %(team_filter)s"
         params["team_filter"] = team
-    elif is_manager:
-        pass
     else:
-        from excom.excom.doctype.excom_team.excom_team import get_user_teams
-        user_teams = get_user_teams()
-        if user_teams:
-            # General members may claim unassigned threads (see _user_can_access_thread), so they must
-            # be able to see them in the list too
-            unassigned = " OR t.assigned_team IS NULL" if "General" in user_teams else ""
-            conditions += (
-                " AND (t.assigned_team IN %(user_teams)s"
-                " OR t.assigned_to = %(current_user)s" + unassigned + ")"
-            )
-            params["user_teams"] = user_teams
-        else:
-            conditions += " AND t.assigned_to = %(current_user)s"
+        clause = visible_threads_clause(params, alias="t")
+        if clause:
+            conditions += " AND " + clause
 
     broadcast_badge_join = ""
     broadcast_badge_col = ""
