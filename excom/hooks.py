@@ -186,6 +186,13 @@ doc_events = {
 	"Prospect": {
 		"after_insert": "excom.excom.services.identity_hooks.on_entity_created",
 	},
+	# A conversation keeps its own copy of the contact's name, taken when it was created. Nothing
+	# told it when the contact was renamed, so it went on showing a phone number long after the
+	# contact had a name — and the inbox searches that copy, so the contact could not be found by
+	# name either.
+	"Omni Identity": {
+		"on_update": "excom.excom.doctype.omni_identity.omni_identity.on_identity_renamed",
+	},
 	"ToDo": {
 		"after_insert": "excom.excom.services.crm_flow.on_todo_assigned",
 	},

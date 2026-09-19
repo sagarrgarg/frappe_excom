@@ -165,7 +165,10 @@ def persist_call(
 				channel="voice",
 				display_name=(display_name or "").strip() or contact_number,
 			)
-			_name_if_unnamed(identity, display_name, contact_number)
+			if display_name:
+				from excom.excom.doctype.omni_identity.omni_identity import name_if_unnamed
+
+				name_if_unnamed(identity, display_name)
 
 		thread = None
 		if identity and account:
@@ -237,23 +240,6 @@ def _complete_row(
 		fields["agent"] = agent
 	if fields:
 		frappe.db.set_value("Excom Call", name, fields, update_modified=False)
-
-
-def _name_if_unnamed(identity: str, typed: str, number: str) -> None:
-	"""Give a contact the agent's name for it, but never take one away.
-
-	`resolve_identity` returns an existing contact where one matches, and that contact may already
-	be properly named — by an import, by the CRM, by somebody who met them. Renaming it from the
-	dialler would let the last person to type a number overwrite that. So this only fills in a
-	contact whose name is still its own phone number, which is exactly the ones this used to make.
-	"""
-	typed = (typed or "").strip()
-	if not identity or not typed or typed == number:
-		return
-	current = (frappe.db.get_value("Omni Identity", identity, "display_name") or "").strip()
-	if current and _digits(current) != _digits(number):
-		return
-	frappe.db.set_value("Omni Identity", identity, "display_name", typed, update_modified=False)
 
 
 def _records(account_doc, direction: str) -> bool:
