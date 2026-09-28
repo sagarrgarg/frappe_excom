@@ -6,6 +6,7 @@ import { deskUrl } from "../../hooks/useRecordLinks";
 import { GateChips } from "./GateChips";
 import { LinkField } from "./LinkField";
 import { StagePicker } from "./StagePicker";
+import { ContactsSection } from "./ContactsSection";
 
 /**
  * Details tab (UX-001 U2 / P3 E2): rendered from get_field_schema — a Custom Field added in Desk shows here
@@ -86,6 +87,9 @@ export function DetailsTab({ refr, onChanged }: { refr: CrmRef | null; onChanged
             )}
           </section>
         ))}
+        {/* Above the stage log on purpose: who you are dealing with is worked on daily, and where the
+            deal has been is looked up now and then. */}
+        <ContactsSection refr={refr} canWrite={Boolean(schema?.can_write)} />
         {record._stage_log?.length > 0 && (
           <section><h4 className="text-xs text-ink-3 mb-2">Stage history</h4>
             <ul className="text-xs divide-y divide-border rounded-md border border-border">{record._stage_log.map((l: any, i: number) => <li key={i} className="flex items-center gap-2 px-2 h-8 min-w-0"><span className="truncate flex-1 text-ink-1">{l.from_stage || "—"} → {l.to_stage}</span><span className="text-ink-3 tabular-nums shrink-0">{l.to_date?.slice(0, 16)}</span>{l.duration ? <span className="text-ink-3 tabular-nums shrink-0">{Math.round(l.duration / 3600)}h</span> : null}</li>)}</ul>
