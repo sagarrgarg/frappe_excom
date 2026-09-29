@@ -180,10 +180,17 @@ class TestActivityReport(FrappeTestCase):
 		self.assertEqual(self._row(r, AGENT)["messages"]["total"], 0)
 
 	def test_a_week_includes_a_day_inside_it(self):
-		self._message(AGENT, when=add_to_date(now_datetime(), days=-1))
+		"""A day's work is absent from that day's report and present in the week's.
+
+		Both dates are fixed rather than counted back from today. "Yesterday" is in last week whenever
+		the suite runs on a Monday, so the earlier version of this test failed one day in seven for a
+		reason that had nothing to do with the code it was testing.
+		"""
+		wednesday, tuesday = "2026-09-16", "2026-09-15"
+		self._message(AGENT, when=tuesday + " 10:00:00")
 		frappe.set_user(BOSS)
-		daily = reports.get_activity_report(period="daily", on=today())
-		weekly = reports.get_activity_report(period="weekly", on=today())
+		daily = reports.get_activity_report(period="daily", on=wednesday)
+		weekly = reports.get_activity_report(period="weekly", on=wednesday)
 		self.assertEqual(self._row(daily, AGENT)["messages"]["total"], 0)
 		self.assertGreaterEqual(self._row(weekly, AGENT)["messages"]["total"], 1)
 
