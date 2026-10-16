@@ -15,13 +15,26 @@ from excom.excom.doctype.omni_identity.omni_identity import resolve_identity
 from excom.excom.utils import get_channel_account
 
 
-def upsert_thread(omni_identity: str, channel: str, account: str) -> str:
+def upsert_thread(
+    omni_identity: str,
+    channel: str,
+    account: str,
+    assigned_team: str | None = None,
+    assigned_to: str | None = None,
+) -> str:
     """
     Find or create an Excom Thread for the given identity + channel + account.
     Returns the thread name.
 
     Handles concurrent inserts gracefully — if a duplicate key error occurs
     (race between check and insert), returns the existing thread.
+
+    ``assigned_team`` / ``assigned_to`` are stamped only when the thread is
+    newly created, so a caller that knows who should own the conversation (a
+    transactional send from another app, routed to a chosen Excom Team) lands
+    it directly in that team's inbox instead of the unassigned shared inbox. An
+    EXISTING thread is never reassigned here — reassignment is a deliberate act
+    (an agent claim or a transfer), not a side effect of the next message.
     """
     thread_key = f"{channel}:{account}:{omni_identity}"
 
@@ -45,6 +58,8 @@ def upsert_thread(omni_identity: str, channel: str, account: str) -> str:
             "status": "Open",
             "display_name": oi.display_name if oi else "Unknown",
             "primary_phone": oi.primary_phone if oi else "",
+            "assigned_team": assigned_team or None,
+            "assigned_to": assigned_to or None,
             "unread_count": 0,
             "last_message_at": frappe.utils.now_datetime(),
         })

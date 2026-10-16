@@ -39,8 +39,12 @@ def send_transactional(
     whatsapp_variables: list[str] | None = None,
     whatsapp_button_urls: list[str] | None = None,
     whatsapp_header_media: str = "",
+    whatsapp_account: str = "",
     email_subject: str = "",
     email_html: str = "",
+    email_account: str = "",
+    team: str = "",
+    assignee: str = "",
     display_name: str = "",
     reference: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
@@ -54,6 +58,12 @@ def send_transactional(
             template_name). Required to send on WhatsApp.
         whatsapp_variables: ordered body {{n}} values.
         whatsapp_button_urls: ordered dynamic URL-button suffixes (e.g. a token).
+        whatsapp_account / email_account: the Excom Channel Account to send
+            from. Blank uses the channel's default outgoing account.
+        team: the Excom Team that should see and reply to the conversation. When
+            set, a NEW thread is created already owned by that team (so it lands
+            in their inbox, not the unassigned shared inbox). assignee pins it to
+            one user as well. Both are ignored for an already-existing thread.
         email_subject / email_html: the email the CALLER composed — excom only
             delivers and logs it, so the caller keeps ownership of its template.
         reference: (doctype, name) stamped on the Excom Message for traceability.
@@ -122,6 +132,9 @@ def send_transactional(
             variables=whatsapp_variables or [],
             button_urls=whatsapp_button_urls or [],
             header_media=whatsapp_header_media,
+            account_name=whatsapp_account,
+            team=team,
+            assignee=assignee,
             purpose=purpose,
             reference=reference,
         )
@@ -135,6 +148,9 @@ def send_transactional(
             email=email,
             subject=email_subject,
             body_html=email_html,
+            account_name=email_account,
+            team=team,
+            assignee=assignee,
             purpose=purpose,
             reference=reference,
         )
@@ -151,13 +167,21 @@ def send_transactional(
 
 
 def _send_whatsapp(
-    *, identity, template_name, variables, button_urls, header_media, purpose, reference
+    *,
+    identity,
+    template_name,
+    variables,
+    button_urls,
+    header_media,
+    account_name="",
+    team="",
+    assignee="",
+    purpose,
+    reference,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {"ok": False, "channel": "whatsapp", "message_id": "", "skipped": ""}
     try:
-        from excom.excom.utils import get_channel_account
-
-        account = get_channel_account(channel="whatsapp", account_type="outgoing")
+        account = _resolve_account("whatsapp", account_name)
         if not account:
             out["skipped"] = "no_whatsapp_account"
             return out
@@ -201,6 +225,8 @@ def _send_whatsapp(
             delivery_status=res.get("status", "Sent"),
             template_name=tpl_name,
             media_file=header_media,
+            team=team,
+            assignee=assignee,
             purpose=purpose,
             reference=reference,
         )
@@ -210,30 +236,32 @@ def _send_whatsapp(
     return out
 
 
-def _send_email(*, identity, email, subject, body_html, purpose, reference) -> dict[str, Any]:
+def _send_email(
+    *, identity, email, subject, body_html, account_name="", team="", assignee="", purpose, reference
+) -> dict[str, Any]:
     out: dict[str, Any] = {"ok": False, "channel": "email", "message_id": "", "skipped": ""}
     try:
-        from excom.excom.utils import get_channel_account
-
-        account = get_channel_account(channel="email", account_type="outgoing")
+        account = _resolve_account("email", account_name)
         if account:
             from excom.excom.services import gmail_service
 
             gmail_service.send_email(
                 account_name=account.name, to=email, subject=subject, body_html=body_html
             )
-            account_name = account.name
+            resolved_account = account.name
         else:
             # Same fallback the broadcast executor uses when no sender account is set.
             frappe.sendmail(recipients=[email], subject=subject, message=body_html, now=True)
-            account_name = ""
+            resolved_account = ""
         out["ok"] = True
         _record_message(
             identity=identity,
             channel="email",
-            account_name=account_name,
+            account_name=resolved_account,
             content_text=subject,
             message_type="Email",
+            team=team,
+            assignee=assignee,
             purpose=purpose,
             reference=reference,
         )
@@ -254,19 +282,25 @@ def _record_message(
     delivery_status: str = "Sent",
     template_name: str = "",
     media_file: str = "",
+    team: str = "",
+    assignee: str = "",
     purpose: str = "",
     reference: tuple[str, str] | None = None,
 ) -> None:
     """Record the send as an Excom Message on the person's thread.
 
     Mirrors ``broadcast_service._create_broadcast_message`` so a transactional
-    send shows up in the inbox exactly like a broadcast or a reply does. Never
-    raises — the message went out; failing to log it must not undo that.
+    send shows up in the inbox exactly like a broadcast or a reply does. The
+    thread is created owned by ``team`` (and optionally ``assignee``) so the
+    chosen group sees and can reply to it. Never raises — the message went out;
+    failing to log it must not undo that.
     """
     try:
         from excom.excom.services.thread_service import upsert_thread
 
-        thread_name = upsert_thread(identity, channel, account_name)
+        thread_name = upsert_thread(
+            identity, channel, account_name, assigned_team=team or None, assigned_to=assignee or None
+        )
         now = now_datetime()
 
         doc: dict[str, Any] = {
@@ -305,6 +339,15 @@ def _record_message(
         )
     except Exception:
         frappe.log_error(title=f"excom.send_transactional: message record failed ({purpose})")
+
+
+def _resolve_account(channel: str, account_name: str):
+    """The caller's chosen Excom Channel Account, else the channel's default outgoing one."""
+    from excom.excom.utils import get_channel_account
+
+    if account_name and frappe.db.exists("Excom Channel Account", account_name):
+        return frappe.get_doc("Excom Channel Account", account_name)
+    return get_channel_account(channel=channel, account_type="outgoing")
 
 
 def _digits(phone: str) -> str:
