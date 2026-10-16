@@ -30,6 +30,13 @@
   "potential_duplicate_of",
   "flags_section",
   "is_spam",
+  "consent_section",
+  "do_not_contact",
+  "whatsapp_opt_out",
+  "email_opt_out",
+  "column_break_consent",
+  "opt_out_on",
+  "opt_out_source",
   "aliases_section",
   "aliases",
   "ai_section",
@@ -194,6 +201,48 @@
    "fieldname": "is_spam",
    "fieldtype": "Check",
    "label": "Is Spam"
+  },
+  {
+   "fieldname": "consent_section",
+   "fieldtype": "Section Break",
+   "label": "Consent"
+  },
+  {
+   "default": "0",
+   "fieldname": "do_not_contact",
+   "fieldtype": "Check",
+   "label": "Do Not Contact",
+   "description": "Global suppression. When set, excom's transactional send skips this person on every channel. Set by an inbound STOP/UNSUBSCRIBE, or manually."
+  },
+  {
+   "default": "0",
+   "fieldname": "whatsapp_opt_out",
+   "fieldtype": "Check",
+   "label": "WhatsApp Opted Out",
+   "description": "Suppresses WhatsApp only. Set when this person replies STOP on WhatsApp."
+  },
+  {
+   "default": "0",
+   "fieldname": "email_opt_out",
+   "fieldtype": "Check",
+   "label": "Email Opted Out"
+  },
+  {
+   "fieldname": "column_break_consent",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "opt_out_on",
+   "fieldtype": "Datetime",
+   "label": "Opted Out On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "opt_out_source",
+   "fieldtype": "Data",
+   "label": "Opt-out Source",
+   "read_only": 1,
+   "description": "How the opt-out was recorded, e.g. whatsapp_stop, email_unsubscribe, manual."
   },
   {
    "collapsible": 1,

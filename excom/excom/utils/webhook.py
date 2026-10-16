@@ -195,6 +195,42 @@ FIELD_HANDLERS = {
 }
 
 
+_CONSENT_STOP_ALL = {"STOP ALL", "STOPALL", "UNSUBSCRIBE", "OPT OUT", "OPTOUT"}
+_CONSENT_STOP_WA = {"STOP", "CANCEL", "END", "QUIT"}
+_CONSENT_START = {"START", "UNSTOP", "SUBSCRIBE", "RESUME"}
+
+
+def _apply_consent_keyword(phone: str, content_text: str) -> None:
+	"""Honour a WhatsApp STOP / START reply by flipping the sender's opt-out.
+
+	Meta does not reliably relay marketing opt-outs to the business, so a
+	plain-text STOP is acted on here: resolve the identity for this number and
+	suppress future transactional sends (``send_transactional`` reads these
+	flags). UNSUBSCRIBE / STOP ALL suppress every channel; a bare STOP
+	suppresses WhatsApp; START / SUBSCRIBE opts back in. Best-effort — it never
+	breaks inbound ingestion.
+	"""
+	word = " ".join((content_text or "").strip().upper().split())
+	if not word or word not in (_CONSENT_STOP_ALL | _CONSENT_STOP_WA | _CONSENT_START):
+		return
+	try:
+		from excom.excom.doctype.omni_identity.omni_identity import (
+			clear_opt_out,
+			resolve_identity_internal,
+			set_opt_out,
+		)
+
+		identity = resolve_identity_internal(phone=phone, channel="whatsapp", channel_user_id=phone)
+		if word in _CONSENT_STOP_ALL:
+			set_opt_out(identity, channel="all", source="whatsapp_stop")
+		elif word in _CONSENT_STOP_WA:
+			set_opt_out(identity, channel="whatsapp", source="whatsapp_stop")
+		else:
+			clear_opt_out(identity, channel="whatsapp", source="whatsapp_start")
+	except Exception:
+		frappe.log_error(title="Excom: consent keyword handling failed")
+
+
 def _process_inbound_message(message, sender_profile_name, channel_account, account_name):
 	"""Route a single inbound message through the service layer."""
 	message_type = message.get("type", "text")
@@ -279,6 +315,11 @@ def _process_inbound_message(message, sender_profile_name, channel_account, acco
 		reply_to_provider_id=reply_to_id,
 		provider_timestamp=provider_ts,
 	)
+
+	# A STOP/START reply governs future marketing sends; act on it after the
+	# message itself is stored, so the inbox still shows what they wrote.
+	if excom_msg_type in ("Text", "Button") and content_text:
+		_apply_consent_keyword(phone, content_text)
 
 
 def _download_media(message, message_type, channel_account):

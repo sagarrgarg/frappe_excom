@@ -251,6 +251,25 @@ def normalize_email(email: str) -> str:
 
 @frappe.whitelist()
 def resolve_identity(phone: str = "", email: str = "", channel: str = "", channel_user_id: str = "", display_name: str = ""):
+	"""HTTP entry point for identity resolution (session-gated).
+
+	Thin wrapper over :func:`resolve_identity_internal` that enforces excom
+	access first. Trusted in-process callers (e.g. the transactional outbound
+	service another app calls) use the internal function directly, with no HTTP
+	session to check.
+	"""
+	from excom.excom.api.chat import _check_excom_access
+	_check_excom_access()
+	return resolve_identity_internal(
+		phone=phone,
+		email=email,
+		channel=channel,
+		channel_user_id=channel_user_id,
+		display_name=display_name,
+	)
+
+
+def resolve_identity_internal(phone: str = "", email: str = "", channel: str = "", channel_user_id: str = "", display_name: str = ""):
 	"""
 	Identity resolution entry point.
 
@@ -271,8 +290,6 @@ def resolve_identity(phone: str = "", email: str = "", channel: str = "", channe
 
 	Returns the Omni Identity name.
 	"""
-	from excom.excom.api.chat import _check_excom_access
-	_check_excom_access()
 	norm_phone = normalize_phone(phone)
 	norm_email = normalize_email(email)
 	identity_name = None
@@ -560,6 +577,36 @@ def merge_identities(source: str, target: str):
 	frappe.db.commit()
 
 	return {"merged": source, "into": target}
+
+
+def set_opt_out(identity_name: str, channel: str = "all", source: str = "manual") -> None:
+	"""Record a marketing opt-out on an Omni Identity.
+
+	``channel`` is "whatsapp", "email", or "all". "all" also sets the global
+	``do_not_contact`` that the transactional send honours on every channel.
+	Written with db.set_value so it never trips identity validation and is safe
+	to call from the inbound webhook on a STOP reply.
+	"""
+	updates = {"opt_out_on": frappe.utils.now_datetime(), "opt_out_source": source}
+	if channel in ("whatsapp", "all"):
+		updates["whatsapp_opt_out"] = 1
+	if channel in ("email", "all"):
+		updates["email_opt_out"] = 1
+	if channel == "all":
+		updates["do_not_contact"] = 1
+	frappe.db.set_value("Omni Identity", identity_name, updates, update_modified=False)
+
+
+def clear_opt_out(identity_name: str, channel: str = "all", source: str = "manual") -> None:
+	"""Reverse :func:`set_opt_out` — e.g. a START/UNSTOP reply opts back in."""
+	updates = {"opt_out_on": frappe.utils.now_datetime(), "opt_out_source": source}
+	if channel in ("whatsapp", "all"):
+		updates["whatsapp_opt_out"] = 0
+	if channel in ("email", "all"):
+		updates["email_opt_out"] = 0
+	if channel == "all":
+		updates["do_not_contact"] = 0
+	frappe.db.set_value("Omni Identity", identity_name, updates, update_modified=False)
 
 
 def on_doctype_update():
