@@ -4,7 +4,7 @@ authors = [
     { name = "Sagar Ratan Garg", email = "sagar1ratan1garg11@gmail.com"}
 ]
 description = "An omnichannel communication engine that unifies, automates, and governs every external conversation."
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [

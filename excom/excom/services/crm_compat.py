@@ -18,6 +18,9 @@ def _ensure(doctype: str, name: str, extra: dict | None = None) -> str:
 		return name
 	meta = frappe.get_meta(doctype)
 	doc = frappe._dict({"doctype": doctype})
+	if (meta.autoname or "").lower() == "prompt":
+		# Named by prompt (UTM Source/Campaign/Medium in v16): the name must be given.
+		doc["name"] = name
 	# name field differs per doctype: Lead Source.source_name, Campaign.campaign_name, UTM *.name
 	for candidate in ("source_name", "campaign_name", "utm_source", "utm_campaign", "utm_medium", "title"):
 		if meta.has_field(candidate):
