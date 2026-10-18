@@ -82,8 +82,8 @@ app_include_js = "/assets/excom/js/excom_navbar.js"
 # Installation
 # ------------
 
-after_install = "excom.setup.after_install"
-after_migrate = ["excom.setup.after_migrate"]
+after_install = ["excom.setup.after_install", "excom.excom_ads.setup.after_install"]
+after_migrate = ["excom.setup.after_migrate", "excom.excom_ads.setup.after_migrate"]
 
 boot_session = "excom.boot.boot_session"
 
@@ -126,6 +126,18 @@ permission_query_conditions = {
 	# services/crm_visibility.py; switch it off with Excom Settings > enforce_crm_visibility.
 	"Lead": "excom.excom.services.crm_visibility.lead_query_conditions",
 	"Opportunity": "excom.excom.services.crm_visibility.opportunity_query_conditions",
+	# Excom Ads: every ads record is scoped by company / workspace / brand / account (excom_ads/permissions.py).
+	"Ads Access Profile": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Account": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Ad Group": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Advertisement": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Alert": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Brand": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Campaign": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Metric Snapshot": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Notification Policy": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Sync Job": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Workspace": "excom.excom_ads.permissions.get_permission_query_conditions",
 }
 
 has_permission = {
@@ -133,6 +145,17 @@ has_permission = {
 	"Excom Call": "excom.excom.doctype.excom_call.excom_call.has_permission",
 	"Lead": "excom.excom.services.crm_visibility.lead_has_permission",
 	"Opportunity": "excom.excom.services.crm_visibility.opportunity_has_permission",
+	"Ads Access Profile": "excom.excom_ads.permissions.has_permission",
+	"Ads Account": "excom.excom_ads.permissions.has_permission",
+	"Ads Ad Group": "excom.excom_ads.permissions.has_permission",
+	"Ads Advertisement": "excom.excom_ads.permissions.has_permission",
+	"Ads Alert": "excom.excom_ads.permissions.has_permission",
+	"Ads Brand": "excom.excom_ads.permissions.has_permission",
+	"Ads Campaign": "excom.excom_ads.permissions.has_permission",
+	"Ads Metric Snapshot": "excom.excom_ads.permissions.has_permission",
+	"Ads Notification Policy": "excom.excom_ads.permissions.has_permission",
+	"Ads Sync Job": "excom.excom_ads.permissions.has_permission",
+	"Ads Workspace": "excom.excom_ads.permissions.has_permission",
 }
 
 # DocType Class
@@ -257,7 +280,7 @@ scheduler_events = {
 		# sweep, completed calls sit at duration = 0 forever.
 		"*/3 * * * *": ["excom.excom.channels.voice.reconcile.reconcile_pending_calls"],
 		# Ads: today's spend and results. Structure is hourly, the 28-day settle re-pull is daily.
-		"*/30 * * * *": ["excom.excom_ads.tasks.enqueue_intraday"],
+		"*/30 * * * *": ["excom.excom_ads.tasks.enqueue_intraday", "excom.excom_ads.tasks.wake_snoozed_alerts"],
 	},
 	"daily_maintenance": [
 		"excom.excom.scheduler.daily.sync_invalid_tokens",

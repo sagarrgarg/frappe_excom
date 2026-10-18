@@ -1,0 +1,166 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:policy_name",
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "policy_name",
+  "enabled",
+  "company",
+  "alert_type",
+  "min_severity",
+  "cb_1",
+  "via_desk",
+  "via_email",
+  "via_whatsapp",
+  "quiet_from",
+  "quiet_to",
+  "sb_rec",
+  "recipients"
+ ],
+ "fields": [
+  {
+   "fieldname": "policy_name",
+   "fieldtype": "Data",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Policy Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "idx": 2,
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "description": "Empty applies to every company.",
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "idx": 3,
+   "in_list_view": 1,
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "description": "Empty applies to every alert type.",
+   "fieldname": "alert_type",
+   "fieldtype": "Select",
+   "idx": 4,
+   "in_list_view": 1,
+   "label": "Alert Type",
+   "options": "\nSync Failed\nToken Problem\nPermission Missing\nRate Limited\nAccount Status\nData Stale\nSpend Mismatch\nLow Headroom\nOverspend\nAd Disapproved\nHigh-Value Lead\nLead SLA Missed\nBill Needs Review\nGSTIN Mismatch\nBill Missing\nTDS Certificate Due\nReport Delivery Failed\nOther"
+  },
+  {
+   "default": "High",
+   "fieldname": "min_severity",
+   "fieldtype": "Select",
+   "idx": 5,
+   "label": "Minimum Severity",
+   "options": "Info\nMedium\nHigh\nCritical"
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 6
+  },
+  {
+   "default": "1",
+   "fieldname": "via_desk",
+   "fieldtype": "Check",
+   "idx": 7,
+   "label": "Desk Notification"
+  },
+  {
+   "fieldname": "via_email",
+   "fieldtype": "Check",
+   "idx": 8,
+   "label": "Email"
+  },
+  {
+   "fieldname": "via_whatsapp",
+   "fieldtype": "Check",
+   "idx": 9,
+   "label": "WhatsApp (through Excom)"
+  },
+  {
+   "description": "Critical alerts ignore quiet hours.",
+   "fieldname": "quiet_from",
+   "fieldtype": "Time",
+   "idx": 10,
+   "label": "Quiet Hours From"
+  },
+  {
+   "fieldname": "quiet_to",
+   "fieldtype": "Time",
+   "idx": 11,
+   "label": "Quiet Hours To"
+  },
+  {
+   "description": "Each recipient still only hears about alerts for companies, brands and accounts they can see.",
+   "fieldname": "sb_rec",
+   "fieldtype": "Section Break",
+   "idx": 12,
+   "label": "Recipients"
+  },
+  {
+   "fieldname": "recipients",
+   "fieldtype": "Table",
+   "idx": 13,
+   "label": "Recipients",
+   "options": "Ads Notification Recipient",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Notification Policy",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Marketing"
+  }
+ ],
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "policy_name",
+ "track_changes": 1
+}

@@ -227,7 +227,8 @@
    "fieldname": "sb_billing",
    "fieldtype": "Section Break",
    "idx": 24,
-   "label": "Billing as reported by the platform"
+   "label": "Billing as reported by the platform",
+   "permlevel": 1
   },
   {
    "fieldname": "reported_amount_spent",
@@ -235,6 +236,7 @@
    "idx": 25,
    "label": "Lifetime Amount Spent",
    "options": "currency",
+   "permlevel": 1,
    "read_only": 1
   },
   {
@@ -244,6 +246,7 @@
    "idx": 26,
    "label": "Account Spend Cap",
    "options": "currency",
+   "permlevel": 1,
    "read_only": 1
   },
   {
@@ -251,12 +254,14 @@
    "fieldtype": "Check",
    "idx": 27,
    "label": "Spend Cap Set",
+   "permlevel": 1,
    "read_only": 1
   },
   {
    "fieldname": "cb_4",
    "fieldtype": "Column Break",
-   "idx": 28
+   "idx": 28,
+   "permlevel": 1
   },
   {
    "fieldname": "reported_amount_due",
@@ -264,6 +269,7 @@
    "idx": 29,
    "label": "Amount Due (Meta balance)",
    "options": "currency",
+   "permlevel": 1,
    "read_only": 1
   },
   {
@@ -271,6 +277,7 @@
    "fieldtype": "Datetime",
    "idx": 30,
    "label": "Billing Read At",
+   "permlevel": 1,
    "read_only": 1
   },
   {
@@ -281,6 +288,7 @@
    "idx": 31,
    "label": "Billing Status",
    "options": "Not Read\nReported\nNot Available\nPermission Missing\nError",
+   "permlevel": 1,
    "read_only": 1
   },
   {
@@ -377,6 +385,32 @@
    "role": "Excom Admin",
    "share": 1,
    "write": 1
+  },
+  {
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Marketing"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "System Manager"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Excom Admin"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Accounts User"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Accounts Manager"
   }
  ],
  "search_fields": "external_id,workspace",

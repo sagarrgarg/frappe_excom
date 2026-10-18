@@ -92,7 +92,48 @@ def _finish(job, acc, provider, status: str, result: dict, err: AdsProviderError
 	else:
 		values = {"error_class": err.error_class if err else None, "last_error": f"{job.job_type}: {err}"[:1000] if err else None, "consecutive_failures": (acc.consecutive_failures or 0) + (1 if status == "Failed" else 0)}
 	frappe.db.set_value("Ads Account", acc.name, values, update_modified=False)
+	_alert_on_result(acc, status, err, values.get("consecutive_failures") or 0)
 	frappe.db.commit()
+
+
+# Consecutive failures before a plain (retryable) error is worth a person's attention.
+FAILURES_BEFORE_ALERT = 3
+
+
+def _alert_on_result(acc, status: str, err, failures: int) -> None:
+	from excom.excom_ads.alerts import raise_alert, resolve_alert
+
+	keys = {"Token": f"token:{acc.name}", "Permission": f"permission:{acc.name}"}
+	if status == "Success":
+		for key in (*keys.values(), f"sync:{acc.name}", f"rate:{acc.name}"):
+			resolve_alert(key)
+		return
+	if not err:
+		return
+	if err.error_class == "Token":
+		raise_alert("Token Problem", "Critical", f"{acc.account_name}: connection token is not working", f"{err}\nRe-authorise the connection ({acc.meta_connection or acc.provider}). Metric syncs for this account are paused until it works again.", ref=acc, dedupe_key=keys["Token"])
+	elif err.error_class == "Permission":
+		raise_alert("Permission Missing", "High", f"{acc.account_name}: permission missing", str(err), ref=acc, dedupe_key=keys["Permission"])
+	elif err.error_class == "Rate Limited" and failures >= FAILURES_BEFORE_ALERT:
+		raise_alert("Rate Limited", "Medium", f"{acc.account_name}: platform rate limit", str(err), ref=acc, dedupe_key=f"rate:{acc.name}")
+	elif failures >= FAILURES_BEFORE_ALERT:
+		raise_alert("Sync Failed", "Medium", f"{acc.account_name}: sync failing ({failures} in a row)", str(err), ref=acc, dedupe_key=f"sync:{acc.name}")
+
+
+ACCOUNT_STATUS_SEVERITY = {"Disabled": "Critical", "Unsettled": "Critical", "Closed": "High", "Pending Closure": "High", "Pending Review": "High", "Grace Period": "High"}
+
+
+def _alert_on_account_status(acc, old_status: str | None) -> None:
+	from excom.excom_ads.alerts import raise_alert, resolve_alert
+
+	key = f"account_status:{acc.name}"
+	if acc.status == "Active":
+		resolve_alert(key, "Account is active again")
+		return
+	sev = ACCOUNT_STATUS_SEVERITY.get(acc.status)
+	if sev and acc.status != old_status:
+		reason = f" Reason: {acc.disable_reason}." if acc.disable_reason else ""
+		raise_alert("Account Status", sev, f"{acc.account_name} is {acc.status}", f"The platform reports this ad account as {acc.status}.{reason} Ads on it may not deliver.", ref=acc, dedupe_key=key)
 
 
 def _window(acc, job_type: str, since, until):
@@ -127,7 +168,9 @@ def account_today(acc):
 
 def sync_structure(acc, provider) -> dict:
 	written, errors = 0, []
+	old_status = acc.status
 	_apply_account(acc, provider.read_account(), last_structure_sync=now_datetime())
+	_alert_on_account_status(acc, old_status)
 	known: dict[str, set] = {}
 	for doctype, method in MIRRORS.items():
 		try:
@@ -185,6 +228,8 @@ def _upsert_mirrors(acc, doctype: str, rows: list[dict], known: dict) -> set:
 				values[k] = _dt(values[k])
 		name = mirror_name(acc.name, values["external_id"])
 		seen.add(name)
+		if doctype == "Ads Advertisement":
+			_alert_on_ad_status(acc, name, values)
 		if name in existing:
 			doc = frappe.get_doc(doctype, name)
 			if _changed(doc, values):
@@ -202,6 +247,17 @@ def _upsert_mirrors(acc, doctype: str, rows: list[dict], known: dict) -> set:
 			if not frappe.db.get_value(doctype, name, "not_returned_since"):
 				frappe.db.set_value(doctype, name, "not_returned_since", now, update_modified=False)
 	return existing | seen
+
+
+def _alert_on_ad_status(acc, name: str, values: dict) -> None:
+	from excom.excom_ads.alerts import raise_alert, resolve_alert
+
+	key = f"ad_rejected:{name}"
+	if values.get("status") == "Rejected":
+		if frappe.db.get_value("Ads Advertisement", name, "status") != "Rejected":
+			raise_alert("Ad Disapproved", "High", f"Ad rejected: {values.get('ad_name')}", f"{acc.account_name} · the platform rejected this ad. Check its review feedback in the ad manager.", scope={**_scope(acc)}, dedupe_key=key)
+	elif frappe.db.exists("Ads Alert", {"dedupe_key": key, "status": ["!=", "Resolved"]}):
+		resolve_alert(key, "Ad is no longer rejected")
 
 
 def _changed(doc, values: dict) -> bool:

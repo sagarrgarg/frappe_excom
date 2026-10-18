@@ -130,7 +130,7 @@ class TestAdsMetaSync(FrappeTestCase):
 	@classmethod
 	def _clean(cls):
 		acc = f"Meta-{ACT}"
-		for dt in ("Ads Metric Snapshot", "Ads Advertisement", "Ads Ad Group", "Ads Campaign", "Ads Sync Job"):
+		for dt in ("Ads Metric Snapshot", "Ads Advertisement", "Ads Ad Group", "Ads Campaign", "Ads Sync Job", "Ads Alert"):
 			frappe.db.delete(dt, {"account": acc})
 		frappe.db.delete("Ads Account", {"name": acc})
 		for ws in frappe.get_all("Ads Workspace", {"workspace_name": ["like", f"{WS_PREFIX}%"]}, pluck="name"):
@@ -192,6 +192,7 @@ class TestAdsMetaSync(FrappeTestCase):
 		self.assertEqual((s2.campaign, s2.status), (c2.name, "Paused"))
 		a2 = frappe.get_doc("Ads Advertisement", mirror_name(acc.name, "a2"))
 		self.assertEqual((a2.ad_group, a2.campaign, a2.status), (s2.name, c2.name, "Rejected"))
+		self.assertTrue(frappe.db.exists("Ads Alert", {"dedupe_key": f"ad_rejected:{a2.name}", "alert_type": "Ad Disapproved", "status": "Open"}))
 		self.assertEqual(c1.workspace, acc.workspace)
 		self.assertIsNotNone(c1.platform_updated)
 
@@ -254,6 +255,8 @@ class TestAdsMetaSync(FrappeTestCase):
 		job = frappe.get_all("Ads Sync Job", {"account": acc.name}, ["status", "error_class"], order_by="creation desc", limit=1)[0]
 		self.assertEqual((job.status, job.error_class), ("Failed", "Token"))
 		self.assertNotIn("SYS_TOKEN", acc.last_error or "")
+		alert = frappe.db.get_value("Ads Alert", {"dedupe_key": f"token:{acc.name}", "status": "Open"}, ["severity", "alert_type", "company"], as_dict=True)
+		self.assertEqual((alert.severity, alert.alert_type, alert.company), ("Critical", "Token Problem", acc.company))
 		tasks.enqueue_intraday()
 		self.assertFalse([k for k in self.enqueued if k.get("account") == acc.name], "no metrics jobs for an account with a revoked token")
 		tasks.enqueue_structure()
@@ -262,6 +265,7 @@ class TestAdsMetaSync(FrappeTestCase):
 		self.assertEqual(sync.run_job(acc.name, "Structure")["status"], "Success")
 		acc.reload()
 		self.assertEqual((acc.error_class or "", acc.consecutive_failures), ("", 0))
+		self.assertFalse(frappe.db.exists("Ads Alert", {"dedupe_key": f"token:{acc.name}", "status": ["!=", "Resolved"]}), "recovery resolves the token alert")
 
 	def test_06_rate_limit_header_stops_job_cleanly(self):
 		acc = self._account()

@@ -129,6 +129,7 @@
   },
   {
    "fetch_from": "account.brand",
+   "fetch_if_empty": 1,
    "fieldname": "brand",
    "fieldtype": "Link",
    "idx": 11,
@@ -330,6 +331,12 @@
    "read": 1,
    "report": 1,
    "role": "Excom Admin"
+  },
+  {
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Marketing"
   }
  ],
  "sort_field": "date",

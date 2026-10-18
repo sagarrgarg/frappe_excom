@@ -1,0 +1,154 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:user",
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "user",
+  "enabled",
+  "note",
+  "sb_caps",
+  "view_finance",
+  "manage_budgets",
+  "approve_bills",
+  "cb_1",
+  "export_data",
+  "manage_connections",
+  "approve_actions",
+  "enable_automation"
+ ],
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "User",
+   "options": "User",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "idx": 2,
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "description": "Which companies, brands and ad accounts this person sees is set with User Permissions on Company, Ads Workspace, Ads Brand or Ads Account. Without any, a non-admin sees no ads data.",
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "idx": 3,
+   "label": "Note"
+  },
+  {
+   "description": "A role alone never grants these.",
+   "fieldname": "sb_caps",
+   "fieldtype": "Section Break",
+   "idx": 4,
+   "label": "Sensitive rights"
+  },
+  {
+   "description": "Billing amounts, top-ups, ad bills and margins.",
+   "fieldname": "view_finance",
+   "fieldtype": "Check",
+   "idx": 5,
+   "label": "View Finance"
+  },
+  {
+   "description": "Create and approve budget plans.",
+   "fieldname": "manage_budgets",
+   "fieldtype": "Check",
+   "idx": 6,
+   "label": "Manage Budgets"
+  },
+  {
+   "description": "Approve draft Purchase Invoices from the ad-bill pipeline.",
+   "fieldname": "approve_bills",
+   "fieldtype": "Check",
+   "idx": 7,
+   "label": "Approve Ad Bills"
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 8
+  },
+  {
+   "fieldname": "export_data",
+   "fieldtype": "Check",
+   "idx": 9,
+   "label": "Export Data"
+  },
+  {
+   "description": "Enable ad accounts, run syncs, change sync settings.",
+   "fieldname": "manage_connections",
+   "fieldtype": "Check",
+   "idx": 10,
+   "label": "Manage Connections"
+  },
+  {
+   "description": "Release 2.",
+   "fieldname": "approve_actions",
+   "fieldtype": "Check",
+   "idx": 11,
+   "label": "Approve AI / Rule Actions"
+  },
+  {
+   "description": "Release 3.",
+   "fieldname": "enable_automation",
+   "fieldtype": "Check",
+   "idx": 12,
+   "label": "Enable Automation"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Access Profile",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "if_owner": 0,
+   "read": 1,
+   "role": "Excom Marketing"
+  }
+ ],
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "user",
+ "track_changes": 1
+}

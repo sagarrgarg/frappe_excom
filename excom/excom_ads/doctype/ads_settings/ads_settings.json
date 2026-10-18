@@ -13,7 +13,9 @@
   "backfill_days",
   "sb_levels",
   "sync_ad_level_metrics",
-  "max_pages_per_call"
+  "max_pages_per_call",
+  "sb_alerts",
+  "alert_whatsapp_template"
  ],
  "fields": [
   {
@@ -80,6 +82,20 @@
    "fieldtype": "Int",
    "idx": 9,
    "label": "Max Pages per Graph Call"
+  },
+  {
+   "fieldname": "sb_alerts",
+   "fieldtype": "Section Break",
+   "idx": 10,
+   "label": "Alerts"
+  },
+  {
+   "description": "Approved template with three body variables: severity, title, detail. Empty = no WhatsApp alerts.",
+   "fieldname": "alert_whatsapp_template",
+   "fieldtype": "Link",
+   "idx": 11,
+   "label": "Alert WhatsApp Template",
+   "options": "WhatsApp Templates"
   }
  ],
  "index_web_pages_for_search": 0,

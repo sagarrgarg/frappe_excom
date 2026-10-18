@@ -46,3 +46,14 @@ def purge_raw_payloads():
 	if not frappe.db.exists("DocType", "Ads Sync Job"):
 		return
 	frappe.db.delete("Ads Sync Job", {"creation": ["<", frappe.utils.add_days(frappe.utils.now_datetime(), -90)]})
+
+
+def wake_snoozed_alerts():
+	"""Every 30 minutes: a snoozed alert whose time is up is open again and notifies again."""
+	if not frappe.db.exists("DocType", "Ads Alert"):
+		return
+	from excom.excom_ads.alerts import _notify
+
+	for name in frappe.get_all("Ads Alert", filters={"status": "Snoozed", "snoozed_until": ["<", frappe.utils.now_datetime()]}, pluck="name"):
+		frappe.db.set_value("Ads Alert", name, {"status": "Open", "snoozed_until": None, "notified_severity": None})
+		_notify(name)

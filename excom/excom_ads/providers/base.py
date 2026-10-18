@@ -85,9 +85,21 @@ class AdsProvider:
 		raise NotImplementedError
 
 
-def get_provider(account) -> AdsProvider:
-	if account.provider == "Meta":
-		from excom.excom_ads.providers.meta import MetaAdsProvider
+# provider name -> "module:Class". Imported lazily so a provider's dependencies load only when used.
+PROVIDERS = {
+	"Meta": "excom.excom_ads.providers.meta:MetaAdsProvider",
+}
 
-		return MetaAdsProvider(account)
-	raise AdsProviderError(f"Provider {account.provider} is not available yet", INVALID)
+
+def provider_class(provider: str) -> type:
+	path = PROVIDERS.get(provider)
+	if not path:
+		raise AdsProviderError(f"Provider {provider} is not available yet", INVALID)
+	module, cls = path.split(":")
+	import importlib
+
+	return getattr(importlib.import_module(module), cls)
+
+
+def get_provider(account) -> AdsProvider:
+	return provider_class(account.provider)(account)
