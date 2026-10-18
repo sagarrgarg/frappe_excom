@@ -4,7 +4,8 @@ import { AppShell, RouteFallback } from "../components/shell/AppShell";
 import { InboxProvider } from "../components/shell/InboxProvider";
 import { SoftphoneProvider } from "../components/voice/SoftphoneProvider";
 import { InboxRoute } from "./inbox";
-import { appBasename } from "../lib/ui-flag";
+import { appBasename, isMarketingOnly } from "../lib/ui-flag";
+import { MarketingShell } from "../components/shell/MarketingShell";
 import { FlaggedRoute } from "./flagged";
 const TodayRoute = lazy(() => import("./crm").then((m) => ({ default: m.TodayRoute })));
 const IntakeRoute = lazy(() => import("./crm").then((m) => ({ default: m.IntakeRoute })));
@@ -36,6 +37,20 @@ const L = (el: React.ReactNode) => <Suspense fallback={<RouteFallback />}>{el}</
  *   /dev/stress
  */
 export function NextRouter() {
+  // Marketing-only users get the Marketing screens and nothing else: no inbox providers mount, so
+  // nothing polls the chat, worklist or voice APIs this role is refused.
+  if (isMarketingOnly()) {
+    return (
+      <BrowserRouter basename={appBasename()}>
+        <Routes>
+          <Route element={<MarketingShell />}>
+            <Route path="/marketing/:tab?" element={L(<MarketingRoute />)} />
+            <Route path="*" element={<Navigate to="/marketing" replace />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    );
+  }
   return (
     <BrowserRouter basename={appBasename()}>
       <Routes>

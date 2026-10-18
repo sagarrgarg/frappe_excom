@@ -74,6 +74,9 @@ Supported: Frappe/ERPNext **v15 and v16**, MariaDB, Python ≥ 3.10. Test on `fr
 - Ads screens and APIs need Excom Marketing, Excom Admin or System Manager (`require_access`).
   Finance-only users (Accounts User) work on finance records in the Desk. Only an unscoped admin
   manages other people's Ads Access Profiles.
+  Excom Marketing alone opens /excom as a Marketing-only app (`isMarketingOnly()` in the frontend,
+  `check_app_access` in `www/excom.py`): no inbox, leads, contacts or broadcasts, whose APIs need
+  Excom Agent / Excom Admin. Lead rows on the Leads tab follow the user's own Lead read permission.
 - Every error text that is stored or shown (sync jobs, account errors, alerts, billing snapshots,
   Error Log) goes through `redact.redact()`; HTTP transports return only the exception type for
   network failures, because `requests` quotes the full URL (tokens included) in its messages.

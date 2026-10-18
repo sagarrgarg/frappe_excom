@@ -37,3 +37,8 @@ export function hasRole(role: string): boolean {
 export function isManager(): boolean {
   return hasRole("System Manager") || hasRole("Excom Admin");
 }
+/** Excom Marketing without an inbox role: the app is the Marketing screens only (no chats, leads,
+ *  broadcasts). The server refuses those APIs to this role anyway; this keeps the UI from asking. */
+export function isMarketingOnly(): boolean {
+  return hasRole("Excom Marketing") && !hasRole("Excom Agent") && !isManager();
+}

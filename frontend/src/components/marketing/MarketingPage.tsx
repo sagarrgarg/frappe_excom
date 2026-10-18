@@ -2,6 +2,8 @@ import { lazy, Suspense } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Megaphone } from "lucide-react";
 import { AdminPage } from "../shell/AdminPage";
+import { MarketingAccountMenu } from "../shell/MarketingShell";
+import { isMarketingOnly } from "../../lib/ui-flag";
 import { RouteFallback } from "../shell/AppShell";
 import { SegmentedControl } from "../primitives";
 import { FilterBar, useFilterOptions } from "./FilterBar";
@@ -58,6 +60,7 @@ export function MarketingPage() {
       wide
       title="Marketing"
       icon={<Megaphone />}
+      actions={isMarketingOnly() ? <MarketingAccountMenu /> : undefined}
       toolbar={
         <div className="flex flex-wrap items-center gap-2 min-w-0">
           <div className="min-w-0 max-w-full overflow-x-auto">

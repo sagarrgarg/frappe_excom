@@ -151,3 +151,22 @@ class TestAdsHardening(FrappeTestCase):
 				frappe.db.sql("insert into `tabSingles` (doctype, field, value) values ('Ads Settings', %s, %s)", (f, v))
 			frappe.db.commit()
 			frappe.clear_document_cache("Ads Settings", "Ads Settings")
+
+	def test_marketing_only_user_opens_the_app_but_not_chats_leads_or_broadcasts(self):
+		# Excom Marketing alone: admitted to /excom (Marketing screens), refused everything an inbox
+		# role does. U_COMPANY has only Excom Marketing plus a Company permission.
+		from excom.excom.api import broadcast, chat, crm
+		from excom.excom_ads import dashboard
+		from excom.www import excom as www
+
+		self._as(U_COMPANY)
+		www.check_app_access()  # does not raise
+		dashboard.overview("2026-10-01", "2026-10-02")  # the Marketing screens answer
+		self.assertRaises(frappe.PermissionError, chat.get_threads)
+		self.assertRaises(frappe.PermissionError, broadcast.get_broadcasts)
+		self.assertRaises(frappe.PermissionError, crm.get_intake_queue)
+		self.assertRaises(frappe.PermissionError, crm.get_today)
+		for dt in ("Lead", "Opportunity", "Excom Thread", "Excom Broadcast", "Excom Subscriber"):
+			self.assertFalse(frappe.has_permission(dt, "read"), f"Excom Marketing alone must not read {dt}")
+		self._as(U_FIN_ONLY)
+		self.assertRaises(frappe.PermissionError, www.check_app_access)
