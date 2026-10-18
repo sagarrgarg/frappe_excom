@@ -84,11 +84,19 @@ class AdsProvider:
 	def daily_metrics(self, level: str, since, until) -> list[dict]:
 		raise NotImplementedError
 
+	def read_billing(self) -> dict:
+		"""Ads Billing Snapshot fields (reported_* values + *_avail statuses, see billing.py), plus
+		"headroom": {avail, limit, used, basis}, "currency", "errors" and "raw". Only when the
+		provider declares read_billing as supported."""
+		raise NotImplementedError
+
 
 # provider name -> "module:Class". Imported lazily so a provider's dependencies load only when used.
 PROVIDERS = {
 	"Meta": "excom.excom_ads.providers.meta:MetaAdsProvider",
 	"Google": "excom.excom_ads.providers.google_ads:GoogleAdsProvider",
+	# No connector: figures come from Ads Metric Import. Every operation is declared unsupported.
+	"Manual": "excom.excom_ads.providers.manual:ManualProvider",
 }
 
 

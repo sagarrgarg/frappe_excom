@@ -24,6 +24,13 @@ Supported: Frappe/ERPNext **v15 and v16**, MariaDB, Python ≥ 3.10. Test on `fr
 | `naming.py` | Deterministic names from natural keys. |
 | `attribution.py` | Leads ↔ ads: one Ads Attribution Touch per observed touch (lead form, click-to-WhatsApp, website, order); the Lead/Opportunity keeps its first; `relink_pending` links leads that arrived before their mirror. |
 | `attribution_schema.py` | `ads_*` Custom Fields on Lead/Opportunity + resolver indexes, applied by `setup.seed()`. |
+| `billing.py` | Billing reading → Ads Billing Snapshot (per account per day), headroom / days-left calculations, top-up ledger estimate (Ads Billing Record), Low Headroom alerts, `get_billing` API. |
+| `budgets.py` | Ads Budget Plan (maker-checker) vs actual spend, `get_plan_vs_actual` / `get_plans` API, Overspend alert. |
+| `bill_sources.py` | Platform invoice reads: Meta `/{business_id}/business_invoices`, Google `InvoiceService.ListInvoices`; normalised bills, PDF download (platform hosts only). |
+| `bills.py` | Ad bill pipeline: Ads Bill Document → draft Purchase Invoice (India Compliance GST, TDS, debit notes), auto-submit rules, maker-checker `approve`, GSTR-2B status, TDS certificate reminders. |
+| `bill_gst.py` | The only place that calls India Compliance (place of supply, tax template, GST breakup, document-number rule, GST Inward Supply reads). |
+| `bill_suppliers.py` | Platform legal entities (one Supplier each), entity matching, propose / create suppliers on confirmation. |
+| `bill_tasks.py`, `api_bills.py` | Bill scheduler entry points (enqueue only) and whitelisted bill endpoints. |
 | `tasks.py` | Scheduler entry points. They only enqueue. |
 | `api.py` / `api/` | Whitelisted endpoints. |
 | `tests/` | `test_*.py`, run through `excom.excom.tests.run.run`; `tests/dev.py` reloads DocTypes. |
@@ -78,6 +85,45 @@ ai_interface) are checked with `"<app>" in frappe.get_installed_apps()` before u
 **Alerts**: `alerts.raise_alert(type, severity, title, message, ref=doc, dedupe_key=...)` and
 `alerts.resolve_alert(key)` when the condition clears. Alert types are the Select options on
 Ads Alert; add new ones there.
+
+**Billing and budgets**
+- No platform API exposes a prepaid balance (Meta `balance` is the bill amount due; Google billing
+  resources exist only on monthly invoicing). `provider.read_billing()` returns snapshot fields plus a
+  `*_avail` status per figure (Available / Not Set / Unsupported / Permission Missing / No Data /
+  Stale / Error). A value leaves the API only when its status is Available or Stale.
+- The Structure sync writes one Ads Billing Snapshot per account per account-local day
+  (`naming.billing_snapshot_name`), updated in place; a failed read keeps the last good value as Stale.
+  A billing failure never fails the structure job.
+- `reported_*` = exactly what the platform returned; `calc_*` = ours; the ledger estimate is always
+  labelled "Estimated from our ledger". Never add one to another.
+- Controllers that set scope fields from a link in `validate()` call `permissions.assert_in_scope(self)`:
+  Frappe checks create/write before fetch_from runs (and may pre-fill company from a user default).
+- Budget plans count only when submitted. Submit = approve: needs `manage_budgets` and a user who
+  neither created nor last edited the draft (System Manager override is recorded). Change = Cancel → Amend.
+
+**Ad bills → Purchase Invoices** (`bills.py`; accounting + GST, so conservative)
+- Sources: Meta and Google *monthly invoicing* through their invoice APIs (Ads Bill Source), or a
+  manual Ads Bill Document (PDF + typed header) for card / prepaid receipts. A Purchase Invoice is
+  never built from spend data. One Ads Bill Document per platform invoice id
+  (`bills.bill_document_name`); refetching never duplicates. Figures re-issued by the platform after a
+  draft exists wait in `platform_update` until Rebuild.
+- One Supplier per legal entity (Facebook India vs Meta Ireland, Google India vs Google Asia Pacific,
+  LinkedIn India vs Singapore). `api_bills.propose_suppliers` / `create_suppliers(confirm=1)`; never on install.
+- Ads Bill Account Map (platform account / billing setup → company, GSTIN billing address, supplier,
+  cost centre, item, Tax Withholding Category) also records the GSTIN the platform holds; a
+  difference raises GSTIN Mismatch.
+- GST only through India Compliance (`bill_gst.py`): CGST+SGST same state, IGST otherwise; Overseas
+  supplier → reverse charge, IC sets ITC classification "Import Of Service" (needs IC's *Enable
+  Overseas Transactions*). Naming series ≤ 16 characters (GST document-number rule).
+- TDS: the map's (else the supplier's) Tax Withholding Category; ERPNext computes it on the net value.
+  Never hard-code a rate: the section/rate is the tax adviser's decision (see the category's notes).
+- Auto-submit (Ads Settings switch, default off) only for an untouched API bill whose every check
+  passes (`bills.check`). Everything else is Needs Review / Draft Created; `approve_bill` needs
+  `approve_bills`, Purchase Invoice submit permission, and a person who neither typed the bill
+  (`prepared_by`) nor last edited the draft.
+- Alerts carry no amounts (Ads Alert is not a finance record); amounts stay on the bill document.
+- Release 2: AI extraction of a manual bill's PDF plugs into `bills.EXTRACTORS`; extracted figures are
+  treated like typed ones (never auto-submitted).
 
 **Leads and attribution**
 - Intake (`excom/services/intake.py`) asks `attribution.intake_context()` what ad a payload names and calls

@@ -23,3 +23,14 @@ def snapshot_name(account: str, level: str, entity_id: str, date, breakdown_key:
 def touch_name(touch_source: str, observation_id: str) -> str:
 	"""Ads Attribution Touch: one row per observation (intake log key, WhatsApp message ID, order)."""
 	return hashlib.sha1(f"{touch_source}|{observation_id}".encode()).hexdigest()
+
+
+def billing_snapshot_name(account: str, date) -> str:
+	"""Ads Billing Snapshot: one row per account per (account-local) day; hourly reads update it."""
+	return f"{account}-{date}"
+
+
+def web_snapshot_name(prop: str, report: str, date, source=None, medium=None, campaign=None, campaign_id=None, landing_page=None) -> str:
+	"""Ads Web Snapshot: one row per GA4 property × report × day × dimension values."""
+	key = "\x1f".join(str(v or "") for v in (prop, report, date, source, medium, campaign, campaign_id, landing_page))
+	return hashlib.sha1(key.encode()).hexdigest()

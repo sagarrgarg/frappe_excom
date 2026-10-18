@@ -140,6 +140,13 @@ permission_query_conditions = {
 	"Ads Notification Policy": "excom.excom_ads.permissions.get_permission_query_conditions",
 	"Ads Sync Job": "excom.excom_ads.permissions.get_permission_query_conditions",
 	"Ads Workspace": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Billing Snapshot": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Billing Record": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Budget Plan": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Bill Source": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Bill Account Map": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Bill Document": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads TDS Certificate Log": "excom.excom_ads.permissions.get_permission_query_conditions",
 }
 
 has_permission = {
@@ -160,6 +167,13 @@ has_permission = {
 	"Ads Notification Policy": "excom.excom_ads.permissions.has_permission",
 	"Ads Sync Job": "excom.excom_ads.permissions.has_permission",
 	"Ads Workspace": "excom.excom_ads.permissions.has_permission",
+	"Ads Billing Snapshot": "excom.excom_ads.permissions.has_permission",
+	"Ads Billing Record": "excom.excom_ads.permissions.has_permission",
+	"Ads Budget Plan": "excom.excom_ads.permissions.has_permission",
+	"Ads Bill Source": "excom.excom_ads.permissions.has_permission",
+	"Ads Bill Account Map": "excom.excom_ads.permissions.has_permission",
+	"Ads Bill Document": "excom.excom_ads.permissions.has_permission",
+	"Ads TDS Certificate Log": "excom.excom_ads.permissions.has_permission",
 }
 
 # DocType Class
@@ -274,6 +288,7 @@ scheduler_events = {
 		"excom.excom.utils.trigger_whatsapp_notifications_hourly",
 		"excom.excom.utils.trigger_whatsapp_notifications_hourly_long",
 		"excom.excom_ads.tasks.enqueue_structure",
+		"excom.excom_ads.tasks.enqueue_budget_checks",
 	],
 	"daily": [
 		"excom.excom.services.whatsapp_service.sync_phone_profiles",
@@ -288,6 +303,9 @@ scheduler_events = {
 		"excom.excom.channels.voice.recording.purge_expired_recordings",
 		"excom.excom_ads.tasks.enqueue_settle",
 		"excom.excom_ads.tasks.enqueue_relink",
+		# Ad bills: fetch platform invoices (enqueue only), GSTR-2B match status, TDS certificate reminders.
+		"excom.excom_ads.bill_tasks.enqueue_bill_fetch",
+		"excom.excom_ads.bill_tasks.enqueue_bill_checks",
 	],
 	"cron": {
 		"*/5 * * * *": ["excom.excom.tasks.intake.pull_due_sources"],

@@ -16,6 +16,8 @@ def after_migrate():
 # The dashboard reads snapshots by (account, level, date range) and by (level, date range).
 INDEXES = {
 	"Ads Metric Snapshot": [("ads_snap_account_level_date", ["account", "level", "date"]), ("ads_snap_level_date", ["level", "date"])],
+	# billing.summary reads the latest snapshot per account.
+	"Ads Billing Snapshot": [("ads_billsnap_account_date", ["account", "snapshot_date"])],
 }
 
 

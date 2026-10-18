@@ -29,6 +29,9 @@ from excom.excom_ads.providers.base import INVALID, PERMISSION, RATE_LIMITED, RE
 # a signed assertion to a third party.
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 ADWORDS_SCOPE = "https://www.googleapis.com/auth/adwords"
+# GA4 Data API runReport and Admin API accountSummaries / properties / dataStreams accept either.
+ANALYTICS_SCOPE = "https://www.googleapis.com/auth/analytics.readonly"
+ANALYTICS_SCOPES = (ANALYTICS_SCOPE, "https://www.googleapis.com/auth/analytics")
 JWT_LIFETIME = 3600
 TOKEN_MARGIN = 300  # refresh this many seconds before Google's expiry
 SERVICE_ACCOUNT = "Service Account"

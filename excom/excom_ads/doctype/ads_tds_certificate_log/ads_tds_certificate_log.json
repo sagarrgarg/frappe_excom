@@ -1,0 +1,222 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "provider",
+  "supplier",
+  "company",
+  "fiscal_year",
+  "quarter",
+  "cb_1",
+  "status",
+  "due_date",
+  "tds_amount",
+  "sb_cert",
+  "certificate_reference",
+  "certificate_file",
+  "cb_2",
+  "sent_date",
+  "sent_to",
+  "credit_received",
+  "credit_received_date",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "idx": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Platform",
+   "options": "Meta\nGoogle\nLinkedIn",
+   "reqd": 1
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "idx": 2,
+   "in_list_view": 1,
+   "label": "Supplier (Deductee)",
+   "options": "Supplier",
+   "reqd": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "idx": 3,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "fiscal_year",
+   "fieldtype": "Link",
+   "idx": 4,
+   "label": "Fiscal Year",
+   "options": "Fiscal Year",
+   "reqd": 1
+  },
+  {
+   "fieldname": "quarter",
+   "fieldtype": "Select",
+   "idx": 5,
+   "in_list_view": 1,
+   "label": "Quarter",
+   "options": "Q1 (Apr-Jun)\nQ2 (Jul-Sep)\nQ3 (Oct-Dec)\nQ4 (Jan-Mar)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 6
+  },
+  {
+   "default": "Pending",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "idx": 7,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Pending\nSent\nCredit Received"
+  },
+  {
+   "description": "Google's deadlines: 15 Aug (Q1), 15 Nov (Q2), 15 Feb (Q3), 15 Jun (Q4).",
+   "fieldname": "due_date",
+   "fieldtype": "Date",
+   "idx": 8,
+   "label": "Send By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tds_amount",
+   "fieldtype": "Currency",
+   "idx": 9,
+   "label": "TDS Deducted",
+   "options": "INR"
+  },
+  {
+   "fieldname": "sb_cert",
+   "fieldtype": "Section Break",
+   "idx": 10,
+   "label": "Certificate"
+  },
+  {
+   "description": "TDS certificate (Form 131 under the Income-tax Act 2025) number from TRACES.",
+   "fieldname": "certificate_reference",
+   "fieldtype": "Data",
+   "idx": 11,
+   "label": "Form 131 Reference"
+  },
+  {
+   "fieldname": "certificate_file",
+   "fieldtype": "Attach",
+   "idx": 12,
+   "label": "Certificate File"
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 13
+  },
+  {
+   "fieldname": "sent_date",
+   "fieldtype": "Date",
+   "idx": 14,
+   "label": "Sent On"
+  },
+  {
+   "fieldname": "sent_to",
+   "fieldtype": "Data",
+   "idx": 15,
+   "label": "Sent To"
+  },
+  {
+   "fieldname": "credit_received",
+   "fieldtype": "Check",
+   "idx": 16,
+   "label": "Credit Received"
+  },
+  {
+   "depends_on": "credit_received",
+   "fieldname": "credit_received_date",
+   "fieldtype": "Date",
+   "idx": 17,
+   "label": "Credit Received On"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "idx": 18,
+   "label": "Notes"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads TDS Certificate Log",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "write": 1
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "export": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Marketing",
+   "write": 0
+  }
+ ],
+ "search_fields": "provider,quarter,fiscal_year",
+ "show_title_field_in_link": 1,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "supplier",
+ "track_changes": 1
+}

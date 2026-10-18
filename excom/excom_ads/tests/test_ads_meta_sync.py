@@ -130,7 +130,7 @@ class TestAdsMetaSync(FrappeTestCase):
 	@classmethod
 	def _clean(cls):
 		acc = f"Meta-{ACT}"
-		for dt in ("Ads Metric Snapshot", "Ads Advertisement", "Ads Ad Group", "Ads Campaign", "Ads Sync Job", "Ads Alert"):
+		for dt in ("Ads Metric Snapshot", "Ads Advertisement", "Ads Ad Group", "Ads Campaign", "Ads Sync Job", "Ads Alert", "Ads Billing Snapshot"):
 			frappe.db.delete(dt, {"account": acc})
 		frappe.db.delete("Ads Account", {"name": acc})
 		for ws in frappe.get_all("Ads Workspace", {"workspace_name": ["like", f"{WS_PREFIX}%"]}, pluck="name"):

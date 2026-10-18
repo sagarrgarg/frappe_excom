@@ -1,0 +1,98 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "description",
+  "platform_account_id",
+  "campaign_id",
+  "brand",
+  "cb_1",
+  "net_amount",
+  "tax_amount",
+  "cost_center",
+  "currency"
+ ],
+ "fields": [
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Description",
+   "reqd": 1
+  },
+  {
+   "fieldname": "platform_account_id",
+   "fieldtype": "Data",
+   "idx": 2,
+   "in_list_view": 1,
+   "label": "Platform Account"
+  },
+  {
+   "fieldname": "campaign_id",
+   "fieldtype": "Data",
+   "idx": 3,
+   "label": "Campaign ID"
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "idx": 4,
+   "in_list_view": 1,
+   "label": "Brand",
+   "options": "Ads Brand"
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 5
+  },
+  {
+   "fieldname": "net_amount",
+   "fieldtype": "Currency",
+   "idx": 6,
+   "in_list_view": 1,
+   "label": "Net Amount",
+   "options": "currency"
+  },
+  {
+   "fieldname": "tax_amount",
+   "fieldtype": "Currency",
+   "idx": 7,
+   "label": "Tax Amount",
+   "options": "currency"
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "idx": 8,
+   "label": "Cost Center",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "idx": 9,
+   "label": "Currency",
+   "options": "Currency"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Bill Document Line",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

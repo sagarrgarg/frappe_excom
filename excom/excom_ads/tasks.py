@@ -14,7 +14,8 @@ SKIP_STATUSES = ("Closed",)
 def _accounts(skip_broken: bool = False) -> list[dict]:
 	if not frappe.db.exists("DocType", "Ads Account") or not get_settings().enabled:
 		return []
-	rows = frappe.get_all("Ads Account", filters={"sync_enabled": 1, "status": ["not in", SKIP_STATUSES]}, fields=["name", "error_class", "metrics_synced_from"])
+	# Manual accounts have no connector: their figures arrive through Ads Metric Import.
+	rows = frappe.get_all("Ads Account", filters={"sync_enabled": 1, "status": ["not in", SKIP_STATUSES], "provider": ["!=", "Manual"]}, fields=["name", "error_class", "metrics_synced_from"])
 	if skip_broken:
 		# A revoked token or missing permission does not fix itself every 30 minutes. The hourly
 		# structure job keeps checking and clears the error once the connection works again.
@@ -68,3 +69,14 @@ def enqueue_relink():
 	from excom.excom_ads.attribution import enqueue_relink as _enqueue
 
 	_enqueue()
+
+
+def enqueue_budget_checks():
+	"""Hourly: Overspend alerts for approved budget plans of the current month. Cheap no-op without plans."""
+	if not get_settings().enabled:
+		return
+	from excom.excom_ads import budgets
+
+	if not budgets.has_current_plans():
+		return
+	frappe.enqueue("excom.excom_ads.budgets.check_overspend", queue="long", job_id=f"excom_ads_budgets::{frappe.local.site}", deduplicate=True)

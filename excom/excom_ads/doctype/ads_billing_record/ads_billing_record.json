@@ -1,0 +1,207 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 20:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "account",
+  "record_type",
+  "posting_date",
+  "amount",
+  "currency",
+  "reference",
+  "cb_1",
+  "provider",
+  "company",
+  "workspace",
+  "brand",
+  "payment_entry",
+  "sb_note",
+  "note"
+ ],
+ "fields": [
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "label": "Ad Account",
+   "options": "Ads Account",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "idx": 1
+  },
+  {
+   "fieldname": "record_type",
+   "fieldtype": "Select",
+   "label": "Type",
+   "options": "Top-up\nRefund\nAdjustment",
+   "default": "Top-up",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Top-up: money added to a prepaid ad account. Refund: money returned from it. Adjustment: a signed correction (negative lowers the balance).",
+   "idx": 2
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "default": "Today",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "The date the funds were credited on the platform.",
+   "idx": 3
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount",
+   "options": "currency",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "In the ad account's currency, as credited to the ad account (net of taxes the platform keeps).",
+   "idx": 4
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "fetch_from": "account.currency",
+   "read_only": 1,
+   "idx": 5
+  },
+  {
+   "fieldname": "reference",
+   "fieldtype": "Data",
+   "label": "Platform Reference",
+   "description": "Receipt / transaction ID from the ad platform. Unique per ad account.",
+   "idx": 6
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 7
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Data",
+   "label": "Network",
+   "fetch_from": "account.provider",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "idx": 8
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "fetch_from": "account.company",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "idx": 9
+  },
+  {
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "label": "Workspace",
+   "options": "Ads Workspace",
+   "fetch_from": "account.workspace",
+   "read_only": 1,
+   "idx": 10
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "label": "Brand",
+   "options": "Ads Brand",
+   "fetch_from": "account.brand",
+   "fetch_if_empty": 1,
+   "read_only": 1,
+   "idx": 11
+  },
+  {
+   "fieldname": "payment_entry",
+   "fieldtype": "Link",
+   "label": "Payment Entry",
+   "options": "Payment Entry",
+   "description": "Optional: the submitted ERPNext Payment Entry that paid for this top-up (same company).",
+   "idx": 12
+  },
+  {
+   "fieldname": "sb_note",
+   "fieldtype": "Section Break",
+   "idx": 13
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note",
+   "idx": 14
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Billing Record",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Excom Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Accounts Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Accounts User",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Excom Marketing",
+   "read": 1,
+   "report": 1,
+   "print": 1
+  }
+ ],
+ "sort_field": "posting_date",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "description": "Finance data: manual top-ups and prepayments per ad account. Our ledger estimate of a prepaid balance = top-ups − refunds ± adjustments − platform spend since the first top-up. Needs the view_finance right.",
+ "autoname": "format:ADS-TOPUP-{#####}",
+ "naming_rule": "Expression",
+ "title_field": "account"
+}

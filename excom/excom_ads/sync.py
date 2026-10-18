@@ -48,6 +48,9 @@ def enqueue(account: str, job_type: str, since=None, until=None, triggered_by: s
 
 def run_job(account: str, job_type: str, since=None, until=None, triggered_by: str = "scheduler") -> dict:
 	acc = frappe.get_doc("Ads Account", account)
+	if acc.provider == "Manual":
+		# No connector: figures come from Ads Metric Import. Nothing to pull, nothing to fail.
+		return {"status": "Skipped", "records": 0, "error_class": None, "errors": []}
 	job = frappe.get_doc({"doctype": "Ads Sync Job", "account": account, "job_type": job_type, "status": "Running", "started_at": now_datetime(), "triggered_by": triggered_by})
 	job.insert(ignore_permissions=True)
 	frappe.db.commit()
@@ -171,6 +174,10 @@ def sync_structure(acc, provider) -> dict:
 	old_status = acc.status
 	_apply_account(acc, provider.read_account(), last_structure_sync=now_datetime())
 	_alert_on_account_status(acc, old_status)
+	# Billing reading → today's Ads Billing Snapshot (+ headroom alerts). Never fails the job.
+	from excom.excom_ads.billing import read_and_record
+
+	read_and_record(acc, provider)
 	known: dict[str, set] = {}
 	for doctype, method in MIRRORS.items():
 		try:
@@ -205,7 +212,9 @@ def _apply_account(acc, details: dict, **extra) -> None:
 	details = {k: v for k, v in details.items() if not (k == "account_name" and not v)}
 	# Number columns cannot hold "unknown"; billing_status says whether the amounts were reported.
 	details.update({k: 0 for k, v in details.items() if v is None and k.startswith("reported_")})
-	details.update(extra, billing_reported_at=now_datetime())
+	details.update(extra)
+	if any(k.startswith("reported_") for k in details):
+		details["billing_reported_at"] = now_datetime()
 	frappe.db.set_value("Ads Account", acc.name, details, update_modified=False)
 	acc.reload()
 

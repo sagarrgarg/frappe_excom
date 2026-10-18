@@ -35,6 +35,26 @@ ACCOUNT_FIELDS = "name,account_id,account_status,disable_reason,currency,timezon
 CAMPAIGN_FIELDS = "id,name,objective,status,configured_status,effective_status,buying_type,bid_strategy,daily_budget,lifetime_budget,spend_cap,start_time,stop_time,created_time,updated_time"
 ADSET_FIELDS = "id,name,campaign_id,status,configured_status,effective_status,optimization_goal,billing_event,destination_type,bid_amount,daily_budget,lifetime_budget,start_time,end_time,targeting,updated_time"
 AD_FIELDS = "id,name,campaign_id,adset_id,status,configured_status,effective_status,creative{id,name},updated_time"
+# Billing (read_billing). Verified for Graph v26 against
+# https://developers.facebook.com/docs/marketing-api/reference/ad-account/ (fields unchanged in the
+# v26.0 Marketing API changelog). amount_spent, spend_cap and balance are in the currency's minor unit.
+BILLING_CORE_FIELDS = "amount_spent,spend_cap,balance,currency"
+FUNDING_FIELDS = "is_prepay_account,funding_source_details"
+# funding_source_details.type
+FUNDING_TYPES = {0: "UNSET", 1: "CREDIT_CARD", 2: "FACEBOOK_WALLET", 3: "FACEBOOK_PAID_CREDIT", 4: "FACEBOOK_EXTENDED_CREDIT", 5: "ORDER", 6: "INVOICE", 7: "FACEBOOK_TOKEN", 8: "EXTERNAL_FUNDING", 9: "FEE", 10: "FX", 11: "DISCOUNT", 12: "PAYPAL_TOKEN", 13: "PAYPAL_BILLING_AGREEMENT", 14: "FS_NULL", 15: "EXTERNAL_DEPOSIT", 16: "TAX", 17: "DIRECT_DEBIT", 18: "DUMMY", 19: "ALTPAY", 20: "STORED_BALANCE"}
+# Funding types that say how the account pays. Others (fees, tax, coupons, unknown) say nothing.
+FUNDING_MODEL = {
+	"CREDIT_CARD": "Card (Postpaid)",
+	"PAYPAL_TOKEN": "Card (Postpaid)",
+	"PAYPAL_BILLING_AGREEMENT": "Card (Postpaid)",
+	"DIRECT_DEBIT": "Card (Postpaid)",
+	"FACEBOOK_EXTENDED_CREDIT": "Credit Line",
+	"INVOICE": "Monthly Invoicing",
+	"FACEBOOK_WALLET": "Prepaid",
+	"FACEBOOK_PAID_CREDIT": "Prepaid",
+	"STORED_BALANCE": "Prepaid",
+	"EXTERNAL_DEPOSIT": "Prepaid",
+}
 INSIGHT_FIELDS = "account_id,campaign_id,adset_id,ad_id,spend,impressions,reach,clicks,inline_link_clicks,actions,action_values,date_start,date_stop"
 
 LEVELS = {"Account": "account", "Campaign": "campaign", "Ad Group": "adset", "Ad": "ad"}
@@ -146,7 +166,15 @@ class MetaAdsProvider(AdsProvider):
 		"list_ad_groups": Capability(True, (READS,), ("ads_read",)),
 		"list_ads": Capability(True, (READS,), ("ads_read",)),
 		"daily_metrics": Capability(True, (READS,), ("ads_read",)),
-		"read_billing": Capability(True, (READS,), ("ads_read",), "Amount spent, spend cap and amount due only. Meta does not expose a prepaid balance."),
+		"read_billing": Capability(
+			True,
+			(READS,),
+			("ads_read",),
+			"Reads amount_spent, spend_cap and balance (the bill amount due, not a prepaid balance) with ads_read; "
+			"is_prepay_account (needs ADVERTISE or MANAGE task access on the ad account) and funding_source_details.type "
+			"(needs MANAGE task access) give the payment model and are marked Permission Missing without that access. "
+			"Meta does not expose a prepaid balance: Excom estimates it from its own top-up ledger.",
+		),
 		"pause_entity": Capability(False, reason="Release 2: runs only through an approved Action Request."),
 		"change_budget": Capability(False, reason="Release 2: runs only through an approved Action Request."),
 	}
@@ -208,6 +236,7 @@ class MetaAdsProvider(AdsProvider):
 
 	def read_account(self) -> dict:
 		a = self._get(self._url(self.account.external_id), {"fields": ACCOUNT_FIELDS})
+		self._account_raw = a  # read_billing() reuses it instead of asking again
 		currency = a.get("currency") or self.currency
 		self.currency = currency
 		code = a.get("account_status")
@@ -347,3 +376,105 @@ class MetaAdsProvider(AdsProvider):
 			"metrics": {"actions": actions, "action_values": values},
 			"source_window": window,
 		}
+
+	def read_billing(self) -> dict:
+		"""Billing figures exactly as Meta reports them, with the availability of each (see billing.py).
+
+		amount_spent / spend_cap / balance come with the account read (ads_read). The funding fields need
+		task access the token may not have: a permission error on them marks them Permission Missing
+		and never fails the read.
+		"""
+		from excom.excom_ads import billing as B
+
+		a = getattr(self, "_account_raw", None) or self._get(self._url(self.account.external_id), {"fields": BILLING_CORE_FIELDS})
+		c = a.get("currency") or self.currency
+		spent, cap, due = money(a.get("amount_spent"), c), money(a.get("spend_cap"), c), money(a.get("balance"), c)
+		out = {
+			"currency": c,
+			"reported_amount_spent": spent,
+			"amount_spent_avail": B.AVAILABLE if spent is not None else B.NO_DATA,
+			# "0" (or no value) is Meta's "no cap": Not Set, never a zero cap.
+			"reported_spend_cap": cap if cap else None,
+			"spend_cap_avail": B.AVAILABLE if cap else (B.NOT_SET if cap is not None else B.NO_DATA),
+			"reported_amount_due": due,
+			"amount_due_avail": B.AVAILABLE if due is not None else B.NO_DATA,
+			"errors": [],
+			"raw": {k: a.get(k) for k in ("amount_spent", "spend_cap", "balance", "currency")},
+		}
+		funding, errors = self._funding()
+		out["errors"] += errors
+		out["raw"].update({k: v for k, v in funding.items() if not k.endswith("_avail")})
+		prepay, ftype = funding.get("is_prepay_account"), funding.get("funding_type")
+		out.update(
+			{
+				"reported_is_prepay": 1 if prepay else 0,
+				"prepay_avail": funding["prepay_avail"],
+				"reported_funding_type": ftype,
+				"funding_avail": funding["funding_avail"],
+			}
+		)
+		model = payment_model(prepay if funding["prepay_avail"] == B.AVAILABLE else None, ftype if funding["funding_avail"] == B.AVAILABLE else None)
+		if model:
+			out["payment_model"], out["payment_model_avail"] = model, B.AVAILABLE
+		else:
+			out["payment_model"] = "Unknown"
+			worst = [s for s in (funding["prepay_avail"], funding["funding_avail"]) if s in (B.PERMISSION_MISSING, B.ERROR)]
+			out["payment_model_avail"] = worst[0] if worst else B.NO_DATA
+		out["headroom"] = {
+			"avail": out["spend_cap_avail"],
+			"limit": cap if cap else None,
+			"used": spent,
+			"basis": "Meta spend cap − amount spent",
+		}
+		return out
+
+	def _funding(self) -> tuple[dict, list]:
+		"""is_prepay_account + funding_source_details, falling back to is_prepay_account alone when the
+		token lacks MANAGE access. Returns ({is_prepay_account, funding_type, *_avail}, [errors])."""
+		from excom.excom_ads import billing as B
+
+		url = self._url(self.account.external_id)
+		res = {"is_prepay_account": None, "funding_type": None, "prepay_avail": B.NO_DATA, "funding_avail": B.NO_DATA}
+		errors = []
+		for fields in (FUNDING_FIELDS, "is_prepay_account"):
+			try:
+				body = self._get(url, {"fields": fields})
+			except AdsProviderError as e:
+				if e.error_class == TOKEN:
+					raise
+				status = B.PERMISSION_MISSING if e.error_class == PERMISSION else B.ERROR
+				if fields == FUNDING_FIELDS:
+					res["funding_avail"] = status
+					if status == B.PERMISSION_MISSING:
+						continue  # try the prepay flag on its own: it needs less access
+				res["prepay_avail"] = status
+				if status == B.ERROR:
+					errors.append(e)  # a missing permission is a status, not a failed read
+				return res, errors
+			if "is_prepay_account" in body:
+				res["is_prepay_account"] = bool(body.get("is_prepay_account"))
+				res["prepay_avail"] = B.AVAILABLE
+			if fields == FUNDING_FIELDS:
+				details = body.get("funding_source_details")
+				if isinstance(details, dict) and details.get("type") not in (None, ""):
+					res["funding_type"] = funding_type_name(details.get("type"))
+					res["funding_avail"] = B.AVAILABLE
+			return res, errors
+		return res, errors
+
+
+def funding_type_name(value) -> str:
+	try:
+		return FUNDING_TYPES.get(int(value), str(value))
+	except (TypeError, ValueError):
+		return str(value).upper()
+
+
+def payment_model(is_prepay, funding_type) -> str | None:
+	"""Our payment model from Meta's prepay flag and funding source type. None = cannot tell."""
+	if is_prepay:
+		return "Prepaid"
+	model = FUNDING_MODEL.get(funding_type or "")
+	if model:
+		return model
+	return None

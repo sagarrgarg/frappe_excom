@@ -1,0 +1,621 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "status",
+  "provider",
+  "source_type",
+  "document_type",
+  "cb_1",
+  "company",
+  "workspace",
+  "brand",
+  "account",
+  "account_map",
+  "bill_source",
+  "sb_header",
+  "bill_no",
+  "bill_date",
+  "due_date",
+  "service_start",
+  "service_end",
+  "original_bill_no",
+  "cb_header",
+  "billing_entity",
+  "platform_account_ids",
+  "supplier_gstin",
+  "company_gstin_on_bill",
+  "supplier",
+  "sb_amounts",
+  "currency",
+  "net_amount",
+  "tax_amount",
+  "total_amount",
+  "cb_amounts",
+  "cgst_amount",
+  "sgst_amount",
+  "igst_amount",
+  "amount_due",
+  "payment_status",
+  "sb_lines",
+  "lines",
+  "sb_erp",
+  "purchase_invoice",
+  "return_against",
+  "original_document",
+  "auto_submitted",
+  "cb_erp",
+  "prepared_by",
+  "pi_drafted_at",
+  "approved_by",
+  "approved_at",
+  "sb_review",
+  "differences",
+  "gstr2b_status",
+  "gstr2b_detail",
+  "cb_review",
+  "last_error",
+  "fetched_at",
+  "sb_source",
+  "attachment",
+  "pdf_url",
+  "platform_invoice_id",
+  "billing_setup",
+  "extraction_method",
+  "raw_payload",
+  "platform_update"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "idx": 1,
+   "in_list_view": 0,
+   "label": "Title",
+   "read_only": 1
+  },
+  {
+   "default": "Fetched",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "idx": 2,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Fetched\nDraft Created\nSubmitted\nNeeds Review\nDuplicate\nError",
+   "read_only": 1
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "idx": 3,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Platform",
+   "options": "Meta\nGoogle\nLinkedIn\nOther",
+   "reqd": 1
+  },
+  {
+   "default": "Manual",
+   "description": "API: read from the platform's invoice API. Manual: a PDF uploaded by finance with the header typed in.",
+   "fieldname": "source_type",
+   "fieldtype": "Select",
+   "idx": 4,
+   "in_standard_filter": 1,
+   "label": "Source",
+   "options": "Manual\nAPI",
+   "read_only": 1
+  },
+  {
+   "default": "Invoice",
+   "fieldname": "document_type",
+   "fieldtype": "Select",
+   "idx": 5,
+   "label": "Document Type",
+   "options": "Invoice\nCredit Memo\nDebit Memo",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 6
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "idx": 7,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "idx": 8,
+   "label": "Workspace",
+   "options": "Ads Workspace"
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "idx": 9,
+   "label": "Brand",
+   "options": "Ads Brand"
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "idx": 10,
+   "label": "Ads Account",
+   "options": "Ads Account"
+  },
+  {
+   "fieldname": "account_map",
+   "fieldtype": "Link",
+   "idx": 11,
+   "label": "Account Map",
+   "options": "Ads Bill Account Map"
+  },
+  {
+   "fieldname": "bill_source",
+   "fieldtype": "Link",
+   "idx": 12,
+   "label": "Bill Source",
+   "options": "Ads Bill Source",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_header",
+   "fieldtype": "Section Break",
+   "idx": 13,
+   "label": "Bill"
+  },
+  {
+   "description": "The invoice number printed on the platform's invoice.",
+   "fieldname": "bill_no",
+   "fieldtype": "Data",
+   "idx": 14,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Bill Number",
+   "reqd": 1
+  },
+  {
+   "fieldname": "bill_date",
+   "fieldtype": "Date",
+   "idx": 15,
+   "in_list_view": 1,
+   "label": "Bill Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "due_date",
+   "fieldtype": "Date",
+   "idx": 16,
+   "label": "Due Date"
+  },
+  {
+   "fieldname": "service_start",
+   "fieldtype": "Date",
+   "idx": 17,
+   "label": "Service From"
+  },
+  {
+   "fieldname": "service_end",
+   "fieldtype": "Date",
+   "idx": 18,
+   "label": "Service To"
+  },
+  {
+   "depends_on": "eval:doc.document_type=='Credit Memo'",
+   "description": "Credit memos: the invoice this credit corrects. Without it the debit note goes to review.",
+   "fieldname": "original_bill_no",
+   "fieldtype": "Data",
+   "idx": 19,
+   "label": "Original Bill Number"
+  },
+  {
+   "fieldname": "cb_header",
+   "fieldtype": "Column Break",
+   "idx": 20
+  },
+  {
+   "description": "The platform entity that issued the bill (Meta 'entity', Google payments profile).",
+   "fieldname": "billing_entity",
+   "fieldtype": "Data",
+   "idx": 21,
+   "label": "Billing Entity"
+  },
+  {
+   "description": "Ad accounts / customer IDs billed on this document, one per line.",
+   "fieldname": "platform_account_ids",
+   "fieldtype": "Small Text",
+   "idx": 22,
+   "label": "Platform Accounts"
+  },
+  {
+   "fieldname": "supplier_gstin",
+   "fieldtype": "Data",
+   "idx": 23,
+   "label": "Supplier GSTIN on Bill"
+  },
+  {
+   "description": "The buyer GSTIN printed on the bill, if any.",
+   "fieldname": "company_gstin_on_bill",
+   "fieldtype": "Data",
+   "idx": 24,
+   "label": "Company GSTIN on Bill"
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "idx": 25,
+   "in_standard_filter": 1,
+   "label": "Supplier",
+   "options": "Supplier",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_amounts",
+   "fieldtype": "Section Break",
+   "idx": 26,
+   "label": "Amounts"
+  },
+  {
+   "default": "INR",
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "idx": 27,
+   "label": "Currency",
+   "options": "Currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "net_amount",
+   "fieldtype": "Currency",
+   "idx": 28,
+   "label": "Net Amount (before tax)",
+   "options": "currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "tax_amount",
+   "fieldtype": "Currency",
+   "idx": 29,
+   "label": "Tax Amount",
+   "options": "currency"
+  },
+  {
+   "fieldname": "total_amount",
+   "fieldtype": "Currency",
+   "idx": 30,
+   "in_list_view": 1,
+   "label": "Total Amount",
+   "options": "currency"
+  },
+  {
+   "fieldname": "cb_amounts",
+   "fieldtype": "Column Break",
+   "idx": 31
+  },
+  {
+   "description": "Optional: when typed, the Purchase Invoice's CGST / SGST / IGST must match each one.",
+   "fieldname": "cgst_amount",
+   "fieldtype": "Currency",
+   "idx": 32,
+   "label": "CGST on Bill",
+   "options": "currency"
+  },
+  {
+   "fieldname": "sgst_amount",
+   "fieldtype": "Currency",
+   "idx": 33,
+   "label": "SGST on Bill",
+   "options": "currency"
+  },
+  {
+   "fieldname": "igst_amount",
+   "fieldtype": "Currency",
+   "idx": 34,
+   "label": "IGST on Bill",
+   "options": "currency"
+  },
+  {
+   "fieldname": "amount_due",
+   "fieldtype": "Currency",
+   "idx": 35,
+   "label": "Amount Due (platform)",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payment_status",
+   "fieldtype": "Data",
+   "idx": 36,
+   "label": "Payment Status (platform)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_lines",
+   "fieldtype": "Section Break",
+   "idx": 37,
+   "label": "Lines"
+  },
+  {
+   "description": "Per campaign (Meta) or per account (Google). The Purchase Invoice gets one line each; rounding goes on the largest line.",
+   "fieldname": "lines",
+   "fieldtype": "Table",
+   "idx": 38,
+   "label": "Lines",
+   "options": "Ads Bill Document Line"
+  },
+  {
+   "fieldname": "sb_erp",
+   "fieldtype": "Section Break",
+   "idx": 39,
+   "label": "ERPNext"
+  },
+  {
+   "fieldname": "purchase_invoice",
+   "fieldtype": "Link",
+   "idx": 40,
+   "in_list_view": 1,
+   "label": "Purchase Invoice",
+   "no_copy": 1,
+   "options": "Purchase Invoice",
+   "read_only": 1
+  },
+  {
+   "fieldname": "return_against",
+   "fieldtype": "Link",
+   "idx": 41,
+   "label": "Debit Note Against",
+   "no_copy": 1,
+   "options": "Purchase Invoice",
+   "read_only": 1
+  },
+  {
+   "fieldname": "original_document",
+   "fieldtype": "Link",
+   "idx": 42,
+   "label": "Original Bill Document",
+   "no_copy": 1,
+   "options": "Ads Bill Document",
+   "read_only": 1
+  },
+  {
+   "fieldname": "auto_submitted",
+   "fieldtype": "Check",
+   "idx": 43,
+   "label": "Submitted by Rule",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_erp",
+   "fieldtype": "Column Break",
+   "idx": 44
+  },
+  {
+   "description": "The person who last typed or changed this bill's figures. They cannot approve it.",
+   "fieldname": "prepared_by",
+   "fieldtype": "Link",
+   "idx": 45,
+   "label": "Prepared By",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pi_drafted_at",
+   "fieldtype": "Datetime",
+   "idx": 46,
+   "label": "Draft Built At",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "idx": 47,
+   "label": "Approved By",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_at",
+   "fieldtype": "Datetime",
+   "idx": 48,
+   "label": "Approved At",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_review",
+   "fieldtype": "Section Break",
+   "idx": 49,
+   "label": "Review"
+  },
+  {
+   "description": "Why this bill was not submitted automatically, one finding per line.",
+   "fieldname": "differences",
+   "fieldtype": "Small Text",
+   "idx": 50,
+   "label": "Differences",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "gstr2b_status",
+   "fieldtype": "Select",
+   "idx": 51,
+   "in_standard_filter": 1,
+   "label": "GSTR-2B",
+   "no_copy": 1,
+   "options": "\nNot Checked\nNot Applicable\nMatched\nIn 2B, Not Linked\nMismatch\nMissing",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gstr2b_detail",
+   "fieldtype": "Data",
+   "idx": 52,
+   "label": "GSTR-2B Detail",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_review",
+   "fieldtype": "Column Break",
+   "idx": 53
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "idx": 54,
+   "label": "Last Error",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "fetched_at",
+   "fieldtype": "Datetime",
+   "idx": 55,
+   "label": "Fetched At",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sb_source",
+   "fieldtype": "Section Break",
+   "idx": 56,
+   "label": "Source document"
+  },
+  {
+   "fieldname": "attachment",
+   "fieldtype": "Attach",
+   "idx": 57,
+   "label": "Bill PDF"
+  },
+  {
+   "fieldname": "pdf_url",
+   "fieldtype": "Small Text",
+   "idx": 58,
+   "label": "Platform PDF Link",
+   "read_only": 1
+  },
+  {
+   "fieldname": "platform_invoice_id",
+   "fieldtype": "Data",
+   "idx": 59,
+   "label": "Platform Invoice ID",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "billing_setup",
+   "fieldtype": "Data",
+   "idx": 60,
+   "label": "Billing Setup / Payments Profile",
+   "read_only": 1
+  },
+  {
+   "default": "Typed",
+   "description": "AI Extraction is release 2: excom_ads.bills.EXTRACTORS.",
+   "fieldname": "extraction_method",
+   "fieldtype": "Select",
+   "idx": 61,
+   "label": "Header From",
+   "options": "Typed\nAPI\nAI Extraction",
+   "read_only": 1
+  },
+  {
+   "fieldname": "raw_payload",
+   "fieldtype": "Code",
+   "idx": 62,
+   "label": "Raw API Record",
+   "no_copy": 1,
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "description": "The platform re-issued this bill's figures after the draft was built. Rebuild applies them (only while the draft is unedited).",
+   "fieldname": "platform_update",
+   "fieldtype": "Code",
+   "idx": 63,
+   "label": "Newer Platform Figures",
+   "no_copy": 1,
+   "options": "JSON",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 13:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Bill Document",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "write": 1
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "export": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Marketing",
+   "write": 0
+  }
+ ],
+ "search_fields": "bill_no,provider,status",
+ "show_title_field_in_link": 1,
+ "sort_field": "bill_date",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title",
+ "track_changes": 1
+}

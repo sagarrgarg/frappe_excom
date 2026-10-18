@@ -151,3 +151,141 @@ export interface FilterOptions {
   providers: string[];
   rights: Record<string, boolean>;
 }
+
+/** excom.excom_ads.billing — every figure carries its availability; value is null unless Available or Stale. */
+export type Availability = "Not Read" | "Available" | "Not Set" | "Unsupported" | "Permission Missing" | "No Data" | "Stale" | "Error";
+
+export interface Figure<T = number> {
+  value: T | null;
+  status: Availability;
+}
+
+export interface Ledger {
+  label: string;
+  avail: Availability;
+  balance: number | null;
+  topups?: number | null;
+  refunds?: number | null;
+  adjustments?: number | null;
+  spend_since?: number | null;
+  since?: string | null;
+  spend_through?: string | null;
+  records: number;
+  days_left?: number | null;
+  warning?: string | null;
+}
+
+export interface AccountBudget {
+  id: string | null;
+  name: string | null;
+  budget_status: string | null;
+  start: string | null;
+  end: string | null;
+  unlimited: boolean;
+  approved_limit: number | null;
+  adjusted_limit: number | null;
+  amount_served: number | null;
+  total_adjustments: number | null;
+}
+
+export interface BillingDetail extends BillingRow {
+  snapshot?: string;
+  snapshot_date?: string;
+  read_at: string | null;
+  read_status: "OK" | "Partial" | "Error" | null;
+  last_error: string | null;
+  stale: boolean;
+  reported: {
+    amount_spent: Figure;
+    spend_cap: Figure;
+    amount_due: Figure;
+    is_prepay: Figure<boolean>;
+    funding_type: Figure<string>;
+    payment_model: Figure<string>;
+    billing_setup_status: Figure<string>;
+    account_budget: { status: Availability; value: AccountBudget | null };
+  } | null;
+  calculated: {
+    headroom: Figure & { basis: string | null };
+    avg_daily_spend: Figure & { days: number };
+    days_left: Figure;
+    exhaustion_date: Figure<string>;
+    note: string | null;
+  } | null;
+  ledger?: Ledger;
+}
+
+export interface BillingResponse {
+  accounts: BillingDetail[];
+  stale_after_hours: number;
+  low_headroom_days: number;
+  ledger_label: string;
+  can_add_records: boolean;
+}
+
+/** excom.excom_ads.budgets — planned values are null where no approved plan line exists. */
+export interface PlanVsActualFigures {
+  currency: string | null;
+  planned_spend: number | null;
+  planned_to_date: number | null;
+  target_leads: number | null;
+  target_purchases: number | null;
+  target_revenue: number | null;
+  target_cpl: number | null;
+  target_roas: number | null;
+  actual_spend: number | null;
+  spend_unconverted: number | null;
+  actual_leads: number | null;
+  actual_purchases: number | null;
+  actual_revenue: number | null;
+  actual_cpl: number | null;
+  actual_roas: number | null;
+  variance: number | null;
+  variance_pct: number | null;
+  pacing: number | null;
+}
+
+export interface PlanVsActualRow extends PlanVsActualFigures {
+  month: string;
+  provider: string;
+  brand: string;
+  lines: number;
+}
+
+export interface PlanVsActual {
+  from_date: string;
+  to_date: string;
+  months: string[];
+  level: "Account" | "Campaign";
+  by_brand: boolean;
+  source: "Platform";
+  plans: string[];
+  rows: PlanVsActualRow[];
+  totals: PlanVsActualFigures[];
+}
+
+export interface BudgetPlanRow {
+  name: string;
+  plan_name: string;
+  status: "Draft" | "Approved" | "Cancelled";
+  docstatus: 0 | 1 | 2;
+  company: string;
+  workspace: string;
+  brand: string | null;
+  period_from: string;
+  period_to: string;
+  currency: string;
+  total_planned: number;
+  owner: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  approval_override: 0 | 1;
+  amended_from: string | null;
+  can_approve: boolean;
+}
+
+export interface BudgetPlans {
+  plans: BudgetPlanRow[];
+  can_manage: boolean;
+  can_create: boolean;
+}

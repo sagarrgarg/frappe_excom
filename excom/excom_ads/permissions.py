@@ -33,7 +33,7 @@ DIMENSIONS = {"company": "Company", "workspace": "Ads Workspace", "brand": "Ads 
 SELF_FIELD = {"Ads Workspace": "workspace", "Ads Brand": "brand", "Ads Account": "account"}
 
 # Records that are finance data as a whole, not just a few fields: need view_finance on top of scope.
-FINANCE_DOCTYPES = {"Ads Billing Snapshot", "Ads Billing Record", "Ads Bill Document", "Ads Bill Account Map", "Ads TDS Certificate Log"}
+FINANCE_DOCTYPES = {"Ads Billing Snapshot", "Ads Billing Record", "Ads Bill Document", "Ads Bill Account Map", "Ads TDS Certificate Log", "Ads Bill Source"}
 
 CAPABILITIES = ("view_finance", "manage_budgets", "approve_bills", "export_data", "manage_connections", "approve_actions", "enable_automation")
 # Rights an admin role carries without a profile. Automation rights always need an explicit profile.
@@ -135,13 +135,40 @@ def doc_allowed(doc, user=None) -> bool:
 		return False
 	if doc.doctype in FINANCE_DOCTYPES and not has_capability("view_finance", user):
 		return False
+	derived = None
 	for dim, column in _fields_for(doc.doctype).items():
 		allowed = scope.get(dim)
 		if allowed is None:
 			continue
-		if doc.get(column) not in allowed:
+		value = doc.get(column)
+		if not value and column != "name":
+			# A new record is checked before fetch_from fills its scope from its account / workspace.
+			if derived is None:
+				derived = _derived_scope(doc)
+			value = derived.get(column)
+		if value not in allowed:
 			return False
 	return True
+
+
+def assert_in_scope(doc, user=None) -> None:
+	"""For controllers that set scope fields from a link in validate(): Frappe checks create / write
+	permission before that (and may pre-fill company from the user's own default), so check again
+	once the record's real company / workspace / brand are known."""
+	if doc.flags.ignore_permissions:
+		return
+	if not doc_allowed(doc, user):
+		frappe.throw(_("That record is outside your ads scope."), frappe.PermissionError)
+
+
+def _derived_scope(doc) -> dict:
+	"""company / workspace / brand that fetch_from would set from the record's account or workspace."""
+	out = {}
+	if doc.get("account") and doc.doctype != "Ads Account":
+		out = frappe.db.get_value("Ads Account", doc.get("account"), ["company", "workspace", "brand"], as_dict=True) or {}
+	elif doc.get("workspace") and doc.doctype != "Ads Workspace":
+		out = {"company": frappe.db.get_value("Ads Workspace", doc.get("workspace"), "company")}
+	return {k: v for k, v in out.items() if v}
 
 
 def scope_filters(doctype: str, user=None) -> dict:

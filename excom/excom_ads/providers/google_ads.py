@@ -99,6 +99,20 @@ AD_QUERY = (
 	"ad_group_ad.policy_summary.approval_status, ad_group_ad.policy_summary.review_status, ad_group_ad.ad_strength "
 	"FROM ad_group_ad WHERE campaign.status != 'REMOVED'"
 )
+# Billing (read_billing). Field names verified against the v26 field reference:
+#   https://developers.google.com/google-ads/api/fields/v26/billing_setup
+#   https://developers.google.com/google-ads/api/fields/v26/account_budget
+# "The payments setting in your Google Ads account must be configured for monthly invoicing" for
+# billing setups and account budgets (https://developers.google.com/google-ads/api/docs/billing/overview).
+BILLING_SETUP_QUERY = "SELECT billing_setup.id, billing_setup.status, billing_setup.start_date_time, billing_setup.end_date_time, billing_setup.end_time_type FROM billing_setup"
+ACCOUNT_BUDGET_QUERY = (
+	"SELECT account_budget.id, account_budget.name, account_budget.status, account_budget.billing_setup, "
+	"account_budget.approved_spending_limit_micros, account_budget.approved_spending_limit_type, "
+	"account_budget.adjusted_spending_limit_micros, account_budget.adjusted_spending_limit_type, "
+	"account_budget.amount_served_micros, account_budget.total_adjustments_micros, "
+	"account_budget.approved_start_date_time, account_budget.approved_end_date_time, account_budget.approved_end_time_type "
+	"FROM account_budget"
+)
 METRIC_FIELDS = "metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value, metrics.all_conversions"
 # Per level: (resource, id fields selected before segments.date)
 LEVEL_FROM = {
@@ -388,7 +402,14 @@ class GoogleAdsProvider(AdsProvider):
 		"list_ad_groups": Capability(True, (READS,), (google_auth.ADWORDS_SCOPE,), "Performance Max campaigns have asset groups, not ad groups, and are not listed here."),
 		"list_ads": Capability(True, (READS,), (google_auth.ADWORDS_SCOPE,), "Performance Max campaigns have no individual ads."),
 		"daily_metrics": Capability(True, (READS,), (google_auth.ADWORDS_SCOPE,), "Reach and link clicks are not reported by Google at daily account/campaign/ad group/ad grain."),
-		"read_billing": Capability(False, reason="Not read in release 1. Google Ads billing (account budgets, invoices) needs billing setup access; shown as not available."),
+		"read_billing": Capability(
+			True,
+			(READS,),
+			(google_auth.ADWORDS_SCOPE,),
+			"Reads billing_setup (status) and account_budget (approved / adjusted spending limit, amount served, "
+			"adjustments, approved start / end) through GAQL. Google exposes these only for accounts on monthly "
+			"invoicing; other accounts are Unsupported. Google exposes no amount due and no prepaid balance.",
+		),
 		"read_leads": Capability(False, reason="Google lead form leads arrive through the lead form webhook, not this connector."),
 		"pause_entity": Capability(False, reason="Release 2: runs only through an approved Action Request."),
 		"change_budget": Capability(False, reason="Release 2: runs only through an approved Action Request."),
@@ -445,17 +466,108 @@ class GoogleAdsProvider(AdsProvider):
 			"platform_status": raw_status,
 			"status": CUSTOMER_STATUS.get(raw_status, "Unknown"),
 			"disable_reason": CUSTOMER_STATUS_REASON.get(raw_status, ""),
-			# Billing is not read in release 1: "not available", never a zero balance.
-			"reported_amount_spent": None,
-			"reported_spend_cap": None,
-			"has_spend_cap": 0,
-			"reported_amount_due": None,
-			"billing_status": "Not Available",
+			# Billing figures (and can_billing) come from read_billing(), run by the structure sync.
 			"can_read": 1,
-			"can_billing": 0,
 			"can_write": 0,
 			"can_leads": 0,
 		}
+
+	def read_billing(self) -> dict:
+		"""billing_setup + the active account_budget, exactly as Google reports them (micros → units).
+
+		No rows = the account is not on monthly invoicing: Unsupported, never an error. A permission
+		error marks the figure Permission Missing; anything else but a token error marks it Error."""
+		from excom.excom_ads import billing as B
+
+		out = {"currency": self.currency, "errors": [], "raw": {}}
+		results = {}
+		for key, query in (("billing_setup", BILLING_SETUP_QUERY), ("account_budget", ACCOUNT_BUDGET_QUERY)):
+			try:
+				results[key] = [r.get(re.sub(r"_([a-z])", lambda m: m.group(1).upper(), key)) or {} for r in self._search(query)]
+			except AdsProviderError as e:
+				if e.error_class == TOKEN:
+					raise
+				results[key] = B.PERMISSION_MISSING if e.error_class == PERMISSION else B.ERROR
+				if results[key] == B.ERROR:
+					out["errors"].append(e)
+		setups, budgets = results["billing_setup"], results["account_budget"]
+		out["raw"] = {k: v for k, v in results.items() if isinstance(v, list)}
+		# A cancelled billing setup or budget is history: the account is invoiced only while one is live.
+		invoiced = (isinstance(setups, list) and any(x.get("status") in ("APPROVED", "APPROVED_HELD", "PENDING") for x in setups)) or (
+			isinstance(budgets, list) and any(x.get("status") in ("APPROVED", "PENDING") for x in budgets)
+		)
+
+		if isinstance(setups, str):
+			out["billing_setup_avail"] = setups
+		elif not setups:
+			out["billing_setup_avail"] = B.UNSUPPORTED
+		else:
+			active = [x for x in setups if x.get("status") in ("APPROVED", "APPROVED_HELD")]
+			out["reported_billing_setup_status"] = (active or setups)[0].get("status")
+			out["billing_setup_avail"] = B.AVAILABLE
+
+		headroom = {"basis": "Google account budget: adjusted spending limit − amount served", "limit": None, "used": None}
+		if isinstance(budgets, str):
+			out["account_budget_avail"] = budgets
+		elif not budgets:
+			out["account_budget_avail"] = B.UNSUPPORTED if not invoiced else B.NOT_SET
+		else:
+			b = self._active_budget(budgets)
+			if not b:
+				out["account_budget_avail"] = B.NOT_SET  # invoiced, but no budget is running now
+			else:
+				adjusted, approved = micros(b.get("adjustedSpendingLimitMicros")), micros(b.get("approvedSpendingLimitMicros"))
+				infinite = "INFINITE" in (b.get("adjustedSpendingLimitType"), b.get("approvedSpendingLimitType"))
+				out.update(
+					{
+						"account_budget_avail": B.AVAILABLE,
+						"reported_budget_id": str(b.get("id") or ""),
+						"reported_budget_name": b.get("name"),
+						"reported_budget_status": b.get("status"),
+						"reported_budget_start": b.get("approvedStartDateTime"),
+						"reported_budget_end": b.get("approvedEndDateTime") or b.get("approvedEndTimeType"),
+						"reported_approved_limit": approved,
+						"reported_adjusted_limit": adjusted,
+						"reported_amount_served": micros(b.get("amountServedMicros")),
+						"reported_total_adjustments": micros(b.get("totalAdjustmentsMicros")),
+					}
+				)
+				limit = None if infinite else (adjusted if adjusted is not None else approved)
+				headroom.update({"limit": limit, "used": micros(b.get("amountServedMicros")) or 0.0})
+				headroom["avail"] = B.AVAILABLE if limit is not None else B.NOT_SET
+		headroom.setdefault("avail", out["account_budget_avail"])
+		out["headroom"] = headroom
+		if invoiced:
+			out["payment_model"], out["payment_model_avail"] = "Monthly Invoicing", B.AVAILABLE
+		else:
+			out["payment_model"] = "Unknown"
+			failed = [v for v in (setups, budgets) if isinstance(v, str)]
+			out["payment_model_avail"] = failed[0] if failed else B.UNSUPPORTED
+		return out
+
+	def _active_budget(self, budgets: list[dict]) -> dict | None:
+		"""The APPROVED budget running now (Google allows one active budget per customer)."""
+		from datetime import datetime
+		from zoneinfo import ZoneInfo
+
+		try:
+			now = datetime.now(ZoneInfo(self.timezone)) if self.timezone else datetime.now()
+		except Exception:
+			now = datetime.now()
+		now_s = now.strftime("%Y-%m-%d %H:%M:%S")
+		running = []
+		for b in budgets:
+			if b.get("status") != "APPROVED":
+				continue
+			start = str(b.get("approvedStartDateTime") or "")
+			end = str(b.get("approvedEndDateTime") or "")
+			if start and start > now_s:
+				continue
+			if b.get("approvedEndTimeType") != "FOREVER" and end and end <= now_s:
+				continue
+			running.append(b)
+		running.sort(key=lambda b: str(b.get("approvedStartDateTime") or ""), reverse=True)
+		return running[0] if running else None
 
 	def list_campaigns(self) -> list[dict]:
 		out = []

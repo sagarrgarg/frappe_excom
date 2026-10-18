@@ -12,6 +12,27 @@ DEFAULTS = {
 	"max_pages_per_call": 200,
 	"alert_whatsapp_template": "",
 	"ctwa_create_lead": 1,
+	# Billing and budgets (billing.py, budgets.py)
+	"low_headroom_days": 3,
+	"cap_exhaustion_alerts": 1,
+	"billing_stale_hours": 6,
+	"overspend_threshold_pct": 15,
+	# Ad bills → Purchase Invoices (bills.py)
+	"bills_auto_submit": 0,
+	"bill_service_item": "",
+	"bill_naming_series": "ADB-.YY.-.#####",
+	"bill_return_naming_series": "ADR-.YY.-.#####",
+	"gstr2b_missing_after_days": 45,
+	"tds_certificate_alert_days": 15,
+	# GA4 web analytics (analytics.py)
+	"ga4_lookback_days": 2,
+	"ga4_settle_days": 14,
+	"ga4_backfill_days": 480,
+	"ga4_stale_hours": 36,
+	# Data quality (quality.py). spend_mismatch_pct is a Float: read it with flt().
+	"spend_mismatch_pct": 0.5,
+	"spend_mismatch_min_amount": 1,
+	"data_stale_hours": 6,
 }
 
 

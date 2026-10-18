@@ -176,27 +176,11 @@ def alert_counts(filters: dict | None = None) -> dict:
 
 
 def billing_summary(filters: dict | None = None) -> list[dict]:
-	"""What the platform reports, per account. Headroom only where a cap exists; nothing is estimated."""
-	permissions.require("view_finance")
-	out = []
-	for r in _accounts_in_scope(filters or {}, ["name", "account_name", "provider", "currency", "payment_model", "billing_status", "billing_reported_at", "reported_amount_spent", "reported_spend_cap", "has_spend_cap", "reported_amount_due"]):
-		reported = r.billing_status == "Reported"
-		out.append(
-			{
-				"account": r.name,
-				"account_name": r.account_name,
-				"provider": r.provider,
-				"currency": r.currency,
-				"payment_model": r.payment_model,
-				"billing_status": r.billing_status,
-				"as_of": r.billing_reported_at,
-				"amount_spent": flt(r.reported_amount_spent) if reported else None,
-				"spend_cap": flt(r.reported_spend_cap) if reported and r.has_spend_cap else None,
-				"headroom": (flt(r.reported_spend_cap) - flt(r.reported_amount_spent)) if reported and r.has_spend_cap else None,
-				"amount_due": flt(r.reported_amount_due) if reported else None,
-			}
-		)
-	return out
+	"""Per account: platform-reported figures, our calculations and the ledger estimate, each with
+	its availability (billing.summary). A figure that is not available is None, never 0."""
+	from excom.excom_ads import billing
+
+	return billing.summary(filters, with_ledger=False)
 
 
 # ─── campaign explorer ────────────────────────────────────────────────────────

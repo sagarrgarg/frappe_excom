@@ -116,6 +116,7 @@ class FakeGoogle:
 		self.last_headers = {}
 		self.last_claims = None
 		self.last_form = None
+		self.billing = {}  # resource -> rows; empty = the account is not on monthly invoicing
 
 	def __call__(self, method, url, headers=None, json_body=None, form=None, timeout=60):
 		self.calls.append((method, url))
@@ -169,6 +170,8 @@ class FakeGoogle:
 			return {"results": [{"campaign": {"id": c, "biddingStrategyType": bid, "advertisingChannelType": "VIDEO" if c == "104" else "SEARCH"}, "adGroup": g} for c, bid, g in AD_GROUPS]}
 		if resource == "ad_group_ad":
 			return {"results": [{"campaign": {"id": c, "advertisingChannelType": "VIDEO" if c == "104" else "SEARCH"}, "adGroup": {"id": g}, "adGroupAd": a} for c, g, a in ADS]}
+		if resource in ("billing_setup", "account_budget"):
+			return {"results": self.billing.get(resource, [])}
 		raise AssertionError(q)
 
 	def _metric_rows(self, resource, q, since, until):
@@ -235,7 +238,7 @@ class TestAdsGoogleSync(FrappeTestCase):
 	@classmethod
 	def _clean(cls):
 		frappe.set_user("Administrator")
-		for dt in ("Ads Metric Snapshot", "Ads Advertisement", "Ads Ad Group", "Ads Campaign", "Ads Sync Job", "Ads Alert"):
+		for dt in ("Ads Metric Snapshot", "Ads Advertisement", "Ads Ad Group", "Ads Campaign", "Ads Sync Job", "Ads Alert", "Ads Billing Snapshot"):
 			frappe.db.delete(dt, {"account": ACC})
 		frappe.db.delete("Ads Alert", {"reference_doctype": "Ads Connection", "reference_name": ["like", f"{P}%"]})
 		frappe.db.delete("Ads Account", {"name": ACC})
@@ -573,7 +576,7 @@ class TestAdsGoogleSync(FrappeTestCase):
 		acc.save(ignore_permissions=True)
 		with self.assertRaises(frappe.ValidationError):
 			frappe.get_doc({"doctype": "Ads Account", "account_name": f"{P} Wrong", "provider": "Meta", "external_id": "act_99901", "workspace": WS, "connection": CONN}).insert(ignore_permissions=True)
-		self.assertFalse(google_ads.GoogleAdsProvider.capability("read_billing").supported)
+		self.assertTrue(google_ads.GoogleAdsProvider.capability("read_billing").supported)
 		# A disabled connection stops its accounts' syncs with a clear reason, without a network call.
 		frappe.db.set_value("Ads Connection", CONN, "status", "Disabled")
 		try:

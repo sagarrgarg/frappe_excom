@@ -64,9 +64,10 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Provider",
-   "options": "Meta\nGoogle\nLinkedIn",
+   "options": "Meta\nGoogle\nLinkedIn\nManual",
    "reqd": 1,
-   "set_only_once": 1
+   "set_only_once": 1,
+   "description": "Manual: a network without a connector; figures come from Ads Metric Import (CSV / XLSX)."
   },
   {
    "description": "Meta: act_<id>. Google: customer ID without dashes. LinkedIn: sponsored account ID.",
@@ -365,7 +366,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-18 18:00:00.000000",
+ "modified": "2026-10-18 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom Ads",
  "name": "Ads Account",
