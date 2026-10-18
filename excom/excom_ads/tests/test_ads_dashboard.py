@@ -141,6 +141,14 @@ class TestAdsDashboard(FrappeTestCase):
 		self.assertIn(self.stale, [s["account"] for s in f["stale"]])
 		self.assertNotIn(self.acc, [s["account"] for s in f["stale"]])
 
+	def test_brand_filter_keeps_shared_accounts(self):
+		# Accounts carry no brand here (brand is per campaign): a brand cut must still report the
+		# freshness of the account that runs the brand's campaigns, not "never".
+		f = dashboard.freshness({"workspace": f"{P} WS", "brand": f"{P} Brand X"})
+		self.assertEqual(f["accounts"], 1)
+		self.assertIsNotNone(f["as_of"])
+		self.assertEqual([a["name"] for a in dashboard.accounts(workspace=f"{P} WS", brand=f"{P} Brand Y")], [self.acc])
+
 	def test_scope_and_access(self):
 		self._as(U_MKT)
 		self.assertEqual({a["name"] for a in dashboard.accounts()} & {self.acc, self.stale}, {self.acc, self.stale})

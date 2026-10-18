@@ -78,6 +78,13 @@ export function FreshnessBanner({ freshness }: { freshness: Freshness | undefine
   if (!freshness) return null;
   const { stale, errors, as_of, stale_after_hours } = freshness;
   if (!stale.length && !errors.length) {
+    if (!freshness.accounts) {
+      return (
+        <p className="flex items-center gap-1.5 text-xs text-ink-3">
+          <Info className="size-3.5" /> Sync times are not available for this view
+        </p>
+      );
+    }
     return (
       <p className="flex items-center gap-1.5 text-xs text-ink-3">
         <Info className="size-3.5" /> Data as of {ago(as_of)}

@@ -127,6 +127,8 @@ export interface AlertRow {
   company: string | null;
   brand: string | null;
   account: string | null;
+  reference_doctype?: string | null;
+  reference_name?: string | null;
   occurrences: number;
   first_seen: string;
   last_seen: string;

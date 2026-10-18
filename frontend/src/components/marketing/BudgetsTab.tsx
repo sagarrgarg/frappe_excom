@@ -126,7 +126,7 @@ export function BudgetsTab() {
           <table className="w-full text-sm min-w-[980px]">
             <thead className="bg-surface-sunken">
               <tr className="text-xs text-ink-3 text-left">
-                <th className="px-3 py-1.5">Month</th><th>Network</th>{d.by_brand && <th>Brand</th>}
+                <th className="px-3 py-1.5">Month</th><th className="pr-3">Network</th>{d.by_brand && <th className="pr-3">Brand</th>}
                 <th className="text-right">Planned</th><th className="text-right" title="Plan prorated to today for the month in progress">Plan to date</th><th className="text-right">Actual</th><th className="text-right">Variance</th><th className="text-right">Pacing</th>
                 <th className="text-right">Leads (actual / target)</th><th className="text-right">CPL (actual / target)</th><th className="text-right">Revenue (actual / target)</th><th className="text-right px-3">ROAS (actual / target)</th>
               </tr>
@@ -135,8 +135,8 @@ export function BudgetsTab() {
               {d.rows.map((r) => (
                 <tr key={`${r.month}-${r.provider}-${r.brand}-${r.currency}`} className="border-t border-border">
                   <td className="px-3 py-1.5 whitespace-nowrap">{monthLabel(r.month)}</td>
-                  <td className="text-ink-2">{r.provider}</td>
-                  {d.by_brand && <td className="truncate max-w-[160px]">{r.brand || <span className="text-ink-3" title="Spend no allocation rule matched">Unallocated</span>}</td>}
+                  <td className="text-ink-2 pr-3">{r.provider}</td>
+                  {d.by_brand && <td className="truncate max-w-[160px] pr-3">{r.brand || <span className="text-ink-3" title="Spend no allocation rule matched">Unallocated</span>}</td>}
                   <td className="text-right tabular-nums">{r.planned_spend === null ? <span className="text-ink-3" title="No approved plan line">Not planned</span> : money(r.planned_spend, r.currency)}</td>
                   <td className="text-right tabular-nums text-ink-2">{money(r.planned_to_date, r.currency)}</td>
                   <td className="text-right tabular-nums">{money(r.actual_spend, r.currency)}{r.spend_unconverted ? <span className="text-xs text-ink-3" title="Spend in another currency without an exchange rate"> +{num(r.spend_unconverted)}</span> : null}</td>
@@ -168,7 +168,7 @@ export function BudgetsTab() {
       )}
 
       <section className="rounded-lg border border-border p-3">
-        <div className="flex items-center justify-between mb-1">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 mb-1">
           <h2 className="text-sm text-ink-1">Plans</h2>
           <span className="text-xs text-ink-3">Approval is maker-checker: the approver needs Manage Budgets and must not have created or last edited the plan.</span>
         </div>

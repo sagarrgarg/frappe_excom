@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { BellOff, Check, CheckCheck, Loader2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { BellOff, Check, CheckCheck, ExternalLink, Loader2 } from "lucide-react";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { toast } from "sonner";
 import { useFrappeGetCall } from "@/lib/api";
+import { deskUrl } from "../../hooks/useRecordLinks";
 import { Badge, Button, EmptyState, SegmentedControl } from "../primitives";
 import { serverMessage } from "../admin/util";
 import { SEVERITY_ACCENT } from "./bits";
@@ -10,6 +11,13 @@ import { ago } from "./format";
 import type { AlertRow } from "./types";
 
 type View = "open" | "Resolved";
+// Worst first, so a Critical alert is never below a page of Info ones; the server's newest-first order breaks ties.
+const RANK: Record<AlertRow["severity"], number> = { Critical: 0, High: 1, Medium: 2, Info: 3 };
+
+function when(ts: string): string {
+  const d = new Date(ts.replace(" ", "T"));
+  return Number.isNaN(d.getTime()) ? ts : d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
 
 export function AlertsTab() {
   const [view, setView] = useState<View>("open");
@@ -17,7 +25,10 @@ export function AlertsTab() {
   const ack = useFrappePostCall("excom.excom_ads.api.acknowledge_alert");
   const snooze = useFrappePostCall("excom.excom_ads.api.snooze_alert");
   const resolve = useFrappePostCall("excom.excom_ads.api.resolve_alert");
-  const rows = data?.message ?? [];
+  const rows = useMemo(() => {
+    const list = data?.message ?? [];
+    return view === "open" ? [...list].sort((a, b) => RANK[a.severity] - RANK[b.severity]) : list;
+  }, [data, view]);
 
   const act = async (fn: (p: Record<string, unknown>) => Promise<unknown>, params: Record<string, unknown>, ok: string) => {
     try {
@@ -46,8 +57,13 @@ export function AlertsTab() {
                 {a.message && <p className="text-xs text-ink-2 whitespace-pre-line line-clamp-3">{a.message}</p>}
                 <p className="text-xs text-ink-3 mt-0.5">
                   {a.alert_type} · {a.status}{a.occurrences > 1 ? ` · seen ${a.occurrences} times` : ""} · last {ago(a.last_seen)}
-                  {a.snoozed_until ? ` · snoozed until ${a.snoozed_until}` : ""}{a.acknowledged_by ? ` · acknowledged by ${a.acknowledged_by}` : ""}{a.escalated ? ` · escalated ${ago(a.escalated_at)}` : ""}
+                  {a.snoozed_until ? ` · snoozed until ${when(a.snoozed_until)}` : ""}{a.acknowledged_by ? ` · acknowledged by ${a.acknowledged_by}` : ""}{a.escalated ? ` · escalated ${ago(a.escalated_at)}` : ""}
                 </p>
+                {a.reference_doctype && a.reference_name && (
+                  <a href={deskUrl(a.reference_doctype, a.reference_name)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-crayon-blue-text hover:underline mt-0.5">
+                    <ExternalLink className="size-3" />Open {a.reference_doctype.replace(/^Ads /, "").toLowerCase()}
+                  </a>
+                )}
               </div>
               {a.status !== "Resolved" && (
                 <div className="flex items-center gap-1 shrink-0">

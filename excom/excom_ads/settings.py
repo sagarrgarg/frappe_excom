@@ -38,6 +38,22 @@ DEFAULTS = {
 }
 
 
+# Counts where 0 would break a sync or an alert (no pages fetched, an empty window, alerting at once):
+# the form refuses 0 and a stored 0 reads as the default.
+POSITIVE = (
+	"settle_days",
+	"backfill_days",
+	"max_pages_per_call",
+	"billing_stale_hours",
+	"gstr2b_missing_after_days",
+	"tds_certificate_alert_days",
+	"ga4_settle_days",
+	"ga4_backfill_days",
+	"ga4_stale_hours",
+	"data_stale_hours",
+)
+
+
 def get_settings() -> frappe._dict:
 	out = frappe._dict(DEFAULTS)
 	if not frappe.db.exists("DocType", "Ads Settings"):
@@ -49,5 +65,8 @@ def get_settings() -> frappe._dict:
 		v = saved.get(k)
 		if v in (None, ""):
 			continue
-		out[k] = type(default)(v) if isinstance(default, int) else v
+		v = type(default)(v) if isinstance(default, int) else v
+		if k in POSITIVE and v < 1:
+			continue
+		out[k] = v
 	return out

@@ -165,10 +165,19 @@ def _data_quality(filters: dict, a, b) -> dict | None:
 
 
 def _accounts_in_scope(filters: dict, fields: list[str]) -> list[dict]:
-	f = {k: v for k, v in filters.items() if k in ("company", "workspace", "brand", "provider") and v}
+	f = {k: v for k, v in filters.items() if k in ("company", "workspace", "provider") and v}
 	if filters.get("account"):
 		f["name"] = filters["account"]
-	return frappe.get_list("Ads Account", filters=f, fields=fields, limit_page_length=0)
+	brand = filters.get("brand")
+	if not brand:
+		return frappe.get_list("Ads Account", filters=f, fields=fields, limit_page_length=0)
+	# Brand is allocated per campaign, so a shared account (no brand of its own) belongs to a brand cut
+	# when it runs one of the brand's campaigns. Both lists are read with the user's permissions.
+	camp_f = {k: v for k, v in f.items() if k != "name"}
+	if filters.get("account"):
+		camp_f["account"] = filters["account"]
+	accs = sorted(set(frappe.get_list("Ads Campaign", filters={**camp_f, "brand": brand}, pluck="account", limit_page_length=0)))
+	return frappe.get_list("Ads Account", filters=f, or_filters=[["brand", "=", brand], ["name", "in", accs or ["-"]]], fields=fields, limit_page_length=0)
 
 
 def freshness(filters: dict | None = None) -> dict:

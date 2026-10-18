@@ -127,3 +127,27 @@ class TestAdsHardening(FrappeTestCase):
 		row = frappe._dict(asset_id="act_3330003", asset_name="takeover", extra=json.dumps({}))
 		self.assertRaises(frappe.ValidationError, upsert_meta_ad_account, conn, row)
 		self.assertIsNone(frappe.db.get_value("Ads Account", acc.name, "meta_connection"))
+
+	def test_settings_form_shows_defaults_and_refuses_zero_counts(self):
+		# Once any Ads Settings field is saved, Frappe loads the rest as empty: the form must still show
+		# the defaults get_settings() uses, a save must not turn them into 0, and a stored 0 reads as default.
+		from excom.excom_ads.settings import get_settings
+
+		prior = frappe.db.sql("select field, value from `tabSingles` where doctype = 'Ads Settings'")
+		try:
+			frappe.db.sql("delete from `tabSingles` where doctype = 'Ads Settings'")
+			frappe.db.sql("insert into `tabSingles` (doctype, field, value) values ('Ads Settings', 'bills_auto_submit', '0'), ('Ads Settings', 'gstr2b_missing_after_days', '0')")
+			frappe.clear_document_cache("Ads Settings", "Ads Settings")
+			self.assertEqual(get_settings().gstr2b_missing_after_days, 45, "a stored 0 for a count reads as the default")
+			doc = frappe.get_doc("Ads Settings")
+			doc.run_method("onload")
+			self.assertEqual((doc.max_pages_per_call, doc.settle_days, doc.enabled), (200, 28, 1))
+			doc.max_pages_per_call = 0
+			self.assertRaises(frappe.ValidationError, doc.save, ignore_permissions=True)
+		finally:
+			frappe.db.rollback()
+			frappe.db.sql("delete from `tabSingles` where doctype = 'Ads Settings'")
+			for f, v in prior:
+				frappe.db.sql("insert into `tabSingles` (doctype, field, value) values ('Ads Settings', %s, %s)", (f, v))
+			frappe.db.commit()
+			frappe.clear_document_cache("Ads Settings", "Ads Settings")

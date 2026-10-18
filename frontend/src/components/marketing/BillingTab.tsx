@@ -164,6 +164,9 @@ function AccountCard({ a, ledgerLabel, canAdd }: { a: BillingDetail; ledgerLabel
               </>
             )}
             {led.warning && <dd className="col-span-2 text-crayon-amber-text">{led.warning}</dd>}
+            {led.balance !== null && led.balance < 0 && (
+              <dd className="col-span-2 text-crayon-amber-text">Spend since {led.since} is more than the recorded top-ups: a top-up is probably missing from the ledger. Check the balance in the ad manager and record it.</dd>
+            )}
           </dl>
         )}
       </section>

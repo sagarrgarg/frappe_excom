@@ -88,6 +88,9 @@ export function BillsTab() {
                   </ul>
                 )}
               </div>
+              {view === "open" && !b.can_approve && data?.message?.can_approve && b.purchase_invoice && (b.status === "Draft Created" || b.status === "Needs Review") && (
+                <span className="text-xs text-ink-3 shrink-0 max-w-[180px] text-right" title="Maker-checker: whoever typed or edited a bill cannot approve it">You prepared or edited this bill; another person approves it</span>
+              )}
               {view === "open" && b.can_approve && (
                 <Button size="sm" variant="ghost" disabled={busy === b.name} onClick={() => onApprove(b)}>
                   {busy === b.name ? <Loader2 className="animate-spin" /> : <CheckCheck />}Approve

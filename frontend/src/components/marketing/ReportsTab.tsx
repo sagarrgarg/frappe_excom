@@ -64,7 +64,9 @@ const STATUS_ACCENT: Record<Delivery["status"], Accent> = { Sent: "green", Skipp
 
 function schedule(t: ReportTemplate): string {
   if (!t.schedule_enabled) return "Not scheduled";
-  const at = (t.send_time ?? "").slice(0, 5);
+  // Frappe sends Time as "9:00:00" (no leading zero): keep hours and minutes, not the first 5 characters.
+  const [h, m] = (t.send_time ?? "").split(":");
+  const at = h ? `${h.padStart(2, "0")}:${(m ?? "00").padStart(2, "0")}` : "";
   if (t.frequency === "Weekly") return `Weekly, ${t.weekday} ${at}`;
   if (t.frequency === "Monthly") return `Monthly, day ${t.day_of_month} ${at}`;
   return `Daily ${at}`;

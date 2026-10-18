@@ -67,6 +67,8 @@ interface LeadsSummary {
 const PAGE = 50;
 const LIVE_MS = 30_000;
 const SLA_ACCENT: Record<SlaStatus, Accent> = { Met: "green", Missed: "amber", Breached: "rose", Pending: "blue", "No SLA": "neutral" };
+/** Ads Attribution Touch link_status, said in words ("Pending" alone reads like an SLA state). */
+const LINK_LABEL: Record<string, string> = { Pending: "Ad not synced yet", Partial: "Ad partly linked", "No Ad IDs": "No ad IDs" };
 
 /** Frappe sends naive site-time strings; read them as local and correct by the server clock offset. */
 function ts(v: string | null | undefined): number | null {
@@ -206,7 +208,7 @@ export function LeadsTab() {
       </div>
 
       {s && s.verified_available && s.totals && s.sla && (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-2">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-2">
           <Kpi label="Ad leads in ERPNext" value={num(s.totals.verified_leads)} source="Verified" sub={`${num(s.totals.organic)} organic · ${num(s.totals.unlinked)} not yet linked`} hint="ERPNext Leads with an ad touch, created in the range; test leads excluded" />
           <Kpi label="Leads reported by platforms" value={num(platformLeads)} source="Platform" hint="Sum of what the networks report for these campaigns. Never added to verified leads." />
           <Kpi label="SLA breached" value={num(s.sla.counts.Breached)} source="Verified" sub={`${num(s.sla.counts.Pending)} waiting · ${num(s.sla.counts.Missed)} answered late`} hint="First-response target of the lead's intake source" />
@@ -243,7 +245,7 @@ export function LeadsTab() {
                       <Sla r={r} offset={offset} now={now} />
                       {r.ads_is_test ? <Badge accent="amber">Test lead</Badge> : null}
                       {r.ads_is_organic ? <Badge accent="neutral">Organic</Badge> : null}
-                      {r.ads_link_status && r.ads_link_status !== "Linked" && <Badge accent="neutral" title="The ad is not linked to a synced campaign yet">{r.ads_link_status}</Badge>}
+                      {r.ads_link_status && r.ads_link_status !== "Linked" && r.ads_link_status !== "Organic" && <Badge accent="neutral" title="The ad is not linked to a synced campaign yet">{LINK_LABEL[r.ads_link_status] ?? r.ads_link_status}</Badge>}
                     </div>
                     <p className="text-xs text-ink-2 truncate" title={[r.ads_campaign_name, r.ads_ad_name].filter(Boolean).join(" · ")}>
                       {r.ads_provider ?? "Ad"} {r.ads_touch_source ? `· ${r.ads_touch_source}` : ""} · {r.ads_campaign_name ?? "campaign not known yet"}{r.ads_ad_name ? ` · ${r.ads_ad_name}` : ""}

@@ -224,7 +224,11 @@ class TestAdsBills(FrappeTestCase):
 		if not cls._cover_fiscal_year():
 			cls.skip_reason = f"no Fiscal Year covers {BILL_DATE}"
 			return
-		cls.prior_settings = {k: frappe.db.get_single_value("Ads Settings", k) for k in ("bills_auto_submit", "bill_naming_series", "bill_return_naming_series", "bill_service_item", "gstr2b_missing_after_days")}
+		# Raw rows, not get_single_value: a field never saved must stay unsaved (its default applies),
+		# not come back as 0 or "" after the run.
+		keys = ("bills_auto_submit", "bill_naming_series", "bill_return_naming_series", "bill_service_item", "gstr2b_missing_after_days")
+		cls.prior_settings = {k: None for k in keys}
+		cls.prior_settings.update(dict(frappe.db.sql("select field, value from `tabSingles` where doctype = 'Ads Settings' and field in %s", [keys])))
 		ins = lambda d: frappe.get_doc(d).insert(ignore_permissions=True)
 		ins({"doctype": "Ads Workspace", "workspace_name": WS_A, "company": cls.company})
 		ins({"doctype": "Ads Workspace", "workspace_name": WS_B, "company": COMPANY_B})
@@ -315,7 +319,10 @@ class TestAdsBills(FrappeTestCase):
 		frappe.set_user("Administrator")
 		if getattr(cls, "skip_reason", None) is None and hasattr(cls, "prior_settings"):
 			for k, v in cls.prior_settings.items():
-				frappe.db.set_single_value("Ads Settings", k, v)
+				frappe.db.sql("delete from `tabSingles` where doctype = 'Ads Settings' and field = %s", k)
+				if v is not None:
+					frappe.db.sql("insert into `tabSingles` (doctype, field, value) values ('Ads Settings', %s, %s)", (k, v))
+			frappe.clear_document_cache("Ads Settings", "Ads Settings")
 			cls._clean()
 		for module, attr, value in getattr(cls, "_restore", []):
 			setattr(module, attr, value)
@@ -765,7 +772,7 @@ class TestAdsBills(FrappeTestCase):
 		gis = lambda **kw: frappe.get_doc({"doctype": "GST Inward Supply", "company": self.company, "company_gstin": GSTIN_HR, "supplier_gstin": GSTIN_FB, "supplier_name": "FB India", "doc_type": "Invoice", "classification": "B2B", "is_downloaded_from_2b": 1, "return_period_2b": "102026", "bill_date": BILL_DATE, "document_value": 1180, **kw}).insert(ignore_permissions=True)
 		gis(bill_no="3199000021", link_doctype="Purchase Invoice", link_name=frappe.db.get_value("Ads Bill Document", matched.name, "purchase_invoice"), match_status="Exact Match")
 		orphan = gis(bill_no="3199099999")
-		frappe.db.set_single_value("Ads Settings", "gstr2b_missing_after_days", 0)
+		frappe.db.set_single_value("Ads Settings", "gstr2b_missing_after_days", 1)  # BILL_DATE is past; 0 reads as the default
 		try:
 			out = bills.check_gstr2b()
 		finally:

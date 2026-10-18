@@ -181,7 +181,13 @@ def google_section(companies) -> dict:
 			never = c.token_status in (None, "", "Not Checked")
 			status = "error" if bad else "warn" if never else "ok"
 			detail = f"{c.token_status or 'Not checked'}; last OK {_age(c.last_ok_at)}; {cint(c.accessible_accounts)} accessible accounts" + (f"; manager {c.login_customer_id}" if c.login_customer_id else "")
-			items.append(_item(f"google:{c.name}", label, status, detail, (c.last_error or "")[:300] if bad else ("Run Test to check the credential." if never else ""), get_url_to_form("Ads Connection", c.name), action={"method": "excom.excom_ads.api_google.test_connection", "args": {"connection": c.name}, "label": "Test"}))
+			# Only offer Test to people who may run it (api_google needs write on the Ads Connection).
+			can_test = frappe.has_permission("Ads Connection", "write", doc=c.name)
+			hint = (c.last_error or "")[:300] if bad else ("Run Test to check the credential." if never else "")
+			if not can_test and (bad or never):
+				hint = (hint + " " if hint else "") + "An Excom Admin runs Test on this connection."
+			action = {"method": "excom.excom_ads.api_google.test_connection", "args": {"connection": c.name}, "label": "Test"} if can_test else None
+			items.append(_item(f"google:{c.name}", label, status, detail, hint, get_url_to_form("Ads Connection", c.name), action=action))
 	if _exists("Ads Analytics Property"):
 		props = frappe.get_list("Ads Analytics Property", fields=["name", "property_name", "sync_enabled", "last_status", "last_success_at", "error_class", "last_error", "tokens_day_remaining"], limit_page_length=0)
 		if not props:

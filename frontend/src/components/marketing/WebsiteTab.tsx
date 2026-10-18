@@ -28,7 +28,7 @@ function label(r: WebRow, g: WebGroup): string {
 function Tiles({ t, note }: { t: WebMetrics; note?: string }) {
   const c = t.currency ?? undefined;
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-2">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-2">
       <Kpi source="Analytics" label="Sessions" value={num(t.sessions)} sub={`New users ${num(t.new_users)}`} />
       <Kpi source="Analytics" label="Engaged sessions" value={num(t.engaged_sessions)} sub={`Engagement ${pct(t.engagement_rate)}`} hint="Sessions over 10 s, with a key event, or with 2+ page views" />
       <Kpi source="Analytics" label="Key events" value={num(t.key_events)} sub={t.key_events_per_session !== null ? `${t.key_events_per_session.toFixed(2)} per session` : undefined} hint="Events marked as key events in GA4 (formerly 'conversions')" />
@@ -101,11 +101,13 @@ export function WebsiteTab() {
               <LineChart data={series} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke={T.grid} strokeDasharray="3 3" />
                 <XAxis dataKey="date" tick={T.tick} />
-                <YAxis tick={T.tick} width={50} tickFormatter={(v) => num(v)} />
+                <YAxis yAxisId="sessions" tick={T.tick} width={50} tickFormatter={(v) => num(v)} />
+                {/* Key events are ~1-3% of sessions: on the sessions axis they would be a flat line at zero. */}
+                <YAxis yAxisId="key" orientation="right" tick={T.tick} width={40} tickFormatter={(v) => num(v)} />
                 <Tooltip contentStyle={T.tooltip} formatter={(v, n) => [num(Number(v)), n === "sessions" ? "Sessions" : "Key events"]} />
-                <Legend formatter={(n) => (n === "sessions" ? "Sessions" : "Key events")} />
-                <Line type="monotone" dataKey="sessions" stroke={T.byName.blue} strokeWidth={T.strokeWidth} dot={false} />
-                <Line type="monotone" dataKey="key" stroke={T.byName.green} strokeWidth={T.strokeWidth} dot={false} />
+                <Legend formatter={(n) => (n === "sessions" ? "Sessions (left axis)" : "Key events (right axis)")} />
+                <Line yAxisId="sessions" type="monotone" dataKey="sessions" stroke={T.byName.blue} strokeWidth={T.strokeWidth} dot={false} />
+                <Line yAxisId="key" type="monotone" dataKey="key" stroke={T.byName.green} strokeWidth={T.strokeWidth} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>

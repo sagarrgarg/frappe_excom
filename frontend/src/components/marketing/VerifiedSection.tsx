@@ -68,7 +68,7 @@ export function VerifiedSection({ verified }: { verified: VerifiedBlock | null |
           <table className="w-full text-sm min-w-[620px]">
             <thead>
               <tr className="text-xs text-ink-3 text-left bg-surface-sunken">
-                <th className="py-1 px-3">Campaign</th><th className="text-right">Leads</th><th className="text-right">Qualified</th><th className="text-right">Opps</th><th className="text-right">Orders</th>
+                <th className="py-1 px-3">Campaign</th><th className="text-right">Leads</th><th className="text-right">Qualified</th><th className="text-right">Opps</th><th className={finance ? "text-right" : "text-right px-3"}>Orders</th>
                 {finance && <th className="text-right px-3">Net revenue</th>}
               </tr>
             </thead>
@@ -79,7 +79,7 @@ export function VerifiedSection({ verified }: { verified: VerifiedBlock | null |
                   <td className="text-right tabular-nums">{num(r.leads)}</td>
                   <td className="text-right tabular-nums">{num(r.qualified)}</td>
                   <td className="text-right tabular-nums">{num(r.opportunities)}</td>
-                  <td className="text-right tabular-nums">{num(r.orders)}</td>
+                  <td className={finance ? "text-right tabular-nums" : "text-right tabular-nums px-3"}>{num(r.orders)}</td>
                   {finance && <td className="text-right tabular-nums px-3">{money(r.revenue, r.currency)}</td>}
                 </tr>
               ))}
