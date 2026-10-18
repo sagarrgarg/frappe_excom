@@ -59,7 +59,7 @@ export function AccountsTab() {
               <>
                 <dt className="text-ink-3">Billing</dt>
                 <dd className="text-ink-2">
-                  {a.billing.billing_status !== "Reported" ? `Not available (${a.billing.billing_status})` : (
+                  {a.billing.billing_status !== "Reported" ? (a.billing.billing_status === "Not Available" ? "Not reported by this platform" : `Not available (${a.billing.billing_status.toLowerCase()})`) : (
                     <>Due {money(a.billing.amount_due, a.currency)} · {a.billing.spend_cap === null ? "no account cap" : `headroom ${money(a.billing.headroom, a.currency)} of ${money(a.billing.spend_cap, a.currency)}`}</>
                   )}
                 </dd>

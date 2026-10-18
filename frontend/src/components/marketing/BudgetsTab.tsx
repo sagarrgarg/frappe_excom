@@ -15,7 +15,7 @@ const PLAN_ACCENT: Record<BudgetPlanRow["status"], Accent> = { Draft: "amber", A
 
 function monthLabel(m: string): string {
   const [y, mo] = m.split("-").map(Number);
-  return new Date(y, mo - 1, 1).toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+  return new Date(y, mo - 1, 1).toLocaleDateString("en-IN", { month: "short", year: "numeric" });
 }
 
 /** Variance vs plan: over plan is bad for spend. Null when either side is missing. */

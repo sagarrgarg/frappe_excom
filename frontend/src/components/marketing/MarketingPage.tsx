@@ -39,6 +39,8 @@ const DATED: Tab[] = ["overview", "campaigns", "leads", "website", "budgets"];
 const FINANCE: Tab[] = ["billing", "bills"];
 // Connection health is for people who run the connections.
 const ADMIN: Tab[] = ["connections"];
+// Screens that ignore the filter bar don't show it.
+const UNFILTERED: Tab[] = ["connections", "alerts", "reports"];
 
 /** /marketing/:tab — the Marketing OS inside Excom. Filters live in the query string. */
 export function MarketingPage() {
@@ -61,7 +63,7 @@ export function MarketingPage() {
           <div className="min-w-0 max-w-full overflow-x-auto">
             <SegmentedControl<Tab> value={tab} onChange={(t) => navigate(`/marketing/${t}?${params.toString()}`)} segments={tabs.map((t) => ({ value: t.value, label: t.label }))} ariaLabel="Marketing sections" />
           </div>
-          <div className="ml-auto min-w-0"><FilterBar showDates={DATED.includes(tab)} /></div>
+          {!UNFILTERED.includes(tab) && <div className="ml-auto min-w-0"><FilterBar showDates={DATED.includes(tab)} /></div>}
         </div>
       }
     >

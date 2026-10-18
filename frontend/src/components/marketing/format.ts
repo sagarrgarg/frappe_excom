@@ -12,7 +12,9 @@ export function money(v: number | null | undefined, currency?: string | null, co
 
 export function num(v: number | null | undefined, compact = true): string {
   if (v === null || v === undefined || Number.isNaN(v)) return NA;
-  return new Intl.NumberFormat("en-IN", { notation: compact && Math.abs(v) >= 10000 ? "compact" : "standard", maximumFractionDigits: Number.isInteger(v) ? 0 : 1 }).format(v);
+  const short = compact && Math.abs(v) >= 10000;
+  // Compact numbers keep one decimal (1.5L, 2.3L), or neighbouring axis ticks read the same.
+  return new Intl.NumberFormat("en-IN", { notation: short ? "compact" : "standard", maximumFractionDigits: short || !Number.isInteger(v) ? 1 : 0 }).format(v);
 }
 
 export function pct(v: number | null | undefined): string {

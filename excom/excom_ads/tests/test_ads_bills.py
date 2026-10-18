@@ -353,6 +353,11 @@ class TestAdsBills(FrappeTestCase):
 		refs = docs + maps + logs + srcs
 		frappe.db.delete("Ads Alert", {"reference_name": ["in", refs or ["-"]]})
 		frappe.db.delete("Ads Alert", {"dedupe_key": ["like", "2b-orphan:QA%"]})
+		# Orphan-bill alerts are keyed by the GST Inward Supply name (a hash): drop any whose 2B row is gone,
+		# so a run that stopped half-way leaves nothing behind either.
+		for a in frappe.get_all("Ads Alert", filters={"dedupe_key": ["like", "2b-orphan:%"]}, fields=["name", "dedupe_key"]):
+			if not frappe.db.exists("GST Inward Supply", a.dedupe_key.split(":", 1)[1]):
+				frappe.db.delete("Ads Alert", {"name": a.name})
 		frappe.db.delete("Ads Alert", {"title": ["like", f"%{P}%"]})
 		frappe.db.delete("File", {"attached_to_doctype": "Ads Bill Document", "attached_to_name": ["in", docs or ["-"]]})
 		frappe.db.delete("Ads Bill Document Line", {"parent": ["in", docs or ["-"]]})

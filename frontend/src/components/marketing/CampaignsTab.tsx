@@ -21,6 +21,11 @@ const SORTS = [
   { value: "purchase_value", label: "Purchase value" },
   { value: "title", label: "Name" },
 ];
+/** OUTCOME_LEADS → "Leads", PERFORMANCE_MAX → "Performance max"; the raw value stays in the tooltip. */
+function objective(raw: string): string {
+  const t = raw.replace(/^OUTCOME_/, "").replace(/_/g, " ").toLowerCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
 const COLS = "grid-cols-[minmax(0,2.4fr)_minmax(0,0.9fr)_repeat(7,minmax(0,0.8fr))]";
 
 function Cells({ r }: { r: ExplorerRow }) {
@@ -78,7 +83,7 @@ function Level({ level, parent, depth, query }: { level: Level; parent?: string;
                 </button>
               ) : <span className="w-4 shrink-0" />}
               <span className="truncate" title={`${r.title} · ${r.provider} ${r.external_id}${r.not_returned_since ? " · no longer returned by the platform" : ""}`}>{r.title}</span>
-              {r.objective && <span className="text-xs text-ink-3 truncate hidden laptop:inline">{r.objective}</span>}
+              {r.objective && <span className="text-xs text-ink-3 truncate hidden laptop:inline" title={r.objective}>{objective(r.objective)}</span>}
             </div>
             <span className="min-w-0"><StatusBadge status={r.status} /></span>
             <Cells r={r} />

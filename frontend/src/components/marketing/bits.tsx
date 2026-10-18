@@ -61,7 +61,7 @@ export function Kpi({ label, value, sub, delta, goodWhenUp, source = "Platform",
   return (
     <div className="rounded-lg border border-border bg-surface p-3 min-w-0" title={hint}>
       <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
-        <span className="text-xs text-ink-3 truncate">{label}</span>
+        <span className="text-xs text-ink-3 truncate" title={label}>{label}</span>
         <SourceBadge source={source} />
       </div>
       <div className="flex items-baseline gap-2 min-w-0">

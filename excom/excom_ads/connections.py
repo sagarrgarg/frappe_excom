@@ -230,10 +230,11 @@ def sources_section(companies) -> dict:
 		return _section("sources", "Lead sources", items)
 	rows = frappe.get_all("Excom Source", filters={"enabled": 1, **_company_filter(companies)}, fields=["name", "source_name", "source_type", "mode", "last_success_at", "form_id", "google_webhook_url"])
 	# Manual sources are attribution labels for leads typed in by people, not feeds: one line for all.
-	manual = [r for r in rows if r.source_type in ("Manual", "Exhibition")]
-	rows = [r for r in rows if r.source_type not in ("Manual", "Exhibition")]
+	labels = ("Manual", "Exhibition", "Channel")
+	manual = [r for r in rows if r.source_type in labels]
+	rows = [r for r in rows if r.source_type not in labels]
 	if manual:
-		items.append(_item("sources:manual", f"{len(manual)} manual / exhibition labels", "ok", "Used to tag leads entered by hand; nothing to connect.", link="/excom/admin/intake"))
+		items.append(_item("sources:manual", f"{len(manual)} attribution labels (manual, exhibition, organic channels)", "ok", "Used to tag leads that arrive by hand or through Excom's own channels; nothing to connect.", link="/excom/admin/intake"))
 	if not rows and not manual:
 		items.append(_item("sources:none", "No lead sources enabled", "off", hint="Enable Meta lead forms from Meta Discover, or add sources under Admin → Sources.", link="/excom/admin/intake"))
 	since = add_days(now_datetime(), -7)
