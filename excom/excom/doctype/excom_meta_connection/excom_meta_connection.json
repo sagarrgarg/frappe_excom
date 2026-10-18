@@ -87,6 +87,25 @@
    "read_only": 1
   },
   {
+   "fieldname": "token_expires_at",
+   "fieldtype": "Datetime",
+   "label": "Token Expires At",
+   "read_only": 1,
+   "description": "Empty = never expires (system-user token)."
+  },
+  {
+   "fieldname": "data_access_expires_at",
+   "fieldtype": "Datetime",
+   "label": "Data Access Expires At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "token_checked_at",
+   "fieldtype": "Datetime",
+   "label": "Token Checked At",
+   "read_only": 1
+  },
+  {
    "fieldname": "last_synced_at",
    "fieldtype": "Datetime",
    "label": "Last Discovery",
@@ -119,6 +138,9 @@
   "cb_2",
   "token_scopes",
   "token_valid",
+  "token_expires_at",
+  "data_access_expires_at",
+  "token_checked_at",
   "last_synced_at",
   "sec_assets",
   "assets"
@@ -126,7 +148,7 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "creation": "2026-09-03 00:00:00",
- "modified": "2026-09-03 00:00:00",
+ "modified": "2026-10-18 18:30:00.000000",
  "owner": "Administrator",
  "modified_by": "Administrator",
  "idx": 0,

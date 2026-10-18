@@ -26,6 +26,8 @@ export interface Freshness {
   errors: { account: string; account_name: string; error_class: string }[];
   accounts: number;
   stale_after_hours: number;
+  /** Manual (imported) accounts: as fresh as their last import, not judged by the sync clock. */
+  manual?: { account: string; account_name: string; last_import: string | null }[];
 }
 
 export interface BillingRow {
@@ -56,6 +58,9 @@ export interface Overview {
   freshness: Freshness;
   alerts: Record<string, number>;
   billing: BillingRow[] | null;
+  /** ERPNext / CRM results for the same view. Never added to the platform figures above. */
+  verified?: VerifiedBlock | null;
+  data_quality?: DataQuality | null;
 }
 
 export interface ExplorerRow {
@@ -76,6 +81,8 @@ export interface ExplorerRow {
   creative_name?: string | null;
   currency?: string | null;
   metrics: Metrics | null;
+  /** Present when the explorer is asked with_verified=1 (Campaign level). */
+  verified?: VerifiedFigures | null;
 }
 
 export interface Explorer {
@@ -125,6 +132,8 @@ export interface AlertRow {
   last_seen: string;
   snoozed_until: string | null;
   acknowledged_by: string | null;
+  escalated?: number;
+  escalated_at?: string | null;
 }
 
 export interface SyncJobRow {
@@ -150,6 +159,7 @@ export interface FilterOptions {
   accounts: { name: string; account_name: string; provider: string; workspace: string; brand: string | null }[];
   providers: string[];
   rights: Record<string, boolean>;
+  analytics_properties?: { name: string; property_name: string }[];
 }
 
 /** excom.excom_ads.billing — every figure carries its availability; value is null unless Available or Stale. */
@@ -288,4 +298,111 @@ export interface BudgetPlans {
   plans: BudgetPlanRow[];
   can_manage: boolean;
   can_create: boolean;
+}
+
+/** excom.excom_ads.verified — null = not available to this user (no ERPNext read permission / no finance right), never 0. */
+export interface VerifiedFigures {
+  leads: number | null;
+  qualified: number | null;
+  opportunities: number | null;
+  orders: number | null;
+  invoices: number | null;
+  new_customers: number | null;
+  order_value: number | null;
+  revenue: number | null;
+  gross_revenue: number | null;
+  returns: number | null;
+  qualified_rate?: number | null;
+}
+
+export interface VerifiedTotals extends VerifiedFigures {
+  currency: string | null;
+  /** Platform-reported spend of the same view, used only for the two labelled ratios. */
+  platform_spend: number | null;
+  verified_cpl: number | null;
+  cost_per_qualified: number | null;
+  mer: number | null;
+}
+
+export interface VerifiedBlock {
+  source: "Verified";
+  error?: string;
+  from_date?: string;
+  to_date?: string;
+  available?: { leads: boolean; opportunities: boolean; orders: boolean; revenue: boolean };
+  totals?: VerifiedTotals[];
+  rules_used?: Record<string, number>;
+  unattributed?: (VerifiedFigures & { currency: string | null })[] | null;
+  leads_unlinked?: number | null;
+  by_campaign?: (VerifiedTotals & { campaign: string; campaign_name: string | null; brand: string | null; provider: string | null })[];
+  by_brand?: (VerifiedFigures & { brand: string; currency: string | null })[];
+  series?: (VerifiedFigures & { date: string; currency: string | null })[];
+}
+
+export interface DataQuality {
+  threshold_pct: number;
+  min_amount: number;
+  stale_after_hours: number;
+  /** null = not shown at brand scope (account-level totals are not visible there). */
+  spend_mismatch: { account: string; account_name: string | null; days: number; dates: string[]; worst: { date: string; account_spend: number | null; campaign_spend: number | null; gap: number; currency: string | null } }[] | null;
+}
+
+/** excom.excom_ads.analytics.web_report — GA4, source "Analytics": never Verified, never platform ad figures. */
+export interface WebMetrics {
+  currency?: string | null;
+  sessions: number;
+  total_users: number;
+  new_users: number;
+  engaged_sessions: number;
+  key_events: number;
+  transactions: number;
+  purchase_revenue: number;
+  engagement_rate: number | null;
+  key_events_per_session: number | null;
+  transactions_per_session: number | null;
+  revenue_per_session: number | null;
+}
+
+export interface WebProperty {
+  name: string;
+  property_name: string;
+  property_id: string;
+  website: string | null;
+  currency: string | null;
+  time_zone: string | null;
+  sync_enabled: number;
+  last_success_at: string | null;
+  last_status: string | null;
+  error_class: string | null;
+  last_error: string | null;
+  synced_from: string | null;
+  synced_until: string | null;
+  data_loss_other_row: number;
+  subject_to_thresholding: number;
+}
+
+export type WebGroup = "source_medium" | "campaign" | "landing_page" | "date";
+
+export interface WebRow extends WebMetrics {
+  session_source?: string | null;
+  session_medium?: string | null;
+  session_campaign_name?: string | null;
+  session_campaign_id?: string | null;
+  campaign?: string | null;
+  campaign_title?: string | null;
+  landing_page?: string | null;
+  date?: string;
+}
+
+export interface WebReport {
+  source: "Analytics";
+  from_date: string;
+  to_date: string;
+  group_by: WebGroup;
+  properties: WebProperty[];
+  totals: WebMetrics[];
+  series: (WebMetrics & { date: string })[];
+  rows: WebRow[];
+  total_rows: number;
+  users_note?: string;
 }

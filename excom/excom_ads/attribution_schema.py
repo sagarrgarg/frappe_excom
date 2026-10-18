@@ -64,6 +64,9 @@ INDEXES = {
 	"Ads Ad Group": [("ads_ad_group_external_id", ["external_id"])],
 	"Ads Advertisement": [("ads_advertisement_external_id", ["external_id"])],
 	"Ads Attribution Touch": [("ads_touch_relink", ["link_status", "touch_at"])],
+	# verified.py: leads / opportunities per campaign and day, and "did this lead reach an opportunity".
+	gw.LEAD: [("ads_lead_campaign_created", ["ads_campaign", "creation"])],
+	gw.OPPORTUNITY: [("ads_opp_campaign_created", ["ads_campaign", "creation"]), ("ads_opp_party_name", ["party_name"])],
 }
 
 

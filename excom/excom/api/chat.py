@@ -2050,6 +2050,11 @@ def _header_media(account, file_url: str) -> dict:
         try:
             return media_reference(account, file_url)
         except Exception:
+            # A link fallback would publish a private file (an invoice, a report) to the whole internet
+            # so Meta can fetch it. Only public files may fall back to a link.
+            if "/private/" in (file_url or ""):
+                frappe.log_error(title="Excom: header media upload failed for a private file; not published", message=frappe.get_traceback())
+                frappe.throw(_("Could not upload the attachment to WhatsApp. Private files are never made public; try again later."))
             frappe.log_error(title="Excom: header media upload failed, falling back to link", message=frappe.get_traceback())
     return {"link": _to_absolute_url(file_url)}
 

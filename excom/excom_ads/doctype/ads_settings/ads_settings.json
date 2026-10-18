@@ -42,7 +42,9 @@
   "spend_mismatch_pct",
   "spend_mismatch_min_amount",
   "cb_quality",
-  "data_stale_hours"
+  "data_stale_hours",
+  "sb_reports",
+  "report_whatsapp_template"
  ],
  "fields": [
   {
@@ -327,6 +329,20 @@
    "non_negative": 1,
    "description": "An enabled connected account whose last metrics sync is older raises a Data Stale alert.",
    "idx": 38
+  },
+  {
+   "fieldname": "sb_reports",
+   "fieldtype": "Section Break",
+   "label": "Reports",
+   "idx": 39
+  },
+  {
+   "fieldname": "report_whatsapp_template",
+   "fieldtype": "Link",
+   "label": "Report WhatsApp Template",
+   "options": "WhatsApp Templates",
+   "description": "Approved template for scheduled reports on WhatsApp. Body variables: report name, period, summary. A DOCUMENT header carries the Excel file. Empty: reports go by email only.",
+   "idx": 40
   }
  ],
  "index_web_pages_for_search": 0,

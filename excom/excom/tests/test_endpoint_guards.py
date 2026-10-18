@@ -21,7 +21,7 @@ GUARDS = {
 	# Voice webhooks: verifies the provider's HMAC signature and returns the line it belongs to.
 	"_verified_account",
 	# Excom Ads: scope (company / workspace / brand / account) and per-user rights.
-	"require_access", "require", "_visible", "_require_connection",
+	"require_access", "require", "_visible", "_require_connection", "_require_import",
 }
 # Public by design. Each line says why it is safe to leave open.
 ALLOWED = {

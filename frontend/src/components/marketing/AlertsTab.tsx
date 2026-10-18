@@ -46,7 +46,7 @@ export function AlertsTab() {
                 {a.message && <p className="text-xs text-ink-2 whitespace-pre-line line-clamp-3">{a.message}</p>}
                 <p className="text-xs text-ink-3 mt-0.5">
                   {a.alert_type} · {a.status}{a.occurrences > 1 ? ` · seen ${a.occurrences} times` : ""} · last {ago(a.last_seen)}
-                  {a.snoozed_until ? ` · snoozed until ${a.snoozed_until}` : ""}{a.acknowledged_by ? ` · acknowledged by ${a.acknowledged_by}` : ""}
+                  {a.snoozed_until ? ` · snoozed until ${a.snoozed_until}` : ""}{a.acknowledged_by ? ` · acknowledged by ${a.acknowledged_by}` : ""}{a.escalated ? ` · escalated ${ago(a.escalated_at)}` : ""}
                 </p>
               </div>
               {a.status !== "Resolved" && (

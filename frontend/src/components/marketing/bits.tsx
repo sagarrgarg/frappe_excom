@@ -28,10 +28,17 @@ export function StatusBadge({ status }: { status: string | null | undefined }) {
   return <Badge accent={STATUS_ACCENT[status ?? ""] ?? "neutral"}>{status || "Unknown"}</Badge>;
 }
 
-/** Where a number comes from. Platform and Verified figures are never added together. */
-export function SourceBadge({ source }: { source: "Platform" | "Verified" }) {
+/** Where a number comes from. Platform, Verified and Analytics figures are never added together. */
+export type Source = "Platform" | "Verified" | "Analytics";
+const SOURCE_STYLE: Record<Source, { title: string; cls: string }> = {
+  Platform: { title: "As reported by the ad platform, under its own attribution", cls: "border-crayon-blue-base/40 text-crayon-blue-text" },
+  Verified: { title: "Computed from ERPNext and CRM records", cls: "border-crayon-green-base/40 text-crayon-green-text" },
+  Analytics: { title: "Measured by Google Analytics on the website, under its own session attribution", cls: "border-crayon-violet-base/40 text-crayon-violet-text" },
+};
+
+export function SourceBadge({ source }: { source: Source }) {
   return (
-    <span title={source === "Platform" ? "As reported by the ad platform, under its own attribution" : "Computed from ERPNext and CRM records"} className={cn("text-xs px-1.5 rounded border", source === "Platform" ? "border-crayon-blue-base/40 text-crayon-blue-text" : "border-crayon-green-base/40 text-crayon-green-text")}>
+    <span title={SOURCE_STYLE[source].title} className={cn("text-xs px-1.5 rounded border", SOURCE_STYLE[source].cls)}>
       {source}
     </span>
   );
@@ -50,7 +57,7 @@ export function Delta({ value, goodWhenUp = true }: { value: number | null; good
   );
 }
 
-export function Kpi({ label, value, sub, delta, goodWhenUp, source = "Platform", hint }: { label: string; value: string; sub?: React.ReactNode; delta?: number | null; goodWhenUp?: boolean; source?: "Platform" | "Verified"; hint?: string }) {
+export function Kpi({ label, value, sub, delta, goodWhenUp, source = "Platform", hint }: { label: string; value: string; sub?: React.ReactNode; delta?: number | null; goodWhenUp?: boolean; source?: Source; hint?: string }) {
   return (
     <div className="rounded-lg border border-border bg-surface p-3 min-w-0" title={hint}>
       <div className="flex items-center justify-between gap-2 mb-1 min-w-0">

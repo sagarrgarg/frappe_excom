@@ -33,6 +33,8 @@ DEFAULTS = {
 	"spend_mismatch_pct": 0.5,
 	"spend_mismatch_min_amount": 1,
 	"data_stale_hours": 6,
+	# Scheduled reports (reports.py): approved WhatsApp template; empty = email only.
+	"report_whatsapp_template": "",
 }
 
 

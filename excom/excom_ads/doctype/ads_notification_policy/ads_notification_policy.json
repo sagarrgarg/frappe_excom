@@ -18,7 +18,10 @@
   "quiet_from",
   "quiet_to",
   "sb_rec",
-  "recipients"
+  "recipients",
+  "sb_escalation",
+  "escalate_after_minutes",
+  "escalation_recipients"
  ],
  "fields": [
   {
@@ -115,11 +118,35 @@
    "label": "Recipients",
    "options": "Ads Notification Recipient",
    "reqd": 1
+  },
+  {
+   "fieldname": "sb_escalation",
+   "fieldtype": "Section Break",
+   "label": "Escalation",
+   "description": "An alert still Open (nobody acknowledged, snoozed or resolved it) this many minutes after it was notified goes once to the people below, on this policy's channels. Quiet hours apply except to Critical alerts; each person still only hears about alerts inside their own scope.",
+   "idx": 14
+  },
+  {
+   "fieldname": "escalate_after_minutes",
+   "fieldtype": "Int",
+   "label": "Escalate After (minutes)",
+   "default": "0",
+   "description": "0 = never escalate.",
+   "idx": 15
+  },
+  {
+   "fieldname": "escalation_recipients",
+   "fieldtype": "Table",
+   "label": "Escalate To",
+   "options": "Ads Notification Recipient",
+   "depends_on": "eval:doc.escalate_after_minutes > 0",
+   "mandatory_depends_on": "eval:doc.escalate_after_minutes > 0",
+   "idx": 16
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-18 12:00:00.000000",
+ "modified": "2026-10-18 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom Ads",
  "name": "Ads Notification Policy",

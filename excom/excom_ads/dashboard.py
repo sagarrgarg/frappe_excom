@@ -120,12 +120,13 @@ def overview(from_date, to_date, **kwargs) -> dict:
 		cparams,
 		as_dict=True,
 	)
+	totals = _totals(where, params)
 	return {
 		"from_date": str(a),
 		"to_date": str(b),
 		"level": level,
 		"source": "Platform",
-		"totals": _totals(where, params),
+		"totals": totals,
 		"previous": {"from_date": str(pa), "to_date": str(pb), "totals": _totals(pwhere, pparams)},
 		"series": [_derive(r) | {"date": str(r.date)} for r in series],
 		"by_provider": [_derive(r) for r in by_provider],
@@ -134,7 +135,33 @@ def overview(from_date, to_date, **kwargs) -> dict:
 		"freshness": freshness(filters),
 		"alerts": alert_counts(filters),
 		"billing": billing_summary(filters) if permissions.has_capability("view_finance") else None,
+		# ERPNext / CRM results for the same view: their own block (source "Verified"), never added to the above.
+		"verified": _verified(filters, a, b, totals),
+		"data_quality": _data_quality(filters, a, b),
 	}
+
+
+def _verified(filters: dict, a, b, totals: list[dict]) -> dict | None:
+	from excom.excom_ads import verified
+
+	try:
+		return verified.compute(filters, a, b, spend={t["currency"]: t["spend"] for t in totals if t.get("currency")})
+	except frappe.PermissionError:
+		return None
+	except Exception:
+		# The platform figures must still show when the ERPNext side cannot be read.
+		frappe.log_error(title="Excom Ads: verified results failed", message=frappe.get_traceback())
+		return {"source": "Verified", "error": _("Verified results could not be computed. See the Error Log.")}
+
+
+def _data_quality(filters: dict, a, b) -> dict | None:
+	from excom.excom_ads import quality
+
+	try:
+		return quality.summary(filters, a, b)
+	except Exception:
+		frappe.log_error(title="Excom Ads: data quality summary failed", message=frappe.get_traceback())
+		return None
 
 
 def _accounts_in_scope(filters: dict, fields: list[str]) -> list[dict]:
@@ -146,20 +173,27 @@ def _accounts_in_scope(filters: dict, fields: list[str]) -> list[dict]:
 
 def freshness(filters: dict | None = None) -> dict:
 	"""When each account last synced. A figure is only as fresh as its oldest source."""
+	from excom.excom_ads.settings import get_settings
+
+	stale_hours = cint(get_settings().data_stale_hours) or STALE_HOURS
 	rows = _accounts_in_scope(filters or {}, ["name", "account_name", "provider", "sync_enabled", "status", "last_metrics_sync", "last_structure_sync", "error_class", "last_error"])
 	now = now_datetime()
-	stale, broken, oldest = [], [], None
+	stale, broken, manual, oldest = [], [], [], None
 	for r in rows:
+		if r.provider == "Manual":
+			# No connector: as fresh as its last import, which is reported, not judged against an hourly clock.
+			manual.append({"account": r.name, "account_name": r.account_name, "last_import": r.last_metrics_sync})
+			continue
 		if not r.sync_enabled:
 			continue
 		last = get_datetime(r.last_metrics_sync) if r.last_metrics_sync else None
 		if last and (oldest is None or last < oldest):
 			oldest = last
-		if not last or (now - last).total_seconds() > STALE_HOURS * 3600:
+		if not last or (now - last).total_seconds() > stale_hours * 3600:
 			stale.append({"account": r.name, "account_name": r.account_name, "last_metrics_sync": r.last_metrics_sync})
 		if r.error_class:
 			broken.append({"account": r.name, "account_name": r.account_name, "error_class": r.error_class})
-	return {"as_of": oldest, "stale": stale, "errors": broken, "accounts": len(rows), "stale_after_hours": STALE_HOURS}
+	return {"as_of": oldest, "stale": stale, "errors": broken, "manual": manual, "accounts": len(rows), "stale_after_hours": stale_hours}
 
 
 def alert_counts(filters: dict | None = None) -> dict:
@@ -197,7 +231,7 @@ ORDERABLE = {"spend", "impressions", "clicks", "leads", "purchases", "purchase_v
 
 
 @frappe.whitelist()
-def explorer(from_date, to_date, level: str = "Campaign", parent: str | None = None, search: str | None = None, status: str | None = None, start: int = 0, page_length: int = 50, order_by: str = "spend", **kwargs) -> dict:
+def explorer(from_date, to_date, level: str = "Campaign", parent: str | None = None, search: str | None = None, status: str | None = None, start: int = 0, page_length: int = 50, order_by: str = "spend", with_verified: int = 0, **kwargs) -> dict:
 	"""One level of the account → campaign → ad group → ad tree, with metrics for the range.
 
 	One scoped SQL query: mirrors left-joined to their summed snapshots, sorted and paged in the
@@ -257,6 +291,13 @@ def explorer(from_date, to_date, level: str = "Campaign", parent: str | None = N
 		# Metric amounts are in company currency; budgets on the row stay in the account's currency.
 		row["metrics"] = _derive({k: r.get(k) for k in metric_keys}) | {"currency": r.get("metrics_currency")} if has else None
 		out.append(row)
+	if cint(with_verified) and level == "Campaign" and out:
+		# Verified (ERPNext) figures per campaign row: a separate object, never merged into `metrics`.
+		from excom.excom_ads import verified
+
+		ver = verified.by_campaign([r["name"] for r in out], a, b)
+		for r in out:
+			r["verified"] = ver.get(r["name"])
 	return {"level": level, "total": total, "rows": out, "source": "Platform", "from_date": str(a), "to_date": str(b)}
 
 
@@ -295,7 +336,7 @@ def alerts(status: str | None = "open", severity: str | None = None, start: int 
 		f["status"] = status
 	if severity:
 		f["severity"] = severity
-	return frappe.get_list("Ads Alert", filters=f, fields=["name", "title", "alert_type", "severity", "status", "message", "company", "brand", "account", "reference_doctype", "reference_name", "occurrences", "first_seen", "last_seen", "snoozed_until", "acknowledged_by"], order_by="last_seen desc", start=cint(start), page_length=min(max(cint(page_length), 1), 200))
+	return frappe.get_list("Ads Alert", filters=f, fields=["name", "title", "alert_type", "severity", "status", "message", "company", "brand", "account", "reference_doctype", "reference_name", "occurrences", "first_seen", "last_seen", "snoozed_until", "acknowledged_by", "escalated", "escalated_at"], order_by="last_seen desc", start=cint(start), page_length=min(max(cint(page_length), 1), 200))
 
 
 @frappe.whitelist()
@@ -309,4 +350,6 @@ def filter_options() -> dict:
 		"accounts": frappe.get_list("Ads Account", fields=["name", "account_name", "provider", "workspace", "brand"], limit_page_length=0),
 		"providers": sorted({r.provider for r in frappe.get_list("Ads Account", fields=["provider"], limit_page_length=0)}),
 		"rights": {c: permissions.has_capability(c) for c in permissions.CAPABILITIES},
+		# GA4 properties in scope (the Website tab is offered only when there is one).
+		"analytics_properties": frappe.get_list("Ads Analytics Property", fields=["name", "property_name"], limit_page_length=0) if frappe.db.exists("DocType", "Ads Analytics Property") and frappe.has_permission("Ads Analytics Property", "read") else [],
 	}

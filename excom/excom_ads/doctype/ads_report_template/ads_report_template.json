@@ -1,0 +1,353 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 22:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "template_name",
+  "enabled",
+  "company",
+  "workspace",
+  "brand",
+  "cb_1",
+  "provider",
+  "account",
+  "date_preset",
+  "sb_sections",
+  "sec_kpi",
+  "sec_trend",
+  "sec_network",
+  "sec_brand",
+  "sec_campaigns",
+  "cb_sec",
+  "sec_billing",
+  "sec_budgets",
+  "sec_alerts",
+  "sec_freshness",
+  "sb_schedule",
+  "schedule_enabled",
+  "frequency",
+  "send_time",
+  "weekday",
+  "day_of_month",
+  "time_zone",
+  "cb_2",
+  "via_email",
+  "via_whatsapp",
+  "last_period_key",
+  "last_sent_at",
+  "sb_rec",
+  "recipients"
+ ],
+ "fields": [
+  {
+   "fieldname": "template_name",
+   "fieldtype": "Data",
+   "label": "Report Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "idx": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1,
+   "idx": 2
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "in_standard_filter": 1,
+   "in_list_view": 1,
+   "idx": 3
+  },
+  {
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "label": "Workspace",
+   "options": "Ads Workspace",
+   "in_standard_filter": 1,
+   "description": "Optional: one workspace of the company.",
+   "idx": 4
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "label": "Brand",
+   "options": "Ads Brand",
+   "in_standard_filter": 1,
+   "description": "Optional: one brand (campaign-level figures).",
+   "idx": 5
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 6
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "label": "Network",
+   "options": "\nMeta\nGoogle\nLinkedIn\nManual",
+   "description": "Empty: every network.",
+   "idx": 7
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "label": "Ad Account",
+   "options": "Ads Account",
+   "description": "Empty: every ad account in the scope above.",
+   "idx": 8
+  },
+  {
+   "fieldname": "date_preset",
+   "fieldtype": "Select",
+   "label": "Period",
+   "options": "Yesterday\nLast 7 days\nLast 30 days\nMonth to date\nLast month",
+   "default": "Last 7 days",
+   "reqd": 1,
+   "description": "Complete days up to yesterday, in the report's time zone. Month to date runs to yesterday.",
+   "idx": 9
+  },
+  {
+   "fieldname": "sb_sections",
+   "fieldtype": "Section Break",
+   "label": "Sections",
+   "description": "Every report states how fresh its data is and names any source that is stale, partial or disconnected. Figures come from the same functions as the Marketing screens, inside each recipient's own scope.",
+   "idx": 10
+  },
+  {
+   "fieldname": "sec_kpi",
+   "fieldtype": "Check",
+   "label": "KPI summary vs previous period",
+   "default": "1",
+   "idx": 11
+  },
+  {
+   "fieldname": "sec_trend",
+   "fieldtype": "Check",
+   "label": "Daily trend",
+   "default": "1",
+   "idx": 12
+  },
+  {
+   "fieldname": "sec_network",
+   "fieldtype": "Check",
+   "label": "By network",
+   "default": "1",
+   "idx": 13
+  },
+  {
+   "fieldname": "sec_brand",
+   "fieldtype": "Check",
+   "label": "By brand",
+   "default": "0",
+   "idx": 14
+  },
+  {
+   "fieldname": "sec_campaigns",
+   "fieldtype": "Check",
+   "label": "Top campaigns",
+   "default": "1",
+   "idx": 15
+  },
+  {
+   "fieldname": "cb_sec",
+   "fieldtype": "Column Break",
+   "idx": 16
+  },
+  {
+   "fieldname": "sec_billing",
+   "fieldtype": "Check",
+   "label": "Billing (finance recipients only)",
+   "default": "0",
+   "idx": 17
+  },
+  {
+   "fieldname": "sec_budgets",
+   "fieldtype": "Check",
+   "label": "Budgets: plan vs actual",
+   "default": "0",
+   "idx": 18
+  },
+  {
+   "fieldname": "sec_alerts",
+   "fieldtype": "Check",
+   "label": "Open alerts",
+   "default": "1",
+   "idx": 19
+  },
+  {
+   "fieldname": "sec_freshness",
+   "fieldtype": "Check",
+   "label": "Data freshness detail",
+   "default": "1",
+   "idx": 20
+  },
+  {
+   "fieldname": "sb_schedule",
+   "fieldtype": "Section Break",
+   "label": "Schedule",
+   "idx": 21
+  },
+  {
+   "fieldname": "schedule_enabled",
+   "fieldtype": "Check",
+   "label": "Send on a Schedule",
+   "idx": 22
+  },
+  {
+   "fieldname": "frequency",
+   "fieldtype": "Select",
+   "label": "Frequency",
+   "options": "Daily\nWeekly\nMonthly",
+   "default": "Weekly",
+   "depends_on": "schedule_enabled",
+   "mandatory_depends_on": "schedule_enabled",
+   "idx": 23
+  },
+  {
+   "fieldname": "send_time",
+   "fieldtype": "Time",
+   "label": "Send At",
+   "default": "09:00:00",
+   "depends_on": "schedule_enabled",
+   "mandatory_depends_on": "schedule_enabled",
+   "idx": 24
+  },
+  {
+   "fieldname": "weekday",
+   "fieldtype": "Select",
+   "label": "Day of Week",
+   "options": "Monday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday",
+   "default": "Monday",
+   "depends_on": "eval:doc.schedule_enabled && doc.frequency=='Weekly'",
+   "idx": 25
+  },
+  {
+   "fieldname": "day_of_month",
+   "fieldtype": "Int",
+   "label": "Day of Month",
+   "default": "1",
+   "depends_on": "eval:doc.schedule_enabled && doc.frequency=='Monthly'",
+   "description": "1 to 28.",
+   "idx": 26
+  },
+  {
+   "fieldname": "time_zone",
+   "fieldtype": "Data",
+   "label": "Time Zone",
+   "description": "IANA name, e.g. Asia/Kolkata. Empty: the time zone of the company's ad accounts, else the system time zone.",
+   "idx": 27
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 28
+  },
+  {
+   "fieldname": "via_email",
+   "fieldtype": "Check",
+   "label": "Email",
+   "default": "1",
+   "description": "HTML summary with Excel (.xlsx) and CSV attached. A PDF is attached only where the server has a PDF engine: Frappe v16's Chrome generator with chromium_path set in common_site_config, or wkhtmltopdf. Otherwise no PDF is sent.",
+   "idx": 29
+  },
+  {
+   "fieldname": "via_whatsapp",
+   "fieldtype": "Check",
+   "label": "WhatsApp (through Excom)",
+   "description": "Needs Report WhatsApp Template in Ads Settings; the file goes as the template's document header. Users with a mobile number only.",
+   "idx": 30
+  },
+  {
+   "fieldname": "last_period_key",
+   "fieldtype": "Data",
+   "label": "Last Scheduled Period",
+   "read_only": 1,
+   "no_copy": 1,
+   "idx": 31
+  },
+  {
+   "fieldname": "last_sent_at",
+   "fieldtype": "Datetime",
+   "label": "Last Sent At",
+   "read_only": 1,
+   "no_copy": 1,
+   "idx": 32
+  },
+  {
+   "fieldname": "sb_rec",
+   "fieldtype": "Section Break",
+   "label": "Recipients",
+   "description": "Each user receives the report rendered inside their own scope and rights; someone outside the template's scope is skipped. External emails get the owner's view without billing, and need the export data right.",
+   "idx": 33
+  },
+  {
+   "fieldname": "recipients",
+   "fieldtype": "Table",
+   "label": "Recipients",
+   "options": "Ads Report Recipient",
+   "idx": 34
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Report Template",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1,
+   "email": 1,
+   "share": 1
+  },
+  {
+   "role": "Excom Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1,
+   "email": 1,
+   "share": 1
+  },
+  {
+   "role": "Excom Marketing",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "print": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "autoname": "field:template_name",
+ "naming_rule": "By fieldname",
+ "title_field": "template_name",
+ "show_title_field_in_link": 1,
+ "description": "A marketing report: scope, filters, period and sections, optionally sent on a schedule by email and WhatsApp."
+}

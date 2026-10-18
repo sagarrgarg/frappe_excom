@@ -1,0 +1,269 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 22:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "property",
+  "date",
+  "report",
+  "session_source",
+  "session_medium",
+  "session_campaign_name",
+  "session_campaign_id",
+  "landing_page",
+  "campaign",
+  "cb_1",
+  "company",
+  "workspace",
+  "brand",
+  "sb_metrics",
+  "sessions",
+  "total_users",
+  "new_users",
+  "engaged_sessions",
+  "cb_2",
+  "key_events",
+  "transactions",
+  "currency",
+  "purchase_revenue",
+  "synced_at"
+ ],
+ "fields": [
+  {
+   "fieldname": "property",
+   "fieldtype": "Link",
+   "label": "Analytics Property",
+   "options": "Ads Analytics Property",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "idx": 1
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "reqd": 1,
+   "in_list_view": 1,
+   "read_only": 1,
+   "description": "In the property's reporting time zone.",
+   "idx": 2
+  },
+  {
+   "fieldname": "report",
+   "fieldtype": "Select",
+   "label": "Report",
+   "options": "Source\nLanding Page",
+   "reqd": 1,
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "idx": 3
+  },
+  {
+   "fieldname": "session_source",
+   "fieldtype": "Data",
+   "label": "Session Source",
+   "length": 255,
+   "read_only": 1,
+   "in_list_view": 1,
+   "idx": 4
+  },
+  {
+   "fieldname": "session_medium",
+   "fieldtype": "Data",
+   "label": "Session Medium",
+   "length": 255,
+   "read_only": 1,
+   "in_list_view": 1,
+   "idx": 5
+  },
+  {
+   "fieldname": "session_campaign_name",
+   "fieldtype": "Data",
+   "label": "Session Campaign",
+   "length": 255,
+   "read_only": 1,
+   "idx": 6
+  },
+  {
+   "fieldname": "session_campaign_id",
+   "fieldtype": "Data",
+   "label": "Session Campaign ID",
+   "read_only": 1,
+   "idx": 7
+  },
+  {
+   "fieldname": "landing_page",
+   "fieldtype": "Data",
+   "label": "Landing Page",
+   "length": 1000,
+   "read_only": 1,
+   "idx": 8
+  },
+  {
+   "fieldname": "campaign",
+   "fieldtype": "Link",
+   "label": "Ads Campaign",
+   "options": "Ads Campaign",
+   "read_only": 1,
+   "description": "Matched only by campaign ID (GA4 sessionCampaignId = the platform campaign ID).",
+   "idx": 9
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 10
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "fetch_from": "property.company",
+   "read_only": 1,
+   "idx": 11
+  },
+  {
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "label": "Workspace",
+   "options": "Ads Workspace",
+   "fetch_from": "property.workspace",
+   "read_only": 1,
+   "idx": 12
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "label": "Brand",
+   "options": "Ads Brand",
+   "fetch_from": "property.brand",
+   "fetch_if_empty": 1,
+   "read_only": 1,
+   "idx": 13
+  },
+  {
+   "fieldname": "sb_metrics",
+   "fieldtype": "Section Break",
+   "label": "Metrics (as reported by Google Analytics)",
+   "idx": 14
+  },
+  {
+   "fieldname": "sessions",
+   "fieldtype": "Int",
+   "label": "Sessions",
+   "read_only": 1,
+   "in_list_view": 1,
+   "idx": 15
+  },
+  {
+   "fieldname": "total_users",
+   "fieldtype": "Int",
+   "label": "Total Users",
+   "read_only": 1,
+   "description": "Distinct users for this day and source only: not additive across days or sources.",
+   "idx": 16
+  },
+  {
+   "fieldname": "new_users",
+   "fieldtype": "Int",
+   "label": "New Users",
+   "read_only": 1,
+   "idx": 17
+  },
+  {
+   "fieldname": "engaged_sessions",
+   "fieldtype": "Int",
+   "label": "Engaged Sessions",
+   "read_only": 1,
+   "idx": 18
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 19
+  },
+  {
+   "fieldname": "key_events",
+   "fieldtype": "Float",
+   "label": "Key Events",
+   "read_only": 1,
+   "idx": 20
+  },
+  {
+   "fieldname": "transactions",
+   "fieldtype": "Int",
+   "label": "Transactions",
+   "read_only": 1,
+   "idx": 21
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1,
+   "idx": 22
+  },
+  {
+   "fieldname": "purchase_revenue",
+   "fieldtype": "Currency",
+   "label": "Purchase Revenue",
+   "options": "currency",
+   "read_only": 1,
+   "idx": 23
+  },
+  {
+   "fieldname": "synced_at",
+   "fieldtype": "Datetime",
+   "label": "Synced At",
+   "read_only": 1,
+   "idx": 24
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Web Snapshot",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "export": 0,
+   "print": 0,
+   "email": 0,
+   "share": 0
+  },
+  {
+   "role": "Excom Admin",
+   "read": 1,
+   "report": 1,
+   "export": 0,
+   "print": 0,
+   "email": 0,
+   "share": 0
+  },
+  {
+   "role": "Excom Marketing",
+   "read": 1,
+   "report": 1,
+   "export": 0,
+   "print": 0,
+   "email": 0,
+   "share": 0
+  }
+ ],
+ "sort_field": "date",
+ "sort_order": "DESC",
+ "states": [],
+ "naming_rule": "By script",
+ "track_changes": 0,
+ "in_create": 1
+}

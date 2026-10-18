@@ -80,8 +80,29 @@ def debug_token(name: str) -> dict:
 	secret = conn.get_password("app_secret", raise_exception=False)
 	app_token = f"{conn.app_id}|{secret}" if conn.app_id and secret else tok
 	data = _get(f"{GRAPH}/{conn.api_version or 'v21.0'}/debug_token", {"input_token": tok, "access_token": app_token}).get("data") or {}
-	frappe.db.set_value("Excom Meta Connection", name, {"token_valid": 1 if data.get("is_valid") else 0, "token_scopes": ", ".join(data.get("scopes") or [])}, update_modified=False)
+	values = {"token_valid": 1 if data.get("is_valid") else 0, "token_scopes": ", ".join(data.get("scopes") or [])}
+	meta = frappe.get_meta("Excom Meta Connection")
+	if meta.has_field("token_expires_at"):
+		# Graph gives Unix seconds; 0 means the token never expires (system-user tokens).
+		values["token_expires_at"] = _from_epoch(data.get("expires_at"))
+		values["data_access_expires_at"] = _from_epoch(data.get("data_access_expires_at"))
+		values["token_checked_at"] = now_datetime()
+	frappe.db.set_value("Excom Meta Connection", name, values, update_modified=False)
 	return data
+
+
+def _from_epoch(value):
+	try:
+		seconds = int(value or 0)
+	except (TypeError, ValueError):
+		return None
+	if seconds <= 0:
+		return None
+	from datetime import datetime, timezone
+
+	from frappe.utils import convert_utc_to_system_timezone
+
+	return convert_utc_to_system_timezone(datetime.fromtimestamp(seconds, tz=timezone.utc).replace(tzinfo=None)).replace(tzinfo=None)
 
 
 # ─── discovery ────────────────────────────────────────────────────────────────

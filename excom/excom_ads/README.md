@@ -31,6 +31,13 @@ Supported: Frappe/ERPNext **v15 and v16**, MariaDB, Python ≥ 3.10. Test on `fr
 | `bill_gst.py` | The only place that calls India Compliance (place of supply, tax template, GST breakup, document-number rule, GST Inward Supply reads). |
 | `bill_suppliers.py` | Platform legal entities (one Supplier each), entity matching, propose / create suppliers on confirmation. |
 | `bill_tasks.py`, `api_bills.py` | Bill scheduler entry points (enqueue only) and whitelisted bill endpoints. |
+| `providers/google_analytics.py`, `analytics.py`, `api_analytics.py` | GA4: Data API `runReport` / Admin API client; Ads Analytics Property discovery + enabling, daily Ads Web Snapshot sync, Website tab read API (`web_report`). |
+| `verified.py` | Verified (ERPNext) results: leads / qualified / opportunities, orders and net revenue attributed to Ads Campaigns, verified CPL and MER. |
+| `quality.py` | Spend Mismatch (account vs campaign spend per day) and Data Stale checks, Overview data-quality note. |
+| `imports.py`, `providers/manual.py` | Manual ad networks: Ads Metric Import (CSV / XLSX → snapshots); the Manual provider declares every operation unsupported. |
+| `reports.py`, `report_schedule.py` | Ads Report Template → HTML + Excel + CSV (+ PDF where an engine exists), rendered as each recipient; schedules, Ads Report Delivery log, preview / send now / download endpoints. |
+| `escalation.py` | Escalation of Open (unacknowledged) alerts past their policy's threshold, once. |
+| `leads_dashboard.py` | Leads screen: ad-lead feed with SLA state, platform vs verified leads by campaign, lead → order funnel. |
 | `tasks.py` | Scheduler entry points. They only enqueue. |
 | `api.py` / `api/` | Whitelisted endpoints. |
 | `tests/` | `test_*.py`, run through `excom.excom.tests.run.run`; `tests/dev.py` reloads DocTypes. |
@@ -153,3 +160,79 @@ executed — call the job function directly in tests.
   or ads (account and campaign rows only). `leads` = conversions of new-lead conversion-action
   categories, `purchases` = PURCHASE; the full per-category breakdown is in `metrics_json`.
   Tests replace `google_auth.http_request`.
+
+**Three sources, never summed.** Every figure has one: `Platform` (what the ad network reports,
+including Manual imports), `Verified` (ERPNext / CRM records, `verified.py`) or `Analytics` (GA4,
+`analytics.py`). The UI shows `SourceBadge` on each. Two ratios mix sources on purpose and say so in
+their names: verified CPL = platform spend ÷ verified leads; MER = verified net revenue ÷ platform spend.
+
+**Verified results** (`verified.py`; module docstring has the exact rules)
+- Leads: `ads_campaign` set by attribution, test leads out (`attribution.kpi_lead_filters()`), counted on
+  the Lead's creation day; qualified = reached an Opportunity; opportunities = `ads_campaign` or made from such a Lead.
+- An order / invoice belongs to a campaign of the SAME company by the first rule that applies:
+  (a) Order touch of the Sales Order (an invoice uses its first order-linked line's order),
+  (b) UTM campaign — the document's native `utm_campaign` (v16 only), then the order touch's — equal to
+  exactly one campaign's name or platform ID (DB collation: case-insensitive), (c) Sales Order line →
+  Quotation → its Lead / Opportunity. A Customer's original Lead is never used. No rule → "unattributed".
+- Net revenue = submitted invoices' `base_net_total` + their submitted credit notes (`return_against`),
+  in the original invoice's period; cancelled documents never count. Money needs `view_finance`; counts don't.
+- Runs inside the ads scope AND ERPNext permissions (`erp_conditions`: role read + match conditions).
+  A doctype the user cannot read is `None` ("not available"). Unattributed figures are company-level:
+  only for company-wide views of company-wide users.
+
+**GA4** (`providers/google_analytics.py`; Data API v1beta, Admin API v1beta; sources in the module docstring)
+- The Ads Connection's Scopes must list `https://www.googleapis.com/auth/analytics.readonly`; the
+  service account (or OAuth user) is a Viewer on the property. Property = `GA4-{id}`, scoped by workspace/brand.
+- Days are in the property's time zone. Metrics: hourly re-read of `ga4_lookback_days`; Settle: daily
+  `ga4_settle_days` (GA4 data changes for 24-48 h, key-event attribution up to 12 days); Backfill:
+  `ga4_backfill_days`, newest window first, resumable. A re-pulled window replaces its rows.
+- Quota: `returnPropertyQuota` on every report; under `MIN_HOURLY_TOKENS` left the job stops (Rate
+  Limited, next run continues); 429 RESOURCE_EXHAUSTED → Rate Limited alert. `keyEvents` (not the
+  deprecated `conversions`). Users are not additive across days / sources: labelled, not hidden.
+- `sessionCampaignId` links an Ads Campaign by exact platform campaign ID only (no name guessing).
+
+**Data quality** (`quality.py`): nightly Spend Mismatch per account per settle-window day (gap above
+`spend_mismatch_pct` % and `spend_mismatch_min_amount`; a missing level counts), hourly Data Stale for
+connected accounts (`data_stale_hours`) and GA4 properties (`ga4_stale_hours`). Both resolve themselves.
+
+**Manual accounts**: provider `Manual` on Ads Account. Sync, the scheduler and Data Stale skip them;
+`dashboard.freshness` lists them under `manual` with their last import. Figures come from Ads Metric
+Import (needs `manage_connections`): all-or-nothing row validation, re-import replaces the file's dates,
+campaign mirrors matched by ID, then unique name, else created (`m-<hash>` for name-only rows).
+
+**Reports** (`reports.py`, `report_schedule.py`)
+- One source of truth: sections are `dashboard.overview` (KPIs vs previous period, trend, network,
+  brand, top campaigns, billing, freshness), `budgets.plan_vs_actual`, open Ads Alerts and
+  `leads_dashboard.verified_leads_by_campaign`, for the template's filters and an explicit range
+  (complete days to yesterday, in the template's time zone). Same range + filters on the screen = same numbers.
+- Recipient scope: a report is always rendered **as a person** (`reports.as_user`). A user recipient
+  whose ads scope does not cover the template's company / workspace / brand / account is Skipped
+  (never sent a partial report); everyone else gets it computed in their own scope and rights
+  (billing only with `view_finance`, verified leads only as far as they can open leads). External
+  addresses get the owner's view, only while the owner holds `export_data`, and never billing;
+  adding one needs `export_data`. An external address that belongs to a user is treated as that user.
+- Every report prints a freshness statement: disconnected / failing, stale, sync off, partial sync,
+  rows without an exchange rate, manual imports, recent days still settling.
+- Idempotent delivery: one Ads Report Delivery per template × period key × recipient × channel,
+  claimed (committed) before sending; Sent / Skipped rows are never redone; Failed rows retry up to
+  `MAX_ATTEMPTS` inside the period's grace window; a WhatsApp send found stuck is not retried.
+  Failures raise "Report Delivery Failed" (resolved by a later clean period). Emails go through
+  Email Queue (one email per recipient); WhatsApp through `outbound.send_transactional` with
+  Ads Settings → Report WhatsApp Template, the file as a DOCUMENT header (private File, uploaded to
+  Meta by id, deleted after the send).
+- PDF only where an engine exists: Frappe v16's Chrome generator with `chromium_path` in
+  common_site_config, or wkhtmltopdf. Nothing is downloaded or installed; otherwise the report says so.
+- CSV cells that start with = + - @ are written as text (formula injection); Excel via
+  `frappe.utils.xlsxutils.make_xlsx`, one sheet with the sections stacked (same rows as the CSV).
+
+**Escalation** (`escalation.py`): Ads Notification Policy → `escalate_after_minutes` + "Escalate To".
+An alert the policy matches that is still Open that long after it was notified goes once (conditional
+UPDATE on `Ads Alert.escalated`) to the escalation recipients who may see it, on the policy's channels;
+quiet hours hold non-critical alerts. Escalation recipients never receive normal deliveries.
+
+**Leads screen** (`leads_dashboard.py`): Lead / Opportunity / Quotation / Sales Order only through
+`frappe.get_list` (role permissions, User Permissions and Excom's lead visibility rule apply), plus
+the ads scope (account, or campaign for brand cuts). SLA = Excom Source `sla_first_response`;
+answered by the first outbound message or auto-acknowledgement after the lead arrived (as
+`tasks/crm_sla.py`). Platform and verified leads per campaign side by side, CPL both ways, never summed.
+

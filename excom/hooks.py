@@ -147,6 +147,11 @@ permission_query_conditions = {
 	"Ads Bill Account Map": "excom.excom_ads.permissions.get_permission_query_conditions",
 	"Ads Bill Document": "excom.excom_ads.permissions.get_permission_query_conditions",
 	"Ads TDS Certificate Log": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Analytics Property": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Web Snapshot": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Metric Import": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Report Template": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Report Delivery": "excom.excom_ads.permissions.get_permission_query_conditions",
 }
 
 has_permission = {
@@ -174,6 +179,11 @@ has_permission = {
 	"Ads Bill Account Map": "excom.excom_ads.permissions.has_permission",
 	"Ads Bill Document": "excom.excom_ads.permissions.has_permission",
 	"Ads TDS Certificate Log": "excom.excom_ads.permissions.has_permission",
+	"Ads Analytics Property": "excom.excom_ads.permissions.has_permission",
+	"Ads Web Snapshot": "excom.excom_ads.permissions.has_permission",
+	"Ads Metric Import": "excom.excom_ads.permissions.has_permission",
+	"Ads Report Template": "excom.excom_ads.permissions.has_permission",
+	"Ads Report Delivery": "excom.excom_ads.permissions.has_permission",
 }
 
 # DocType Class
@@ -289,6 +299,9 @@ scheduler_events = {
 		"excom.excom.utils.trigger_whatsapp_notifications_hourly_long",
 		"excom.excom_ads.tasks.enqueue_structure",
 		"excom.excom_ads.tasks.enqueue_budget_checks",
+		# GA4: today + recent days (enqueue only); Data Stale alerts for sources that stopped syncing.
+		"excom.excom_ads.tasks.enqueue_analytics",
+		"excom.excom_ads.tasks.check_stale_data",
 	],
 	"daily": [
 		"excom.excom.services.whatsapp_service.sync_phone_profiles",
@@ -302,18 +315,25 @@ scheduler_events = {
 		"excom.excom.tasks.intake.reconcile_meta_leads",
 		"excom.excom.channels.voice.recording.purge_expired_recordings",
 		"excom.excom_ads.tasks.enqueue_settle",
+		"excom.excom_ads.connections.check_credentials",
 		"excom.excom_ads.tasks.enqueue_relink",
 		# Ad bills: fetch platform invoices (enqueue only), GSTR-2B match status, TDS certificate reminders.
 		"excom.excom_ads.bill_tasks.enqueue_bill_fetch",
 		"excom.excom_ads.bill_tasks.enqueue_bill_checks",
+		# GA4 settle re-pull / backfill resume; account vs campaign spend reconciliation (Spend Mismatch).
+		"excom.excom_ads.tasks.enqueue_analytics_settle",
+		"excom.excom_ads.tasks.enqueue_spend_checks",
 	],
 	"cron": {
-		"*/5 * * * *": ["excom.excom.tasks.intake.pull_due_sources"],
+		# Ads alert escalation: Open alerts past their policy's threshold (cheap no-op without escalation policies).
+		"*/5 * * * *": ["excom.excom.tasks.intake.pull_due_sources", "excom.excom_ads.escalation.enqueue_escalations"],
 		# Duration and cost land at the provider a minute or two after a call ends. Without this
 		# sweep, completed calls sit at duration = 0 forever.
 		"*/3 * * * *": ["excom.excom.channels.voice.reconcile.reconcile_pending_calls"],
 		# Ads: today's spend and results. Structure is hourly, the 28-day settle re-pull is daily.
 		"*/30 * * * *": ["excom.excom_ads.tasks.enqueue_intraday", "excom.excom_ads.tasks.wake_snoozed_alerts"],
+		# Ads: scheduled reports that are due (enqueue only, once per period).
+		"*/15 * * * *": ["excom.excom_ads.report_schedule.enqueue_due"],
 	},
 	"daily_maintenance": [
 		"excom.excom.scheduler.daily.sync_invalid_tokens",

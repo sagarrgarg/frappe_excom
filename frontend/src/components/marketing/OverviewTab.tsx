@@ -9,6 +9,7 @@ import { FreshnessBanner, Kpi, SourceBadge, StatusBadge } from "./bits";
 import { delta, money, NA, num, pct, ratio } from "./format";
 import type { Metrics, Overview } from "./types";
 import { useMarketingFilters } from "./useMarketingFilters";
+import { DataQualityNote, VerifiedSection } from "./VerifiedSection";
 
 const T = chartTheme();
 
@@ -42,6 +43,7 @@ export function OverviewTab() {
       <div className="space-y-3">
         <FreshnessBanner freshness={o.freshness} />
         <EmptyState title="No ad results in this range" hint="Pick a longer range, or connect an ad account under Admin → Meta and enable it." />
+        <VerifiedSection verified={o.verified} />
       </div>
     );
   }
@@ -63,6 +65,9 @@ export function OverviewTab() {
           <Tiles cur={t} prev={o.previous.totals.find((p) => p.currency === t.currency)} />
         </div>
       ))}
+
+      <DataQualityNote quality={o.data_quality} freshness={o.freshness} />
+      <VerifiedSection verified={o.verified} />
 
       {!multiCurrency && series.length > 1 && (
         <section className="rounded-lg border border-border p-3">

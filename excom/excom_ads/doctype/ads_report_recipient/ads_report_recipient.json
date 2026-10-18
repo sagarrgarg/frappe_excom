@@ -1,0 +1,58 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 22:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "recipient_type",
+  "user",
+  "email"
+ ],
+ "fields": [
+  {
+   "fieldname": "recipient_type",
+   "fieldtype": "Select",
+   "label": "Recipient Type",
+   "options": "User\nEmail",
+   "default": "User",
+   "reqd": 1,
+   "in_list_view": 1,
+   "idx": 1
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "in_list_view": 1,
+   "depends_on": "eval:doc.recipient_type=='User'",
+   "description": "Receives the report rendered inside their own ads scope and rights.",
+   "idx": 2
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "External Email",
+   "options": "Email",
+   "in_list_view": 1,
+   "depends_on": "eval:doc.recipient_type=='Email'",
+   "description": "Someone without a login. Needs the export data right; never receives billing.",
+   "idx": 3
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Report Recipient",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "istable": 1,
+ "editable_grid": 1
+}

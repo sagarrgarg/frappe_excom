@@ -118,20 +118,23 @@ def _policies(alert) -> list:
 
 
 def _quiet(policy) -> bool:
-	if not policy.get("quiet_from") or not policy.get("quiet_to"):
+	# Midnight is a real bound: a Time of 00:00:00 reads back as timedelta(0), which is falsy.
+	if policy.get("quiet_from") in (None, "") or policy.get("quiet_to") in (None, ""):
 		return False
 	now = now_datetime().time()
 	a, b = get_time(policy.quiet_from), get_time(policy.quiet_to)
 	return a <= now < b if a <= b else (now >= a or now < b)
 
 
-def _recipients(policy, alert) -> list[str]:
+def _recipients(policy, alert, table: str = "recipients") -> list[str]:
+	"""Enabled system users named by the policy's `recipients` (or `escalation_recipients`) table who
+	may see this alert."""
 	from excom.excom_ads.permissions import doc_allowed
 
 	users = set()
 	roles = list(policy.get("roles") or [])
 	if policy.get("name"):
-		for r in frappe.get_all("Ads Notification Recipient", filters={"parent": policy.name, "parenttype": "Ads Notification Policy"}, fields=["recipient_type", "role", "user"]):
+		for r in frappe.get_all("Ads Notification Recipient", filters={"parent": policy.name, "parenttype": "Ads Notification Policy", "parentfield": table}, fields=["recipient_type", "role", "user"]):
 			if r.recipient_type == "User" and r.user:
 				users.add(r.user)
 			elif r.role:

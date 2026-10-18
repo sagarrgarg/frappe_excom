@@ -39,11 +39,25 @@ function Cells({ r }: { r: ExplorerRow }) {
   );
 }
 
-function Level({ level, parent, depth, query }: { level: Level; parent?: string; depth: number; query: { search: string; status: string; order_by: string } }) {
+type Query = { search: string; status: string; order_by: string; verified: boolean };
+
+function VerifiedLine({ r }: { r: ExplorerRow }) {
+  const v = r.verified;
+  if (!v) return null;
+  const c = r.metrics?.currency ?? r.currency ?? undefined;
+  return (
+    <div className="flex items-center gap-2 px-3 pb-1.5 text-xs text-ink-2 min-w-[900px]" style={{ paddingLeft: 32 }}>
+      <SourceBadge source="Verified" />
+      <span className="tabular-nums">{num(v.leads)} leads · {num(v.qualified)} qualified · {num(v.opportunities)} opps · {num(v.orders)} orders{v.revenue !== null ? ` · ${money(v.revenue, c)} net revenue` : ""}</span>
+    </div>
+  );
+}
+
+function Level({ level, parent, depth, query }: { level: Level; parent?: string; depth: number; query: Query }) {
   const { apiParams } = useMarketingFilters();
   const [start, setStart] = useState(0);
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const params = { ...apiParams, level, parent, start, page_length: PAGE, ...(depth === 0 ? { search: query.search || undefined, status: query.status || undefined } : {}), order_by: query.order_by };
+  const params = { ...apiParams, level, parent, start, page_length: PAGE, ...(depth === 0 ? { search: query.search || undefined, status: query.status || undefined } : {}), order_by: query.order_by, with_verified: level === "Campaign" && query.verified ? 1 : undefined };
   const { data, isLoading, error } = useFrappeGetCall<{ message: Explorer }>("excom.excom_ads.dashboard.explorer", params, `ads-explorer-${JSON.stringify(params)}`, { keepPreviousData: true });
   const ex = data?.message;
   const child = CHILD[level];
@@ -69,6 +83,7 @@ function Level({ level, parent, depth, query }: { level: Level; parent?: string;
             <span className="min-w-0"><StatusBadge status={r.status} /></span>
             <Cells r={r} />
           </div>
+          {level === "Campaign" && query.verified && <VerifiedLine r={r} />}
           {child && open[r.name] && <Level level={child} parent={r.name} depth={depth + 1} query={query} />}
         </div>
       ))}
@@ -88,7 +103,8 @@ export function CampaignsTab() {
   const [typed, setTyped] = useState("");
   const [status, setStatus] = useState("");
   const [orderBy, setOrderBy] = useState("spend");
-  const query = { search, status, order_by: orderBy };
+  const [verified, setVerified] = useState(false);
+  const query: Query = { search, status, order_by: orderBy, verified };
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1.5">
@@ -103,6 +119,9 @@ export function CampaignsTab() {
         <Select className="h-7 text-xs w-[150px]" value={orderBy} onChange={(e) => setOrderBy(e.target.value)} aria-label="Sort by">
           {SORTS.map((s) => <option key={s.value} value={s.value}>Sort: {s.label}</option>)}
         </Select>
+        <label className="flex items-center gap-1.5 text-xs text-ink-2 cursor-pointer" title="Verified leads, orders and revenue from ERPNext under each campaign. Shown apart, never added to platform figures.">
+          <input type="checkbox" checked={verified} onChange={(e) => setVerified(e.target.checked)} /> Show verified results
+        </label>
         <span className="ml-auto"><SourceBadge source="Platform" /></span>
       </div>
       <div className="rounded-lg border border-border overflow-x-auto">

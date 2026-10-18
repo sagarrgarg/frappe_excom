@@ -80,3 +80,55 @@ def enqueue_budget_checks():
 	if not budgets.has_current_plans():
 		return
 	frappe.enqueue("excom.excom_ads.budgets.check_overspend", queue="long", job_id=f"excom_ads_budgets::{frappe.local.site}", deduplicate=True)
+
+
+# ─── GA4 web analytics (analytics.py) and data quality (quality.py) ───────────
+
+def _properties(skip_broken: bool = False) -> list[dict]:
+	if not frappe.db.exists("DocType", "Ads Analytics Property") or not get_settings().enabled:
+		return []
+	rows = frappe.get_all("Ads Analytics Property", filters={"sync_enabled": 1}, fields=["name", "error_class", "synced_from", "time_zone"])
+	if skip_broken:
+		# Token / permission problems need a person; the daily run keeps trying and clears them.
+		rows = [r for r in rows if r.error_class not in ("Token", "Permission")]
+	return rows
+
+
+def enqueue_analytics():
+	"""Hourly: today and the last couple of days of each GA4 property; a new property gets its backfill first."""
+	from excom.excom_ads import analytics
+
+	for r in _properties(skip_broken=True):
+		analytics.enqueue(r.name, "Metrics" if r.synced_from else "Backfill")
+
+
+def enqueue_analytics_settle():
+	"""Daily: re-pull the GA4 settle window, and resume a backfill that stopped early (quota)."""
+	from excom.excom_ads import analytics
+
+	for r in _properties():
+		if not r.synced_from:
+			analytics.enqueue(r.name, "Backfill")
+			continue
+		analytics.enqueue(r.name, "Settle")
+		if analytics.backfill_incomplete(r):
+			analytics.enqueue(r.name, "Backfill")
+
+
+def enqueue_spend_checks():
+	"""Daily: account-level vs campaign-level spend for every day of the settle window (Spend Mismatch)."""
+	if not get_settings().enabled or not frappe.db.exists("DocType", "Ads Metric Snapshot"):
+		return
+	if not frappe.db.sql("select 1 from `tabAds Metric Snapshot` limit 1"):
+		return
+	frappe.enqueue("excom.excom_ads.quality.run_spend_checks", queue="long", job_id=f"excom_ads_quality::{frappe.local.site}::spend", deduplicate=True)
+
+
+def check_stale_data():
+	"""Hourly: Data Stale alerts for ad accounts and GA4 properties that stopped syncing (one cheap read)."""
+	if not get_settings().enabled or not frappe.db.exists("DocType", "Ads Account"):
+		return
+	has_props = frappe.db.exists("DocType", "Ads Analytics Property") and frappe.db.exists("Ads Analytics Property", {"sync_enabled": 1})
+	if not (frappe.db.exists("Ads Account", {"sync_enabled": 1}) or has_props or frappe.db.exists("Ads Alert", {"alert_type": "Data Stale", "status": ["!=", "Resolved"]})):
+		return
+	frappe.enqueue("excom.excom_ads.quality.run_stale_checks", queue="short", job_id=f"excom_ads_quality::{frappe.local.site}::stale", deduplicate=True)

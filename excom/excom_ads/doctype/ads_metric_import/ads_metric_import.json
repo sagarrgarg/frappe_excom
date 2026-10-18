@@ -1,0 +1,263 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 22:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "account",
+  "import_file",
+  "status",
+  "cb_1",
+  "workspace",
+  "company",
+  "brand",
+  "provider",
+  "currency",
+  "sb_result",
+  "date_from",
+  "date_to",
+  "rows_total",
+  "rows_valid",
+  "rows_error",
+  "cb_2",
+  "campaigns_created",
+  "snapshots_written",
+  "imported_at",
+  "imported_by",
+  "sb_errors",
+  "summary",
+  "errors"
+ ],
+ "fields": [
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "label": "Ad Account",
+   "options": "Ads Account",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "A Manual ad account (networks without a connector).",
+   "idx": 1
+  },
+  {
+   "fieldname": "import_file",
+   "fieldtype": "Attach",
+   "label": "CSV / XLSX File",
+   "reqd": 1,
+   "description": "Columns: date, campaign or campaign_id, spend, impressions, clicks, leads, purchases, purchase_value, currency. Download the template from the form.",
+   "idx": 2
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nValidated\nFailed\nImported",
+   "default": "Draft",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "idx": 3
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 4
+  },
+  {
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "label": "Workspace",
+   "options": "Ads Workspace",
+   "fetch_from": "account.workspace",
+   "read_only": 1,
+   "idx": 5
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "fetch_from": "account.company",
+   "read_only": 1,
+   "idx": 6
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "label": "Brand",
+   "options": "Ads Brand",
+   "fetch_from": "account.brand",
+   "fetch_if_empty": 1,
+   "read_only": 1,
+   "idx": 7
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Data",
+   "label": "Platform",
+   "fetch_from": "account.provider",
+   "read_only": 1,
+   "idx": 8
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Account Currency",
+   "options": "Currency",
+   "fetch_from": "account.currency",
+   "read_only": 1,
+   "idx": 9
+  },
+  {
+   "fieldname": "sb_result",
+   "fieldtype": "Section Break",
+   "label": "Result",
+   "idx": 10
+  },
+  {
+   "fieldname": "date_from",
+   "fieldtype": "Date",
+   "label": "From",
+   "read_only": 1,
+   "idx": 11
+  },
+  {
+   "fieldname": "date_to",
+   "fieldtype": "Date",
+   "label": "To",
+   "read_only": 1,
+   "idx": 12
+  },
+  {
+   "fieldname": "rows_total",
+   "fieldtype": "Int",
+   "label": "Rows",
+   "read_only": 1,
+   "idx": 13
+  },
+  {
+   "fieldname": "rows_valid",
+   "fieldtype": "Int",
+   "label": "Valid Rows",
+   "read_only": 1,
+   "idx": 14
+  },
+  {
+   "fieldname": "rows_error",
+   "fieldtype": "Int",
+   "label": "Rows With Errors",
+   "read_only": 1,
+   "in_list_view": 1,
+   "idx": 15
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 16
+  },
+  {
+   "fieldname": "campaigns_created",
+   "fieldtype": "Int",
+   "label": "Campaigns Created",
+   "read_only": 1,
+   "idx": 17
+  },
+  {
+   "fieldname": "snapshots_written",
+   "fieldtype": "Int",
+   "label": "Daily Rows Written",
+   "read_only": 1,
+   "idx": 18
+  },
+  {
+   "fieldname": "imported_at",
+   "fieldtype": "Datetime",
+   "label": "Imported At",
+   "read_only": 1,
+   "idx": 19
+  },
+  {
+   "fieldname": "imported_by",
+   "fieldtype": "Link",
+   "label": "Imported By",
+   "options": "User",
+   "read_only": 1,
+   "idx": 20
+  },
+  {
+   "fieldname": "sb_errors",
+   "fieldtype": "Section Break",
+   "label": "Errors",
+   "collapsible": 1,
+   "collapsible_depends_on": "rows_error",
+   "idx": 21
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Small Text",
+   "label": "Summary",
+   "read_only": 1,
+   "idx": 22
+  },
+  {
+   "fieldname": "errors",
+   "fieldtype": "Code",
+   "label": "Row Errors",
+   "options": "JSON",
+   "read_only": 1,
+   "idx": 23
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Metric Import",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "export": 0,
+   "print": 0,
+   "email": 0,
+   "share": 0,
+   "create": 1,
+   "write": 1,
+   "delete": 1
+  },
+  {
+   "role": "Excom Admin",
+   "read": 1,
+   "report": 1,
+   "export": 0,
+   "print": 0,
+   "email": 0,
+   "share": 0,
+   "create": 1,
+   "write": 1,
+   "delete": 1
+  },
+  {
+   "role": "Excom Marketing",
+   "read": 1,
+   "report": 1,
+   "export": 0,
+   "print": 0,
+   "email": 0,
+   "share": 0,
+   "create": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "hash",
+ "naming_rule": "Random",
+ "track_changes": 1
+}

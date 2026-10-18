@@ -18,6 +18,8 @@ INDEXES = {
 	"Ads Metric Snapshot": [("ads_snap_account_level_date", ["account", "level", "date"]), ("ads_snap_level_date", ["level", "date"])],
 	# billing.summary reads the latest snapshot per account.
 	"Ads Billing Snapshot": [("ads_billsnap_account_date", ["account", "snapshot_date"])],
+	# analytics.write_rows replaces (property, report, date range); the Website tab reads the same.
+	"Ads Web Snapshot": [("ads_web_prop_report_date", ["property", "report", "date"])],
 }
 
 

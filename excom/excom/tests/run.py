@@ -9,7 +9,7 @@ import unittest
 import frappe
 
 
-def run(module: str = "excom.excom.tests.test_core_flows,excom.excom.tests.test_gateway_contract,excom.excom.tests.test_meta_dm,excom.excom.tests.test_meta_connect,excom.excom.tests.test_whatsapp_media,excom.excom.tests.test_email_schedule,excom.excom.tests.test_template_sync,excom.excom.tests.test_endpoint_guards,excom.excom.tests.test_agent_onboarding,excom.excom.tests.test_crm_visibility,excom.excom.tests.test_thread_visibility,excom.excom.tests.test_team_registry,excom.excom.tests.test_team_lifecycle,excom.excom.tests.test_agent_rights,excom.excom.tests.test_identity_access,excom.excom.tests.test_role_tiers,excom.excom.tests.test_auto_ack,excom.excom.tests.test_patches,excom.excom.tests.test_identity_naming,excom.excom_ads.tests.test_ads_meta_sync,excom.excom_ads.tests.test_ads_google_sync,excom.excom_ads.tests.test_ads_leads,excom.excom_ads.tests.test_ads_permissions,excom.excom_ads.tests.test_ads_dashboard,excom.excom_ads.tests.test_ads_billing,excom.excom_ads.tests.test_ads_bills", pattern: str = "", backend: str = ""):
+def run(module: str = "excom.excom.tests.test_core_flows,excom.excom.tests.test_gateway_contract,excom.excom.tests.test_meta_dm,excom.excom.tests.test_meta_connect,excom.excom.tests.test_whatsapp_media,excom.excom.tests.test_email_schedule,excom.excom.tests.test_template_sync,excom.excom.tests.test_endpoint_guards,excom.excom.tests.test_agent_onboarding,excom.excom.tests.test_crm_visibility,excom.excom.tests.test_thread_visibility,excom.excom.tests.test_team_registry,excom.excom.tests.test_team_lifecycle,excom.excom.tests.test_agent_rights,excom.excom.tests.test_identity_access,excom.excom.tests.test_role_tiers,excom.excom.tests.test_auto_ack,excom.excom.tests.test_patches,excom.excom.tests.test_identity_naming,excom.excom_ads.tests.test_ads_meta_sync,excom.excom_ads.tests.test_ads_google_sync,excom.excom_ads.tests.test_ads_leads,excom.excom_ads.tests.test_ads_permissions,excom.excom_ads.tests.test_ads_dashboard,excom.excom_ads.tests.test_ads_billing,excom.excom_ads.tests.test_ads_bills,excom.excom_ads.tests.test_ads_ga4,excom.excom_ads.tests.test_ads_verified,excom.excom_ads.tests.test_ads_quality,excom.excom_ads.tests.test_ads_import,excom.excom_ads.tests.test_ads_reports,excom.excom_ads.tests.test_ads_escalation,excom.excom_ads.tests.test_ads_leads_dashboard,excom.excom_ads.tests.test_ads_connections", pattern: str = "", backend: str = ""):
 	if backend:
 		import os
 		os.environ["EXCOM_CRM_BACKEND"] = backend
@@ -18,6 +18,12 @@ def run(module: str = "excom.excom.tests.test_core_flows,excom.excom.tests.test_
 	# dynamic-link cleanup after deletes, …) would pile up until the queue refuses new jobs. Remember
 	# what was queued before the run and drop only what the run added.
 	queued_before = _queued_job_ids()
+	# The full suite queues more jobs than Frappe's queue-size guard allows; lift it for this test
+	# process only (restored below) — the jobs are removed again when the run ends.
+	import frappe.utils.background_jobs as _bj
+
+	_real_check_queue_size = _bj._check_queue_size
+	_bj._check_queue_size = lambda *a, **k: None
 	frappe.flags.mute_emails = True
 	# A test must not depend on how this site happens to be configured. Two ambient settings rewrite
 	# a fixture underneath a test: a live Assignment Rule claims every lead the suite creates and
@@ -40,6 +46,7 @@ def run(module: str = "excom.excom.tests.test_core_flows,excom.excom.tests.test_
 		result = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(suite)
 	finally:
 		_assignment_rule.apply = _real_apply
+		_bj._check_queue_size = _real_check_queue_size
 		_drop_jobs_added_since(queued_before)
 		frappe.db.set_single_value("Excom Settings", "enforce_crm_visibility", prior_enforcement or 0)
 		frappe.db.commit()

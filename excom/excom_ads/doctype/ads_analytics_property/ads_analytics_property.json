@@ -1,0 +1,377 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 22:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "property_name",
+  "property_id",
+  "connection",
+  "ga_account",
+  "ga_account_name",
+  "cb_1",
+  "workspace",
+  "company",
+  "brand",
+  "sync_enabled",
+  "sync_landing_pages",
+  "sb_property",
+  "website",
+  "measurement_id",
+  "property_type",
+  "cb_2",
+  "time_zone",
+  "currency",
+  "sb_sync",
+  "last_sync_at",
+  "last_success_at",
+  "last_job_type",
+  "last_status",
+  "synced_from",
+  "synced_until",
+  "cb_3",
+  "error_class",
+  "consecutive_failures",
+  "last_error",
+  "api_calls",
+  "rows_written",
+  "sb_quota",
+  "tokens_day_remaining",
+  "tokens_hour_remaining",
+  "quota_checked_at",
+  "cb_4",
+  "data_loss_other_row",
+  "subject_to_thresholding"
+ ],
+ "fields": [
+  {
+   "fieldname": "property_name",
+   "fieldtype": "Data",
+   "label": "Property",
+   "reqd": 1,
+   "in_list_view": 1,
+   "bold": 1,
+   "idx": 1
+  },
+  {
+   "fieldname": "property_id",
+   "fieldtype": "Data",
+   "label": "Property ID",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "The numeric GA4 property ID (Admin \u2192 Property details).",
+   "idx": 2
+  },
+  {
+   "fieldname": "connection",
+   "fieldtype": "Link",
+   "label": "Google Connection",
+   "options": "Ads Connection",
+   "reqd": 1,
+   "description": "Ads Connection whose scopes include https://www.googleapis.com/auth/analytics.readonly.",
+   "idx": 3
+  },
+  {
+   "fieldname": "ga_account",
+   "fieldtype": "Data",
+   "label": "Analytics Account",
+   "read_only": 1,
+   "idx": 4
+  },
+  {
+   "fieldname": "ga_account_name",
+   "fieldtype": "Data",
+   "label": "Analytics Account Name",
+   "read_only": 1,
+   "idx": 5
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 6
+  },
+  {
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "label": "Workspace",
+   "options": "Ads Workspace",
+   "reqd": 1,
+   "in_standard_filter": 1,
+   "idx": 7
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "fetch_from": "workspace.company",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "idx": 8
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "label": "Brand",
+   "options": "Ads Brand",
+   "in_standard_filter": 1,
+   "idx": 9
+  },
+  {
+   "fieldname": "sync_enabled",
+   "fieldtype": "Check",
+   "label": "Sync Enabled",
+   "default": "1",
+   "in_list_view": 1,
+   "idx": 10
+  },
+  {
+   "fieldname": "sync_landing_pages",
+   "fieldtype": "Check",
+   "label": "Also Sync Landing Pages",
+   "default": "1",
+   "description": "A second daily report by landing page. Costs extra quota tokens.",
+   "idx": 11
+  },
+  {
+   "fieldname": "sb_property",
+   "fieldtype": "Section Break",
+   "label": "Property",
+   "idx": 12
+  },
+  {
+   "fieldname": "website",
+   "fieldtype": "Data",
+   "label": "Website",
+   "read_only": 1,
+   "description": "Default URI of the first web data stream.",
+   "idx": 13
+  },
+  {
+   "fieldname": "measurement_id",
+   "fieldtype": "Data",
+   "label": "Measurement ID",
+   "read_only": 1,
+   "idx": 14
+  },
+  {
+   "fieldname": "property_type",
+   "fieldtype": "Data",
+   "label": "Property Type",
+   "read_only": 1,
+   "idx": 15
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 16
+  },
+  {
+   "fieldname": "time_zone",
+   "fieldtype": "Data",
+   "label": "Reporting Time Zone",
+   "read_only": 1,
+   "description": "GA4 reports days in this time zone.",
+   "idx": 17
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1,
+   "idx": 18
+  },
+  {
+   "fieldname": "sb_sync",
+   "fieldtype": "Section Break",
+   "label": "Sync",
+   "idx": 19
+  },
+  {
+   "fieldname": "last_sync_at",
+   "fieldtype": "Datetime",
+   "label": "Last Sync",
+   "read_only": 1,
+   "idx": 20
+  },
+  {
+   "fieldname": "last_success_at",
+   "fieldtype": "Datetime",
+   "label": "Last Successful Sync",
+   "read_only": 1,
+   "idx": 21
+  },
+  {
+   "fieldname": "last_job_type",
+   "fieldtype": "Data",
+   "label": "Last Job",
+   "read_only": 1,
+   "idx": 22
+  },
+  {
+   "fieldname": "last_status",
+   "fieldtype": "Select",
+   "label": "Last Status",
+   "options": "\nSuccess\nPartial\nFailed",
+   "read_only": 1,
+   "in_list_view": 1,
+   "idx": 23
+  },
+  {
+   "fieldname": "synced_from",
+   "fieldtype": "Date",
+   "label": "Synced From",
+   "read_only": 1,
+   "idx": 24
+  },
+  {
+   "fieldname": "synced_until",
+   "fieldtype": "Date",
+   "label": "Synced Until",
+   "read_only": 1,
+   "idx": 25
+  },
+  {
+   "fieldname": "cb_3",
+   "fieldtype": "Column Break",
+   "idx": 26
+  },
+  {
+   "fieldname": "error_class",
+   "fieldtype": "Select",
+   "label": "Error Class",
+   "options": "\nRetryable\nRate Limited\nPermission\nToken\nInvalid\nUnknown",
+   "read_only": 1,
+   "idx": 27
+  },
+  {
+   "fieldname": "consecutive_failures",
+   "fieldtype": "Int",
+   "label": "Consecutive Failures",
+   "read_only": 1,
+   "idx": 28
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1,
+   "idx": 29
+  },
+  {
+   "fieldname": "api_calls",
+   "fieldtype": "Int",
+   "label": "API Calls (last job)",
+   "read_only": 1,
+   "idx": 30
+  },
+  {
+   "fieldname": "rows_written",
+   "fieldtype": "Int",
+   "label": "Rows Written (last job)",
+   "read_only": 1,
+   "idx": 31
+  },
+  {
+   "fieldname": "sb_quota",
+   "fieldtype": "Section Break",
+   "label": "Quota and Data Notes",
+   "collapsible": 1,
+   "idx": 32
+  },
+  {
+   "fieldname": "tokens_day_remaining",
+   "fieldtype": "Int",
+   "label": "Tokens Left Today",
+   "read_only": 1,
+   "idx": 33
+  },
+  {
+   "fieldname": "tokens_hour_remaining",
+   "fieldtype": "Int",
+   "label": "Tokens Left This Hour",
+   "read_only": 1,
+   "idx": 34
+  },
+  {
+   "fieldname": "quota_checked_at",
+   "fieldtype": "Datetime",
+   "label": "Quota Read At",
+   "read_only": 1,
+   "idx": 35
+  },
+  {
+   "fieldname": "cb_4",
+   "fieldtype": "Column Break",
+   "idx": 36
+  },
+  {
+   "fieldname": "data_loss_other_row",
+   "fieldtype": "Check",
+   "label": "Rows Rolled Into (other)",
+   "read_only": 1,
+   "description": "GA4 grouped some low-volume rows into '(other)' in the last sync.",
+   "idx": 37
+  },
+  {
+   "fieldname": "subject_to_thresholding",
+   "fieldtype": "Check",
+   "label": "Subject To Thresholding",
+   "read_only": 1,
+   "idx": 38
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Analytics Property",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "export": 0,
+   "print": 0,
+   "email": 0,
+   "share": 0,
+   "create": 1,
+   "write": 1,
+   "delete": 1
+  },
+  {
+   "role": "Excom Admin",
+   "read": 1,
+   "report": 1,
+   "export": 0,
+   "print": 0,
+   "email": 0,
+   "share": 0,
+   "create": 1,
+   "write": 1,
+   "delete": 1
+  },
+  {
+   "role": "Excom Marketing",
+   "read": 1,
+   "report": 1,
+   "export": 0,
+   "print": 0,
+   "email": 0,
+   "share": 0
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "naming_rule": "By script",
+ "track_changes": 1,
+ "title_field": "property_name",
+ "show_title_field_in_link": 0
+}
