@@ -22,6 +22,7 @@ const MoreRoute = lazy(() => import("./pages").then((m) => ({ default: m.MoreRou
 const StressRoute = lazy(() => import("./stress").then((m) => ({ default: m.StressRoute })));
 const CallsRoute = lazy(() => import("../components/voice/CallsPage").then((m) => ({ default: m.CallsPage })));
 const TasksRoute = lazy(() => import("../components/tasks/TasksPage").then((m) => ({ default: m.TasksPage })));
+const MarketingRoute = lazy(() => import("../components/marketing/MarketingPage").then((m) => ({ default: m.MarketingPage })));
 
 const L = (el: React.ReactNode) => <Suspense fallback={<RouteFallback />}>{el}</Suspense>;
 
@@ -30,6 +31,7 @@ const L = (el: React.ReactNode) => <Suspense fallback={<RouteFallback />}>{el}</
  *   /inbox/:view?     ?channel=&account=&team=&tag=&from=&to=&q=&broadcast=&bstatus=&company=
  *   /t/:recordId      ?view=&tab=chat|tasks|notes|activity&panel=details&via=<threadId>
  *   /today /pipeline /intake   (P3 — registered, flagged)
+ *   /marketing/:tab?  overview|campaigns|accounts|alerts|activity  ?range=&from=&to=&company=&workspace=&brand=&provider=&account=
  *   /broadcasts /analytics /teams /merge /subscribers /rules /settings /contacts /more
  *   /dev/stress
  */
@@ -52,6 +54,7 @@ export function NextRouter() {
           <Route path="/tasks" element={L(<TasksRoute />)} />
           <Route path="/broadcasts" element={L(<BroadcastsRoute />)} />
           <Route path="/analytics" element={L(<AnalyticsRoute />)} />
+          <Route path="/marketing/:tab?" element={L(<MarketingRoute />)} />
           <Route path="/teams" element={<Navigate to="/admin/teams" replace />} />
           <Route path="/admin/:section?" element={L(<AdminRoute />)} />
           <Route path="/merge" element={L(<MergeRoute />)} />
