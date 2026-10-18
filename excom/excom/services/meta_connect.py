@@ -16,6 +16,7 @@ from frappe.utils import now_datetime
 GRAPH = "https://graph.facebook.com"
 PAGE_FIELDS = "id,name,category,access_token,instagram_business_account{id,username,name}"
 FORM_FIELDS = "id,name,status,leads_count,created_time"
+AD_ACCOUNT_FIELDS = "id,name,account_id,currency,timezone_name,account_status"
 
 
 def _conn(name):
@@ -118,6 +119,19 @@ def discover(name: str) -> dict:
 						found.append({"asset_type": "WhatsApp Number", "asset_id": n["id"], "asset_name": f"{n.get('verified_name') or ''} {n.get('display_phone_number') or ''}".strip(), "page_id": waba["id"], "extra": {"waba_id": waba["id"], "waba_name": waba.get("name"), "quality": n.get("quality_rating")}})
 			except frappe.ValidationError:
 				pass
+	# Ad accounts (needs ads_read). Read by the Excom Ads module once enabled; nothing else uses them.
+	ad_accounts: dict = {}
+	edges = [f"{GRAPH}/{v}/me/adaccounts"]
+	if conn.business_id:
+		edges += [f"{GRAPH}/{v}/{conn.business_id}/owned_ad_accounts", f"{GRAPH}/{v}/{conn.business_id}/client_ad_accounts"]
+	for url in edges:
+		try:
+			for a in _paged(url, {"access_token": tok, "fields": AD_ACCOUNT_FIELDS, "limit": 100}):
+				ad_accounts.setdefault(a["id"], a)
+		except frappe.ValidationError:
+			pass  # token without ads_read, or no business_management for the business edges
+	for a in ad_accounts.values():
+		found.append({"asset_type": "Ad Account", "asset_id": a["id"], "asset_name": a.get("name") or a["id"], "page_id": None, "extra": {"currency": a.get("currency"), "timezone_name": a.get("timezone_name"), "account_status": a.get("account_status")}})
 	# Merge into the child table. Rows Meta did not return this time are KEPT (manually added numbers, assets the
 	# token cannot see yet) and flagged, never dropped — enabling/disabling is the only thing that changes state.
 	existing = {(a.asset_type, a.asset_id): a for a in conn.assets}
@@ -191,6 +205,10 @@ def enable_asset(name: str, asset_type: str, asset_id: str, enable: int = 1) -> 
 		if row.linked_doctype and row.linked_name and frappe.db.exists(row.linked_doctype, row.linked_name):
 			if row.linked_doctype == "Excom Channel Account":
 				frappe.db.set_value(row.linked_doctype, row.linked_name, "status", "Inactive")
+			elif row.linked_doctype == "Ads Account":
+				from excom.excom_ads.accounts import disable as disable_ad_account
+
+				disable_ad_account(row.linked_name)
 			else:
 				frappe.db.set_value(row.linked_doctype, row.linked_name, "enabled", 0)
 		row.enabled = 0
@@ -224,6 +242,11 @@ def enable_asset(name: str, asset_type: str, asset_id: str, enable: int = 1) -> 
 	elif asset_type == "WhatsApp Number":
 		linked_dt = "Excom Channel Account"
 		linked_name = _upsert_account(conn, "whatsapp", f"WhatsApp · {row.asset_name}", {"wa_phone_id": asset_id, "wa_business_id": extra.get("waba_id"), "wa_token": _token(conn), "wa_app_id": conn.app_id, "wa_app_secret": conn.get_password("app_secret", raise_exception=False) or "", "wa_webhook_verify_token": conn.webhook_verify_token, "wa_url": "https://graph.facebook.com", "wa_version": conn.api_version or "v21.0", "status": "Active"})
+	elif asset_type == "Ad Account":
+		from excom.excom_ads.accounts import upsert_meta_ad_account
+
+		linked_dt = "Ads Account"
+		linked_name = upsert_meta_ad_account(conn, row)
 	if int(enable or 0):
 		row.enabled = 1
 		row.linked_doctype = linked_dt

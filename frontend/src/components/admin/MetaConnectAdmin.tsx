@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { useFrappeGetCall } from "@/lib/api";
-import { Loader2, RefreshCw, Plus, ShieldCheck, ShieldAlert, ExternalLink, Copy, Facebook, Instagram, FileText, MessageCircle } from "lucide-react";
+import { Loader2, RefreshCw, Plus, ShieldCheck, ShieldAlert, ExternalLink, Copy, Facebook, Instagram, FileText, MessageCircle, Megaphone } from "lucide-react";
 import { toast } from "sonner";
 import { Button, Chip, EmptyState, Sheet, Input, Field } from "../primitives";
 import { DocForm, useSchema } from "./DocAdmin";
@@ -9,13 +9,13 @@ import { deskUrl } from "../../hooks/useRecordLinks";
 import { serverMessage } from "./util";
 import { cn } from "../ui/utils";
 
-interface Asset { asset_type: "Page" | "Instagram" | "Lead Form" | "WhatsApp Number"; asset_id: string; asset_name?: string; page_id?: string; enabled: number; linked_doctype?: string; linked_name?: string; extra: Record<string, unknown> }
+interface Asset { asset_type: "Page" | "Instagram" | "Lead Form" | "WhatsApp Number" | "Ad Account"; asset_id: string; asset_name?: string; page_id?: string; enabled: number; linked_doctype?: string; linked_name?: string; extra: Record<string, unknown> }
 interface Conn { name: string; business_id?: string; company?: string; status: string; app_id?: string; api_version?: string; last_synced_at?: string; token_valid?: number; token_scopes?: string; webhook_verify_token?: string; has_token: boolean; has_secret: boolean; assets: Asset[] }
 
-const ICON: Record<Asset["asset_type"], React.ReactNode> = { Page: <Facebook />, Instagram: <Instagram />, "Lead Form": <FileText />, "WhatsApp Number": <MessageCircle /> };
-const WHAT: Record<Asset["asset_type"], string> = { Page: "Messenger inbox for this page", Instagram: "Instagram DMs", "Lead Form": "Lead-ad form → Intake source", "WhatsApp Number": "WhatsApp channel account" };
+const ICON: Record<Asset["asset_type"], React.ReactNode> = { Page: <Facebook />, Instagram: <Instagram />, "Lead Form": <FileText />, "WhatsApp Number": <MessageCircle />, "Ad Account": <Megaphone /> };
+const WHAT: Record<Asset["asset_type"], string> = { Page: "Messenger inbox for this page", Instagram: "Instagram DMs", "Lead Form": "Lead-ad form → Intake source", "WhatsApp Number": "WhatsApp channel account", "Ad Account": "Ads Account: spend, campaigns and daily results" };
 
-/** One Meta Business connection → discover pages / Instagram / lead forms / WhatsApp numbers → enable each. */
+/** One Meta Business connection → discover pages / Instagram / lead forms / WhatsApp numbers / ad accounts → enable each. */
 export function MetaConnectAdmin() {
   const { data, isLoading, mutate } = useFrappeGetCall<{ message: Conn[] }>("excom.excom.api.meta.get_connections", undefined, "admin-meta", { revalidateOnFocus: false });
   const { data: hook } = useFrappeGetCall<{ message: { url: string } }>("excom.excom.api.meta.webhook_url", undefined, "admin-meta-hook", { revalidateOnFocus: false });
@@ -66,7 +66,7 @@ export function MetaConnectAdmin() {
             </div>
             {c.assets.length === 0 ? <p className="px-3 py-3 text-xs text-ink-3">Nothing discovered yet.</p> : (
               <ul className="divide-y divide-border">
-                {(["Page", "Instagram", "Lead Form", "WhatsApp Number"] as Asset["asset_type"][]).map((t) => c.assets.filter((a) => a.asset_type === t).map((a) => (
+                {(["Page", "Instagram", "Lead Form", "WhatsApp Number", "Ad Account"] as Asset["asset_type"][]).map((t) => c.assets.filter((a) => a.asset_type === t).map((a) => (
                   <li key={t + a.asset_id} className={cn("flex items-center gap-2 px-3 h-11 min-w-0", a.enabled && "bg-crayon-green-tint/40")}>
                     <span className="text-ink-3 [&>svg]:size-4 shrink-0">{ICON[t]}</span>
                     <div className="flex-1 min-w-0"><div className="text-sm text-ink-1 truncate">{a.asset_name || a.asset_id}</div><div className="text-xs text-ink-3 truncate">{t} · {a.asset_id}{a.page_id && t !== "Page" ? ` · page ${a.page_id}` : ""}{a.extra?.status ? ` · ${String(a.extra.status)}` : ""}{a.extra?.leads_count != null ? ` · ${String(a.extra.leads_count)} leads` : ""}</div></div>

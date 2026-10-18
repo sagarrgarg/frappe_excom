@@ -8,7 +8,7 @@
    "fieldname": "asset_type",
    "fieldtype": "Select",
    "label": "Type",
-   "options": "Page\nInstagram\nLead Form\nWhatsApp Number",
+   "options": "Page\nInstagram\nLead Form\nWhatsApp Number\nAd Account",
    "in_list_view": 1,
    "reqd": 1
   },
@@ -69,7 +69,7 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "creation": "2026-09-03 00:00:00",
- "modified": "2026-09-03 00:00:00",
+ "modified": "2026-10-18 12:00:00.000000",
  "owner": "Administrator",
  "modified_by": "Administrator",
  "idx": 0,

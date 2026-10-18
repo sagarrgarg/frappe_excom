@@ -1,0 +1,389 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "account_name",
+  "provider",
+  "external_id",
+  "meta_connection",
+  "cb_1",
+  "workspace",
+  "company",
+  "brand",
+  "sync_enabled",
+  "sb_platform",
+  "status",
+  "platform_status",
+  "disable_reason",
+  "cb_2",
+  "currency",
+  "timezone_name",
+  "payment_model",
+  "sb_caps",
+  "can_read",
+  "can_write",
+  "cb_3",
+  "can_billing",
+  "can_leads",
+  "sb_billing",
+  "reported_amount_spent",
+  "reported_spend_cap",
+  "has_spend_cap",
+  "cb_4",
+  "reported_amount_due",
+  "billing_reported_at",
+  "billing_status",
+  "sb_sync",
+  "last_structure_sync",
+  "last_metrics_sync",
+  "metrics_synced_from",
+  "metrics_synced_until",
+  "cb_5",
+  "error_class",
+  "consecutive_failures",
+  "last_error"
+ ],
+ "fields": [
+  {
+   "fieldname": "account_name",
+   "fieldtype": "Data",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Account Name",
+   "reqd": 1
+  },
+  {
+   "default": "Meta",
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "idx": 2,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Provider",
+   "options": "Meta\nGoogle\nLinkedIn",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "description": "Meta: act_<id>. Google: customer ID without dashes. LinkedIn: sponsored account ID.",
+   "fieldname": "external_id",
+   "fieldtype": "Data",
+   "idx": 3,
+   "label": "Platform Account ID",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "depends_on": "eval:doc.provider=='Meta'",
+   "fieldname": "meta_connection",
+   "fieldtype": "Link",
+   "idx": 4,
+   "label": "Excom Meta Connection",
+   "mandatory_depends_on": "eval:doc.provider=='Meta'",
+   "options": "Excom Meta Connection"
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 5
+  },
+  {
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "idx": 6,
+   "in_standard_filter": 1,
+   "label": "Workspace",
+   "options": "Ads Workspace",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "workspace.company",
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "idx": 7,
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "idx": 8,
+   "in_standard_filter": 1,
+   "label": "Brand",
+   "options": "Ads Brand"
+  },
+  {
+   "default": "1",
+   "fieldname": "sync_enabled",
+   "fieldtype": "Check",
+   "idx": 9,
+   "label": "Sync Enabled"
+  },
+  {
+   "fieldname": "sb_platform",
+   "fieldtype": "Section Break",
+   "idx": 10,
+   "label": "Platform"
+  },
+  {
+   "default": "Unknown",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "idx": 11,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Active\nDisabled\nUnsettled\nPending Review\nGrace Period\nPending Closure\nClosed\nUnknown",
+   "read_only": 1
+  },
+  {
+   "fieldname": "platform_status",
+   "fieldtype": "Data",
+   "idx": 12,
+   "label": "Platform Status Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "disable_reason",
+   "fieldtype": "Data",
+   "idx": 13,
+   "label": "Disable Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 14
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "idx": 15,
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "timezone_name",
+   "fieldtype": "Data",
+   "idx": 16,
+   "label": "Time Zone",
+   "read_only": 1
+  },
+  {
+   "default": "Unknown",
+   "fieldname": "payment_model",
+   "fieldtype": "Select",
+   "idx": 17,
+   "label": "Payment Model",
+   "options": "Unknown\nPrepaid\nCard (Postpaid)\nCredit Line\nMonthly Invoicing"
+  },
+  {
+   "description": "What the connected token can do on this account. Anything off here is greyed out in the app.",
+   "fieldname": "sb_caps",
+   "fieldtype": "Section Break",
+   "idx": 18,
+   "label": "Capabilities"
+  },
+  {
+   "fieldname": "can_read",
+   "fieldtype": "Check",
+   "idx": 19,
+   "label": "Read Reporting",
+   "read_only": 1
+  },
+  {
+   "fieldname": "can_write",
+   "fieldtype": "Check",
+   "idx": 20,
+   "label": "Edit Campaigns",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_3",
+   "fieldtype": "Column Break",
+   "idx": 21
+  },
+  {
+   "fieldname": "can_billing",
+   "fieldtype": "Check",
+   "idx": 22,
+   "label": "Read Billing",
+   "read_only": 1
+  },
+  {
+   "fieldname": "can_leads",
+   "fieldtype": "Check",
+   "idx": 23,
+   "label": "Read Leads",
+   "read_only": 1
+  },
+  {
+   "description": "Meta's 'balance' is the amount due, not funds available. No platform reports a prepaid balance.",
+   "fieldname": "sb_billing",
+   "fieldtype": "Section Break",
+   "idx": 24,
+   "label": "Billing as reported by the platform"
+  },
+  {
+   "fieldname": "reported_amount_spent",
+   "fieldtype": "Currency",
+   "idx": 25,
+   "label": "Lifetime Amount Spent",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "depends_on": "has_spend_cap",
+   "fieldname": "reported_spend_cap",
+   "fieldtype": "Currency",
+   "idx": 26,
+   "label": "Account Spend Cap",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "has_spend_cap",
+   "fieldtype": "Check",
+   "idx": 27,
+   "label": "Spend Cap Set",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_4",
+   "fieldtype": "Column Break",
+   "idx": 28
+  },
+  {
+   "fieldname": "reported_amount_due",
+   "fieldtype": "Currency",
+   "idx": 29,
+   "label": "Amount Due (Meta balance)",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "billing_reported_at",
+   "fieldtype": "Datetime",
+   "idx": 30,
+   "label": "Billing Read At",
+   "read_only": 1
+  },
+  {
+   "default": "Not Read",
+   "description": "Amounts above are only meaningful when this says Reported. Anything else is shown as not available, never as zero.",
+   "fieldname": "billing_status",
+   "fieldtype": "Select",
+   "idx": 31,
+   "label": "Billing Status",
+   "options": "Not Read\nReported\nNot Available\nPermission Missing\nError",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_sync",
+   "fieldtype": "Section Break",
+   "idx": 32,
+   "label": "Sync"
+  },
+  {
+   "fieldname": "last_structure_sync",
+   "fieldtype": "Datetime",
+   "idx": 33,
+   "label": "Last Structure Sync",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_metrics_sync",
+   "fieldtype": "Datetime",
+   "idx": 34,
+   "label": "Last Metrics Sync",
+   "read_only": 1
+  },
+  {
+   "fieldname": "metrics_synced_from",
+   "fieldtype": "Date",
+   "idx": 35,
+   "label": "Metrics Available From",
+   "read_only": 1
+  },
+  {
+   "fieldname": "metrics_synced_until",
+   "fieldtype": "Date",
+   "idx": 36,
+   "label": "Metrics Available Until",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_5",
+   "fieldtype": "Column Break",
+   "idx": 37
+  },
+  {
+   "fieldname": "error_class",
+   "fieldtype": "Select",
+   "idx": 38,
+   "label": "Error Class",
+   "options": "\nRetryable\nRate Limited\nPermission\nToken\nInvalid\nUnknown",
+   "read_only": 1
+  },
+  {
+   "fieldname": "consecutive_failures",
+   "fieldtype": "Int",
+   "idx": 39,
+   "label": "Consecutive Failures",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "idx": 40,
+   "label": "Last Error",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Account",
+ "naming_rule": "By script",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "external_id,workspace",
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "account_name",
+ "track_changes": 1
+}

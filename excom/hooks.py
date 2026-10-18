@@ -236,6 +236,7 @@ scheduler_events = {
 		"excom.excom.tasks.crm_sla.check_crm_sla",
 		"excom.excom.utils.trigger_whatsapp_notifications_hourly",
 		"excom.excom.utils.trigger_whatsapp_notifications_hourly_long",
+		"excom.excom_ads.tasks.enqueue_structure",
 	],
 	"daily": [
 		"excom.excom.services.whatsapp_service.sync_phone_profiles",
@@ -248,12 +249,15 @@ scheduler_events = {
 		"excom.excom.tasks.intake.purge_old_payloads",
 		"excom.excom.tasks.intake.reconcile_meta_leads",
 		"excom.excom.channels.voice.recording.purge_expired_recordings",
+		"excom.excom_ads.tasks.enqueue_settle",
 	],
 	"cron": {
 		"*/5 * * * *": ["excom.excom.tasks.intake.pull_due_sources"],
 		# Duration and cost land at the provider a minute or two after a call ends. Without this
 		# sweep, completed calls sit at duration = 0 forever.
 		"*/3 * * * *": ["excom.excom.channels.voice.reconcile.reconcile_pending_calls"],
+		# Ads: today's spend and results. Structure is hourly, the 28-day settle re-pull is daily.
+		"*/30 * * * *": ["excom.excom_ads.tasks.enqueue_intraday"],
 	},
 	"daily_maintenance": [
 		"excom.excom.scheduler.daily.sync_invalid_tokens",
@@ -261,6 +265,7 @@ scheduler_events = {
 	"weekly": [
 		"excom.excom.utils.trigger_whatsapp_notifications_weekly",
 		"excom.excom.utils.trigger_whatsapp_notifications_weekly_long",
+		"excom.excom_ads.tasks.purge_raw_payloads",
 	],
 	"monthly": [
 		"excom.excom.utils.trigger_whatsapp_notifications_monthly",
