@@ -11,6 +11,7 @@ DEFAULTS = {
 	"sync_ad_level_metrics": 1,
 	"max_pages_per_call": 200,
 	"alert_whatsapp_template": "",
+	"ctwa_create_lead": 1,
 }
 
 

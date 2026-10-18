@@ -27,3 +27,11 @@ class AdsAccount(Document):
 			brand_ws = frappe.db.get_value("Ads Brand", self.brand, "workspace")
 			if brand_ws and brand_ws != self.workspace:
 				frappe.throw(_("Brand {0} belongs to workspace {1}, not {2}").format(self.brand, brand_ws, self.workspace))
+		if self.get("connection"):
+			# A credential of one company never reads another company's account.
+			conn = frappe.db.get_value("Ads Connection", self.connection, ["provider", "company"], as_dict=True)
+			if conn and conn.provider != self.provider:
+				frappe.throw(_("Ads Connection {0} is for {1}, not {2}").format(self.connection, conn.provider, self.provider))
+			company = self.company or frappe.db.get_value("Ads Workspace", self.workspace, "company")
+			if conn and company and conn.company != company:
+				frappe.throw(_("Ads Connection {0} belongs to company {1}, not {2}").format(self.connection, conn.company, company))

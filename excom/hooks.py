@@ -130,8 +130,10 @@ permission_query_conditions = {
 	"Ads Access Profile": "excom.excom_ads.permissions.get_permission_query_conditions",
 	"Ads Account": "excom.excom_ads.permissions.get_permission_query_conditions",
 	"Ads Ad Group": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Connection": "excom.excom_ads.permissions.get_permission_query_conditions",
 	"Ads Advertisement": "excom.excom_ads.permissions.get_permission_query_conditions",
 	"Ads Alert": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Attribution Touch": "excom.excom_ads.permissions.get_permission_query_conditions",
 	"Ads Brand": "excom.excom_ads.permissions.get_permission_query_conditions",
 	"Ads Campaign": "excom.excom_ads.permissions.get_permission_query_conditions",
 	"Ads Metric Snapshot": "excom.excom_ads.permissions.get_permission_query_conditions",
@@ -148,8 +150,10 @@ has_permission = {
 	"Ads Access Profile": "excom.excom_ads.permissions.has_permission",
 	"Ads Account": "excom.excom_ads.permissions.has_permission",
 	"Ads Ad Group": "excom.excom_ads.permissions.has_permission",
+	"Ads Connection": "excom.excom_ads.permissions.has_permission",
 	"Ads Advertisement": "excom.excom_ads.permissions.has_permission",
 	"Ads Alert": "excom.excom_ads.permissions.has_permission",
+	"Ads Attribution Touch": "excom.excom_ads.permissions.has_permission",
 	"Ads Brand": "excom.excom_ads.permissions.has_permission",
 	"Ads Campaign": "excom.excom_ads.permissions.has_permission",
 	"Ads Metric Snapshot": "excom.excom_ads.permissions.has_permission",
@@ -201,10 +205,20 @@ doc_events = {
 			"excom.excom.services.crm_flow.on_lead_created",
 		],
 		"on_update": "excom.excom.services.crm_flow.on_lead_updated",
+		# Ads attribution touches hold click IDs tied to the person: they go with the record.
+		"on_trash": "excom.excom_ads.attribution.on_reference_trash",
+		"after_delete": "excom.excom.services.identity_hooks.on_entity_deleted",
 	},
 	"Opportunity": {
 		"after_insert": "excom.excom.services.crm_flow.on_opportunity_created",
 		"on_update": "excom.excom.services.crm_flow.on_opportunity_updated",
+		"on_trash": "excom.excom_ads.attribution.on_reference_trash",
+		"after_delete": "excom.excom.services.identity_hooks.on_entity_deleted",
+	},
+	# A storefront order with UTM values / click IDs (webshop copies them) is an ads Order touch.
+	"Sales Order": {
+		"on_submit": "excom.excom_ads.attribution.on_sales_order_submit",
+		"on_trash": "excom.excom_ads.attribution.on_reference_trash",
 	},
 	"Prospect": {
 		"after_insert": "excom.excom.services.identity_hooks.on_entity_created",
@@ -273,6 +287,7 @@ scheduler_events = {
 		"excom.excom.tasks.intake.reconcile_meta_leads",
 		"excom.excom.channels.voice.recording.purge_expired_recordings",
 		"excom.excom_ads.tasks.enqueue_settle",
+		"excom.excom_ads.tasks.enqueue_relink",
 	],
 	"cron": {
 		"*/5 * * * *": ["excom.excom.tasks.intake.pull_due_sources"],

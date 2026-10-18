@@ -26,7 +26,7 @@ def reload_all() -> list:
 		import_file_by_path(p, force=True)
 		loaded.append(os.path.basename(p)[:-5])
 	# Excom DocTypes the ads module extends.
-	for name in ("excom_meta_asset",):
+	for name in ("excom_meta_asset", "excom_source", "excom_thread"):
 		frappe.reload_doc("excom", "doctype", name, force=True)
 	from excom.excom_ads.setup import seed
 

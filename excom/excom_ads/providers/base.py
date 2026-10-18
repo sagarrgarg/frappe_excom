@@ -88,6 +88,7 @@ class AdsProvider:
 # provider name -> "module:Class". Imported lazily so a provider's dependencies load only when used.
 PROVIDERS = {
 	"Meta": "excom.excom_ads.providers.meta:MetaAdsProvider",
+	"Google": "excom.excom_ads.providers.google_ads:GoogleAdsProvider",
 }
 
 

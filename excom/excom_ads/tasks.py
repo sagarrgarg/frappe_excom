@@ -57,3 +57,14 @@ def wake_snoozed_alerts():
 	for name in frappe.get_all("Ads Alert", filters={"status": "Snoozed", "snoozed_until": ["<", frappe.utils.now_datetime()]}, pluck="name"):
 		frappe.db.set_value("Ads Alert", name, {"status": "Open", "snoozed_until": None, "notified_severity": None})
 		_notify(name)
+
+
+def enqueue_relink():
+	"""Daily backstop: link leads whose ad mirror arrived after them (structure syncs also do this)."""
+	if not frappe.db.exists("DocType", "Ads Attribution Touch"):
+		return
+	if not frappe.db.exists("Ads Attribution Touch", {"link_status": ["in", ["Pending", "Partial"]]}):
+		return
+	from excom.excom_ads.attribution import enqueue_relink as _enqueue
+
+	_enqueue()

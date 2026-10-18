@@ -18,3 +18,8 @@ def mirror_name(account: str, external_id: str) -> str:
 def snapshot_name(account: str, level: str, entity_id: str, date, breakdown_key: str = "none", breakdown_value: str = "", attribution_key: str = "default") -> str:
 	key = "|".join([account, level, str(entity_id), str(date), breakdown_key or "none", breakdown_value or "", attribution_key or "default"])
 	return hashlib.sha1(key.encode()).hexdigest()
+
+
+def touch_name(touch_source: str, observation_id: str) -> str:
+	"""Ads Attribution Touch: one row per observation (intake log key, WhatsApp message ID, order)."""
+	return hashlib.sha1(f"{touch_source}|{observation_id}".encode()).hexdigest()

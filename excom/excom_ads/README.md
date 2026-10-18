@@ -15,11 +15,15 @@ Supported: Frappe/ERPNext **v15 and v16**, MariaDB, Python ≥ 3.10. Test on `fr
 | `doctype/` | Every Ads DocType. Names start with `Ads `. Never ship a DocType named `WhatsApp …`. |
 | `providers/base.py` | `AdsProvider` contract, `Capability`, error classes, provider registry (`PROVIDERS`). |
 | `providers/<name>.py` | One module per platform. Read-only in release 1. |
+| `google_auth.py` | Google credentials (service account JWT / OAuth refresh) and the one Google HTTP function, shared by Ads and later GA4 / Search Console / Merchant. |
+| `google_connect.py`, `api_google.py` | Ads Connection test, account discovery (manager tree) and enabling; admin-only endpoints. |
 | `sync.py` | Jobs (Structure / Metrics / Settle / Backfill), upserts, alerts on results. |
 | `permissions.py` | Scope (company / workspace / brand / account) + rights (Ads Access Profile). |
 | `alerts.py` | `raise_alert()` / `resolve_alert()`; delivery by Ads Notification Policy. |
 | `settings.py` | `get_settings()` — Ads Settings with defaults. Add new keys to `DEFAULTS`. |
 | `naming.py` | Deterministic names from natural keys. |
+| `attribution.py` | Leads ↔ ads: one Ads Attribution Touch per observed touch (lead form, click-to-WhatsApp, website, order); the Lead/Opportunity keeps its first; `relink_pending` links leads that arrived before their mirror. |
+| `attribution_schema.py` | `ads_*` Custom Fields on Lead/Opportunity + resolver indexes, applied by `setup.seed()`. |
 | `tasks.py` | Scheduler entry points. They only enqueue. |
 | `api.py` / `api/` | Whitelisted endpoints. |
 | `tests/` | `test_*.py`, run through `excom.excom.tests.run.run`; `tests/dev.py` reloads DocTypes. |
@@ -49,7 +53,8 @@ Supported: Frappe/ERPNext **v15 and v16**, MariaDB, Python ≥ 3.10. Test on `fr
   DocTypes use `permlevel: 1` (read for System Manager, Excom Admin, Accounts User/Manager).
 - Roles: `System Manager`, `Excom Admin` (full), `Excom Marketing` (read inside scope). Do not add
   roles; add a right to Ads Access Profile instead.
-- Credentials stay in Password fields on their owning record (Meta: `Excom Meta Connection`).
+- Credentials stay in Password fields on their owning record (Meta: `Excom Meta Connection`; Google and
+  LinkedIn: `Ads Connection`, which only System Manager and Excom Admin can open).
   Read with `get_password()` server-side only; never return them, log them or put them in errors.
 - Webhooks: verify the signature before anything else, store the raw event, enqueue processing,
   idempotent on the provider event ID.
@@ -74,6 +79,16 @@ ai_interface) are checked with `"<app>" in frappe.get_installed_apps()` before u
 `alerts.resolve_alert(key)` when the condition clears. Alert types are the Select options on
 Ads Alert; add new ones there.
 
+**Leads and attribution**
+- Intake (`excom/services/intake.py`) asks `attribution.intake_context()` what ad a payload names and calls
+  `attribution.on_intake()` in a savepoint: a failure is logged, the lead is still created. WhatsApp inbound
+  calls `on_whatsapp_message()` for messages with `referral`. Never write `ads_*` fields any other way.
+- Touch rows are named `naming.touch_name(touch_source, observation_id)`; the observation id is the intake
+  log's dedupe key, `wa:<wamid>` or `so:<Sales Order>`. Replays land on the same row and never blank a value.
+- Platform test leads (`ads_is_test`) are kept out of every lead KPI (`attribution.kpi_lead_filters()`).
+- Google Ads lead forms post to `/api/method/excom.excom.api.intake.google_lead_form`; the per-form key is
+  checked in constant time before anything is stored, and is never stored.
+
 **Tests**: every slice ships tests with recorded provider payloads. Prefix test records `QA ` and clean
 them in `setUpClass`/`tearDownClass`. Add the module to the default list in
 `excom/excom/tests/run.py`. Run:
@@ -83,3 +98,12 @@ them in `setUpClass`/`tearDownClass`. Add the module to the default list in
 Load DocType JSON changes without a migrate: `bench --site frappe.localhost execute excom.excom_ads.tests.dev.reload_all`.
 Bench Redis must be up (see machine notes); no worker runs, so jobs queued by tests are never
 executed — call the job function directly in tests.
+
+**Google Ads** (`providers/google_ads.py`, API v26 over REST, GAQL through `googleAds:search`)
+- Auth: a service account added as a user on the Google Ads manager account (preferred), or an OAuth
+  refresh token from an Internal consent screen. `login-customer-id` = the manager account. Developer
+  tokens were retired by Google on 2026-09-09; the header is sent only if one is configured.
+- Money is `*_micros` / 1e6. Ads are keyed `{ad_group_id}~{ad_id}`. Performance Max has no ad groups
+  or ads (account and campaign rows only). `leads` = conversions of new-lead conversion-action
+  categories, `purchases` = PURCHASE; the full per-category breakdown is in `metrics_json`.
+  Tests replace `google_auth.http_request`.

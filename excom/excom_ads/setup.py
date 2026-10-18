@@ -33,3 +33,7 @@ def seed():
 	if not frappe.db.exists("Role", MARKETING_ROLE):
 		frappe.get_doc({"doctype": "Role", "role_name": MARKETING_ROLE, "desk_access": 1}).insert(ignore_permissions=True)
 	ensure_indexes()
+	# Ads attribution fields on Lead / Opportunity + the indexes the lead → ad resolver reads.
+	from excom.excom_ads import attribution_schema
+
+	attribution_schema.apply()

@@ -20,10 +20,10 @@
    "fieldname": "source_type",
    "fieldtype": "Select",
    "label": "Source Type",
-   "options": "Website\nIndiaMART\nTradeIndia\nMeta Lead Ads\nExhibition\nManual\nChannel",
+   "options": "Website\nIndiaMART\nTradeIndia\nMeta Lead Ads\nGoogle Lead Form\nExhibition\nManual\nChannel",
    "reqd": 1,
    "in_list_view": 1,
-   "description": "Website / IndiaMART / TradeIndia / Meta = integrations · Exhibition / Manual = typed in · Channel = organic conversations (WhatsApp, email, web chat) stamped automatically"
+   "description": "Website / IndiaMART / TradeIndia / Meta / Google Lead Form = integrations · Exhibition / Manual = typed in · Channel = organic conversations (WhatsApp, email, web chat) stamped automatically"
   },
   {
    "fieldname": "enabled",
@@ -138,8 +138,8 @@
   {
    "fieldname": "sec_cred",
    "fieldtype": "Section Break",
-   "label": "Vendor API (Excom polls)",
-   "depends_on": "eval:[\"IndiaMART\",\"TradeIndia\",\"Meta Lead Ads\"].includes(doc.source_type)"
+   "label": "Vendor connection",
+   "depends_on": "eval:[\"IndiaMART\",\"TradeIndia\",\"Meta Lead Ads\",\"Google Lead Form\"].includes(doc.source_type)"
   },
   {
    "fieldname": "api_url",
@@ -196,8 +196,33 @@
    "fieldname": "form_id",
    "fieldtype": "Data",
    "label": "Form ID",
-   "description": "Meta lead form id (reconciliation poll)",
-   "depends_on": "eval:doc.source_type==\"Meta Lead Ads\""
+   "description": "Meta: lead form id (reconciliation poll). Google: the lead form's form_id; left empty, it is learned from the first lead whose key matches.",
+   "depends_on": "eval:[\"Meta Lead Ads\",\"Google Lead Form\"].includes(doc.source_type)"
+  },
+  {
+   "fieldname": "sec_google",
+   "fieldtype": "Section Break",
+   "label": "Google Ads lead form webhook",
+   "depends_on": "eval:doc.source_type==\"Google Lead Form\"",
+   "description": "In Google Ads: lead form asset → Lead delivery → Webhook integration. Paste the Webhook URL and the same Key there, then press Send test data."
+  },
+  {
+   "fieldname": "google_webhook_url",
+   "fieldtype": "Small Text",
+   "label": "Webhook URL",
+   "read_only": 1,
+   "depends_on": "eval:doc.source_type==\"Google Lead Form\""
+  },
+  {
+   "fieldname": "cb_google",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "google_key",
+   "fieldtype": "Password",
+   "label": "Key",
+   "depends_on": "eval:doc.source_type==\"Google Lead Form\"",
+   "description": "The key you set on the lead form in Google Ads (google_key). A lead whose key does not match is refused before anything is stored."
   },
   {
    "fieldname": "sec_push",
@@ -298,6 +323,10 @@
   "access_token",
   "page_id",
   "form_id",
+  "sec_google",
+  "google_webhook_url",
+  "cb_google",
+  "google_key",
   "sec_push",
   "push_token",
   "allowed_origins",
@@ -311,7 +340,7 @@
   "allowed_teams"
  ],
  "creation": "2026-09-03 12:00:00.000000",
- "modified": "2026-09-03 12:00:00.000000",
+ "modified": "2026-10-18 18:00:00.000000",
  "owner": "Administrator",
  "modified_by": "Administrator",
  "idx": 0,

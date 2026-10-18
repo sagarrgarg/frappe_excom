@@ -111,7 +111,7 @@ def _alert_on_result(acc, status: str, err, failures: int) -> None:
 	if not err:
 		return
 	if err.error_class == "Token":
-		raise_alert("Token Problem", "Critical", f"{acc.account_name}: connection token is not working", f"{err}\nRe-authorise the connection ({acc.meta_connection or acc.provider}). Metric syncs for this account are paused until it works again.", ref=acc, dedupe_key=keys["Token"])
+		raise_alert("Token Problem", "Critical", f"{acc.account_name}: connection token is not working", f"{err}\nRe-authorise the connection ({acc.meta_connection or acc.get('connection') or acc.provider}). Metric syncs for this account are paused until it works again.", ref=acc, dedupe_key=keys["Token"])
 	elif err.error_class == "Permission":
 		raise_alert("Permission Missing", "High", f"{acc.account_name}: permission missing", str(err), ref=acc, dedupe_key=keys["Permission"])
 	elif err.error_class == "Rate Limited" and failures >= FAILURES_BEFORE_ALERT:
@@ -185,7 +185,20 @@ def sync_structure(acc, provider) -> dict:
 		known[doctype] = _upsert_mirrors(acc, doctype, rows, known)
 		written += len(rows)
 		frappe.db.commit()
+	if written:
+		_relink_leads(acc)
 	return {"records": written, "errors": errors}
+
+
+def _relink_leads(acc) -> None:
+	"""Leads that arrived before their campaign / ad set / ad mirror get linked now that it exists."""
+	try:
+		from excom.excom_ads.attribution import relink_pending
+
+		relink_pending(provider=acc.provider)
+	except Exception:
+		frappe.db.rollback()
+		frappe.log_error(title=f"Excom Ads: lead relink failed after structure sync of {acc.name}", message=frappe.get_traceback())
 
 
 def _apply_account(acc, details: dict, **extra) -> None:

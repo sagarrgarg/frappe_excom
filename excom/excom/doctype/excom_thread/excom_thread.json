@@ -33,7 +33,19 @@
   "last_message_at",
   "column_break_ts",
   "last_inbound_at",
-  "last_outbound_at"
+  "last_outbound_at",
+  "ad_referral_section",
+  "ad_source_type",
+  "ad_source_id",
+  "ads_advertisement",
+  "ctwa_clid",
+  "ad_attribution_note",
+  "ad_referred_at",
+  "column_break_ad",
+  "ad_headline",
+  "ad_body",
+  "ad_media_type",
+  "ad_source_url"
  ],
  "fields": [
   {
@@ -218,11 +230,86 @@
    "fieldname": "last_outbound_at",
    "fieldtype": "Datetime",
    "label": "Last Outbound At"
+  },
+  {
+   "fieldname": "ad_referral_section",
+   "fieldtype": "Section Break",
+   "label": "Ad referral",
+   "collapsible": 1,
+   "depends_on": "eval:doc.ad_source_type",
+   "description": "Set when the customer started or resumed this chat from a click-to-WhatsApp ad (the latest referral; every one is an Ads Attribution Touch)."
+  },
+  {
+   "fieldname": "ad_source_type",
+   "fieldtype": "Data",
+   "label": "Ad Source Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ad_source_id",
+   "fieldtype": "Data",
+   "label": "Ad / Post ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ads_advertisement",
+   "fieldtype": "Link",
+   "label": "Ad",
+   "options": "Ads Advertisement",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ctwa_clid",
+   "fieldtype": "Data",
+   "label": "CTWA Click ID",
+   "length": 500,
+   "read_only": 1
+  },
+  {
+   "fieldname": "ad_attribution_note",
+   "fieldtype": "Data",
+   "label": "Attribution Note",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ad_referred_at",
+   "fieldtype": "Datetime",
+   "label": "Referred At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ad",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ad_headline",
+   "fieldtype": "Data",
+   "label": "Ad Headline",
+   "length": 255,
+   "read_only": 1
+  },
+  {
+   "fieldname": "ad_body",
+   "fieldtype": "Small Text",
+   "label": "Ad Body",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ad_media_type",
+   "fieldtype": "Data",
+   "label": "Ad Media Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ad_source_url",
+   "fieldtype": "Small Text",
+   "label": "Ad URL",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-02 10:00:00.000000",
+ "modified": "2026-10-18 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Thread",

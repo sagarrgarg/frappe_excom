@@ -15,7 +15,9 @@
   "sync_ad_level_metrics",
   "max_pages_per_call",
   "sb_alerts",
-  "alert_whatsapp_template"
+  "alert_whatsapp_template",
+  "sb_leads",
+  "ctwa_create_lead"
  ],
  "fields": [
   {
@@ -96,12 +98,26 @@
    "idx": 11,
    "label": "Alert WhatsApp Template",
    "options": "WhatsApp Templates"
+  },
+  {
+   "fieldname": "sb_leads",
+   "fieldtype": "Section Break",
+   "label": "Leads",
+   "idx": 12
+  },
+  {
+   "default": "1",
+   "fieldname": "ctwa_create_lead",
+   "fieldtype": "Check",
+   "label": "Create a lead for every click-to-WhatsApp ad conversation",
+   "description": "A chat that starts from a click-to-WhatsApp ad becomes a Lead (source Click to WhatsApp) linked to the ad. Off: the referral is still stored on the conversation and attached when an agent promotes it.",
+   "idx": 13
   }
  ],
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-18 12:00:00.000000",
+ "modified": "2026-10-18 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom Ads",
  "name": "Ads Settings",

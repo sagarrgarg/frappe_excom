@@ -41,6 +41,19 @@ def on_entity_created(doc, method: str) -> None:
         )
 
 
+def on_entity_deleted(doc, method: str | None = None) -> None:
+    """after_delete on Lead / Opportunity: drop the identity's link rows to the deleted record.
+
+    Left behind, the row points at a name Frappe hands out again: deleting the newest record of a
+    naming series reverts the series, so the next Lead is created under the same name and linking
+    it to its identity hits the unique (linked_doctype, linked_name) index. Intake then fails for
+    that lead. after_delete runs only once the deletion really happens (link checks passed or forced).
+    """
+    if not frappe.db.table_exists("Omni Identity Link"):
+        return
+    frappe.db.delete("Omni Identity Link", {"linked_doctype": doc.doctype, "linked_name": doc.name})
+
+
 def on_customer_updated(doc, method: str) -> None:
     """
     Called on_update on Customer.

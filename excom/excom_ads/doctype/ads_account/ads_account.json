@@ -9,6 +9,7 @@
   "provider",
   "external_id",
   "meta_connection",
+  "connection",
   "cb_1",
   "workspace",
   "company",
@@ -84,6 +85,15 @@
    "label": "Excom Meta Connection",
    "mandatory_depends_on": "eval:doc.provider=='Meta'",
    "options": "Excom Meta Connection"
+  },
+  {
+   "depends_on": "eval:doc.provider!='Meta'",
+   "description": "The Google (or LinkedIn) sign-in this account is read with.",
+   "fieldname": "connection",
+   "fieldtype": "Link",
+   "label": "Ads Connection",
+   "mandatory_depends_on": "eval:doc.provider!='Meta'",
+   "options": "Ads Connection"
   },
   {
    "fieldname": "cb_1",
@@ -355,7 +365,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-18 12:00:00.000000",
+ "modified": "2026-10-18 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom Ads",
  "name": "Ads Account",
