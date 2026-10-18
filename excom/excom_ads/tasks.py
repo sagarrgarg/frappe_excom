@@ -50,14 +50,19 @@ def purge_raw_payloads():
 
 
 def wake_snoozed_alerts():
-	"""Every 30 minutes: a snoozed alert whose time is up is open again and notifies again."""
+	"""Every 30 minutes: a snoozed alert whose time is up is open again and notifies again; an alert a
+	policy held for its quiet hours goes to that policy once they are over."""
 	if not frappe.db.exists("DocType", "Ads Alert"):
 		return
-	from excom.excom_ads.alerts import _notify
+	from excom.excom_ads.alerts import _has_held_field, _notify, held_due
 
+	# A woken alert is delivered afresh (deliver works out again which policies are quiet).
+	reset = {"status": "Open", "snoozed_until": None, "notified_severity": None, **({"quiet_held": None} if _has_held_field() else {})}
 	for name in frappe.get_all("Ads Alert", filters={"status": "Snoozed", "snoozed_until": ["<", frappe.utils.now_datetime()]}, pluck="name"):
-		frappe.db.set_value("Ads Alert", name, {"status": "Open", "snoozed_until": None, "notified_severity": None})
+		frappe.db.set_value("Ads Alert", name, reset)
 		_notify(name)
+	for name in held_due():
+		frappe.enqueue("excom.excom_ads.alerts.deliver_held", queue="short", name=name, job_id=f"excom_ads_alert_held::{frappe.local.site}::{name}", deduplicate=True)
 
 
 def enqueue_relink():

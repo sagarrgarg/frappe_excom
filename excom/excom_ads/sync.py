@@ -70,16 +70,26 @@ def run_job(account: str, job_type: str, since=None, until=None, triggered_by: s
 		return {"status": "Failed", "error_class": e.error_class, "error": str(e)}
 	except Exception as e:
 		frappe.db.rollback()
-		log = frappe.log_error(title=f"Excom Ads: {job_type} failed for {account}", message=frappe.get_traceback())
-		err = AdsProviderError(str(e)[:500])
+		from excom.excom_ads.redact import redact
+
+		log = frappe.log_error(title=f"Excom Ads: {job_type} failed for {account}", message=redact(frappe.get_traceback()))
+		err = AdsProviderError(redact(str(e))[:500])
 		job.error_log = log.name if log else None
 		_finish(job, acc, provider, "Failed", result, err)
 		return {"status": "Failed", "error_class": err.error_class, "error": str(e)}
 	# Errors with nothing written is a failure, not a partial success.
 	status = ("Partial" if result["records"] else "Failed") if result["errors"] else "Success"
-	first = result["errors"][0] if result["errors"] else None
+	first = _worst(result["errors"])
 	_finish(job, acc, provider, status, result, first)
 	return {"status": status, "records": result["records"], "error_class": first.error_class if first else None, "errors": [str(e) for e in result["errors"]]}
+
+
+ERROR_RANK = {"Token": 5, "Permission": 4, "Invalid": 3, "Rate Limited": 2, "Retryable": 1}
+
+
+def _worst(errors: list):
+	"""The error a person most needs to act on, not merely the first one raised."""
+	return max(errors, key=lambda e: ERROR_RANK.get(e.error_class, 0)) if errors else None
 
 
 def _finish(job, acc, provider, status: str, result: dict, err: AdsProviderError | None):
@@ -87,13 +97,15 @@ def _finish(job, acc, provider, status: str, result: dict, err: AdsProviderError
 	job.finished_at = now_datetime()
 	job.api_calls = provider.stats.api_calls if provider else 0
 	job.records_written = result.get("records", 0)
+	from excom.excom_ads.redact import redact
+
 	job.error_class = err.error_class if err else None
-	job.error = str(err)[:1000] if err else None
+	job.error = redact(str(err))[:1000] if err else None
 	job.save(ignore_permissions=True)
 	if status == "Success":
 		values = {"error_class": None, "last_error": None, "consecutive_failures": 0}
 	else:
-		values = {"error_class": err.error_class if err else None, "last_error": f"{job.job_type}: {err}"[:1000] if err else None, "consecutive_failures": (acc.consecutive_failures or 0) + (1 if status == "Failed" else 0)}
+		values = {"error_class": err.error_class if err else None, "last_error": redact(f"{job.job_type}: {err}")[:1000] if err else None, "consecutive_failures": (acc.consecutive_failures or 0) + (1 if status == "Failed" else 0)}
 	frappe.db.set_value("Ads Account", acc.name, values, update_modified=False)
 	_alert_on_result(acc, status, err, values.get("consecutive_failures") or 0)
 	frappe.db.commit()
@@ -193,6 +205,8 @@ def sync_structure(acc, provider) -> dict:
 		written += len(rows)
 		frappe.db.commit()
 	if written:
+		relink_snapshots(acc)
+		frappe.db.commit()
 		_relink_leads(acc)
 	return {"records": written, "errors": errors}
 
@@ -248,8 +262,14 @@ def _upsert_mirrors(acc, doctype: str, rows: list[dict], known: dict) -> set:
 		for k in ("start_time", "stop_time", "end_time", "platform_created", "platform_updated"):
 			if k in values:
 				values[k] = _dt(values[k])
+		for k in NAME_FIELDS:
+			if values.get(k):
+				values[k] = str(values[k])[:NAME_LENGTH]
 		name = mirror_name(acc.name, values["external_id"])
 		seen.add(name)
+		if name in existing:
+			# Brand is allocated per mirror by people (or rules); a sync never overwrites it.
+			values.pop("brand", None)
 		if doctype == "Ads Advertisement":
 			_alert_on_ad_status(acc, name, values)
 		if name in existing:
@@ -280,6 +300,10 @@ def _alert_on_ad_status(acc, name: str, values: dict) -> None:
 			raise_alert("Ad Disapproved", "High", f"Ad rejected: {values.get('ad_name')}", f"{acc.account_name} · the platform rejected this ad. Check its review feedback in the ad manager.", scope={**_scope(acc)}, dedupe_key=key)
 	elif frappe.db.exists("Ads Alert", {"dedupe_key": key, "status": ["!=", "Resolved"]}):
 		resolve_alert(key, "Ad is no longer rejected")
+
+
+NAME_FIELDS = ("campaign_name", "ad_group_name", "ad_name", "creative_name")
+NAME_LENGTH = 500
 
 
 def _changed(doc, values: dict) -> bool:
@@ -331,6 +355,7 @@ def sync_metrics(acc, provider, since, until) -> dict:
 	levels = [lvl for lvl in METRIC_LEVELS if lvl != "Ad" or s.sync_ad_level_metrics]
 	written, errors = 0, []
 	rates = _Rates(acc)
+	account_level_ok = False
 	for level in levels:
 		try:
 			rows = provider.daily_metrics(level, since, until)
@@ -343,9 +368,13 @@ def sync_metrics(acc, provider, since, until) -> dict:
 			continue
 		written += _upsert_snapshots(acc, level, rows, since, until, rates)
 		frappe.db.commit()
-	if not errors or written:
+		account_level_ok = account_level_ok or level == "Account"
+	if account_level_ok or written:
 		values = {"last_metrics_sync": now_datetime()}
-		if not errors:
+		# The window counts as synced once account totals are in: totals, billing averages and the
+		# backfill → settle hand-over depend on them. A failing lower level (ads, say) is reported on
+		# the job and the account but must not wedge the account in endless backfills.
+		if account_level_ok:
 			values["metrics_synced_until"] = max(getdate(until), getdate(acc.metrics_synced_until)) if acc.metrics_synced_until else getdate(until)
 			values["metrics_synced_from"] = min(getdate(since), getdate(acc.metrics_synced_from)) if acc.metrics_synced_from else getdate(since)
 		frappe.db.set_value("Ads Account", acc.name, values, update_modified=False)
@@ -378,17 +407,18 @@ class _Rates:
 def _upsert_snapshots(acc, level: str, rows: list[dict], since, until, rates: _Rates) -> int:
 	dt = "Ads Metric Snapshot"
 	existing = set(frappe.get_all(dt, filters={"account": acc.name, "level": level, "date": ["between", [since, until]]}, pluck="name"))
-	campaigns = set(frappe.get_all("Ads Campaign", filters={"account": acc.name}, pluck="name"))
-	ad_groups = set(frappe.get_all("Ads Ad Group", filters={"account": acc.name}, pluck="name"))
+	campaign_brand = {c.name: c.brand for c in frappe.get_all("Ads Campaign", filters={"account": acc.name}, fields=["name", "brand"])}
+	ad_groups = set(frappe.get_all("Ads Ad Group", filters={"account": acc.name}, pluck="name")) if level in ("Ad Group", "Ad") else set()
 	ads = set(frappe.get_all("Ads Advertisement", filters={"account": acc.name}, pluck="name")) if level == "Ad" else set()
 	company_currency = rates.to
 	now = now_datetime()
-	seen = set()
+	seen, reported_entities = set(), set()
 	for r in rows:
 		if not r.get("date") or not r.get("entity_external_id"):
 			continue
 		name = snapshot_name(acc.name, level, r["entity_external_id"], r["date"])
 		seen.add(name)
+		reported_entities.add(str(r["entity_external_id"]))
 		rate = rates.get(acc.currency, r["date"])
 		values = {f: r.get(f) or 0 for f in SNAPSHOT_FIELDS}
 		values.update(
@@ -402,17 +432,66 @@ def _upsert_snapshots(acc, level: str, rows: list[dict], since, until, rates: _R
 				"source_window": r.get("source_window"),
 			}
 		)
+		# Links and brand are written on every pass, not only on insert: a row that arrived before its
+		# campaign mirror (first backfill runs before the first structure sync) gets linked on re-pull,
+		# and a row follows its campaign's brand allocation, falling back to the account's brand.
+		if level != "Account":
+			for field, ext, pool in (("campaign", r.get("campaign_external_id"), campaign_brand), ("ad_group", r.get("ad_group_external_id"), ad_groups), ("advertisement", r.get("ad_external_id"), ads)):
+				n = mirror_name(acc.name, ext) if ext else None
+				values[field] = n if n in pool else None
+			values["brand"] = campaign_brand.get(values.get("campaign")) or acc.brand
 		if name in existing:
 			frappe.db.set_value(dt, name, values, update_modified=True)
 			continue
-		links = {}
-		for field, ext, pool in (("campaign", r.get("campaign_external_id"), campaigns), ("ad_group", r.get("ad_group_external_id"), ad_groups), ("advertisement", r.get("ad_external_id"), ads)):
-			n = mirror_name(acc.name, ext) if ext else None
-			links[field] = n if n in pool else None
-		doc = frappe.get_doc({"doctype": dt, **_scope(acc), **values, **links, "level": level, "date": r["date"], "entity_external_id": r["entity_external_id"], "breakdown_key": "none", "attribution_key": "default"})
-		doc.insert(ignore_permissions=True)
-	# A day/entity the platform no longer reports inside a re-pulled window had its results removed
-	# (for example a refunded or invalid-click day). Zero it rather than keep a stale number.
-	for name in existing - seen:
-		frappe.db.set_value(dt, name, {**{f: 0 for f in SNAPSHOT_FIELDS}, "spend_company_currency": 0, "synced_at": now}, update_modified=True)
+		doc = frappe.get_doc({"doctype": dt, **_scope(acc), **values, "level": level, "date": r["date"], "entity_external_id": r["entity_external_id"], "breakdown_key": "none", "attribution_key": "default"})
+		try:
+			doc.insert(ignore_permissions=True)
+		except frappe.DuplicateEntryError:
+			# Another job for this account (Metrics and Settle can overlap) wrote it first: same key, update it.
+			frappe.db.set_value(dt, name, values, update_modified=True)
+	# A day missing from a re-pull for an entity the platform still reports had its results removed
+	# (refunded or invalid clicks): zero it. An entity missing altogether may just be filtered out of
+	# the report (deleted or archived objects), so its history is left untouched.
+	gone = existing - seen
+	if gone:
+		for row in frappe.get_all(dt, filters={"name": ["in", list(gone)]}, fields=["name", "entity_external_id"]):
+			if level == "Account" or str(row.entity_external_id) in reported_entities:
+				frappe.db.set_value(dt, row.name, {**{f: 0 for f in SNAPSHOT_FIELDS}, "spend_company_currency": 0, "synced_at": now}, update_modified=True)
 	return len(seen)
+
+
+RELINK_DAYS = 400
+
+
+def relink_snapshots(acc) -> None:
+	"""Link snapshot rows to mirrors that appeared after them and re-apply each campaign's brand.
+
+	Runs after every structure sync. One UPDATE … JOIN per level, limited to rows that need it."""
+	since = add_days(getdate(), -RELINK_DAYS)
+	p = {"acc": acc.name, "since": since, "acc_brand": acc.brand}
+	frappe.db.sql(
+		"""update `tabAds Metric Snapshot` s
+		join `tabAds Campaign` c on c.account = s.account and c.external_id = s.entity_external_id
+		set s.campaign = c.name, s.brand = coalesce(c.brand, %(acc_brand)s)
+		where s.account = %(acc)s and s.level = 'Campaign' and s.date >= %(since)s
+			and (s.campaign is null or not (s.brand <=> coalesce(c.brand, %(acc_brand)s)))""",
+		p,
+	)
+	frappe.db.sql(
+		"""update `tabAds Metric Snapshot` s
+		join `tabAds Ad Group` g on g.account = s.account and g.external_id = s.entity_external_id
+		left join `tabAds Campaign` c on c.name = g.campaign
+		set s.ad_group = g.name, s.campaign = g.campaign, s.brand = coalesce(c.brand, %(acc_brand)s)
+		where s.account = %(acc)s and s.level = 'Ad Group' and s.date >= %(since)s
+			and (s.ad_group is null or not (s.campaign <=> g.campaign) or not (s.brand <=> coalesce(c.brand, %(acc_brand)s)))""",
+		p,
+	)
+	frappe.db.sql(
+		"""update `tabAds Metric Snapshot` s
+		join `tabAds Advertisement` a on a.account = s.account and a.external_id = s.entity_external_id
+		left join `tabAds Campaign` c on c.name = a.campaign
+		set s.advertisement = a.name, s.ad_group = a.ad_group, s.campaign = a.campaign, s.brand = coalesce(c.brand, %(acc_brand)s)
+		where s.account = %(acc)s and s.level = 'Ad' and s.date >= %(since)s
+			and (s.advertisement is null or not (s.campaign <=> a.campaign) or not (s.brand <=> coalesce(c.brand, %(acc_brand)s)))""",
+		p,
+	)

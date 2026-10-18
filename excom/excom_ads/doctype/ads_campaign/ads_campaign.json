@@ -42,6 +42,7 @@
    "idx": 1,
    "in_list_view": 1,
    "label": "Campaign Name",
+   "length": 500,
    "reqd": 1
   },
   {
@@ -261,7 +262,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-18 12:00:00.000000",
+ "modified": "2026-10-18 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom Ads",
  "name": "Ads Campaign",

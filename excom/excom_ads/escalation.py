@@ -9,7 +9,8 @@ every alert it matches (same matching as delivery: company, type, minimum severi
     retried job) never both send;
   * uses the policy's own channels (Desk / email / WhatsApp) through alerts.py's senders;
   * respects quiet hours (Critical alerts ignore them, as in delivery); a quiet policy simply waits
-    for the next run, the alert is not marked;
+    for the next run, the alert is not marked; a policy that still holds the alert for its quiet
+    hours (`quiet_held`, its normal recipients not told yet) does not escalate it either;
   * reaches only people who may see the alert (alerts._recipients → permissions.doc_allowed).
 
 Scheduler: `enqueue_escalations` (every 5 minutes) only queues `escalate_due` when an escalation
@@ -90,7 +91,9 @@ def _escalate_one(name: str, policies: dict, now) -> str:
 	if alert.status != "Open" or cint(alert.escalated):
 		return "skip"
 	since = get_datetime(alert.notified_at or alert.first_seen)
-	due = [policies[p.name] for p in alerts._policies(alert) if p.get("name") in policies]
+	# A policy still holding the alert for its quiet hours has not told its own people yet: nothing to escalate.
+	held = set(alerts._held(alert))
+	due = [policies[p.name] for p in alerts._policies(alert) if p.get("name") in policies and p.get("name") not in held]
 	due = [p for p in due if (now - since).total_seconds() >= cint(p.escalate_after_minutes) * 60]
 	if not due:
 		return "skip"

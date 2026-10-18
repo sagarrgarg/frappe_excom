@@ -4,13 +4,14 @@ recipients who may see it; acknowledged / fresh alerts do not; quiet hours hold 
     bench --site <site> execute excom.excom.tests.run.run --kwargs "{'module': 'excom.excom_ads.tests.test_ads_escalation'}"
 """
 
+from datetime import datetime
 from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_to_date, now_datetime
 
-from excom.excom_ads import alerts, escalation, permissions
+from excom.excom_ads import alerts, escalation, permissions, tasks
 from excom.excom_ads.tests.test_ads_permissions import COMPANY_B, _ensure_company_b
 
 P = "QA Escalate"
@@ -123,6 +124,42 @@ class TestAdsEscalation(FrappeTestCase):
 		frappe.db.commit()
 		escalation.escalate_due()
 		self.assertEqual(frappe.db.get_value("Ads Alert", high, "escalated"), 1, "goes out once quiet hours are over")
+
+	def test_qa_fix_alert_held_for_quiet_hours_is_delivered_once_they_end(self):
+		# Quiet 22:00 → 06:00, across midnight.
+		frappe.db.set_value("Ads Notification Policy", POLICY, {"quiet_from": "22:00:00", "quiet_to": "06:00:00"})
+		frappe.db.commit()
+		night = datetime(2026, 10, 17, 23, 30)
+		early = datetime(2026, 10, 18, 5, 45)
+		morning = datetime(2026, 10, 18, 6, 30)
+		name = self._alert("QA Fix quiet", minutes_ago=0)
+		unmatched = alerts.raise_alert("Sync Failed", "Info", f"{P} QA Fix no policy", "x", scope={"company": self.company}, dedupe_key="qa-escalate:QA Fix no policy")
+		with patch("excom.excom_ads.alerts.now_datetime", return_value=night):
+			alerts.deliver(name)
+			alerts.deliver(unmatched)
+			self.assertEqual(self._logs(name), {}, "held during quiet hours")
+			self.assertEqual(frappe.db.get_value("Ads Alert", name, "quiet_held"), POLICY, "not marked fully notified")
+			self.assertFalse(frappe.db.get_value("Ads Alert", unmatched, "quiet_held"), "no matching policy: nothing is held")
+			self.assertEqual(alerts.held_due(), [], "still quiet: nothing to re-deliver")
+			alerts.raise_alert("Other", "High", f"{P} QA Fix quiet", "repeat", scope={"company": self.company}, dedupe_key="qa-escalate:QA Fix quiet")
+			self.assertEqual(self._logs(name), {}, "a repeat at the same severity does not break quiet hours")
+		with patch("excom.excom_ads.alerts.now_datetime", return_value=early):
+			self.assertEqual(alerts.held_due(), [], "05:45 is still inside 22:00-06:00")
+			self.assertEqual(alerts.deliver_held(name), {"desk": 0, "email": 0, "whatsapp": 0})
+		with patch("excom.excom_ads.alerts.now_datetime", return_value=morning):
+			self.assertEqual(alerts.held_due(), [name], "the held alert, and not the one no policy matched")
+			queued = []
+			with patch("frappe.enqueue", side_effect=lambda method, **kw: queued.append((method, kw))):
+				tasks.wake_snoozed_alerts()
+			held_jobs = [kw for m, kw in queued if m == "excom.excom_ads.alerts.deliver_held"]
+			self.assertEqual([kw["name"] for kw in held_jobs], [name])
+			self.assertTrue(held_jobs[0]["deduplicate"])
+			self.assertEqual(alerts.deliver_held(name)["desk"], 1)
+			self.assertEqual(self._logs(name), {U_FIRST: [f"[High] {P} QA Fix quiet"]})
+			self.assertFalse(frappe.db.get_value("Ads Alert", name, "quiet_held"))
+			self.assertEqual(alerts.held_due(), [])
+			alerts.deliver_held(name)
+			self.assertEqual(len(self._logs(name)[U_FIRST]), 1, "never sent twice to a policy that already delivered")
 
 	def test_escalation_contacts_are_not_normal_recipients(self):
 		name = self._alert("delivery", minutes_ago=0)

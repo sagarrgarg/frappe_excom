@@ -152,6 +152,14 @@ def _act(account_id) -> str:
 	return s[4:] if s.startswith("act_") else s
 
 
+def _header_sign(*figures) -> int:
+	"""-1 when the document's own total (else net) is negative: its lines are turned with it."""
+	for v in figures:
+		if v:
+			return -1 if v < 0 else 1
+	return 1
+
+
 def normalise_meta(row: dict, type_code: str) -> dict:
 	d = row.get("billed_amount_details") or {}
 	net, tax, total = _meta_amount(d, "net_amount"), _meta_amount(d, "tax_amount"), _meta_amount(d, "total_amount")
@@ -162,6 +170,10 @@ def normalise_meta(row: dict, type_code: str) -> dict:
 	if total is None and net is not None:
 		total = net + (tax or 0)
 	currency = d.get("currency") or row.get("currency") or "INR"
+	# The header is stored positive (a credit memo is told apart by its type). Lines keep their own
+	# sign relative to the header: a credit line inside an invoice stays negative, and a credit memo
+	# reported with negative figures has its lines turned with its header.
+	sign = _header_sign(total, net)
 	lines = []
 	for c in (row.get("campaigns") or {}).get("data") or []:
 		cd = c.get("billed_amount_details") or {}
@@ -173,8 +185,8 @@ def normalise_meta(row: dict, type_code: str) -> dict:
 				"description": (c.get("campaign_name") or c.get("description") or f"Campaign {c.get('campaign_id')}")[:140],
 				"campaign_id": str(c.get("campaign_id") or ""),
 				"platform_account_id": _act(c.get("ad_account_id")),
-				"net_amount": abs(amt),
-				"tax_amount": abs(_meta_amount(cd, "tax_amount") or 0),
+				"net_amount": sign * amt,
+				"tax_amount": sign * (_meta_amount(cd, "tax_amount") or 0),
 			}
 		)
 	period = _date(row.get("billing_period"))
@@ -277,23 +289,27 @@ def _last(resource) -> str:
 
 
 def normalise_google(inv: dict, setup: dict) -> dict:
-	total = abs(_micros(inv.get("totalAmountMicros")))
+	raw_total = _micros(inv.get("totalAmountMicros"))
+	total = abs(raw_total)
 	tax = abs(_micros(inv.get("taxAmountMicros")))
 	net = round(total - tax, 6)
+	# Header positive; lines keep their sign relative to it (a credit memo's negative micros are
+	# turned with its header, a credit line inside an invoice stays negative).
+	sign = _header_sign(raw_total, _micros(inv.get("subtotalAmountMicros")))
 	lines = []
 	for s in inv.get("accountSummaries") or []:
 		cid = _last(s.get("customer"))
 		amt = _micros(s.get("subtotalAmountMicros"))
 		if not amt and not cid:
 			continue
-		lines.append({"description": f"Google Ads account {cid}", "campaign_id": "", "platform_account_id": cid, "net_amount": abs(amt), "tax_amount": abs(_micros(s.get("taxAmountMicros")))})
+		lines.append({"description": f"Google Ads account {cid}", "campaign_id": "", "platform_account_id": cid, "net_amount": sign * amt, "tax_amount": sign * _micros(s.get("taxAmountMicros"))})
 	# Invoice-level items that are not inside an account summary. Added only when they close the gap
 	# between the account lines and the invoice's pre-tax amount, so nothing is counted twice.
 	gap = round(net - sum(ln["net_amount"] for ln in lines), 2)
 	extras = [
-		("Regulatory costs", abs(_micros(inv.get("regulatoryCostsSubtotalAmountMicros")))),
-		("Export charges", abs(_micros(inv.get("exportChargeSubtotalAmountMicros")))),
-		("Invoice adjustments", _micros(inv.get("adjustmentsSubtotalAmountMicros"))),
+		("Regulatory costs", sign * _micros(inv.get("regulatoryCostsSubtotalAmountMicros"))),
+		("Export charges", sign * _micros(inv.get("exportChargeSubtotalAmountMicros"))),
+		("Invoice adjustments", sign * _micros(inv.get("adjustmentsSubtotalAmountMicros"))),
 	]
 	extras = [(d, a) for d, a in extras if a]
 	if lines and extras and abs(gap - round(sum(a for _d, a in extras), 2)) < 0.01:

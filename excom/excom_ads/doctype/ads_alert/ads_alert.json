@@ -26,6 +26,7 @@
   "last_seen",
   "notified_at",
   "notified_severity",
+  "quiet_held",
   "escalated",
   "escalated_at",
   "escalated_to",
@@ -153,7 +154,8 @@
    "idx": 14,
    "label": "Dedupe Key",
    "read_only": 1,
-   "search_index": 1
+   "search_index": 1,
+   "length": 255
   },
   {
    "default": "1",
@@ -197,38 +199,46 @@
    "read_only": 1
   },
   {
+   "description": "Notification policies that skipped this alert during their quiet hours; it is delivered to them once quiet hours end.",
+   "fieldname": "quiet_held",
+   "fieldtype": "Small Text",
+   "idx": 21,
+   "label": "Held For Quiet Hours",
+   "read_only": 1
+  },
+  {
    "fieldname": "escalated",
    "fieldtype": "Check",
    "label": "Escalated",
    "read_only": 1,
    "default": "0",
    "in_standard_filter": 1,
-   "idx": 21
+   "idx": 22
   },
   {
    "fieldname": "escalated_at",
    "fieldtype": "Datetime",
    "label": "Escalated At",
    "read_only": 1,
-   "idx": 22
+   "idx": 23
   },
   {
    "fieldname": "escalated_to",
    "fieldtype": "Small Text",
    "label": "Escalated To",
    "read_only": 1,
-   "idx": 23
+   "idx": 24
   },
   {
    "fieldname": "sb_life",
    "fieldtype": "Section Break",
-   "idx": 24,
+   "idx": 25,
    "label": "Lifecycle"
   },
   {
    "fieldname": "acknowledged_by",
    "fieldtype": "Link",
-   "idx": 25,
+   "idx": 26,
    "label": "Acknowledged By",
    "options": "User",
    "read_only": 1
@@ -236,46 +246,46 @@
   {
    "fieldname": "acknowledged_at",
    "fieldtype": "Datetime",
-   "idx": 26,
+   "idx": 27,
    "label": "Acknowledged At",
    "read_only": 1
   },
   {
    "fieldname": "snoozed_until",
    "fieldtype": "Datetime",
-   "idx": 27,
+   "idx": 28,
    "label": "Snoozed Until"
   },
   {
    "fieldname": "cb_3",
    "fieldtype": "Column Break",
-   "idx": 28
+   "idx": 29
   },
   {
    "description": "A user, or 'system' when the condition cleared itself.",
    "fieldname": "resolved_by",
    "fieldtype": "Data",
-   "idx": 29,
+   "idx": 30,
    "label": "Resolved By",
    "read_only": 1
   },
   {
    "fieldname": "resolved_at",
    "fieldtype": "Datetime",
-   "idx": 30,
+   "idx": 31,
    "label": "Resolved At",
    "read_only": 1
   },
   {
    "fieldname": "resolution",
    "fieldtype": "Small Text",
-   "idx": 31,
+   "idx": 32,
    "label": "Resolution"
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-18 22:00:00.000000",
+ "modified": "2026-10-18 23:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom Ads",
  "name": "Ads Alert",

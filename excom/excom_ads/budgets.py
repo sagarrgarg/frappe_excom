@@ -217,8 +217,25 @@ def get_plans(from_date=None, to_date=None, **kwargs) -> dict:
 
 # ─── overspend alert ──────────────────────────────────────────────────────────
 
+def _has_branded_lines(p, month) -> bool:
+	"""Whether approved plan lines of this company / workspace / network and month carry a brand
+	(line, plan or account brand, as `_planned` reads it)."""
+	return bool(frappe.db.sql(
+		f"""select 1 from `tab{LINE}` l join `tab{PLAN}` p on p.name = l.parent
+		left join `tabAds Account` acc on acc.name = l.account
+		where p.docstatus = 1 and l.parenttype = %(plan_dt)s and l.month = %(month)s and p.company = %(company)s
+			and p.workspace = %(workspace)s and l.provider = %(provider)s
+			and coalesce(nullif(l.brand, ''), nullif(p.brand, ''), nullif(acc.brand, ''), '') != ''
+		limit 1""",
+		{"plan_dt": PLAN, "month": month, "company": p.company, "workspace": p.workspace, "provider": p.provider},
+	))
+
+
 def _line_actual(p, today) -> float:
-	"""Month-to-date platform spend (company currency) for one plan line's scope."""
+	"""Month-to-date platform spend (company currency) for one plan line's scope, bucketed as
+	plan_vs_actual buckets it: a branded line reads its brand's campaign rows; an unbranded line reads
+	account rows, unless branded lines share its month and network — then it is the rest, i.e. the
+	campaign rows with no brand (account rows would count the branded spend twice)."""
 	month_start = get_first_day(today)
 	cond = ["s.date between %(a)s and %(b)s", "s.company = %(company)s", "s.workspace = %(workspace)s", "s.provider = %(provider)s"]
 	params = {"a": month_start, "b": today, "company": p.company, "workspace": p.workspace, "provider": p.provider}
@@ -228,8 +245,14 @@ def _line_actual(p, today) -> float:
 	if p.brand:
 		cond.append("s.brand = %(brand)s")
 		params["brand"] = p.brand
+		level = "Campaign"
+	elif _has_branded_lines(p, month_start):
+		cond.append("coalesce(s.brand, '') = ''")
+		level = "Campaign"
+	else:
+		level = "Account"
 	cond.append("s.level = %(level)s")
-	params["level"] = "Campaign" if p.brand else "Account"
+	params["level"] = level
 	return flt(frappe.db.sql(f"select coalesce(sum(s.spend_company_currency), 0) from `tab{SNAP}` s where {' and '.join(cond)}", params)[0][0])
 
 

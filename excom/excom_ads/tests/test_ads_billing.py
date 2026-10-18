@@ -643,3 +643,50 @@ class TestAdsBudgets(BillingFixtures):
 		frappe.get_doc("Ads Budget Plan", plan.name).cancel()
 		frappe.set_user("Administrator")
 		self.assertFalse(frappe.db.exists("Ads Alert", {"dedupe_key": key, "status": ["!=", "Resolved"]}), "cancelling the plan resolves its alerts")
+
+	# ─── QA Fix regressions ───────────────────────────────────────────────────
+
+	def test_qa_fix_checker_cannot_change_the_plan_in_the_submit_request(self):
+		plan = self._plan("QA Fix submit", self._aug_lines(), user=U_MAKER)
+		self._as(U_CHECKER)
+		try:
+			d = frappe.get_doc("Ads Budget Plan", plan.name)
+			d.lines[0].planned_spend = 99999  # Desk's Submit sends the form's values with the submit
+			self.assertRaises(frappe.ValidationError, d.submit)
+			d = frappe.get_doc("Ads Budget Plan", plan.name)
+			d.plan_name = f"{P} QA Fix renamed"
+			self.assertRaises(frappe.ValidationError, d.submit)
+			d = frappe.get_doc("Ads Budget Plan", plan.name)
+			d.append("lines", {"month": f"{AUG}-01", "provider": "Google", "account": self.google, "planned_spend": 5})
+			self.assertRaises(frappe.ValidationError, d.submit)
+		finally:
+			frappe.set_user("Administrator")
+			permissions.clear_cache()
+		self.assertEqual(frappe.db.get_value("Ads Budget Plan", plan.name, "docstatus"), 0)
+		self.assertEqual(frappe.db.get_value("Ads Budget Plan Line", {"parent": plan.name, "idx": 1}, "planned_spend"), 3100, "the saved draft is unchanged")
+		done = self._submit(plan.name, U_CHECKER)
+		self.assertEqual((done.docstatus, done.approved_by), (1, U_CHECKER), "the saved draft, unchanged, is approved")
+
+	def test_qa_fix_overspend_measures_lines_as_plan_vs_actual_does(self):
+		# September: Meta account rows 900 = Brand A campaign 400 + unbranded campaign 500.
+		sep = ("2026-09-01", "2026-09-30")
+		line = lambda brand=None: frappe._dict(company=self.company, workspace=WS_A, provider="Meta", account=None, brand=brand)
+		only = self._plan("QA Fix Sep all", [{"month": sep[0], "provider": "Meta", "planned_spend": 1000}], user=U_MAKER, period=sep)
+		self._submit(only.name, U_CHECKER)
+		pva = {(r["provider"], r["brand"]): r for r in budgets.plan_vs_actual({"workspace": WS_A, "provider": "Meta"}, *sep)["rows"]}
+		self.assertEqual(pva[("Meta", "")]["actual_spend"], 900)
+		self.assertEqual(budgets._line_actual(line(), getdate(sep[1])), 900, "no branded lines: the whole network (account rows)")
+		self._as(U_CHECKER)
+		frappe.get_doc("Ads Budget Plan", only.name).cancel()
+		frappe.set_user("Administrator")
+		split = self._plan("QA Fix Sep split", [{"month": sep[0], "provider": "Meta", "brand": BRAND_A, "planned_spend": 1000}, {"month": sep[0], "provider": "Meta", "planned_spend": 520}], user=U_MAKER, period=sep)
+		split = self._submit(split.name, U_CHECKER)
+		rows = budgets.plan_vs_actual({"workspace": WS_A, "provider": "Meta"}, *sep)
+		pva = {(r["provider"], r["brand"]): r for r in rows["rows"]}
+		self.assertTrue(rows["by_brand"])
+		self.assertEqual((pva[("Meta", "")]["planned_spend"], pva[("Meta", "")]["actual_spend"]), (520, 500))
+		self.assertEqual(budgets._line_actual(line(), getdate(sep[1])), pva[("Meta", "")]["actual_spend"], "the unbranded line is the unbranded bucket, not the account total")
+		self.assertEqual(budgets._line_actual(line(BRAND_A), getdate(sep[1])), pva[("Meta", BRAND_A)]["actual_spend"])
+		budgets.check_overspend(sep[1])
+		unbranded = next(r for r in split.lines if not r.brand)
+		self.assertFalse(frappe.db.exists("Ads Alert", {"dedupe_key": budgets.overspend_key(split.name, unbranded.name), "status": ["!=", "Resolved"]}), "500 against 520 is within the plan; the account total 900 would not have been")

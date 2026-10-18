@@ -21,6 +21,7 @@ import frappe
 from frappe.utils import add_days, cint, date_diff, flt, get_datetime, get_last_day, getdate, now_datetime
 
 from excom.excom_ads import permissions
+from excom.excom_ads.redact import redact
 
 SNAP = "Ads Billing Snapshot"
 RECORD = "Ads Billing Record"
@@ -111,7 +112,7 @@ def read_and_record(acc, provider) -> dict | None:
 
 
 def _failed_reading(err, status: str) -> dict:
-	return {**{a: status for a in GROUPS}, "headroom": {"avail": status}, "errors": [err], "raw": {"error": str(err)[:500]}}
+	return {**{a: status for a in GROUPS}, "headroom": {"avail": status}, "errors": [err], "raw": {"error": redact(str(err))[:500]}}
 
 
 def record_reading(acc, reading: dict) -> dict:
@@ -166,7 +167,7 @@ def record_reading(acc, reading: dict) -> dict:
 			"read_at": now,
 			"reported_as_of": now if fresh else (base.get("reported_as_of") if base else None),
 			"read_status": ("Partial" if fresh else "Error") if errors else "OK",
-			"last_error": "; ".join(str(e) for e in errors)[:1000] or None,
+			"last_error": redact("; ".join(str(e) for e in errors))[:1000] or None,
 			"raw_json": json.dumps(reading.get("raw") or {}, sort_keys=True, default=str),
 		}
 	)

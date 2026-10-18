@@ -7,13 +7,39 @@ Delivery follows Ads Notification Policy rows (company, type, minimum severity, 
 hours). With no matching policy, High and Critical alerts go to Excom Admin users on the Desk.
 Recipients only ever hear about alerts inside their own scope (permissions.doc_allowed).
 A repeat of an open alert notifies again only when its severity goes up.
+
+Quiet hours: a policy inside its quiet hours skips non-critical alerts; the skipped policies are kept
+in `quiet_held` and `deliver_held` sends to them (only them) once their quiet hours are over
+(`tasks.wake_snoozed_alerts` queues it every 30 minutes).
+
+Dedupe keys longer than the field (`dedupe_key`, 255) are shortened deterministically
+(`alert_key`): a readable prefix plus a hash of the whole key, so the same key always finds the same alert.
 """
+
+import hashlib
 
 import frappe
 from frappe.utils import get_datetime, get_time, now_datetime
 
 SEVERITY_RANK = {"Info": 0, "Medium": 1, "High": 2, "Critical": 3}
 SCOPE_FIELDS = ("company", "workspace", "brand", "account")
+KEY_LENGTH = 255
+
+
+def alert_key(key: str) -> str:
+	"""The stored form of a dedupe key: unchanged when it fits, else a prefix + sha1 of the whole key
+	(same key → same stored key; a stored key passes through unchanged)."""
+	key = str(key or "")
+	limit = KEY_LENGTH
+	try:
+		limit = frappe.get_meta("Ads Alert").get_field("dedupe_key").length or 140
+	except Exception:
+		pass
+	limit = min(limit, KEY_LENGTH)
+	if len(key) <= limit:
+		return key
+	digest = hashlib.sha1(key.encode()).hexdigest()
+	return f"{key[: limit - len(digest) - 1]}~{digest}"
 
 
 def raise_alert(alert_type: str, severity: str, title: str, message: str = "", ref=None, dedupe_key: str | None = None, scope: dict | None = None) -> str:
@@ -31,7 +57,7 @@ def _raise(alert_type, severity, title, message, ref, dedupe_key, scope):
 	values.update(_scope_of(ref, scope))
 	if ref is not None:
 		values["reference_doctype"], values["reference_name"] = ref.doctype, ref.name
-	key = dedupe_key or f"{alert_type}:{values.get('reference_doctype')}:{values.get('reference_name')}"
+	key = alert_key(dedupe_key or f"{alert_type}:{values.get('reference_doctype')}:{values.get('reference_name')}")
 	existing = frappe.db.get_value("Ads Alert", {"dedupe_key": key, "status": ["!=", "Resolved"]}, ["name", "severity", "occurrences", "notified_severity"], as_dict=True)
 	if existing:
 		values["occurrences"] = (existing.occurrences or 1) + 1
@@ -51,7 +77,7 @@ def _raise(alert_type, severity, title, message, ref, dedupe_key, scope):
 
 
 def resolve_alert(dedupe_key: str, resolution: str = "Cleared automatically") -> int:
-	names = frappe.get_all("Ads Alert", filters={"dedupe_key": dedupe_key, "status": ["!=", "Resolved"]}, pluck="name")
+	names = frappe.get_all("Ads Alert", filters={"dedupe_key": alert_key(dedupe_key), "status": ["!=", "Resolved"]}, pluck="name")
 	for n in names:
 		frappe.db.set_value("Ads Alert", n, {"status": "Resolved", "resolved_by": "system", "resolved_at": now_datetime(), "resolution": resolution})
 	return len(names)
@@ -91,17 +117,80 @@ def deliver(name: str) -> dict:
 	if alert.status in ("Resolved", "Snoozed") and not (alert.status == "Snoozed" and alert.snoozed_until and get_datetime(alert.snoozed_until) < now_datetime()):
 		return {"sent": 0}
 	sent = {"desk": 0, "email": 0, "whatsapp": 0}
+	held = []
 	for policy in _policies(alert):
 		if _quiet(policy) and alert.severity != "Critical":
+			held.append(policy.name)  # delivered by deliver_held once its quiet hours are over
 			continue
-		users = _recipients(policy, alert)
-		if policy.get("via_desk"):
-			sent["desk"] += _desk(alert, users)
-		if policy.get("via_email"):
-			sent["email"] += _email(alert, users)
-		if policy.get("via_whatsapp"):
-			sent["whatsapp"] += _whatsapp(alert, users)
-	frappe.db.set_value("Ads Alert", name, {"notified_at": now_datetime(), "notified_severity": alert.severity}, update_modified=False)
+		_send(policy, alert, sent)
+	values = {"notified_at": now_datetime(), "notified_severity": alert.severity}
+	if _has_held_field():
+		values["quiet_held"] = "\n".join(sorted(n for n in held if n)) or None
+	frappe.db.set_value("Ads Alert", name, values, update_modified=False)
+	return sent
+
+
+def _send(policy, alert, sent: dict) -> None:
+	users = _recipients(policy, alert)
+	if policy.get("via_desk"):
+		sent["desk"] += _desk(alert, users)
+	if policy.get("via_email"):
+		sent["email"] += _email(alert, users)
+	if policy.get("via_whatsapp"):
+		sent["whatsapp"] += _whatsapp(alert, users)
+
+
+def _has_held_field() -> bool:
+	return frappe.get_meta("Ads Alert").has_field("quiet_held")
+
+
+def _held(alert) -> list[str]:
+	return [n for n in (alert.get("quiet_held") or "").split("\n") if n.strip()]
+
+
+def held_due(limit: int = 500) -> list[str]:
+	"""Open alerts some policy held for its quiet hours, where at least one of those policies is out
+	of its quiet hours now. Alerts that matched no policy are never held, so never listed."""
+	if not frappe.db.exists("DocType", "Ads Alert") or not _has_held_field():
+		return []
+	rows = frappe.get_all("Ads Alert", filters={"status": "Open", "quiet_held": ["is", "set"]}, fields=["name", "quiet_held"], limit=limit)
+	if not rows:
+		return []
+	policies = {p.name: p for p in frappe.get_all("Ads Notification Policy", fields=["name", "enabled", "quiet_from", "quiet_to"])}
+	due = []
+	for r in rows:
+		# A held policy that was deleted or disabled no longer waits either; deliver_held clears it.
+		if any(n not in policies or not policies[n].enabled or not _quiet(policies[n]) for n in _held(r)):
+			due.append(r.name)
+	return due
+
+
+def deliver_held(name: str) -> dict:
+	"""Send an Open alert to the policies that held it for quiet hours and are no longer quiet.
+	Policies already delivered are not sent to again; policies still quiet stay held."""
+	sent = {"desk": 0, "email": 0, "whatsapp": 0}
+	if not _has_held_field() or not frappe.db.exists("Ads Alert", name):
+		return sent
+	frappe.db.get_value("Ads Alert", name, "name", for_update=True)
+	alert = frappe.get_doc("Ads Alert", name)
+	held = _held(alert)
+	if alert.status != "Open" or not held:
+		return sent
+	matching = {p.name: p for p in _policies(alert) if p.get("name")}
+	still, delivered = [], 0
+	for n in held:
+		policy = matching.get(n)
+		if policy is None:
+			continue  # the policy no longer matches this alert (deleted, disabled, severity rules changed)
+		if _quiet(policy) and alert.severity != "Critical":
+			still.append(n)
+			continue
+		_send(policy, alert, sent)
+		delivered += 1
+	values = {"quiet_held": "\n".join(still) or None}
+	if delivered:
+		values["notified_at"] = now_datetime()  # its people heard now: escalation counts from here
+	frappe.db.set_value("Ads Alert", name, values, update_modified=False)
 	return sent
 
 

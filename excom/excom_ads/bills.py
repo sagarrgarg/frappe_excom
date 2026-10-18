@@ -30,6 +30,11 @@ Building the draft (`_build`):
                          hard-coded rate.
   naming                 Ads Settings bill series (≤ 16 characters: valid GST document number).
   credit memo            debit note: is_return = 1, return_against the original's Purchase Invoice.
+  stale draft            a re-check compares the draft with the current map / supplier / TDS
+                         (`context_changes`): an untouched draft is rebuilt, an edited one is a
+                         difference (never auto-submitted).
+  submit guard           `before_purchase_invoice_submit` (doc_events) refuses to submit a Purchase
+                         Invoice linked from an Ads Bill Document outside approve() / auto-submit.
 
 Release 2 extension point: `EXTRACTORS` (AI extraction of a manual bill's PDF into its header).
 Nothing calls an extractor in release 1.
@@ -37,6 +42,7 @@ Nothing calls an extractor in release 1.
 
 import hashlib
 import json
+from contextlib import contextmanager
 
 import frappe
 from frappe import _
@@ -273,6 +279,16 @@ def _process(doc, rebuild: bool) -> str:
 	if doc.platform_update and pi is None:
 		_apply_platform_update(doc)  # nothing built on the old figures any more
 	ctx = _context(doc)
+	if pi is not None and not _edited(doc, pi) and context_changes(pi, ctx):
+		# The account map (company, supplier, billing GSTIN, TDS …) changed since this draft was built
+		# and nobody has touched the draft: build it again from the current map.
+		frappe.delete_doc("Purchase Invoice", pi.name, ignore_permissions=True, force=True)
+		doc.purchase_invoice = None
+		doc.return_against = None
+		pi = None
+		if doc.platform_update:
+			_apply_platform_update(doc)
+			ctx = _context(doc)
 	ctx.differences.extend(_api_notes(doc))
 	if doc.platform_update:
 		ctx.differences.append(platform_update_note(doc))
@@ -292,7 +308,8 @@ def _process(doc, rebuild: bool) -> str:
 		frappe.db.savepoint(sp)
 		try:
 			pi.flags.ignore_permissions = True
-			pi.submit()
+			with pipeline_submit(pi):
+				pi.submit()
 		except (frappe.QueryDeadlockError, frappe.QueryTimeoutError):
 			raise
 		except Exception as e:
@@ -313,6 +330,39 @@ def _auto_submit_allowed(doc, pi) -> bool:
 	if not cint(get_settings().bills_auto_submit) or doc.source_type != "API" or doc.prepared_by:
 		return False
 	return not (doc.pi_drafted_at and get_datetime(pi.modified) > get_datetime(doc.pi_drafted_at))
+
+
+def _edited(doc, pi) -> bool:
+	"""Changed by anyone since the pipeline drafted it (an unknown drafting time counts as edited)."""
+	return not doc.pi_drafted_at or get_datetime(pi.modified) > get_datetime(doc.pi_drafted_at)
+
+
+# ─── submit guard ─────────────────────────────────────────────────────────────
+
+SUBMIT_FLAG = "excom_ads_bill_submit"
+
+
+@contextmanager
+def pipeline_submit(pi):
+	"""Mark the one Purchase Invoice the pipeline itself submits (auto-submit or approve)."""
+	previous = frappe.flags.get(SUBMIT_FLAG)
+	frappe.flags[SUBMIT_FLAG] = pi.name
+	try:
+		yield
+	finally:
+		frappe.flags[SUBMIT_FLAG] = previous
+
+
+def before_purchase_invoice_submit(pi, method=None):
+	"""doc_events hook. A Purchase Invoice drafted from an Ads Bill Document is submitted only by the
+	pipeline (rules checked) or approve() (maker-checker), never from the form or the REST API.
+	Inert for every other Purchase Invoice."""
+	if pi.is_new() or not frappe.db.table_exists("Ads Bill Document"):
+		return
+	bill = frappe.db.get_value("Ads Bill Document", {"purchase_invoice": pi.name}, "name")
+	if not bill or frappe.flags.get(SUBMIT_FLAG) == pi.name:
+		return
+	frappe.throw(_("Purchase Invoice {0} was drafted from ad bill {1}. Approve it from the bill review (a second person checks it); it cannot be submitted directly.").format(pi.name, bill), frappe.PermissionError, title=_("Approve the ad bill"))
 
 
 # ─── context: maps, supplier, duplicate ───────────────────────────────────────
@@ -655,9 +705,43 @@ def _set_party_gst(pi, sup, ctx):
 
 # ─── checks (auto-submit rules) ───────────────────────────────────────────────
 
+def _expected_tds(ctx):
+	return None if ctx.map.tds_not_applicable else (ctx.map.tax_withholding_category or ctx.supplier.tax_withholding_category or None)
+
+
+def context_changes(pi, ctx) -> list[str]:
+	"""Where the draft no longer matches the current account map / supplier (it was built from an
+	older one): company, supplier, billing address, company GSTIN, supplier address / GSTIN, TDS."""
+	from frappe.contacts.doctype.address.address import get_default_address
+
+	m, sup = ctx.map, ctx.supplier
+	out = []
+	if pi.company != m.company:
+		out.append(_("Company on the Purchase Invoice is {0}, the account map's is {1}.").format(pi.company, m.company))
+	if pi.supplier != sup.name:
+		out.append(_("Supplier on the Purchase Invoice is {0}, the account map's is {1}.").format(pi.supplier, sup.name))
+	if (pi.get("billing_address") or "") != (m.billing_address or ""):
+		out.append(_("Billing address on the Purchase Invoice is {0}, the account map's is {1}.").format(pi.get("billing_address") or "-", m.billing_address or "-"))
+	if pi.meta.has_field("company_gstin") and (pi.get("company_gstin") or "") != (ctx.company_gstin or ""):
+		out.append(_("Company GSTIN on the Purchase Invoice is not the account map's."))
+	addr = get_default_address("Supplier", sup.name)
+	if addr and (pi.get("supplier_address") or "") != addr:
+		out.append(_("Supplier address on the Purchase Invoice is {0}, the supplier's is {1}.").format(pi.get("supplier_address") or "-", addr))
+	if pi.meta.has_field("supplier_gstin"):
+		gstin = "" if ctx.overseas else ((frappe.db.get_value("Address", addr, "gstin") if addr and frappe.get_meta("Address").has_field("gstin") else None) or sup.get("gstin") or "")
+		if (pi.get("supplier_gstin") or "") != gstin:
+			out.append(_("Supplier GSTIN on the Purchase Invoice is {0}, the supplier's is {1}.").format(pi.get("supplier_gstin") or "-", gstin or "-"))
+	tds = _expected_tds(ctx)
+	cats = ({pi.get("tax_withholding_category")} if pi.meta.has_field("tax_withholding_category") else set()) | {it.get("tax_withholding_category") for it in pi.items if it.meta.has_field("tax_withholding_category")}
+	cats -= {None, ""}
+	if (cats and cats != {tds}) or (tds and not cats) or cint(pi.get("apply_tds")) != (1 if tds else 0):
+		out.append(_("TDS on the Purchase Invoice ({0}) is not the account map's ({1}).").format(", ".join(sorted(cats)) or _("none"), tds or _("none")))
+	return out
+
+
 def check(doc, pi, ctx=None) -> list[str]:
 	"""Every reason this draft may not be submitted unattended. Empty = all rules hold."""
-	out = []
+	out = list(context_changes(pi, ctx)) if ctx else []
 	cur = doc.currency
 	sign = -1 if pi.get("is_return") else 1
 	if abs(flt(pi.net_total) * sign - flt(doc.net_amount)) >= TOLERANCE:
@@ -688,8 +772,6 @@ def check(doc, pi, ctx=None) -> list[str]:
 			for key, field in (("cgst", "cgst_amount"), ("sgst", "sgst_amount"), ("igst", "igst_amount")):
 				if flt(doc.get(field)) and abs(gst[key] - flt(doc.get(field))) >= TOLERANCE:
 					out.append(_("{0}: Purchase Invoice {1}, bill {2}.").format(key.upper(), _money(gst[key], cur), _money(doc.get(field), cur)))
-		if (pi.get("company_gstin") or "") != (ctx.company_gstin if ctx else pi.get("company_gstin")):
-			out.append(_("Company GSTIN on the Purchase Invoice is not the account map's."))
 	m = ctx.map if ctx else (frappe.db.get_value("Ads Bill Account Map", doc.account_map, "*", as_dict=True) if doc.account_map else None)
 	if not (m and m.tds_not_applicable):
 		cats = {pi.get("tax_withholding_category")} | {it.get("tax_withholding_category") for it in pi.items}
@@ -736,7 +818,8 @@ def approve(name: str, user: str, acknowledge_differences: bool = False) -> dict
 		frappe.throw(_("The platform re-issued this bill's figures; rebuild the draft before approving."))
 	if differences and not cint(acknowledge_differences):
 		frappe.throw(_("Review these before approving:") + "\n" + _lines_text(differences), title=_("Differences"))
-	pi.submit()
+	with pipeline_submit(pi):
+		pi.submit()
 	doc.flags.from_pipeline = True
 	doc.flags.ignore_permissions = True
 	doc.approved_by = user

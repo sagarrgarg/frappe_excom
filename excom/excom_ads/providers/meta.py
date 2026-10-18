@@ -12,6 +12,8 @@ import json
 import frappe
 import requests
 
+from excom.excom_ads.redact import redact
+
 from excom.excom_ads.providers.base import (
 	INVALID,
 	PERMISSION,
@@ -93,7 +95,13 @@ PERMISSION_CODES = {10, 200, 270, 294}
 
 def http_get(url: str, params: dict | None):
 	"""The single network call. Tests replace it. Returns (status_code, body_dict, headers)."""
-	resp = requests.get(url, params=params, timeout=60)
+	try:
+		resp = requests.get(url, params=params, timeout=60)
+	except requests.Timeout:
+		return 504, {"error": {"code": 2, "is_transient": True, "message": "Timed out waiting for Meta"}}, {}
+	except requests.RequestException as e:
+		# The exception text quotes the full URL, access token included: keep only its type.
+		return 503, {"error": {"code": 2, "is_transient": True, "message": f"Could not reach Meta ({type(e).__name__})"}}, {}
 	try:
 		body = resp.json() if resp.content else {}
 	except ValueError:
@@ -210,6 +218,7 @@ class MetaAdsProvider(AdsProvider):
 		wait = _regain_minutes(headers)
 		if status != 200:
 			err = classify(status, body)
+			err.args = (redact(str(err), [self._token]),)
 			if err.error_class == RATE_LIMITED and wait:
 				err.retry_after = wait * 60
 			raise err

@@ -31,7 +31,11 @@ def _token(conn) -> str:
 
 
 def _get(url: str, params: dict) -> dict:
-	resp = requests.get(url, params=params, timeout=30)
+	try:
+		resp = requests.get(url, params=params, timeout=30)
+	except requests.RequestException as e:
+		# requests quotes the full URL (access token included) in its message: keep only the type.
+		raise frappe.ValidationError(f"Graph: could not reach Meta ({type(e).__name__})") from None
 	data = resp.json() if resp.content else {}
 	if resp.status_code != 200:
 		err = (data.get("error") or {}).get("message") or resp.text[:300]
@@ -40,7 +44,11 @@ def _get(url: str, params: dict) -> dict:
 
 
 def _post(url: str, params: dict, payload: dict | None = None) -> dict:
-	resp = requests.post(url, params=params, json=payload or {}, timeout=30)
+	try:
+		resp = requests.post(url, params=params, json=payload or {}, timeout=30)
+	except requests.RequestException as e:
+		# requests quotes the full URL (access token included) in its message: keep only the type.
+		raise frappe.ValidationError(f"Graph: could not reach Meta ({type(e).__name__})") from None
 	data = resp.json() if resp.content else {}
 	if resp.status_code != 200:
 		err = (data.get("error") or {}).get("message") or resp.text[:300]

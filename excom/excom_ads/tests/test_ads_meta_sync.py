@@ -42,6 +42,8 @@ class FakeGraph:
 		self.spend_bump = 0.0
 		self.fail_with = None
 		self.paged_campaigns = True
+		self.fail_level = None  # e.g. "ad": insights at that level answer with an error
+		self.omit_campaigns = set()  # campaigns left out of insights (as Meta does for deleted objects)
 
 	def __call__(self, url, params):
 		self.calls.append(url)
@@ -62,6 +64,8 @@ class FakeGraph:
 		if path.endswith("/ads"):
 			return 200, {"data": ADS}, {}
 		if path.endswith("/insights"):
+			if self.fail_level and q.get("level") == self.fail_level:
+				return 400, {"error": {"code": 1, "message": "Please reduce the amount of data you're asking for"}}, {}
 			return 200, {"data": self._insights(q)}, {}
 		raise AssertionError(f"unexpected GET {url}")
 
@@ -72,6 +76,8 @@ class FakeGraph:
 		day = getdate(tr["since"])
 		while day <= getdate(tr["until"]):
 			for camp, adset, ad, spend in (("c1", "s1", "a1", 1000.0), ("c2", "s2", "a2", 250.5)):
+				if camp in self.omit_campaigns:
+					continue
 				row = {"date_start": str(day), "date_stop": str(day), "account_id": "9990001", "campaign_id": camp, "adset_id": adset, "ad_id": ad, "spend": str(spend + self.spend_bump), "impressions": "1000", "reach": "800", "clicks": "40", "inline_link_clicks": "30", "actions": [{"action_type": "lead", "value": "3"}, {"action_type": "onsite_conversion.lead_grouped", "value": "3"}, {"action_type": "omni_purchase", "value": "2"}, {"action_type": "purchase", "value": "2"}], "action_values": [{"action_type": "omni_purchase", "value": "4999"}]}
 				out.append(row)
 			day = add_days(day, 1)
@@ -142,6 +148,8 @@ class TestAdsMetaSync(FrappeTestCase):
 	def setUp(self):
 		self.graph.spend_bump = 0.0
 		self.graph.fail_with = None
+		self.graph.fail_level = None
+		self.graph.omit_campaigns = set()
 		self.enqueued.clear()
 
 	# ─── helpers ──────────────────────────────────────────────────────────────
@@ -274,6 +282,119 @@ class TestAdsMetaSync(FrappeTestCase):
 		r = sync.run_job(acc.name, "Backfill", since="2026-10-01", until="2026-10-01")
 		self.assertEqual(r["status"], "Failed")
 		self.assertEqual(r["error_class"], "Rate Limited")
+
+	# ─── review fixes ─────────────────────────────────────────────────────────
+
+	def _fresh(self):
+		"""An account whose mirrors and metrics are wiped, so ordering effects can be tested."""
+		acc = self._account()
+		for dt in ("Ads Metric Snapshot", "Ads Advertisement", "Ads Ad Group", "Ads Campaign"):
+			frappe.db.delete(dt, {"account": acc.name})
+		frappe.db.set_value("Ads Account", acc.name, {"metrics_synced_from": None, "metrics_synced_until": None, "brand": None})
+		frappe.db.commit()
+		acc.reload()
+		return acc
+
+	def test_08_rows_synced_before_their_campaign_get_linked_and_follow_its_brand(self):
+		acc = self._fresh()
+		ws = acc.workspace
+		for b in ("QA Ads Brand X", "QA Ads Brand Y"):
+			if not frappe.db.exists("Ads Brand", b):
+				frappe.get_doc({"doctype": "Ads Brand", "brand_name": b, "workspace": ws}).insert(ignore_permissions=True)
+		try:
+			# First backfill runs before the first structure sync: no mirrors yet.
+			sync.run_job(acc.name, "Backfill", since="2026-09-01", until="2026-09-01")
+			camp_row = snapshot_name(acc.name, "Campaign", "c1", "2026-09-01")
+			ad_row = snapshot_name(acc.name, "Ad", "a2", "2026-09-01")
+			self.assertIsNone(frappe.db.get_value("Ads Metric Snapshot", camp_row, "campaign"))
+			sync.run_job(acc.name, "Structure")
+			c1 = mirror_name(acc.name, "c1")
+			self.assertEqual(frappe.db.get_value("Ads Metric Snapshot", camp_row, "campaign"), c1, "linked by the structure sync")
+			self.assertEqual(frappe.db.get_value("Ads Metric Snapshot", ad_row, ["advertisement", "ad_group", "campaign"]), (mirror_name(acc.name, "a2"), mirror_name(acc.name, "s2"), mirror_name(acc.name, "c2")))
+			# A person allocates c1 to Brand X: it survives the next sync, and its rows follow.
+			camp = frappe.get_doc("Ads Campaign", c1)
+			camp.brand = "QA Ads Brand X"
+			camp.save(ignore_permissions=True)
+			self.assertEqual(frappe.db.get_value("Ads Metric Snapshot", camp_row, "brand"), "QA Ads Brand X")
+			sync.run_job(acc.name, "Structure")
+			self.assertEqual(frappe.db.get_value("Ads Campaign", c1, "brand"), "QA Ads Brand X", "a sync never overwrites an allocated brand")
+			sync.run_job(acc.name, "Settle", since="2026-09-01", until="2026-09-01")
+			self.assertEqual(frappe.db.get_value("Ads Metric Snapshot", camp_row, "brand"), "QA Ads Brand X", "re-pulled rows keep their campaign's brand")
+			self.assertIsNone(frappe.db.get_value("Ads Metric Snapshot", snapshot_name(acc.name, "Campaign", "c2", "2026-09-01"), "brand"), "an unallocated campaign on an unbranded account stays unallocated")
+		finally:
+			frappe.db.set_value("Ads Campaign", mirror_name(acc.name, "c1"), "brand", None)
+			for b in ("QA Ads Brand X", "QA Ads Brand Y"):
+				frappe.db.delete("Ads Brand", {"name": b})
+			frappe.db.commit()
+
+	def test_09_long_names_do_not_break_the_structure_sync(self):
+		acc = self._fresh()
+		saved = [dict(c) for c in CAMPAIGNS]
+		try:
+			CAMPAIGNS[0]["name"] = "QA " + "Very long auto-generated campaign name " * 6
+			r = sync.run_job(acc.name, "Structure")
+			self.assertEqual(r["status"], "Success", r)
+			self.assertTrue(frappe.db.get_value("Ads Campaign", mirror_name(acc.name, "c1"), "campaign_name").startswith("QA Very long"))
+		finally:
+			CAMPAIGNS[:] = saved
+
+	def test_10_settle_keeps_history_of_objects_the_platform_stops_reporting(self):
+		acc = self._fresh()
+		sync.run_job(acc.name, "Structure")
+		sync.run_job(acc.name, "Backfill", since="2026-09-01", until="2026-09-02")
+		row = snapshot_name(acc.name, "Campaign", "c2", "2026-09-01")
+		self.assertAlmostEqual(frappe.db.get_value("Ads Metric Snapshot", row, "spend"), 250.5)
+		# c2 is deleted on the platform and drops out of insights entirely: its history stays.
+		self.graph.omit_campaigns = {"c2"}
+		sync.run_job(acc.name, "Settle", since="2026-09-01", until="2026-09-02")
+		self.assertAlmostEqual(frappe.db.get_value("Ads Metric Snapshot", row, "spend"), 250.5)
+
+	def test_11_a_failing_lower_level_does_not_wedge_the_account(self):
+		acc = self._fresh()
+		sync.run_job(acc.name, "Structure")
+		self.graph.fail_level = "ad"
+		r = sync.run_job(acc.name, "Backfill", since="2026-09-01", until="2026-09-02")
+		self.assertEqual(r["status"], "Partial")
+		acc.reload()
+		self.assertEqual((str(acc.metrics_synced_from), str(acc.metrics_synced_until)), ("2026-09-01", "2026-09-02"), "account totals arrived, so the window counts as synced")
+		tasks_enqueued = []
+		orig = sync.enqueue
+		sync.enqueue = lambda a, t, **k: tasks_enqueued.append((a, t))
+		try:
+			tasks.enqueue_intraday()
+		finally:
+			sync.enqueue = orig
+		self.assertIn((acc.name, "Metrics"), tasks_enqueued, "next run is an intraday refresh, not another full backfill")
+
+	def test_12_network_errors_never_store_the_token(self):
+		import requests
+
+		acc = self._account()
+		token = "EAAB" + "x" * 40
+		conn = frappe.get_doc("Excom Meta Connection", CONN)
+		conn.system_user_token = token
+		conn.save(ignore_permissions=True)
+
+		def boom(url, params=None, timeout=None):
+			raise requests.ConnectionError(f"HTTPSConnectionPool(host='graph.facebook.com'): Max retries exceeded with url: /v26.0/act_1?access_token={token}&fields=name")
+
+		real_get = requests.get
+		meta_provider.http_get = self._orig[1]  # the module's real transport, so its own error handling runs
+		requests.get = boom
+		try:
+			r = sync.run_job(acc.name, "Structure")
+		finally:
+			requests.get = real_get
+			meta_provider.http_get = self.graph
+			conn.reload()
+			conn.system_user_token = "SYS_TOKEN"
+			conn.save(ignore_permissions=True)
+		self.assertEqual(r["status"], "Failed")
+		acc.reload()
+		job = frappe.get_all("Ads Sync Job", {"account": acc.name}, ["error"], order_by="creation desc", limit=1)[0]
+		for text in (acc.last_error, job.error, r.get("error")):
+			self.assertNotIn(token, text or "")
+		self.assertIn("ConnectionError", job.error or "")
 
 	def test_07_unsupported_operations_are_declared_with_a_reason(self):
 		from excom.excom_ads.providers.meta import MetaAdsProvider

@@ -67,6 +67,16 @@ Supported: Frappe/ERPNext **v15 and v16**, MariaDB, Python ≥ 3.10. Test on `fr
   DocTypes use `permlevel: 1` (read for System Manager, Excom Admin, Accounts User/Manager).
 - Roles: `System Manager`, `Excom Admin` (full), `Excom Marketing` (read inside scope). Do not add
   roles; add a right to Ads Access Profile instead.
+- Scope **fails closed**: a user's restriction on a dimension the DocType has no column for is
+  derived through the record's account (or, for workspaces/brands, the records that belong to them);
+  if it cannot be derived the answer is no rows (`permissions._constraints`). Never add a data
+  DocType that can only be scoped by a dimension it does not carry.
+- Ads screens and APIs need Excom Marketing, Excom Admin or System Manager (`require_access`).
+  Finance-only users (Accounts User) work on finance records in the Desk. Only an unscoped admin
+  manages other people's Ads Access Profiles.
+- Every error text that is stored or shown (sync jobs, account errors, alerts, billing snapshots,
+  Error Log) goes through `redact.redact()`; HTTP transports return only the exception type for
+  network failures, because `requests` quotes the full URL (tokens included) in its messages.
 - Credentials stay in Password fields on their owning record (Meta: `Excom Meta Connection`; Google and
   LinkedIn: `Ads Connection`, which only System Manager and Excom Admin can open).
   Read with `get_password()` server-side only; never return them, log them or put them in errors.

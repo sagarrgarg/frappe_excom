@@ -26,6 +26,9 @@ def upsert_meta_ad_account(conn, row) -> str:
 	name = account_name("Meta", external_id)
 	if frappe.db.exists("Ads Account", name):
 		doc = frappe.get_doc("Ads Account", name)
+		# One company's Meta connection never takes over another company's ad account (and its history).
+		if conn.company and doc.company and doc.company != conn.company:
+			frappe.throw(frappe._("Ad account {0} is already enabled for company {1}").format(external_id, doc.company))
 	else:
 		if not conn.company:
 			frappe.throw(frappe._("Set a Company on {0} before enabling ad accounts").format(conn.name))

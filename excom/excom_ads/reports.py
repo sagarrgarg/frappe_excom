@@ -10,7 +10,8 @@ Scope: a report is always rendered **as a person** (`as_user`): each user recipi
 report computed inside their own scope and rights, so nobody receives a company, brand, account or
 finance figure they could not open on the screen. Someone whose scope does not cover the
 template's scope is skipped, not sent a partial report. External email addresses (no login) get
-the template owner's view, only while the owner holds the export_data right, and never billing.
+the template owner's view, only while the owner holds the export_data right, and never finance figures
+(billing, verified revenue, MER).
 
 Every report states how fresh its data is and names each source that is stale, partial,
 disconnected or not syncing (`disclosure`).
@@ -134,6 +135,8 @@ def collect(t, a, b, external: bool = False, today=None) -> dict:
 	f = template_filters(t)
 	ov = dashboard.overview(str(a), str(b), **f)
 	finance = (not external) and permissions.has_capability("view_finance")
+	if not finance:
+		_strip_finance(ov)
 	data = {"filters": f, "overview": ov, "finance": finance, "external": external, "from_date": getdate(a), "to_date": getdate(b)}
 	data["accounts"] = dashboard._accounts_in_scope(f, ["name", "account_name", "provider", "sync_enabled", "status", "last_metrics_sync", "error_class"])
 	data["disclosure"] = disclosure(ov, data["accounts"], b, today=today)
@@ -150,6 +153,23 @@ def collect(t, a, b, external: bool = False, today=None) -> dict:
 		af = {"status": ["in", ["Open", "Acknowledged"]], **{k: v for k, v in f.items() if k in ("company", "workspace", "brand", "account")}}
 		data["alerts"] = frappe.get_list("Ads Alert", filters=af, fields=["title", "alert_type", "severity", "status", "last_seen", "occurrences"], order_by="last_seen desc", limit_page_length=MAX_ALERTS)
 	return data
+
+
+# Verified money figures and the ratio built on them. Only a recipient with view_finance gets them,
+# never an external address (rendered as the owner): the rule the billing section follows.
+VERIFIED_FINANCE_KEYS = ("revenue", "gross_revenue", "returns", "invoices", "order_value", "mer")
+
+
+def _strip_finance(ov: dict) -> None:
+	ov["billing"] = None
+	ver = ov.get("verified")
+	if not isinstance(ver, dict):
+		return
+	for block in ("totals", "by_campaign", "by_brand", "series", "unattributed"):
+		for row in ver.get(block) or []:
+			for k in VERIFIED_FINANCE_KEYS:
+				if k in row:
+					row[k] = None
 
 
 def disclosure(ov: dict, accounts: list, to_date, today=None) -> dict:
@@ -268,7 +288,10 @@ def build_tables(t, data: dict) -> list[Table]:
 				tab.rows.append([_(label), cur.get("currency"), V(c, kind, cur.get("currency")), V(q, kind, cur.get("currency")), change])
 		ver = ov.get("verified") or {}
 		for v in ver.get("totals") or [] if isinstance(ver, dict) else []:
-			for k, label, kind in (("leads", "Leads (verified, ERPNext)", "int"), ("opportunities", "Opportunities (verified)", "int"), ("orders", "Orders (verified)", "int"), ("net_revenue", "Net revenue (verified)", "money")):
+			# verified.compute's keys: `revenue` is net revenue (invoices + their credit notes).
+			for k, label, kind in (("leads", "Leads (verified, ERPNext)", "int"), ("opportunities", "Opportunities (verified)", "int"), ("orders", "Orders (verified)", "int"), ("revenue", "Net revenue (verified)", "money")):
+				if k in VERIFIED_FINANCE_KEYS and not data.get("finance"):
+					continue
 				if v.get(k) is not None:
 					tab.rows.append([_(label), v.get("currency"), V(v.get(k), kind, v.get("currency")), V(None, kind), None])
 		if not tab.rows:

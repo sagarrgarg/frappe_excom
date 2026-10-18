@@ -180,6 +180,32 @@ class TestAdsReports(FrappeTestCase):
 		self.assertIn("<table", r.html)
 		self.assertNotIn("<script", r.html.lower())
 
+	def test_qa_fix_verified_revenue_renders_for_finance_and_never_for_external(self):
+		def fake_compute(filters, a, b, spend=None, **kw):
+			row = {"currency": self.cur, "leads": 3.0, "qualified": 1.0, "opportunities": 1.0, "orders": 2.0, "order_value": 14000.0, "invoices": 2.0, "revenue": 12345.0, "gross_revenue": 13000.0, "returns": -655.0, "platform_spend": 1500.0, "verified_cpl": 500.0, "mer": 8.23}
+			return {"source": "Verified", "totals": [row], "by_campaign": [dict(row, campaign=self.camp_a)], "available": {"leads": True, "opportunities": True, "orders": True, "revenue": True}}
+
+		t = frappe.get_doc("Ads Report Template", self.t_a)
+		(a, b) = reports.period(t.date_preset, TODAY)
+		with patch("excom.excom_ads.verified.compute", side_effect=fake_compute):
+			with reports.as_user(U_FIN):
+				inside = reports.render(t, a, b, viewer=U_FIN, today=TODAY)
+				outside = reports.render(t, a, b, viewer=EXTERNAL, external=True, today=TODAY)
+				data = reports.collect(t, a, b, external=True, today=TODAY)
+		row = _row(_csv_rows(inside), "Net revenue (verified)", self.cur)
+		self.assertEqual(float(row[2]), 12345.0, "verified net revenue (verified.compute's `revenue`) is in the KPI summary")
+		self.assertIn("Net revenue (verified)", inside.html)
+		self.assertIn("Orders (verified)", outside.html, "verified counts still go out")
+		self.assertNotIn("Net revenue (verified)", outside.html)
+		self.assertFalse(any(r and r[0] == "Net revenue (verified)" for r in _csv_rows(outside)), "no verified revenue for an external address")
+		self.assertNotIn("12,345", outside.html)
+		self.assertNotIn("12345", outside.csv.decode("utf-8-sig"))
+		ver = data["overview"]["verified"]
+		for block in ("totals", "by_campaign"):
+			for k in ("revenue", "gross_revenue", "returns", "order_value", "mer"):
+				self.assertIsNone(ver[block][0][k], f"{block}.{k} is stripped for an external rendering")
+		self.assertIsNone(data["overview"]["billing"])
+
 	def test_stale_and_disconnected_sources_are_stated(self):
 		r = self._render(self.t_a)
 		self.assertFalse(r.disclosure["ok"])

@@ -197,6 +197,27 @@ class TestAdsPermissions(FrappeTestCase):
 		n3 = alerts.raise_alert("Sync Failed", "Medium", "QA failing", "after resolve", ref=acc, dedupe_key="qa-perm:sync")
 		self.assertNotEqual(n3, n1, "a problem that comes back after resolution is a new alert")
 
+	def test_qa_fix_long_dedupe_keys_are_stored_and_found_again(self):
+		acc = frappe.get_doc("Ads Account", self.acc_a)
+		key200 = "qa-perm:report_delivery:" + "x" * 176
+		self.assertEqual(len(key200), 200)
+		n = alerts.raise_alert("Sync Failed", "Medium", "QA Fix long key", "x", ref=acc, dedupe_key=key200)
+		self.assertTrue(n, "a 200-character key is stored (dedupe_key holds 255)")
+		self.assertEqual(frappe.db.get_value("Ads Alert", n, "dedupe_key"), key200)
+		self.assertEqual(alerts.raise_alert("Sync Failed", "Medium", "QA Fix long key", "again", ref=acc, dedupe_key=key200), n)
+		key400 = "qa-perm:bill-fetch:" + "y" * 381
+		m = alerts.raise_alert("Sync Failed", "Medium", "QA Fix longer key", "x", ref=acc, dedupe_key=key400)
+		self.assertTrue(m, "a key longer than the field is hashed, not dropped")
+		stored = frappe.db.get_value("Ads Alert", m, "dedupe_key")
+		self.assertLessEqual(len(stored), 255)
+		self.assertTrue(stored.startswith("qa-perm:bill-fetch:"))
+		self.assertEqual(stored, alerts.alert_key(key400), "deterministic")
+		self.assertNotEqual(alerts.alert_key(key400), alerts.alert_key(key400[:-1] + "z"))
+		self.assertEqual(alerts.raise_alert("Sync Failed", "Medium", "QA Fix longer key", "again", ref=acc, dedupe_key=key400), m, "the same long key finds the same alert")
+		self.assertEqual(frappe.db.get_value("Ads Alert", m, "occurrences"), 2)
+		self.assertEqual(alerts.resolve_alert(key400), 1)
+		self.assertEqual(alerts.resolve_alert(key200), 1)
+
 	def test_alert_delivery_reaches_only_in_scope_recipients(self):
 		pol = frappe.get_doc({"doctype": "Ads Notification Policy", "policy_name": f"{P} desk", "min_severity": "Medium", "via_desk": 1, "recipients": [{"recipient_type": "Role", "role": "Excom Marketing"}]}).insert(ignore_permissions=True)
 		acc_b = frappe.get_doc("Ads Account", self.acc_b)

@@ -82,7 +82,11 @@ def get_scope(user=None) -> dict | None:
 		rows = perms.get(dt) or []
 		if rows:
 			scope[dim] = {r.get("doc") for r in rows if r.get("doc")}
-	if not scope and not is_admin(user):
+	if not is_admin(user) and MARKETING_ROLE not in _roles(user) and not (FINANCE_ROLES & _roles(user)):
+		# Only marketing staff (and finance users, for finance records on the Desk) reach ads data,
+		# whatever User Permissions they hold for other reasons.
+		scope = None
+	elif not scope and not is_admin(user):
 		scope = None  # deny by default: a non-admin with no grant sees no ads data
 	cache[user] = scope
 	return scope
@@ -90,6 +94,7 @@ def get_scope(user=None) -> dict | None:
 
 def clear_cache(*_args, **_kwargs):
 	frappe.local.excom_ads_scope = {}
+	frappe.local.excom_ads_constraints = {}
 
 
 def _fields_for(doctype: str) -> dict:
@@ -101,24 +106,66 @@ def _fields_for(doctype: str) -> dict:
 	return out
 
 
+def _constraints(doctype: str, scope: dict, user: str):
+	"""[(column, allowed values)] expressing every restricted dimension of the caller on this doctype,
+	or None when one of them cannot be expressed — then the answer is "no rows", never "all rows".
+
+	A dimension the doctype has no column for is derived through its account (sync jobs) or, for
+	workspaces and brands, through the records that belong to them. Cached per request."""
+	cache = getattr(frappe.local, "excom_ads_constraints", None)
+	if cache is None:
+		cache = frappe.local.excom_ads_constraints = {}
+	key = (user, doctype)
+	if key in cache:
+		return cache[key]
+	cols = _fields_for(doctype)
+	out = []
+	for dim in DIMENSIONS:
+		allowed = scope.get(dim)
+		if allowed is None:
+			continue
+		allowed = set(allowed)
+		if dim in cols:
+			out.append((cols[dim], allowed))
+		elif "account" in cols and dim in ("company", "workspace", "brand"):
+			out.append((cols["account"], set(frappe.get_all("Ads Account", filters={dim: ["in", sorted(allowed) or ["-"]]}, pluck="name"))))
+		elif doctype == "Ads Workspace" and dim in ("brand", "account"):
+			src = "Ads Brand" if dim == "brand" else "Ads Account"
+			out.append(("name", {w for w in frappe.get_all(src, filters={"name": ["in", sorted(allowed) or ["-"]]}, pluck="workspace") if w}))
+		elif doctype == "Ads Brand" and dim == "account":
+			out.append(("name", {b for b in frappe.get_all("Ads Account", filters={"name": ["in", sorted(allowed) or ["-"]]}, pluck="brand") if b}))
+		else:
+			out = None
+			break
+	cache[key] = out
+	return out
+
+
+def _profile_condition(user: str) -> str:
+	# Rights are personal. Only an admin with no scope restriction manages everyone's profile; a
+	# scoped admin must not grant rights to people of companies they cannot see.
+	if is_super(user) or (is_admin(user) and get_scope(user) == {}):
+		return ""
+	return f"`tabAds Access Profile`.`user` = {frappe.db.escape(user)}"
+
+
 def query_conditions(doctype: str, user=None) -> str:
 	user = _user(user)
 	if doctype == "Ads Access Profile":
-		# Rights are personal: a non-admin sees only their own profile.
-		return "" if is_admin(user) else f"`tabAds Access Profile`.`user` = {frappe.db.escape(user)}"
+		return _profile_condition(user)
 	scope = get_scope(user)
 	if scope is None:
 		return "1=0"
 	if doctype in FINANCE_DOCTYPES and not has_capability("view_finance", user):
 		return "1=0"
-	parts = []
 	if not scope:
 		return ""
+	constraints = _constraints(doctype, scope, user)
+	if constraints is None:
+		return "1=0"
 	table = f"`tab{doctype}`"
-	for dim, column in _fields_for(doctype).items():
-		allowed = scope.get(dim)
-		if allowed is None:
-			continue
+	parts = []
+	for column, allowed in constraints:
 		if not allowed:
 			return "1=0"
 		values = ", ".join(frappe.db.escape(v) for v in sorted(allowed))
@@ -129,17 +176,19 @@ def query_conditions(doctype: str, user=None) -> str:
 def doc_allowed(doc, user=None) -> bool:
 	user = _user(user)
 	if doc.doctype == "Ads Access Profile":
-		return is_admin(user) or doc.get("user") == user
+		return _profile_condition(user) == "" or doc.get("user") == user
 	scope = get_scope(user)
 	if scope is None:
 		return False
 	if doc.doctype in FINANCE_DOCTYPES and not has_capability("view_finance", user):
 		return False
+	if not scope:
+		return True
+	constraints = _constraints(doc.doctype, scope, user)
+	if constraints is None:
+		return False
 	derived = None
-	for dim, column in _fields_for(doc.doctype).items():
-		allowed = scope.get(dim)
-		if allowed is None:
-			continue
+	for column, allowed in constraints:
 		value = doc.get(column)
 		if not value and column != "name":
 			# A new record is checked before fetch_from fills its scope from its account / workspace.
@@ -179,7 +228,17 @@ def scope_filters(doctype: str, user=None) -> dict:
 		return {"name": ["in", []]}
 	if doctype in FINANCE_DOCTYPES and not has_capability("view_finance", user):
 		return {"name": ["in", []]}
-	return {column: ["in", sorted(scope[dim])] for dim, column in _fields_for(doctype).items() if scope.get(dim) is not None}
+	if not scope:
+		return {}
+	constraints = _constraints(doctype, scope, user)
+	if constraints is None:
+		return {"name": ["in", []]}
+	out = {}
+	for column, allowed in constraints:
+		prior = set(out[column][1]) if column in out else None
+		vals = allowed if prior is None else (prior & allowed)
+		out[column] = ["in", sorted(vals) or [""]]
+	return out
 
 
 # ─── hooks ────────────────────────────────────────────────────────────────────
@@ -219,6 +278,8 @@ def require(capability: str, user=None) -> None:
 
 
 def require_access() -> None:
-	"""Any ads screen: admin, or a marketing user with some scope."""
-	if get_scope() is None:
+	"""Any ads screen or API: an admin, or an Excom Marketing user with some scope. A finance-only
+	user (Accounts User) works on finance records in the Desk, not through these endpoints."""
+	user = _user()
+	if not (is_admin(user) or MARKETING_ROLE in _roles(user)) or get_scope() is None:
 		frappe.throw(_("You have no access to ads data. Ask an admin for User Permissions on a company, workspace, brand or ad account."), frappe.PermissionError)

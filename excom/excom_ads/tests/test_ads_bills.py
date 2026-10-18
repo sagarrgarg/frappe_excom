@@ -254,7 +254,7 @@ class TestAdsBills(FrappeTestCase):
 		ins({"doctype": "Ads Connection", "connection_name": GOOGLE_CONN, "provider": "Google", "company": cls.company, "auth_mode": "OAuth Refresh Token", "oauth_client_id": "qa-client.apps.googleusercontent.com", "oauth_client_secret": "GOCSPX-qa-bills-secret", "refresh_token": "1//0qa-bills-refresh-token-abcdefghijklmnop"})
 		ins({"doctype": "Ads Bill Source", "source_name": SRC_META, "provider": "Meta", "company": cls.company, "workspace": WS_A, "meta_connection": META_CONN, "lookback_months": 1})
 		ins({"doctype": "Ads Bill Source", "source_name": SRC_GOOGLE, "provider": "Google", "company": cls.company, "workspace": WS_A, "google_connection": GOOGLE_CONN, "customer_id": CID, "lookback_months": 1})
-		roles = {U_MAKER: ["Accounts User", "Purchase User", "Excom Marketing"], U_CHECKER: ["Accounts Manager", "Purchase User", "Excom Marketing"], U_NORIGHT: ["Accounts Manager", "Purchase User"], U_B: ["Accounts User"], U_MKT: ["Excom Marketing"]}
+		roles = {U_MAKER: ["Accounts User", "Purchase User", "Excom Marketing"], U_CHECKER: ["Accounts Manager", "Purchase User", "Excom Marketing"], U_NORIGHT: ["Accounts Manager", "Purchase User"], U_B: ["Accounts User", "Excom Marketing"], U_MKT: ["Excom Marketing"]}
 		for u, rs in roles.items():
 			ins({"doctype": "User", "email": u, "first_name": u.split("@")[0], "send_welcome_email": 0, "user_type": "System User", "roles": [{"role": r} for r in rs]})
 			ins({"doctype": "User Permission", "user": u, "allow": "Company", "for_value": COMPANY_B if u == U_B else cls.company, "apply_to_all_doctypes": 1})
@@ -804,6 +804,78 @@ class TestAdsBills(FrappeTestCase):
 		self.assertEqual(cert.status, "Sent")
 		self.assertFalse(frappe.db.exists("Ads Alert", {"dedupe_key": key, "status": ["!=", "Resolved"]}))
 
+	# ─── QA Fix regressions ───────────────────────────────────────────────────
+
+	def _set_map(self, name, **values):
+		m = frappe.get_doc("Ads Bill Account Map", name)
+		m.update(values)
+		m.save(ignore_permissions=True)
+
+	def test_qa_fix_stale_draft_is_rebuilt_or_held_after_the_map_changes(self):
+		self._run_meta(meta_invoice("8800030", "3199000030", "9901", 1000.0, 180.0, campaigns=[("c1", "QA Fix A", 1000.0)]))
+		doc = self._doc("Meta", "8800030")
+		old = self._pi(doc)
+		self.assertEqual((doc.status, old.billing_address, old.company_gstin), (bills.DRAFT, self.addr_hr, GSTIN_HR), doc.differences)
+		try:
+			# Finance moves the account to the Karnataka GSTIN: the untouched draft is built again.
+			self._set_map(self.map_in, billing_address=self.addr_ka, platform_gstin=GSTIN_KA)
+			self.assertEqual(bills.process(doc.name), bills.DRAFT, frappe.db.get_value("Ads Bill Document", doc.name, "differences"))
+			doc.reload()
+			new = self._pi(doc)
+			self.assertNotEqual(new.creation, old.creation, "a new draft (the series may give it the deleted draft's name)")
+			self.assertEqual(frappe.db.count("Purchase Invoice", {"bill_no": "3199000030"}), 1, "the stale draft is gone")
+			self.assertEqual((new.billing_address, new.company_gstin), (self.addr_ka, GSTIN_KA))
+			self.assertEqual(self._gst(new)["igst"], 180.0, "Karnataka company, Haryana supplier → IGST")
+			# A draft someone edited is never rebuilt; with the map changed again it must not be auto-submitted.
+			self._as(U_CHECKER)
+			pi = frappe.get_doc("Purchase Invoice", new.name)
+			pi.remarks = "QA Fix edited"
+			pi.save()
+			self._as("Administrator")
+			self._set_map(self.map_in, billing_address=self.addr_hr, platform_gstin=GSTIN_HR, tax_withholding_category=None, tds_not_applicable=1)
+			frappe.db.set_single_value("Ads Settings", "bills_auto_submit", 1)
+			frappe.db.set_value("Ads Bill Document", doc.name, "prepared_by", None)
+			self.assertEqual(bills.process(doc.name), bills.REVIEW)
+			doc.reload()
+			self.assertEqual(doc.purchase_invoice, new.name, "an edited draft is kept")
+			self.assertEqual(frappe.db.get_value("Purchase Invoice", new.name, "docstatus"), 0, "never auto-submitted on a stale map")
+			self.assertIn("Billing address on the Purchase Invoice", doc.differences)
+			self.assertIn("TDS on the Purchase Invoice", doc.differences)
+			ctx = bills._context(doc)
+			self.assertTrue(any("Company GSTIN" in d for d in bills.check(doc, frappe.get_doc("Purchase Invoice", new.name), ctx)))
+		finally:
+			frappe.db.set_single_value("Ads Settings", "bills_auto_submit", 0)
+			self._set_map(self.map_in, billing_address=self.addr_hr, platform_gstin=GSTIN_HR, tax_withholding_category=TWC, tds_not_applicable=0)
+
+	def test_qa_fix_credit_line_keeps_its_sign_and_is_netted(self):
+		self._run_meta(meta_invoice("8800031", "3199000031", "9901", 1000.0, 180.0, campaigns=[("c1", "QA Fix spend", 1200.0), ("c2", "QA Fix credit", -200.0)]))
+		doc = self._doc("Meta", "8800031")
+		self.assertEqual(sorted(round(ln.net_amount, 2) for ln in doc.lines), [-200.0, 1200.0], "line signs are kept")
+		self.assertEqual(round(doc.net_amount, 2), 1000.0)
+		self.assertNotIn("separate line", doc.differences or "", "the lines reconcile with the bill")
+		self.assertIn("netted", doc.differences)
+		pi = self._pi(doc)
+		self.assertEqual([round(i.amount, 2) for i in pi.items], [1000.0])
+		self.assertEqual(round(pi.net_total, 2), 1000.0)
+
+	def test_qa_fix_ad_bill_purchase_invoice_is_submitted_only_through_approval(self):
+		self.assertIn("excom.excom_ads.bills.before_purchase_invoice_submit", frappe.get_hooks("doc_events").get("Purchase Invoice", {}).get("before_submit", []))
+		self._run_meta(meta_invoice("8800032", "3199000032", "9901", 1000.0, 180.0))
+		doc = self._doc("Meta", "8800032")
+		pi = self._pi(doc)
+		self.assertRaises(frappe.PermissionError, pi.submit)
+		self.assertEqual(frappe.db.get_value("Purchase Invoice", pi.name, "docstatus"), 0)
+		self._as(U_CHECKER)
+		try:
+			self.assertRaises(frappe.PermissionError, frappe.get_doc("Purchase Invoice", pi.name).submit)
+		finally:
+			self._as("Administrator")
+		self.assertEqual(self._approve(doc)["status"], bills.SUBMITTED)
+		self.assertEqual(frappe.db.get_value("Purchase Invoice", pi.name, "docstatus"), 1)
+		self.assertFalse(frappe.flags.get(bills.SUBMIT_FLAG), "the approval flag does not outlive the submit")
+		# Any other Purchase Invoice is untouched by the hook.
+		bills.before_purchase_invoice_submit(frappe.get_doc({"doctype": "Purchase Invoice", "name": "QA-FIX-NOT-AN-AD-BILL"}))
+
 	# ─── scheduler and fetch errors ───────────────────────────────────────────
 
 	def test_scheduler_only_enqueues_and_fetch_errors_are_recorded(self):
@@ -842,6 +914,20 @@ class TestBillNormalisation(FrappeTestCase):
 	def test_google_credit_memo_amounts_are_positive_with_original(self):
 		b = bill_sources.normalise_google(google_invoice("9", 100.0, 18.0, inv_type="CREDIT_MEMO", corrected="8"), {"id": SETUP_ID})
 		self.assertEqual((b["document_type"], b["net_amount"], b["tax_amount"], b["original_invoice_ids"]), ("Credit Memo", 100.0, 18.0, ["8"]))
+
+	def test_qa_fix_line_signs_are_kept_and_only_the_header_is_normalised(self):
+		b = bill_sources.normalise_meta(meta_invoice("1", "2", "55", 1000.0, 180.0, campaigns=[("c1", "QA Fix spend", 1200.0), ("c2", "QA Fix credit", -200.0)]), "INV")
+		self.assertEqual([ln["net_amount"] for ln in b["lines"]], [1200.0, -200.0], "a credit line inside an invoice stays negative")
+		self.assertEqual(b["net_amount"], 1000.0)
+		cm = bill_sources.normalise_meta(meta_invoice("3", "4", "55", -500.0, -90.0, inv_type="CM", campaigns=[("c1", "QA Fix a", -300.0), ("c2", "QA Fix b", -200.0)]), "CM")
+		self.assertEqual((cm["net_amount"], cm["tax_amount"], [ln["net_amount"] for ln in cm["lines"]]), (500.0, 90.0, [300.0, 200.0]), "a negative credit memo is turned as a whole")
+		g = bill_sources.normalise_google(google_invoice("9", 100.0, 18.0, inv_type="CREDIT_MEMO", corrected="8"), {"id": SETUP_ID})
+		self.assertEqual([ln["net_amount"] for ln in g["lines"]], [100.0])
+		inv = google_invoice("10", 1000.0, 162.0)
+		inv["accountSummaries"].append({"customer": f"customers/{CID}9", "subtotalAmountMicros": str(-100_000_000), "taxAmountMicros": str(-18_000_000)})
+		inv["totalAmountMicros"] = str(int(1062 * 1_000_000))
+		g2 = bill_sources.normalise_google(inv, {"id": SETUP_ID})
+		self.assertEqual(([ln["net_amount"] for ln in g2["lines"]], g2["net_amount"]), ([1000.0, -100.0], 900.0))
 
 	def test_pdf_hosts_are_restricted(self):
 		self.assertTrue(bill_sources.pdf_host_allowed("Meta", "https://business.facebook.com/x.pdf"))

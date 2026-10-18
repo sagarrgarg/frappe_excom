@@ -1,10 +1,14 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import add_months, date_diff, flt, get_first_day, getdate, now_datetime
+from frappe.utils import add_months, date_diff, flt, get_datetime, get_first_day, getdate, now_datetime
 
 MAX_PERIOD_MONTHS = 24
 TARGETS = ("target_leads", "target_purchases", "target_revenue", "target_cpl", "target_roas")
+LINE_DOCTYPE = "Ads Budget Plan Line"
+# Set by the submit itself (approval) or by validate from other fields; everything else must match the saved draft.
+SUBMIT_SET_FIELDS = ("status", "approved_by", "approved_at", "approval_override", "approval_note")
+NO_COMPARE = ("Section Break", "Column Break", "Tab Break", "HTML", "Button", "Table", "Table MultiSelect")
 
 
 class AdsBudgetPlan(Document):
@@ -76,6 +80,11 @@ class AdsBudgetPlan(Document):
 
 		user = frappe.session.user
 		permissions.require("manage_budgets")
+		# The checker approves exactly the saved draft: Desk's Submit sends the form's values with it,
+		# so a change made in the same request would be approved by the person who made it.
+		changed = self._changed_since_saved()
+		if changed:
+			frappe.throw(_("This plan differs from the saved draft ({0}). Save the change first; then another user with the Manage Budgets right approves the saved plan.").format(", ".join(changed)), title=_("Unsaved changes"))
 		# Maker-checker: whoever created or last edited the draft cannot approve it.
 		saved = frappe.db.get_value(self.doctype, self.name, ["owner", "modified_by"], as_dict=True) if not self.is_new() else None
 		makers = {self.owner or user} | ({saved.owner, saved.modified_by} if saved else {user})
@@ -90,6 +99,23 @@ class AdsBudgetPlan(Document):
 		self.approved_by = user
 		self.approved_at = now_datetime()
 		self.status = "Approved"
+
+	def _changed_since_saved(self) -> list[str]:
+		"""Labels of the fields / lines in which this submit request differs from the stored draft."""
+		if self.is_new():
+			return []
+		saved = self.get_doc_before_save() or frappe.get_doc(self.doctype, self.name)
+		out = [df.label or df.fieldname for df in self.meta.fields if df.fieldname not in SUBMIT_SET_FIELDS and df.fieldtype not in NO_COMPARE and _norm(df, self.get(df.fieldname)) != _norm(df, saved.get(df.fieldname))]
+		mine, theirs = {r.name: r for r in self.lines}, {r.name: r for r in saved.lines}
+		if set(mine) != set(theirs):
+			out.append(_("lines added or removed"))
+		else:
+			line_meta = frappe.get_meta(LINE_DOCTYPE)
+			for name, r in mine.items():
+				diff = [df.label or df.fieldname for df in line_meta.fields if df.fieldtype not in NO_COMPARE and _norm(df, r.get(df.fieldname)) != _norm(df, theirs[name].get(df.fieldname))]
+				if diff:
+					out.append(_("row {0}: {1}").format(r.idx, ", ".join(diff)))
+		return out
 
 	def _check_overlap(self):
 		"""Two approved plans for the same scope and months would count the same budget twice."""
@@ -110,6 +136,16 @@ class AdsBudgetPlan(Document):
 
 		for r in self.lines:
 			resolve_alert(overspend_key(self.name, r.name), "Plan cancelled")
+
+
+def _norm(df, v):
+	if df.fieldtype == "Date":
+		return str(getdate(v)) if v not in (None, "") else ""
+	if df.fieldtype == "Datetime":
+		return str(get_datetime(v)) if v not in (None, "") else ""
+	if df.fieldtype in ("Currency", "Float", "Percent", "Int", "Check"):
+		return round(flt(v), 6)
+	return str(v if v is not None else "")
 
 
 def _fill_targets(r) -> None:

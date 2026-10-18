@@ -244,6 +244,11 @@ doc_events = {
 		"on_submit": "excom.excom_ads.attribution.on_sales_order_submit",
 		"on_trash": "excom.excom_ads.attribution.on_reference_trash",
 	},
+	# A Purchase Invoice drafted from an Ads Bill Document is submitted only through the ad bill
+	# approval (maker-checker) or the auto-submit rules. Inert for every other Purchase Invoice.
+	"Purchase Invoice": {
+		"before_submit": "excom.excom_ads.bills.before_purchase_invoice_submit",
+	},
 	"Prospect": {
 		"after_insert": "excom.excom.services.identity_hooks.on_entity_created",
 	},
