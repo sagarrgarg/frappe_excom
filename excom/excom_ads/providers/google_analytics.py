@@ -225,6 +225,20 @@ class GA4Client:
 				return out
 		raise AdsProviderError(f"Stopped after {MAX_PAGES} pages ({MAX_PAGES * PAGE_ROWS} rows) of a GA4 report", RETRYABLE)
 
+	def run_realtime(self, property_id: str, dimensions=("country", "city"), metrics=("activeUsers",), limit: int = 250) -> list[dict]:
+		"""The last 30 minutes (runRealtimeReport), one call, rows as {GA4 name: value} with metrics
+		as floats. Realtime has its own token quota; callers should cache (a minute is plenty).
+		POST https://analyticsdata.googleapis.com/v1beta/properties/{id}:runRealtimeReport
+		https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/runRealtimeReport"""
+		body = {
+			"dimensions": [{"name": d} for d in dimensions],
+			"metrics": [{"name": m} for m in metrics],
+			"limit": str(limit),
+			"returnPropertyQuota": True,
+		}
+		data = self.call("POST", f"{DATA_API}/properties/{_pid(property_id)}:runRealtimeReport", body)
+		return realtime_rows(data)
+
 	def _note(self, data: dict) -> None:
 		q = data.get("propertyQuota") or {}
 		for key in ("tokensPerDay", "tokensPerHour", "tokensPerProjectPerHour"):
@@ -270,4 +284,20 @@ def _row(dim_names: list, met_names: list, r: dict) -> dict:
 				out[METRIC_FIELDS[name]] = float(v.get("value") or 0)
 			except (TypeError, ValueError):
 				out[METRIC_FIELDS[name]] = 0.0
+	return out
+
+
+def realtime_rows(data: dict) -> list[dict]:
+	"""A runRealtimeReport response as {GA4 dimension or metric name: value} rows, metrics as floats."""
+	dims = [h.get("name") for h in data.get("dimensionHeaders") or []]
+	mets = [h.get("name") for h in data.get("metricHeaders") or []]
+	out = []
+	for r in data.get("rows") or []:
+		row = {name: (v or {}).get("value") for name, v in zip(dims, r.get("dimensionValues") or [], strict=False)}
+		for name, v in zip(mets, r.get("metricValues") or [], strict=False):
+			try:
+				row[name] = float((v or {}).get("value") or 0)
+			except (TypeError, ValueError):
+				row[name] = 0.0
+		out.append(row)
 	return out

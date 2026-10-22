@@ -5,6 +5,7 @@ Google Analytics is faked (Data API v1beta / Admin API v1beta REST shapes); no n
 """
 
 import json
+import unittest
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
@@ -339,3 +340,28 @@ class TestAdsGA4(FrappeTestCase):
 		self.assertIn("Enable the Google Analytics Data API", str(e))
 		e = ga.classify(429, {"error": {"status": "RESOURCE_EXHAUSTED", "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "30s"}]}})
 		self.assertEqual((e.error_class, e.retry_after), (RATE_LIMITED, 30))
+
+
+class TestRealtimeRows(unittest.TestCase):
+	"""runRealtimeReport rows (GA4Client.run_realtime): GA4's own names, metrics as floats."""
+
+	def test_rows_carry_ga4_names(self):
+		from excom.excom_ads.providers.google_analytics import realtime_rows
+
+		data = {
+			"dimensionHeaders": [{"name": "country"}, {"name": "city"}],
+			"metricHeaders": [{"name": "activeUsers"}],
+			"rows": [
+				{"dimensionValues": [{"value": "India"}, {"value": "Jaipur"}], "metricValues": [{"value": "7"}]},
+				{"dimensionValues": [{"value": "India"}, {"value": "(not set)"}], "metricValues": [{"value": "bad"}]},
+			],
+		}
+		self.assertEqual(
+			realtime_rows(data),
+			[{"country": "India", "city": "Jaipur", "activeUsers": 7.0}, {"country": "India", "city": "(not set)", "activeUsers": 0.0}],
+		)
+
+	def test_no_rows(self):
+		from excom.excom_ads.providers.google_analytics import realtime_rows
+
+		self.assertEqual(realtime_rows({}), [])
