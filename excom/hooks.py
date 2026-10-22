@@ -350,14 +350,15 @@ after_request = ["excom.excom.middleware.add_webchat_cors_headers"]
 # ignore_translatable_strings_from = []
 
 # Log Settings (Desk > Log Settings) clears these daily; the days are the
-# starting retention, editable there. Messages, calls, threads and data
+# starting retention, editable there (broadcast history is kept two years).
+# Messages, calls, threads and data
 # deletion requests are never on this list.
 default_log_clearing_doctypes = {
 	"Excom Notification Log": 90,
 	"Excom Source Log": 60,
 	"Excom Visitor Session": 90,
-	"Excom Broadcast Event": 180,
-	"Excom Broadcast Log": 180,
+	"Excom Broadcast Event": 720,
+	"Excom Broadcast Log": 720,
 	"Excom Stage Change Log": 365,
 	"Excom Thread Transfer Log": 365,
 }
