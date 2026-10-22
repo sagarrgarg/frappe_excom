@@ -12,8 +12,6 @@ import json
 import frappe
 import requests
 
-from excom.excom_ads.redact import redact
-
 from excom.excom_ads.providers.base import (
 	INVALID,
 	PERMISSION,
@@ -25,7 +23,9 @@ from excom.excom_ads.providers.base import (
 	AdsProvider,
 	AdsProviderError,
 	Capability,
+	single_destination,
 )
+from excom.excom_ads.redact import redact
 
 GRAPH = "https://graph.facebook.com"
 DEFAULT_VERSION = "v26.0"
@@ -36,7 +36,8 @@ NO_MINOR_UNIT = {"CLP", "COP", "CRC", "HUF", "ISK", "IDR", "JPY", "KRW", "PYG", 
 ACCOUNT_FIELDS = "name,account_id,account_status,disable_reason,currency,timezone_name,amount_spent,spend_cap,balance,business{id,name}"
 CAMPAIGN_FIELDS = "id,name,objective,status,configured_status,effective_status,buying_type,bid_strategy,daily_budget,lifetime_budget,spend_cap,start_time,stop_time,created_time,updated_time"
 ADSET_FIELDS = "id,name,campaign_id,status,configured_status,effective_status,optimization_goal,billing_event,destination_type,bid_amount,daily_budget,lifetime_budget,start_time,end_time,targeting,updated_time"
-AD_FIELDS = "id,name,campaign_id,adset_id,status,configured_status,effective_status,creative{id,name},updated_time"
+# The creative's links, for the ad's destination (single_destination).
+AD_FIELDS = "id,name,campaign_id,adset_id,status,configured_status,effective_status,creative{id,name,link_url,object_url,object_story_spec,asset_feed_spec},updated_time"
 # Billing (read_billing). Verified for Graph v26 against
 # https://developers.facebook.com/docs/marketing-api/reference/ad-account/ (fields unchanged in the
 # v26.0 Marketing API changelog). amount_spent, spend_cap and balance are in the currency's minor unit.
@@ -333,6 +334,7 @@ class MetaAdsProvider(AdsProvider):
 				"status": status_of(r.get("effective_status")),
 				"creative_id": (r.get("creative") or {}).get("id"),
 				"creative_name": (r.get("creative") or {}).get("name"),
+				"destination_url": ad_destination(r.get("creative")),
 				"platform_updated": r.get("updated_time"),
 				"raw": r,
 			}
@@ -487,3 +489,22 @@ def payment_model(is_prepay, funding_type) -> str | None:
 	if model:
 		return model
 	return None
+
+
+def ad_destination(creative) -> str | None:
+	"""Where a Meta ad's creative sends people: its link, the link card, the
+	video's call to action, every carousel card and dynamic-creative URL, when
+	they all open one page (base.single_destination)."""
+	if not isinstance(creative, dict):
+		return None
+	spec = creative.get("object_story_spec") or {}
+	feed = creative.get("asset_feed_spec") or {}
+	urls = [creative.get("link_url"), creative.get("object_url")]
+	for key in ("link_data", "template_data", "video_data", "photo_data"):
+		block = spec.get(key) or {}
+		urls.append(block.get("link"))
+		cta = (block.get("call_to_action") or {}).get("value") or {}
+		urls.append(cta.get("link"))
+		urls += [(card or {}).get("link") for card in block.get("child_attachments") or []]
+	urls += [(u or {}).get("website_url") for u in feed.get("link_urls") or []]
+	return single_destination(u for u in urls if u)

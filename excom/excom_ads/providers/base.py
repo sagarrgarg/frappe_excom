@@ -100,6 +100,27 @@ PROVIDERS = {
 }
 
 
+def single_destination(urls) -> str | None:
+	"""The one page an ad sends people to, or None.
+
+	Platforms keep several links per ad (a carousel card each, dynamic-creative
+	variants, a call-to-action). When they all open the same page (same host and
+	path; query strings such as UTM tags differ freely) that page is the ad's
+	destination; when they open different pages the ad has none, rather than
+	pretending its first card speaks for the rest."""
+	from urllib.parse import urlsplit
+
+	seen, first = set(), None
+	for url in urls or ():
+		url = str(url or "").strip()
+		if not url.lower().startswith(("http://", "https://")):
+			continue
+		parts = urlsplit(url)
+		seen.add((parts.netloc.lower().removeprefix("www."), parts.path.rstrip("/") or "/"))
+		first = first or url
+	return first if len(seen) == 1 else None
+
+
 def provider_class(provider: str) -> type:
 	path = PROVIDERS.get(provider)
 	if not path:

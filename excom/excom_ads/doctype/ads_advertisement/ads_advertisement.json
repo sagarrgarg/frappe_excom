@@ -20,6 +20,7 @@
   "provider",
   "creative_id",
   "creative_name",
+  "destination_url",
   "platform_updated",
   "sb_raw",
   "synced_at",
@@ -153,6 +154,13 @@
    "read_only": 1
   },
   {
+   "fieldname": "destination_url",
+   "fieldtype": "Small Text",
+   "label": "Destination URL",
+   "read_only": 1,
+   "description": "The page the ad sends people to, when all its links open one page (blank for a carousel or dynamic creative of several pages)."
+  },
+  {
    "fieldname": "platform_updated",
    "fieldtype": "Datetime",
    "idx": 16,
@@ -192,7 +200,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-18 20:00:00.000000",
+ "modified": "2026-10-22 23:30:00.000000",
  "modified_by": "Administrator",
  "module": "Excom Ads",
  "name": "Ads Advertisement",

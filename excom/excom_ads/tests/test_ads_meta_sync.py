@@ -4,6 +4,7 @@
 """
 
 import json
+import unittest
 from urllib.parse import parse_qs, urlparse
 
 import frappe
@@ -403,3 +404,40 @@ class TestAdsMetaSync(FrappeTestCase):
 		self.assertFalse(cap.supported)
 		self.assertIn("Action Request", cap.reason)
 		self.assertFalse(MetaAdsProvider.capability("something_undeclared").supported)
+
+
+class TestAdDestination(unittest.TestCase):
+	"""Where an ad sends people (Ads Advertisement.destination_url): one page, or none."""
+
+	PAGE = "https://shop.example/shop-now/rangoli-kit"
+
+	def test_the_link_cards_page_with_its_utm_tags(self):
+		from excom.excom_ads.providers.meta import ad_destination
+
+		creative = {"object_story_spec": {"link_data": {"link": self.PAGE + "?utm_source=fb", "call_to_action": {"value": {"link": self.PAGE}}}}}
+		self.assertEqual(ad_destination(creative), self.PAGE + "?utm_source=fb")
+
+	def test_a_carousel_of_one_page_has_it(self):
+		from excom.excom_ads.providers.meta import ad_destination
+
+		cards = [{"link": self.PAGE}, {"link": "https://www.shop.example/shop-now/rangoli-kit/?c=2"}]
+		self.assertEqual(ad_destination({"object_story_spec": {"link_data": {"child_attachments": cards}}}), self.PAGE)
+
+	def test_a_carousel_of_several_pages_has_none(self):
+		from excom.excom_ads.providers.meta import ad_destination
+
+		cards = [{"link": self.PAGE}, {"link": "https://shop.example/shop-now/gulal"}]
+		self.assertIsNone(ad_destination({"object_story_spec": {"link_data": {"child_attachments": cards}}}))
+
+	def test_dynamic_creative_urls_count(self):
+		from excom.excom_ads.providers.meta import ad_destination
+
+		self.assertEqual(ad_destination({"asset_feed_spec": {"link_urls": [{"website_url": self.PAGE}]}}), self.PAGE)
+
+	def test_no_link_no_destination(self):
+		from excom.excom_ads.providers.base import single_destination
+		from excom.excom_ads.providers.meta import ad_destination
+
+		self.assertIsNone(ad_destination({"name": "Lead form"}))
+		self.assertIsNone(ad_destination(None))
+		self.assertIsNone(single_destination(["", "not a url"]))

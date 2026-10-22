@@ -52,6 +52,7 @@ from excom.excom_ads.providers.base import (
 	AdsProvider,
 	AdsProviderError,
 	Capability,
+	single_destination,
 )
 
 API = "https://googleads.googleapis.com"
@@ -95,7 +96,7 @@ AD_GROUP_QUERY = (
 )
 AD_QUERY = (
 	"SELECT campaign.id, campaign.advertising_channel_type, ad_group.id, ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.ad.type, "
-	"ad_group_ad.status, ad_group_ad.primary_status, ad_group_ad.primary_status_reasons, "
+	"ad_group_ad.ad.final_urls, ad_group_ad.status, ad_group_ad.primary_status, ad_group_ad.primary_status_reasons, "
 	"ad_group_ad.policy_summary.approval_status, ad_group_ad.policy_summary.review_status, ad_group_ad.ad_strength "
 	"FROM ad_group_ad WHERE campaign.status != 'REMOVED'"
 )
@@ -650,6 +651,7 @@ class GoogleAdsProvider(AdsProvider):
 					"status": ad_status(aga.get("status"), aga.get("primaryStatus"), aga.get("primaryStatusReasons"), policy.get("approvalStatus"), policy.get("reviewStatus")),
 					"creative_id": aid,
 					"creative_name": ad.get("type"),
+					"destination_url": single_destination(ad.get("finalUrls") or []),
 					"platform_updated": None,
 					"raw": {"ad_group_ad": aga, **({"api_read_only": True} if c.get("advertisingChannelType") in VIDEO_CHANNELS else {})},
 				}
