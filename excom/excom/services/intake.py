@@ -3,7 +3,7 @@ Intake spine (P3 §3.4 / RES-001 §7.3). One pipeline, many adapters:
 
     adapter → Excom Source Log (raw, dedupe_key = unique index)   # idempotency is a DB constraint (F6)
             → map via field_map
-            → resolve_identity(...)                               # exists today
+            → resolve_identity_internal(...)                      # exists today
             → crm_gateway.create_lead + set_attribution + provenance
             → thread_service.upsert_thread
             → enqueue auto-ack (marketplace only)
@@ -212,9 +212,9 @@ def process_log(log_name: str, force: bool = False) -> None:
 			log.error = "No phone or email after mapping"
 			log.save(ignore_permissions=True)
 			return
-		from excom.excom.doctype.omni_identity.omni_identity import resolve_identity
+		from excom.excom.doctype.omni_identity.omni_identity import resolve_identity_internal
 
-		identity = resolve_identity(phone=mapped.get("phone", ""), email=mapped.get("email", ""), channel="", channel_user_id="", display_name=mapped.get("name") or mapped.get("company_name") or "")
+		identity = resolve_identity_internal(phone=mapped.get("phone", ""), email=mapped.get("email", ""), channel="", channel_user_id="", display_name=mapped.get("name") or mapped.get("company_name") or "")
 		identity_name = identity.name if hasattr(identity, "name") else identity
 		log.omni_identity = identity_name
 

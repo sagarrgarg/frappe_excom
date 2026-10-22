@@ -503,7 +503,7 @@ class WhatsAppFlow(Document):
         if not self.flow_id:
             frappe.throw(_("Flow must be created on WhatsApp first"))
 
-        from excom.excom.doctype.omni_identity.omni_identity import resolve_identity
+        from excom.excom.doctype.omni_identity.omni_identity import resolve_identity_internal
         from excom.excom.services.thread_service import upsert_thread
         from excom.excom.services.whatsapp_service import send_text_message
 
@@ -512,7 +512,7 @@ class WhatsAppFlow(Document):
 
         result = send_text_message(account=account_doc, to=phone_number, content=body)
 
-        identity_name = resolve_identity(
+        identity_name = resolve_identity_internal(
             phone=phone_number, channel="whatsapp",
             channel_user_id=phone_number, display_name=phone_number,
         )

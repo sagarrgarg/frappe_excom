@@ -16,7 +16,7 @@ from frappe.utils import now_datetime, get_datetime, add_days
 
 from excom.excom.services import gmail_service
 from excom.excom.services.thread_service import upsert_thread
-from excom.excom.doctype.omni_identity.omni_identity import resolve_identity
+from excom.excom.doctype.omni_identity.omni_identity import resolve_identity_internal
 
 
 def poll_all_email_accounts():
@@ -226,7 +226,7 @@ def _ingest_email_metadata(account_name: str, account, meta: dict):
         contact_email = to_email
         contact_name = to_name or to_email
 
-    identity_name = resolve_identity(
+    identity_name = resolve_identity_internal(
         email=contact_email,
         channel="email",
         channel_user_id=contact_email,

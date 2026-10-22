@@ -11,7 +11,7 @@ import re
 import frappe
 from frappe import _
 
-from excom.excom.doctype.omni_identity.omni_identity import resolve_identity
+from excom.excom.doctype.omni_identity.omni_identity import resolve_identity_internal
 from excom.excom.utils import get_channel_account
 
 
@@ -102,7 +102,7 @@ def ingest_inbound_message(
     ):
         return ""
 
-    identity_name = resolve_identity(
+    identity_name = resolve_identity_internal(
         phone=phone,
         channel=channel,
         channel_user_id=channel_user_id or phone,  # PSID / IGSID for Meta DMs, phone for WhatsApp

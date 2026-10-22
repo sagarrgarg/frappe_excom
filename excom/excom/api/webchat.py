@@ -94,9 +94,9 @@ def create_session(
 
     identifier = visitor_email or visitor_phone or f"visitor-{secrets.token_hex(6)}"
 
-    from excom.excom.doctype.omni_identity.omni_identity import resolve_identity
+    from excom.excom.doctype.omni_identity.omni_identity import resolve_identity_internal
 
-    identity_name = resolve_identity(
+    identity_name = resolve_identity_internal(
         phone=visitor_phone or "",
         channel="webchat",
         channel_user_id=identifier,

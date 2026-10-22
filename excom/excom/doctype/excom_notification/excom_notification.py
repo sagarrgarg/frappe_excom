@@ -355,12 +355,12 @@ class ExcomNotification(Document):
         provider_message_id="", delivery_status="Sent", doc_data=None,
     ):
         """Create an Excom Thread + Message for the notification send."""
-        from excom.excom.doctype.omni_identity.omni_identity import resolve_identity
+        from excom.excom.doctype.omni_identity.omni_identity import resolve_identity_internal
         from excom.excom.services.thread_service import upsert_thread
         from excom.excom.api.chat import _build_template_preview
 
         try:
-            identity_name = resolve_identity(
+            identity_name = resolve_identity_internal(
                 phone=to_number,
                 channel="whatsapp",
                 channel_user_id=to_number,

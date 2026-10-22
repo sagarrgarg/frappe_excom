@@ -155,12 +155,12 @@ def persist_call(
 			contact_number = ""
 
 		if not identity and contact_number:
-			from excom.excom.doctype.omni_identity.omni_identity import resolve_identity
+			from excom.excom.doctype.omni_identity.omni_identity import resolve_identity_internal
 
 			# Falling back to the number is what makes a contact list read as a list of phone
 			# numbers. Use the name the agent typed when there is one; the number remains the
 			# fallback, because an inbound call from a stranger has nothing else to offer.
-			identity = resolve_identity(
+			identity = resolve_identity_internal(
 				phone=contact_number,
 				channel="voice",
 				display_name=(display_name or "").strip() or contact_number,
