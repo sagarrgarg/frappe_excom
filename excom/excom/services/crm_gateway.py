@@ -261,9 +261,12 @@ def convert(r, target: str) -> frappe._dict:
 		frappe.throw(_("Cannot convert {0} to {1}").format(r.doctype, target))
 	# carry excom overlay fields forward
 	src = frappe.get_doc(r.doctype, r.name)
-	for f in ("customer_type", "omni_identity", "first_touch_at", "first_touch_channel", "first_touch_by", "source_reference"):
+	new_meta = frappe.get_meta(new.doctype)
+	# Excom overlay fields + the ads attribution copy (ads_*: same fieldnames on Lead and Opportunity).
+	ads_fields = [df.fieldname for df in frappe.get_meta(r.doctype).fields if df.fieldname.startswith("ads_") and df.fieldtype not in ("Section Break", "Column Break", "Tab Break")]
+	for f in ("customer_type", "omni_identity", "first_touch_at", "first_touch_channel", "first_touch_by", "source_reference", *ads_fields):
 		target_field = overlay_field(new.doctype, f)
-		if src.get(f) and frappe.get_meta(new.doctype).has_field(target_field) and not new.get(target_field):
+		if src.get(f) and new_meta.has_field(target_field) and not new.get(target_field):
 			new.set(target_field, src.get(f))
 	if new.doctype == OPPORTUNITY:
 		new.pipeline_stage = "Qualified"
@@ -278,7 +281,10 @@ def convert(r, target: str) -> frappe._dict:
 def promote_thread(thread: str, customer_type: str = "", by: str | None = None) -> frappe._dict:
 	"""Thread → Lead. Native make_lead_from_communication needs a Communication; excom threads are
 	not Communications, so the Lead is built from the thread/identity directly (same field mapping)."""
-	t = frappe.db.get_value("Excom Thread", thread, ["omni_identity", "display_name", "primary_phone", "channel", "account"], as_dict=True)
+	thread_fields = ["omni_identity", "display_name", "primary_phone", "channel", "account"]
+	if frappe.get_meta("Excom Thread").has_field("ad_source_type"):
+		thread_fields.append("ad_source_type")
+	t = frappe.db.get_value("Excom Thread", thread, thread_fields, as_dict=True)
 	if not t:
 		frappe.throw(_("Thread not found"))
 	oi = frappe.db.get_value("Omni Identity", t.omni_identity, ["display_name", "primary_email", "primary_phone", "primary_whatsapp"], as_dict=True) or frappe._dict()
@@ -294,7 +300,8 @@ def promote_thread(thread: str, customer_type: str = "", by: str | None = None) 
 			"customer_type": customer_type,
 			"first_touch_channel": channel_map.get((t.channel or "").lower(), "Manual"),
 			"first_touch_by": by,
-			"source": "Organic " + channel_map.get((t.channel or "").lower(), "Manual"),
+			# A chat that came from a click-to-WhatsApp ad is not organic.
+			"source": "Click to WhatsApp" if t.get("ad_source_type") else "Organic " + channel_map.get((t.channel or "").lower(), "Manual"),
 		}
 	)
 	link_identity(r, t.omni_identity)

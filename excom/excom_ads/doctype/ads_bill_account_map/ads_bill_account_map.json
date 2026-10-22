@@ -1,0 +1,281 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "provider",
+  "key_type",
+  "platform_key",
+  "account",
+  "enabled",
+  "cb_1",
+  "company",
+  "workspace",
+  "brand",
+  "billing_entity",
+  "sb_gst",
+  "billing_address",
+  "company_gstin",
+  "cb_gst",
+  "platform_gstin",
+  "gstin_status",
+  "sb_acc",
+  "supplier",
+  "item_code",
+  "expense_account",
+  "cb_acc",
+  "cost_center",
+  "tax_withholding_category",
+  "tds_not_applicable"
+ ],
+ "fields": [
+  {
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "idx": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Platform",
+   "options": "Meta\nGoogle\nLinkedIn",
+   "reqd": 1
+  },
+  {
+   "default": "Ad Account",
+   "fieldname": "key_type",
+   "fieldtype": "Select",
+   "idx": 2,
+   "label": "Billed As",
+   "options": "Ad Account\nWhatsApp Business Account\nGoogle Ads Customer\nBilling Setup\nPayments Profile",
+   "reqd": 1
+  },
+  {
+   "description": "Meta ad account (act_123\u2026 or 123\u2026), WABA ID, Google customer ID (10 digits), billing setup ID or payments profile ID (1234-5678-9012).",
+   "fieldname": "platform_key",
+   "fieldtype": "Data",
+   "idx": 3,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Platform ID",
+   "reqd": 1
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "idx": 4,
+   "label": "Ads Account",
+   "options": "Ads Account"
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "idx": 5,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 6
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "idx": 7,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "account.workspace",
+   "fetch_if_empty": 1,
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "idx": 8,
+   "label": "Workspace",
+   "options": "Ads Workspace"
+  },
+  {
+   "fetch_from": "account.brand",
+   "fetch_if_empty": 1,
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "idx": 9,
+   "label": "Brand",
+   "options": "Ads Brand"
+  },
+  {
+   "description": "The entity the platform prints or reports for this account's invoices (Meta's invoice 'entity'). Bills from any other entity go to review.",
+   "fieldname": "billing_entity",
+   "fieldtype": "Data",
+   "idx": 10,
+   "label": "Billing Entity Code"
+  },
+  {
+   "fieldname": "sb_gst",
+   "fieldtype": "Section Break",
+   "idx": 11,
+   "label": "GST"
+  },
+  {
+   "description": "Your company address whose GSTIN the platform must bill. Sets the company GSTIN and place of supply on the Purchase Invoice.",
+   "fieldname": "billing_address",
+   "fieldtype": "Link",
+   "idx": 12,
+   "label": "Company Billing Address",
+   "options": "Address",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "billing_address.gstin",
+   "fieldname": "company_gstin",
+   "fieldtype": "Data",
+   "idx": 13,
+   "label": "Company GSTIN",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_gst",
+   "fieldtype": "Column Break",
+   "idx": 14
+  },
+  {
+   "description": "The GSTIN entered in the platform's billing settings for this account. It must equal the company GSTIN: Meta, Google and LinkedIn do not re-issue invoices, and a wrong GSTIN loses the input tax credit.",
+   "fieldname": "platform_gstin",
+   "fieldtype": "Data",
+   "idx": 15,
+   "label": "GSTIN Held by the Platform"
+  },
+  {
+   "fieldname": "gstin_status",
+   "fieldtype": "Select",
+   "idx": 16,
+   "label": "GSTIN Check",
+   "options": "\nMatches\nMismatch\nNot Entered",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_acc",
+   "fieldtype": "Section Break",
+   "idx": 17,
+   "label": "Accounting"
+  },
+  {
+   "description": "The platform's legal entity that bills this account (one Supplier per legal entity, never per platform).",
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "idx": 18,
+   "label": "Supplier",
+   "options": "Supplier",
+   "reqd": 1
+  },
+  {
+   "description": "Non-stock service item with SAC 998365. Empty: Ads Settings > Bill Service Item.",
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "idx": 19,
+   "label": "Service Item",
+   "options": "Item"
+  },
+  {
+   "fieldname": "expense_account",
+   "fieldtype": "Link",
+   "idx": 20,
+   "label": "Expense Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "cb_acc",
+   "fieldtype": "Column Break",
+   "idx": 21
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "idx": 22,
+   "label": "Cost Center",
+   "options": "Cost Center"
+  },
+  {
+   "description": "Confirm the section and rate with your tax adviser (Income-tax Act 2025). Empty: the Supplier's category.",
+   "fieldname": "tax_withholding_category",
+   "fieldtype": "Link",
+   "idx": 23,
+   "label": "Tax Withholding Category",
+   "options": "Tax Withholding Category"
+  },
+  {
+   "description": "Only when your adviser has confirmed that no tax is withheld on these bills (e.g. a non-resident without a PE in India). Otherwise a bill without TDS always goes to review.",
+   "fieldname": "tds_not_applicable",
+   "fieldtype": "Check",
+   "idx": 24,
+   "label": "No TDS (confirmed by tax adviser)"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Bill Account Map",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "write": 1
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "write": 0
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "export": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Marketing",
+   "write": 0
+  }
+ ],
+ "search_fields": "provider,platform_key,company",
+ "show_title_field_in_link": 1,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "platform_key",
+ "track_changes": 1
+}

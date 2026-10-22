@@ -205,7 +205,9 @@ def _send_whatsapp(
         from excom.excom.api.chat import _build_template_components, _build_template_preview
         from excom.excom.services.whatsapp_service import send_template_message
 
-        components = _build_template_components(template, variables, header_media, button_urls)
+        # account: a local header file is uploaded to Meta and sent by media id, so a private file
+        # stays private (without it the file is republished as public for Meta to fetch).
+        components = _build_template_components(template, variables, header_media, button_urls, account=account)
         res = send_template_message(
             account=account,
             to=to,

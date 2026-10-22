@@ -1,0 +1,183 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "account",
+  "job_type",
+  "status",
+  "triggered_by",
+  "cb_1",
+  "window_from",
+  "window_to",
+  "started_at",
+  "finished_at",
+  "sb_result",
+  "api_calls",
+  "records_written",
+  "cb_2",
+  "error_class",
+  "error",
+  "error_log"
+ ],
+ "fields": [
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "idx": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Account",
+   "options": "Ads Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "job_type",
+   "fieldtype": "Select",
+   "idx": 2,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Job Type",
+   "options": "Structure\nMetrics\nSettle\nBackfill",
+   "reqd": 1
+  },
+  {
+   "default": "Queued",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "idx": 3,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Queued\nRunning\nSuccess\nPartial\nFailed"
+  },
+  {
+   "fieldname": "triggered_by",
+   "fieldtype": "Data",
+   "idx": 4,
+   "label": "Triggered By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 5
+  },
+  {
+   "fieldname": "window_from",
+   "fieldtype": "Date",
+   "idx": 6,
+   "label": "Window From",
+   "read_only": 1
+  },
+  {
+   "fieldname": "window_to",
+   "fieldtype": "Date",
+   "idx": 7,
+   "label": "Window To",
+   "read_only": 1
+  },
+  {
+   "fieldname": "started_at",
+   "fieldtype": "Datetime",
+   "idx": 8,
+   "in_list_view": 1,
+   "label": "Started At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "finished_at",
+   "fieldtype": "Datetime",
+   "idx": 9,
+   "label": "Finished At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_result",
+   "fieldtype": "Section Break",
+   "idx": 10,
+   "label": "Result"
+  },
+  {
+   "fieldname": "api_calls",
+   "fieldtype": "Int",
+   "idx": 11,
+   "label": "Api Calls",
+   "read_only": 1
+  },
+  {
+   "fieldname": "records_written",
+   "fieldtype": "Int",
+   "idx": 12,
+   "label": "Records Written",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 13
+  },
+  {
+   "fieldname": "error_class",
+   "fieldtype": "Select",
+   "idx": 14,
+   "label": "Error Class",
+   "options": "\nRetryable\nRate Limited\nPermission\nToken\nInvalid\nUnknown",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "idx": 15,
+   "label": "Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_log",
+   "fieldtype": "Link",
+   "idx": 16,
+   "label": "Error Log",
+   "options": "Error Log",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Sync Job",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  },
+  {
+   "delete": 0,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin"
+  },
+  {
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Marketing"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

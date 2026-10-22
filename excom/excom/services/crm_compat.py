@@ -17,6 +17,14 @@ def _ensure(doctype: str, name: str, extra: dict | None = None) -> str:
 	if frappe.db.exists(doctype, name):
 		return name
 	meta = frappe.get_meta(doctype)
+	# A Campaign named by naming series (v15 Selling Settings) is not found by its title: look it up
+	# by the title field before creating another row with the same title.
+	for candidate in ("source_name", "campaign_name"):
+		if meta.has_field(candidate):
+			found = frappe.db.get_value(doctype, {candidate: name}, "name")
+			if found:
+				return found
+			break
 	doc = frappe._dict({"doctype": doctype})
 	if (meta.autoname or "").lower() == "prompt":
 		# Named by prompt (UTM Source/Campaign/Medium in v16): the name must be given.
@@ -55,6 +63,30 @@ def set_attribution(doc, source: str, campaign: str | None = None, medium: str |
 	campaign_field = "campaign_name" if meta.has_field("campaign_name") else ("campaign" if meta.has_field("campaign") else None)
 	if campaign and campaign_field:
 		setattr(doc, campaign_field, _ensure("Campaign", campaign))
+
+
+def fill_attribution(doctype: str, name: str, source: str | None = None, campaign: str | None = None, medium: str | None = None) -> dict:
+	"""Fill attribution fields on a saved Lead/Opportunity that are still EMPTY, without a full save.
+
+	First touch wins: a value someone already set is never overwritten. Used when the campaign of a
+	lead becomes known after the lead was created (its ad mirror arrived later). Returns what was set.
+	"""
+	meta = frappe.get_meta(doctype)
+	if meta.has_field("utm_source"):
+		targets = {"utm_source": ("UTM Source", source), "utm_campaign": ("UTM Campaign", campaign), "utm_medium": ("UTM Medium", medium)}
+	else:
+		campaign_field = "campaign_name" if meta.has_field("campaign_name") else ("campaign" if meta.has_field("campaign") else None)
+		targets = {"source": ("Lead Source", source)}
+		if campaign_field:
+			targets[campaign_field] = ("Campaign", campaign)
+	targets = {f: t for f, t in targets.items() if t[1] and meta.has_field(f)}
+	if not targets:
+		return {}
+	current = frappe.db.get_value(doctype, name, list(targets), as_dict=True) or {}
+	values = {f: _ensure(dt, v) for f, (dt, v) in targets.items() if not current.get(f)}
+	if values:
+		frappe.db.set_value(doctype, name, values, update_modified=False)
+	return values
 
 
 def get_attribution(doc) -> dict:

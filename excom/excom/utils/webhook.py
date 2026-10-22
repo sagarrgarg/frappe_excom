@@ -302,7 +302,7 @@ def _process_inbound_message(message, sender_profile_name, channel_account, acco
 	else:
 		content_text = str(message.get(message_type, {}).get(message_type, ""))
 
-	ingest_inbound_message(
+	message_name = ingest_inbound_message(
 		phone=phone,
 		channel="whatsapp",
 		account=account_name,
@@ -316,10 +316,28 @@ def _process_inbound_message(message, sender_profile_name, channel_account, acco
 		provider_timestamp=provider_ts,
 	)
 
+	# Click-to-WhatsApp ads: Meta adds `referral` (ad id, headline, ctwa_clid …) to the message that
+	# came from the ad. Only a newly stored message is attributed, so a redelivery adds nothing.
+	if message_name and message.get("referral"):
+		_attribute_referral(message_name, message, channel_account, sender_profile_name or "")
+
 	# A STOP/START reply governs future marketing sends; act on it after the
 	# message itself is stored, so the inbox still shows what they wrote.
 	if excom_msg_type in ("Text", "Button") and content_text:
 		_apply_consent_keyword(phone, content_text)
+
+
+def _attribute_referral(message_name, message, channel_account, display_name) -> None:
+	"""Ad touch + thread fields + the conversation's Lead. Never breaks inbound ingestion."""
+	frappe.db.savepoint("excom_ctwa")
+	try:
+		from excom.excom_ads.attribution import on_whatsapp_message
+
+		on_whatsapp_message(message_name, message, channel_account, display_name)
+		frappe.db.commit()
+	except Exception:
+		frappe.db.rollback(save_point="excom_ctwa")
+		frappe.log_error(title=f"Excom: click-to-WhatsApp attribution failed for {message_name}", message=frappe.get_traceback())
 
 
 def _download_media(message, message_type, channel_account):

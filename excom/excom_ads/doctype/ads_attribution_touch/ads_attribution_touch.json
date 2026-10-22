@@ -1,0 +1,582 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "description": "One row per observed ad / campaign touch (lead form, click-to-WhatsApp, website, order). Holds personal data links: scoped by company, workspace, brand and account.",
+ "engine": "InnoDB",
+ "field_order": [
+  "touch_source",
+  "observation_id",
+  "touch_at",
+  "provider",
+  "channel",
+  "link_status",
+  "cb_1",
+  "reference_doctype",
+  "reference_name",
+  "omni_identity",
+  "source_log",
+  "thread",
+  "message",
+  "cb_2",
+  "company",
+  "account",
+  "workspace",
+  "brand",
+  "is_test",
+  "is_organic",
+  "sb_ads",
+  "campaign",
+  "ad_group",
+  "advertisement",
+  "form_id",
+  "page_id",
+  "cb_3",
+  "account_external_id",
+  "campaign_external_id",
+  "campaign_name",
+  "ad_group_external_id",
+  "ad_group_name",
+  "ad_external_id",
+  "ad_name",
+  "creative_id",
+  "sb_click",
+  "gclid",
+  "gbraid",
+  "wbraid",
+  "fbclid",
+  "cb_4",
+  "fbc",
+  "fbp",
+  "ctwa_clid",
+  "li_fat_id",
+  "attribution_note",
+  "sb_utm",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term",
+  "utm_id",
+  "cb_5",
+  "landing_url",
+  "referrer_url",
+  "referral_source_type",
+  "headline",
+  "ad_body",
+  "media_type"
+ ],
+ "fields": [
+  {
+   "fieldname": "touch_source",
+   "fieldtype": "Select",
+   "label": "Touch Source",
+   "read_only": 1,
+   "options": "Lead Form\nCTWA\nWebsite\nOrder",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "reqd": 1,
+   "idx": 1
+  },
+  {
+   "fieldname": "observation_id",
+   "fieldtype": "Data",
+   "label": "Observation ID",
+   "read_only": 1,
+   "unique": 1,
+   "length": 255,
+   "description": "What was observed: the intake log key, the WhatsApp message ID or the order. One row per observation.",
+   "idx": 2
+  },
+  {
+   "fieldname": "touch_at",
+   "fieldtype": "Datetime",
+   "label": "Touch At",
+   "read_only": 1,
+   "in_list_view": 1,
+   "search_index": 1,
+   "idx": 3
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "label": "Provider",
+   "read_only": 1,
+   "options": "\nMeta\nGoogle\nLinkedIn\nOther",
+   "in_standard_filter": 1,
+   "idx": 4
+  },
+  {
+   "fieldname": "channel",
+   "fieldtype": "Data",
+   "label": "Channel",
+   "read_only": 1,
+   "idx": 5
+  },
+  {
+   "fieldname": "link_status",
+   "fieldtype": "Select",
+   "label": "Link Status",
+   "read_only": 1,
+   "options": "\nLinked\nPartial\nPending\nOrganic\nNo Ad IDs",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Linked: the ad mirrors are found. Pending/Partial: platform IDs are stored and are linked once the structure sync brings the mirror.",
+   "idx": 6
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 7
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference Type",
+   "read_only": 1,
+   "options": "DocType",
+   "idx": 8
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Reference",
+   "read_only": 1,
+   "options": "reference_doctype",
+   "search_index": 1,
+   "idx": 9
+  },
+  {
+   "fieldname": "omni_identity",
+   "fieldtype": "Link",
+   "label": "Omni Identity",
+   "read_only": 1,
+   "options": "Omni Identity",
+   "search_index": 1,
+   "idx": 10
+  },
+  {
+   "fieldname": "source_log",
+   "fieldtype": "Link",
+   "label": "Intake Log",
+   "read_only": 1,
+   "options": "Excom Source Log",
+   "idx": 11
+  },
+  {
+   "fieldname": "thread",
+   "fieldtype": "Link",
+   "label": "Thread",
+   "read_only": 1,
+   "options": "Excom Thread",
+   "idx": 12
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Link",
+   "label": "Message",
+   "read_only": 1,
+   "options": "Excom Message",
+   "idx": 13
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 14
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "read_only": 1,
+   "options": "Company",
+   "in_standard_filter": 1,
+   "idx": 15
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "label": "Account",
+   "read_only": 1,
+   "options": "Ads Account",
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "idx": 16
+  },
+  {
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "label": "Workspace",
+   "read_only": 1,
+   "options": "Ads Workspace",
+   "fetch_from": "account.workspace",
+   "in_standard_filter": 1,
+   "idx": 17
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "label": "Brand",
+   "read_only": 1,
+   "options": "Ads Brand",
+   "fetch_from": "account.brand",
+   "fetch_if_empty": 1,
+   "in_standard_filter": 1,
+   "idx": 18
+  },
+  {
+   "fieldname": "is_test",
+   "fieldtype": "Check",
+   "label": "Test",
+   "read_only": 1,
+   "default": "0",
+   "in_standard_filter": 1,
+   "description": "Platform test lead. Never counted in KPIs.",
+   "idx": 19
+  },
+  {
+   "fieldname": "is_organic",
+   "fieldtype": "Check",
+   "label": "Organic",
+   "read_only": 1,
+   "default": "0",
+   "in_standard_filter": 1,
+   "idx": 20
+  },
+  {
+   "fieldname": "sb_ads",
+   "fieldtype": "Section Break",
+   "label": "Ad",
+   "idx": 21
+  },
+  {
+   "fieldname": "campaign",
+   "fieldtype": "Link",
+   "label": "Campaign",
+   "read_only": 1,
+   "options": "Ads Campaign",
+   "idx": 22
+  },
+  {
+   "fieldname": "ad_group",
+   "fieldtype": "Link",
+   "label": "Ad Group",
+   "read_only": 1,
+   "options": "Ads Ad Group",
+   "idx": 23
+  },
+  {
+   "fieldname": "advertisement",
+   "fieldtype": "Link",
+   "label": "Ad",
+   "read_only": 1,
+   "options": "Ads Advertisement",
+   "idx": 24
+  },
+  {
+   "fieldname": "form_id",
+   "fieldtype": "Data",
+   "label": "Lead Form ID",
+   "read_only": 1,
+   "idx": 25
+  },
+  {
+   "fieldname": "page_id",
+   "fieldtype": "Data",
+   "label": "Page ID",
+   "read_only": 1,
+   "idx": 26
+  },
+  {
+   "fieldname": "cb_3",
+   "fieldtype": "Column Break",
+   "idx": 27
+  },
+  {
+   "fieldname": "account_external_id",
+   "fieldtype": "Data",
+   "label": "Account ID",
+   "read_only": 1,
+   "idx": 28
+  },
+  {
+   "fieldname": "campaign_external_id",
+   "fieldtype": "Data",
+   "label": "Campaign ID",
+   "read_only": 1,
+   "search_index": 1,
+   "idx": 29
+  },
+  {
+   "fieldname": "campaign_name",
+   "fieldtype": "Data",
+   "label": "Campaign Name",
+   "read_only": 1,
+   "length": 255,
+   "idx": 30
+  },
+  {
+   "fieldname": "ad_group_external_id",
+   "fieldtype": "Data",
+   "label": "Ad Group ID",
+   "read_only": 1,
+   "idx": 31
+  },
+  {
+   "fieldname": "ad_group_name",
+   "fieldtype": "Data",
+   "label": "Ad Group Name",
+   "read_only": 1,
+   "length": 255,
+   "idx": 32
+  },
+  {
+   "fieldname": "ad_external_id",
+   "fieldtype": "Data",
+   "label": "Ad ID",
+   "read_only": 1,
+   "search_index": 1,
+   "idx": 33
+  },
+  {
+   "fieldname": "ad_name",
+   "fieldtype": "Data",
+   "label": "Ad Name",
+   "read_only": 1,
+   "length": 255,
+   "idx": 34
+  },
+  {
+   "fieldname": "creative_id",
+   "fieldtype": "Data",
+   "label": "Creative ID",
+   "read_only": 1,
+   "idx": 35
+  },
+  {
+   "fieldname": "sb_click",
+   "fieldtype": "Section Break",
+   "label": "Click IDs",
+   "idx": 36
+  },
+  {
+   "fieldname": "gclid",
+   "fieldtype": "Data",
+   "label": "GCLID",
+   "read_only": 1,
+   "length": 500,
+   "idx": 37
+  },
+  {
+   "fieldname": "gbraid",
+   "fieldtype": "Data",
+   "label": "GBRAID",
+   "read_only": 1,
+   "length": 500,
+   "idx": 38
+  },
+  {
+   "fieldname": "wbraid",
+   "fieldtype": "Data",
+   "label": "WBRAID",
+   "read_only": 1,
+   "length": 500,
+   "idx": 39
+  },
+  {
+   "fieldname": "fbclid",
+   "fieldtype": "Data",
+   "label": "FBCLID",
+   "read_only": 1,
+   "length": 500,
+   "idx": 40
+  },
+  {
+   "fieldname": "cb_4",
+   "fieldtype": "Column Break",
+   "idx": 41
+  },
+  {
+   "fieldname": "fbc",
+   "fieldtype": "Data",
+   "label": "FBC",
+   "read_only": 1,
+   "length": 500,
+   "idx": 42
+  },
+  {
+   "fieldname": "fbp",
+   "fieldtype": "Data",
+   "label": "FBP",
+   "read_only": 1,
+   "length": 500,
+   "idx": 43
+  },
+  {
+   "fieldname": "ctwa_clid",
+   "fieldtype": "Data",
+   "label": "CTWA Click ID",
+   "read_only": 1,
+   "length": 500,
+   "idx": 44
+  },
+  {
+   "fieldname": "li_fat_id",
+   "fieldtype": "Data",
+   "label": "LinkedIn Click ID",
+   "read_only": 1,
+   "length": 500,
+   "idx": 45
+  },
+  {
+   "fieldname": "attribution_note",
+   "fieldtype": "Data",
+   "label": "Note",
+   "read_only": 1,
+   "description": "e.g. 'ad (no click ID)' for a WhatsApp Status ad, which Meta sends without ctwa_clid.",
+   "idx": 46
+  },
+  {
+   "fieldname": "sb_utm",
+   "fieldtype": "Section Break",
+   "label": "UTM and landing",
+   "idx": 47
+  },
+  {
+   "fieldname": "utm_source",
+   "fieldtype": "Data",
+   "label": "UTM Source",
+   "read_only": 1,
+   "length": 255,
+   "idx": 48
+  },
+  {
+   "fieldname": "utm_medium",
+   "fieldtype": "Data",
+   "label": "UTM Medium",
+   "read_only": 1,
+   "length": 255,
+   "idx": 49
+  },
+  {
+   "fieldname": "utm_campaign",
+   "fieldtype": "Data",
+   "label": "UTM Campaign",
+   "read_only": 1,
+   "length": 255,
+   "idx": 50
+  },
+  {
+   "fieldname": "utm_content",
+   "fieldtype": "Data",
+   "label": "UTM Content",
+   "read_only": 1,
+   "length": 255,
+   "idx": 51
+  },
+  {
+   "fieldname": "utm_term",
+   "fieldtype": "Data",
+   "label": "UTM Term",
+   "read_only": 1,
+   "length": 255,
+   "idx": 52
+  },
+  {
+   "fieldname": "utm_id",
+   "fieldtype": "Data",
+   "label": "UTM Id",
+   "read_only": 1,
+   "length": 255,
+   "idx": 53
+  },
+  {
+   "fieldname": "cb_5",
+   "fieldtype": "Column Break",
+   "idx": 54
+  },
+  {
+   "fieldname": "landing_url",
+   "fieldtype": "Small Text",
+   "label": "Landing / Ad URL",
+   "read_only": 1,
+   "idx": 55
+  },
+  {
+   "fieldname": "referrer_url",
+   "fieldtype": "Small Text",
+   "label": "Referrer",
+   "read_only": 1,
+   "idx": 56
+  },
+  {
+   "fieldname": "referral_source_type",
+   "fieldtype": "Data",
+   "label": "Referral Source Type",
+   "read_only": 1,
+   "description": "WhatsApp referral source_type: ad or post",
+   "idx": 57
+  },
+  {
+   "fieldname": "headline",
+   "fieldtype": "Data",
+   "label": "Ad Headline",
+   "read_only": 1,
+   "length": 255,
+   "idx": 58
+  },
+  {
+   "fieldname": "ad_body",
+   "fieldtype": "Small Text",
+   "label": "Ad Body",
+   "read_only": 1,
+   "idx": 59
+  },
+  {
+   "fieldname": "media_type",
+   "fieldtype": "Data",
+   "label": "Ad Media Type",
+   "read_only": 1,
+   "idx": 60
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Attribution Touch",
+ "naming_rule": "By script",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "delete": 1,
+   "export": 1
+  },
+  {
+   "role": "Excom Admin",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Excom Marketing",
+   "read": 1,
+   "report": 1,
+   "print": 1
+  }
+ ],
+ "read_only": 1,
+ "sort_field": "touch_at",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "touch_source",
+ "track_changes": 0
+}

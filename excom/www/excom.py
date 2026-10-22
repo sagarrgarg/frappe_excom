@@ -11,6 +11,19 @@ SCRIPT_TAG_PATTERN = re.compile(r"\<script[^<]*\</script\>")
 CLOSING_SCRIPT_TAG_PATTERN = re.compile(r"</script\>")
 
 
+# Excom Marketing opens the app for the Marketing screens only: the frontend shows nothing else to
+# it, and the inbox, CRM and broadcast APIs refuse it (they require Excom Agent / Excom Admin).
+APP_ROLES = {"System Manager", "Excom Admin", "Excom Agent", "Excom Marketing"}
+
+
+def check_app_access() -> None:
+    if not APP_ROLES.intersection(frappe.get_roles(frappe.session.user)):
+        frappe.throw(
+            _("You do not have access to Excom. Contact your administrator to get the Excom Agent, Excom Admin or Excom Marketing role."),
+            frappe.PermissionError,
+        )
+
+
 def get_context(context):
     csrf_token = frappe.sessions.get_csrf_token()
     frappe.db.commit()  # nosemgrep
@@ -19,13 +32,7 @@ def get_context(context):
         frappe.local.flags.redirect_location = "/login?redirect-to=/excom"
         raise frappe.Redirect
 
-    user_roles = frappe.get_roles(frappe.session.user)
-    allowed = {"System Manager", "Excom Admin", "Excom Agent"}
-    if not allowed.intersection(user_roles):
-        frappe.throw(
-            _("You do not have access to Excom. Contact your administrator to get the Excom Agent or Excom Admin role."),
-            frappe.PermissionError,
-        )
+    check_app_access()
 
     try:
         boot = frappe.sessions.get()

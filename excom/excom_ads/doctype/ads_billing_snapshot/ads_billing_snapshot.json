@@ -1,0 +1,589 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 20:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "account",
+  "provider",
+  "snapshot_date",
+  "currency",
+  "cb_1",
+  "company",
+  "workspace",
+  "brand",
+  "payment_model",
+  "payment_model_avail",
+  "sb_read",
+  "reported_as_of",
+  "read_at",
+  "read_count",
+  "cb_2",
+  "read_status",
+  "last_error",
+  "sb_reported",
+  "reported_amount_spent",
+  "amount_spent_avail",
+  "reported_spend_cap",
+  "spend_cap_avail",
+  "reported_amount_due",
+  "amount_due_avail",
+  "cb_3",
+  "reported_is_prepay",
+  "prepay_avail",
+  "reported_funding_type",
+  "funding_avail",
+  "sb_google",
+  "reported_budget_id",
+  "reported_budget_name",
+  "reported_budget_status",
+  "reported_budget_start",
+  "reported_budget_end",
+  "reported_billing_setup_status",
+  "billing_setup_avail",
+  "cb_4",
+  "reported_approved_limit",
+  "reported_adjusted_limit",
+  "reported_amount_served",
+  "reported_total_adjustments",
+  "account_budget_avail",
+  "sb_calc",
+  "calc_headroom",
+  "headroom_avail",
+  "calc_headroom_basis",
+  "calc_avg_daily_spend",
+  "avg_spend_avail",
+  "calc_avg_days",
+  "cb_5",
+  "calc_days_left",
+  "days_left_avail",
+  "calc_exhaustion_date",
+  "exhaustion_avail",
+  "calc_note",
+  "sb_raw",
+  "raw_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "label": "Ad Account",
+   "options": "Ads Account",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "search_index": 1,
+   "idx": 1
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Data",
+   "label": "Network",
+   "fetch_from": "account.provider",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "idx": 2
+  },
+  {
+   "fieldname": "snapshot_date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "reqd": 1,
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "The ad account's own date. One row per account per day; hourly reads update it in place.",
+   "idx": 3
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1,
+   "idx": 4
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 5
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "fetch_from": "account.company",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "idx": 6
+  },
+  {
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "label": "Workspace",
+   "options": "Ads Workspace",
+   "fetch_from": "account.workspace",
+   "read_only": 1,
+   "idx": 7
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "label": "Brand",
+   "options": "Ads Brand",
+   "fetch_from": "account.brand",
+   "fetch_if_empty": 1,
+   "read_only": 1,
+   "idx": 8
+  },
+  {
+   "fieldname": "payment_model",
+   "fieldtype": "Select",
+   "label": "Payment Model",
+   "options": "Unknown\nPrepaid\nCard (Postpaid)\nCredit Line\nMonthly Invoicing",
+   "default": "Unknown",
+   "read_only": 1,
+   "in_list_view": 1,
+   "idx": 9
+  },
+  {
+   "fieldname": "payment_model_avail",
+   "fieldtype": "Select",
+   "label": "Payment Model Availability",
+   "options": "Not Read\nAvailable\nNot Set\nUnsupported\nPermission Missing\nNo Data\nStale\nError",
+   "default": "Not Read",
+   "read_only": 1,
+   "idx": 10
+  },
+  {
+   "fieldname": "sb_read",
+   "fieldtype": "Section Break",
+   "label": "Reading",
+   "idx": 11
+  },
+  {
+   "fieldname": "reported_as_of",
+   "fieldtype": "Datetime",
+   "label": "Platform Figures As Of",
+   "read_only": 1,
+   "description": "When the platform figures on this row were read. Older than the stale limit in Ads Settings → shown as Stale.",
+   "idx": 12
+  },
+  {
+   "fieldname": "read_at",
+   "fieldtype": "Datetime",
+   "label": "Last Read Attempt",
+   "read_only": 1,
+   "idx": 13
+  },
+  {
+   "fieldname": "read_count",
+   "fieldtype": "Int",
+   "label": "Reads Today",
+   "read_only": 1,
+   "idx": 14
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 15
+  },
+  {
+   "fieldname": "read_status",
+   "fieldtype": "Select",
+   "label": "Read Status",
+   "options": "OK\nPartial\nError",
+   "read_only": 1,
+   "in_list_view": 1,
+   "idx": 16
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1,
+   "idx": 17
+  },
+  {
+   "fieldname": "sb_reported",
+   "fieldtype": "Section Break",
+   "label": "As reported by the platform",
+   "description": "Values exactly as the platform reports them, in the account currency. A figure whose availability is not Available holds no value (the column shows 0 only because number columns cannot be empty).",
+   "idx": 18
+  },
+  {
+   "fieldname": "reported_amount_spent",
+   "fieldtype": "Currency",
+   "label": "Amount Spent (Meta amount_spent)",
+   "options": "currency",
+   "read_only": 1,
+   "description": "Meta: spend measured against the account spend cap (total spend when no cap is set).",
+   "idx": 19
+  },
+  {
+   "fieldname": "amount_spent_avail",
+   "fieldtype": "Select",
+   "label": "Amount Spent Availability",
+   "options": "Not Read\nAvailable\nNot Set\nUnsupported\nPermission Missing\nNo Data\nStale\nError",
+   "default": "Not Read",
+   "read_only": 1,
+   "idx": 20
+  },
+  {
+   "fieldname": "reported_spend_cap",
+   "fieldtype": "Currency",
+   "label": "Spend Cap (Meta spend_cap)",
+   "options": "currency",
+   "read_only": 1,
+   "description": "Meta: delivery stops when amount spent reaches it. Meta's 0 means no cap (availability Not Set).",
+   "idx": 21
+  },
+  {
+   "fieldname": "spend_cap_avail",
+   "fieldtype": "Select",
+   "label": "Spend Cap Availability",
+   "options": "Not Read\nAvailable\nNot Set\nUnsupported\nPermission Missing\nNo Data\nStale\nError",
+   "default": "Not Read",
+   "read_only": 1,
+   "idx": 22
+  },
+  {
+   "fieldname": "reported_amount_due",
+   "fieldtype": "Currency",
+   "label": "Amount Due (Meta balance)",
+   "options": "currency",
+   "read_only": 1,
+   "description": "Meta balance = bill amount currently due. It is not a prepaid balance.",
+   "idx": 23
+  },
+  {
+   "fieldname": "amount_due_avail",
+   "fieldtype": "Select",
+   "label": "Amount Due Availability",
+   "options": "Not Read\nAvailable\nNot Set\nUnsupported\nPermission Missing\nNo Data\nStale\nError",
+   "default": "Not Read",
+   "read_only": 1,
+   "idx": 24
+  },
+  {
+   "fieldname": "cb_3",
+   "fieldtype": "Column Break",
+   "idx": 25
+  },
+  {
+   "fieldname": "reported_is_prepay",
+   "fieldtype": "Check",
+   "label": "Prepay Account (Meta is_prepay_account)",
+   "read_only": 1,
+   "description": "Needs ADVERTISE or MANAGE task access on the ad account.",
+   "idx": 26
+  },
+  {
+   "fieldname": "prepay_avail",
+   "fieldtype": "Select",
+   "label": "Prepay Flag Availability",
+   "options": "Not Read\nAvailable\nNot Set\nUnsupported\nPermission Missing\nNo Data\nStale\nError",
+   "default": "Not Read",
+   "read_only": 1,
+   "idx": 27
+  },
+  {
+   "fieldname": "reported_funding_type",
+   "fieldtype": "Data",
+   "label": "Funding Source Type (Meta funding_source_details.type)",
+   "read_only": 1,
+   "description": "Needs MANAGE task access on the ad account.",
+   "idx": 28
+  },
+  {
+   "fieldname": "funding_avail",
+   "fieldtype": "Select",
+   "label": "Funding Source Availability",
+   "options": "Not Read\nAvailable\nNot Set\nUnsupported\nPermission Missing\nNo Data\nStale\nError",
+   "default": "Not Read",
+   "read_only": 1,
+   "idx": 29
+  },
+  {
+   "fieldname": "sb_google",
+   "fieldtype": "Section Break",
+   "label": "Google account budget",
+   "description": "Google exposes account budgets and billing setups only for accounts on monthly invoicing. Other accounts show Unsupported.",
+   "idx": 30
+  },
+  {
+   "fieldname": "reported_budget_id",
+   "fieldtype": "Data",
+   "label": "Account Budget ID",
+   "read_only": 1,
+   "idx": 31
+  },
+  {
+   "fieldname": "reported_budget_name",
+   "fieldtype": "Data",
+   "label": "Account Budget Name",
+   "read_only": 1,
+   "idx": 32
+  },
+  {
+   "fieldname": "reported_budget_status",
+   "fieldtype": "Data",
+   "label": "Account Budget Status",
+   "read_only": 1,
+   "idx": 33
+  },
+  {
+   "fieldname": "reported_budget_start",
+   "fieldtype": "Data",
+   "label": "Approved Start",
+   "read_only": 1,
+   "idx": 34
+  },
+  {
+   "fieldname": "reported_budget_end",
+   "fieldtype": "Data",
+   "label": "Approved End",
+   "read_only": 1,
+   "description": "yyyy-MM-dd HH:mm:ss, or FOREVER.",
+   "idx": 35
+  },
+  {
+   "fieldname": "reported_billing_setup_status",
+   "fieldtype": "Data",
+   "label": "Billing Setup Status",
+   "read_only": 1,
+   "idx": 36
+  },
+  {
+   "fieldname": "billing_setup_avail",
+   "fieldtype": "Select",
+   "label": "Billing Setup Availability",
+   "options": "Not Read\nAvailable\nNot Set\nUnsupported\nPermission Missing\nNo Data\nStale\nError",
+   "default": "Not Read",
+   "read_only": 1,
+   "idx": 37
+  },
+  {
+   "fieldname": "cb_4",
+   "fieldtype": "Column Break",
+   "idx": 38
+  },
+  {
+   "fieldname": "reported_approved_limit",
+   "fieldtype": "Currency",
+   "label": "Approved Spending Limit",
+   "options": "currency",
+   "read_only": 1,
+   "idx": 39
+  },
+  {
+   "fieldname": "reported_adjusted_limit",
+   "fieldtype": "Currency",
+   "label": "Adjusted Spending Limit",
+   "options": "currency",
+   "read_only": 1,
+   "description": "Approved limit after adjustments (credits, debits). Empty when the limit is INFINITE.",
+   "idx": 40
+  },
+  {
+   "fieldname": "reported_amount_served",
+   "fieldtype": "Currency",
+   "label": "Amount Served",
+   "options": "currency",
+   "read_only": 1,
+   "description": "Value of ads served against this budget, including overdelivery.",
+   "idx": 41
+  },
+  {
+   "fieldname": "reported_total_adjustments",
+   "fieldtype": "Currency",
+   "label": "Total Adjustments",
+   "options": "currency",
+   "read_only": 1,
+   "idx": 42
+  },
+  {
+   "fieldname": "account_budget_avail",
+   "fieldtype": "Select",
+   "label": "Account Budget Availability",
+   "options": "Not Read\nAvailable\nNot Set\nUnsupported\nPermission Missing\nNo Data\nStale\nError",
+   "default": "Not Read",
+   "read_only": 1,
+   "idx": 43
+  },
+  {
+   "fieldname": "sb_calc",
+   "fieldtype": "Section Break",
+   "label": "Calculated by Excom",
+   "description": "Computed from the reported figures and our daily metric snapshots, not reported by the platform.",
+   "idx": 44
+  },
+  {
+   "fieldname": "calc_headroom",
+   "fieldtype": "Currency",
+   "label": "Headroom",
+   "options": "currency",
+   "read_only": 1,
+   "in_list_view": 1,
+   "idx": 45
+  },
+  {
+   "fieldname": "headroom_avail",
+   "fieldtype": "Select",
+   "label": "Headroom Availability",
+   "options": "Not Read\nAvailable\nNot Set\nUnsupported\nPermission Missing\nNo Data\nStale\nError",
+   "default": "Not Read",
+   "read_only": 1,
+   "idx": 46
+  },
+  {
+   "fieldname": "calc_headroom_basis",
+   "fieldtype": "Data",
+   "label": "Headroom Basis",
+   "read_only": 1,
+   "idx": 47
+  },
+  {
+   "fieldname": "calc_avg_daily_spend",
+   "fieldtype": "Currency",
+   "label": "Average Daily Spend (last 7 days)",
+   "options": "currency",
+   "read_only": 1,
+   "description": "From account-level Ads Metric Snapshot rows of the last 7 complete days.",
+   "idx": 48
+  },
+  {
+   "fieldname": "avg_spend_avail",
+   "fieldtype": "Select",
+   "label": "Average Spend Availability",
+   "options": "Not Read\nAvailable\nNot Set\nUnsupported\nPermission Missing\nNo Data\nStale\nError",
+   "default": "Not Read",
+   "read_only": 1,
+   "idx": 49
+  },
+  {
+   "fieldname": "calc_avg_days",
+   "fieldtype": "Int",
+   "label": "Days Averaged",
+   "read_only": 1,
+   "idx": 50
+  },
+  {
+   "fieldname": "cb_5",
+   "fieldtype": "Column Break",
+   "idx": 51
+  },
+  {
+   "fieldname": "calc_days_left",
+   "fieldtype": "Float",
+   "label": "Days of Headroom Left",
+   "read_only": 1,
+   "precision": "1",
+   "in_list_view": 1,
+   "idx": 52
+  },
+  {
+   "fieldname": "days_left_avail",
+   "fieldtype": "Select",
+   "label": "Days Left Availability",
+   "options": "Not Read\nAvailable\nNot Set\nUnsupported\nPermission Missing\nNo Data\nStale\nError",
+   "default": "Not Read",
+   "read_only": 1,
+   "idx": 53
+  },
+  {
+   "fieldname": "calc_exhaustion_date",
+   "fieldtype": "Date",
+   "label": "Projected Exhaustion Date",
+   "read_only": 1,
+   "idx": 54
+  },
+  {
+   "fieldname": "exhaustion_avail",
+   "fieldtype": "Select",
+   "label": "Exhaustion Date Availability",
+   "options": "Not Read\nAvailable\nNot Set\nUnsupported\nPermission Missing\nNo Data\nStale\nError",
+   "default": "Not Read",
+   "read_only": 1,
+   "idx": 55
+  },
+  {
+   "fieldname": "calc_note",
+   "fieldtype": "Small Text",
+   "label": "Note",
+   "read_only": 1,
+   "idx": 56
+  },
+  {
+   "fieldname": "sb_raw",
+   "fieldtype": "Section Break",
+   "label": "Raw",
+   "collapsible": 1,
+   "idx": 57
+  },
+  {
+   "fieldname": "raw_json",
+   "fieldtype": "Code",
+   "label": "Raw Billing Payload",
+   "options": "JSON",
+   "read_only": 1,
+   "idx": 58
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Billing Snapshot",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Excom Admin",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Accounts Manager",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Accounts User",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Excom Marketing",
+   "read": 1,
+   "report": 1,
+   "print": 1
+  }
+ ],
+ "sort_field": "snapshot_date",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0,
+ "description": "Finance data: one billing reading per ad account per day (platform-reported figures, our calculations, and the availability of each). Needs the view_finance right.",
+ "naming_rule": "By script",
+ "in_create": 1,
+ "read_only": 1,
+ "title_field": "account"
+}

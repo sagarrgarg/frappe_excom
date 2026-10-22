@@ -1,0 +1,320 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "ad_group_name",
+  "account",
+  "campaign",
+  "external_id",
+  "campaign_external_id",
+  "status",
+  "effective_status",
+  "configured_status",
+  "cb_1",
+  "workspace",
+  "company",
+  "brand",
+  "provider",
+  "sb_setup",
+  "optimization_goal",
+  "billing_event",
+  "destination_type",
+  "cb_2",
+  "currency",
+  "daily_budget",
+  "lifetime_budget",
+  "bid_amount",
+  "cb_3",
+  "start_time",
+  "end_time",
+  "platform_updated",
+  "targeting_json",
+  "sb_raw",
+  "synced_at",
+  "not_returned_since",
+  "config_json"
+ ],
+ "fields": [
+  {
+   "description": "Meta: ad set. Google: ad group. LinkedIn: campaign.",
+   "fieldname": "ad_group_name",
+   "fieldtype": "Data",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Ad Group Name",
+   "length": 500,
+   "reqd": 1
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "idx": 2,
+   "label": "Account",
+   "options": "Ads Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "campaign",
+   "fieldtype": "Link",
+   "idx": 3,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Campaign",
+   "options": "Ads Campaign"
+  },
+  {
+   "fieldname": "external_id",
+   "fieldtype": "Data",
+   "idx": 4,
+   "label": "Platform ID",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "campaign_external_id",
+   "fieldtype": "Data",
+   "idx": 5,
+   "label": "Campaign External Id",
+   "read_only": 1
+  },
+  {
+   "default": "Unknown",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "idx": 6,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Active\nPaused\nIn Review\nRejected\nError\nBilling Issue\nArchived\nDeleted\nUnknown",
+   "read_only": 1
+  },
+  {
+   "fieldname": "effective_status",
+   "fieldtype": "Data",
+   "idx": 7,
+   "label": "Effective Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "configured_status",
+   "fieldtype": "Data",
+   "idx": 8,
+   "label": "Configured Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 9
+  },
+  {
+   "fetch_from": "account.workspace",
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "idx": 10,
+   "in_standard_filter": 1,
+   "label": "Workspace",
+   "options": "Ads Workspace",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "account.company",
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "idx": 11,
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "account.brand",
+   "fetch_if_empty": 1,
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "idx": 12,
+   "in_standard_filter": 1,
+   "label": "Brand",
+   "options": "Ads Brand",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "account.provider",
+   "fieldname": "provider",
+   "fieldtype": "Data",
+   "idx": 13,
+   "label": "Provider",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_setup",
+   "fieldtype": "Section Break",
+   "idx": 14,
+   "label": "Setup"
+  },
+  {
+   "fieldname": "optimization_goal",
+   "fieldtype": "Data",
+   "idx": 15,
+   "label": "Optimization Goal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "billing_event",
+   "fieldtype": "Data",
+   "idx": 16,
+   "label": "Billing Event",
+   "read_only": 1
+  },
+  {
+   "fieldname": "destination_type",
+   "fieldtype": "Data",
+   "idx": 17,
+   "label": "Destination Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 18
+  },
+  {
+   "fetch_from": "account.currency",
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "idx": 19,
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "daily_budget",
+   "fieldtype": "Currency",
+   "idx": 20,
+   "label": "Daily Budget",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lifetime_budget",
+   "fieldtype": "Currency",
+   "idx": 21,
+   "label": "Lifetime Budget",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "bid_amount",
+   "fieldtype": "Currency",
+   "idx": 22,
+   "label": "Bid Amount",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_3",
+   "fieldtype": "Column Break",
+   "idx": 23
+  },
+  {
+   "fieldname": "start_time",
+   "fieldtype": "Datetime",
+   "idx": 24,
+   "label": "Start Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "end_time",
+   "fieldtype": "Datetime",
+   "idx": 25,
+   "label": "End Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "platform_updated",
+   "fieldtype": "Datetime",
+   "idx": 26,
+   "label": "Platform Updated",
+   "read_only": 1
+  },
+  {
+   "fieldname": "targeting_json",
+   "fieldtype": "Code",
+   "idx": 27,
+   "label": "Targeting",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sb_raw",
+   "fieldtype": "Section Break",
+   "idx": 26,
+   "label": "Platform record"
+  },
+  {
+   "fieldname": "synced_at",
+   "fieldtype": "Datetime",
+   "idx": 27,
+   "label": "Synced At",
+   "read_only": 1
+  },
+  {
+   "description": "Set when the last structure sync did not return this record (deleted or archived on the platform).",
+   "fieldname": "not_returned_since",
+   "fieldtype": "Datetime",
+   "idx": 28,
+   "label": "Not Returned By Platform Since",
+   "read_only": 1
+  },
+  {
+   "fieldname": "config_json",
+   "fieldtype": "Code",
+   "idx": 29,
+   "label": "Raw Configuration",
+   "options": "JSON",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Ad Group",
+ "naming_rule": "By script",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  },
+  {
+   "delete": 0,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin"
+  },
+  {
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Marketing"
+  }
+ ],
+ "search_fields": "external_id,campaign",
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "ad_group_name",
+ "track_changes": 1
+}

@@ -1,0 +1,279 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:connection_name",
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "description": "Credentials for one Google (or LinkedIn) sign-in, used by the ad accounts enabled from it. Admins only.",
+ "field_order": [
+  "connection_name",
+  "provider",
+  "status",
+  "cb_1",
+  "company",
+  "workspace",
+  "sb_auth",
+  "auth_mode",
+  "service_account_key",
+  "service_account_email",
+  "oauth_client_id",
+  "oauth_client_secret",
+  "refresh_token",
+  "cb_2",
+  "login_customer_id",
+  "developer_token",
+  "api_version",
+  "scopes",
+  "sb_health",
+  "token_status",
+  "last_checked_at",
+  "last_ok_at",
+  "cb_3",
+  "granted_scopes",
+  "accessible_accounts",
+  "last_error"
+ ],
+ "fields": [
+  {
+   "fieldname": "connection_name",
+   "fieldtype": "Data",
+   "label": "Connection Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "idx": 1
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "label": "Provider",
+   "options": "Google\nLinkedIn",
+   "default": "Google",
+   "reqd": 1,
+   "set_only_once": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "idx": 2
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Not Tested\nActive\nError\nDisabled",
+   "default": "Not Tested",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Set by Test Connection. Disabled stops every sync that uses this connection.",
+   "idx": 3
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 4
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "in_standard_filter": 1,
+   "idx": 5
+  },
+  {
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "label": "Workspace",
+   "options": "Ads Workspace",
+   "description": "Ad accounts enabled from this connection land in this workspace. Empty: the company's default workspace.",
+   "idx": 6
+  },
+  {
+   "fieldname": "sb_auth",
+   "fieldtype": "Section Break",
+   "label": "Credentials",
+   "description": "Stored encrypted. Never shown again after saving, never returned by the API and never written to logs or errors. To replace a credential, paste the new value; leave the stars to keep the current one.",
+   "idx": 7
+  },
+  {
+   "fieldname": "auth_mode",
+   "fieldtype": "Select",
+   "label": "Sign-in Method",
+   "options": "Service Account\nOAuth Refresh Token",
+   "default": "Service Account",
+   "reqd": 1,
+   "description": "Service Account (preferred): add the service account's email as a user on the Google Ads manager account. OAuth: a refresh token from an Internal consent screen.",
+   "idx": 8
+  },
+  {
+   "fieldname": "service_account_key",
+   "fieldtype": "Password",
+   "label": "Service Account Key (JSON)",
+   "depends_on": "eval:doc.auth_mode=='Service Account'",
+   "description": "Paste the whole JSON key file. It is checked and stored encrypted.",
+   "idx": 9
+  },
+  {
+   "fieldname": "service_account_email",
+   "fieldtype": "Data",
+   "label": "Service Account Email",
+   "read_only": 1,
+   "depends_on": "eval:doc.auth_mode=='Service Account'",
+   "description": "Add this email as a user on the Google Ads manager account (Admin > Access and security).",
+   "idx": 10
+  },
+  {
+   "fieldname": "oauth_client_id",
+   "fieldtype": "Data",
+   "label": "OAuth Client ID",
+   "depends_on": "eval:doc.auth_mode=='OAuth Refresh Token'",
+   "mandatory_depends_on": "eval:doc.auth_mode=='OAuth Refresh Token'",
+   "idx": 11
+  },
+  {
+   "fieldname": "oauth_client_secret",
+   "fieldtype": "Password",
+   "label": "OAuth Client Secret",
+   "depends_on": "eval:doc.auth_mode=='OAuth Refresh Token'",
+   "idx": 12
+  },
+  {
+   "fieldname": "refresh_token",
+   "fieldtype": "Password",
+   "label": "Refresh Token",
+   "depends_on": "eval:doc.auth_mode=='OAuth Refresh Token'",
+   "idx": 13
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 14
+  },
+  {
+   "fieldname": "login_customer_id",
+   "fieldtype": "Data",
+   "label": "Manager Account ID (login-customer-id)",
+   "depends_on": "eval:doc.provider=='Google'",
+   "description": "The Google Ads manager account the credential was added to, e.g. 123-456-7890. Empty: only accounts the credential can open directly.",
+   "idx": 15
+  },
+  {
+   "fieldname": "developer_token",
+   "fieldtype": "Password",
+   "label": "Developer Token (optional)",
+   "depends_on": "eval:doc.provider=='Google'",
+   "description": "Google retired developer tokens on 9 Sep 2026: API access now follows the Google Cloud project. Sent only if set.",
+   "idx": 16
+  },
+  {
+   "fieldname": "api_version",
+   "fieldtype": "Data",
+   "label": "API Version",
+   "default": "v26",
+   "description": "Google Ads API version, e.g. v26. Empty: the version this release was built and tested against.",
+   "idx": 17
+  },
+  {
+   "fieldname": "scopes",
+   "fieldtype": "Small Text",
+   "label": "OAuth Scopes",
+   "description": "One per line. Google Ads needs https://www.googleapis.com/auth/adwords. GA4, Search Console and Merchant Center reuse this connection by adding their read-only scopes.",
+   "idx": 18
+  },
+  {
+   "fieldname": "sb_health",
+   "fieldtype": "Section Break",
+   "label": "Health",
+   "idx": 19
+  },
+  {
+   "fieldname": "token_status",
+   "fieldtype": "Select",
+   "label": "Credential Check",
+   "options": "Not Checked\nOK\nToken Problem\nPermission Missing\nError",
+   "default": "Not Checked",
+   "read_only": 1,
+   "idx": 20
+  },
+  {
+   "fieldname": "last_checked_at",
+   "fieldtype": "Datetime",
+   "label": "Last Checked",
+   "read_only": 1,
+   "idx": 21
+  },
+  {
+   "fieldname": "last_ok_at",
+   "fieldtype": "Datetime",
+   "label": "Last Worked",
+   "read_only": 1,
+   "idx": 22
+  },
+  {
+   "fieldname": "cb_3",
+   "fieldtype": "Column Break",
+   "idx": 23
+  },
+  {
+   "fieldname": "granted_scopes",
+   "fieldtype": "Small Text",
+   "label": "Granted Scopes",
+   "read_only": 1,
+   "idx": 24
+  },
+  {
+   "fieldname": "accessible_accounts",
+   "fieldtype": "Int",
+   "label": "Accessible Ad Accounts",
+   "read_only": 1,
+   "idx": 25
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1,
+   "idx": 26
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Connection",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "export": 0,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "export": 0,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin",
+   "share": 0,
+   "write": 1
+  }
+ ],
+ "search_fields": "provider,company",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -214,3 +214,50 @@ def website_webhook(token: str = ""):
 		return {"ok": True, "ref": "hp"}
 	r = ingest(src, _webhook_dedupe_key(src.name, body, raw_text if raw_text.strip().startswith("{") else ""), body)
 	return {"ok": True, "ref": r["log"], "duplicate": r["duplicate"]}
+
+
+# ─── Google Ads lead form webhook ────────────────────────────────────────────
+
+def _google_reply(status: int, message: str = ""):
+	"""Google reads the status: 200 = done, 4XX = refused (not retried), 5XX = retried later."""
+	from werkzeug.wrappers import Response
+
+	return Response(json.dumps({"message": message} if message else {}), status=status, mimetype="application/json")
+
+
+def _google_payload(raw_text: str):
+	try:
+		return json.loads(raw_text)
+	except ValueError:
+		# Google's published sample payloads end objects with a trailing comma; accept that shape too.
+		try:
+			return json.loads(re.sub(r",\s*([}\]])", r"\1", raw_text))
+		except ValueError:
+			return None
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+@rate_limit(limit=120, seconds=60)
+def google_lead_form():
+	"""
+	Google Ads lead form → webhook integration:
+
+	    POST /api/method/excom.excom.api.intake.google_lead_form     (JSON WebhookLead body)
+
+	The per-form key (`google_key` in the body) is compared in constant time with the Key of an
+	enabled "Google Lead Form" source before anything is read further or stored; a wrong or missing
+	key gets 403 and nothing is written. The key is never stored. Idempotent on lead_id.
+	"""
+	raw_text = frappe.request.get_data(as_text=True) or ""
+	payload = _google_payload(raw_text) if raw_text.strip() else {k: v for k, v in frappe.local.form_dict.items() if k != "cmd"}
+	if not isinstance(payload, dict):
+		return _google_reply(400, "Body must be a JSON object")
+	from excom.excom.intake.adapters.google_leads import find_source, handle
+
+	src = find_source(payload)
+	if not src:
+		return _google_reply(403, "Invalid key")
+	if not str(payload.get("lead_id") or "").strip():
+		return _google_reply(400, "lead_id missing")
+	handle(src, payload)
+	return _google_reply(200)

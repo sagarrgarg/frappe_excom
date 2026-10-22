@@ -1,0 +1,145 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 20:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "month",
+  "provider",
+  "brand",
+  "account",
+  "planned_spend",
+  "cb_1",
+  "target_leads",
+  "target_purchases",
+  "target_revenue",
+  "target_cpl",
+  "target_roas",
+  "notes",
+  "currency"
+ ],
+ "fields": [
+  {
+   "fieldname": "month",
+   "fieldtype": "Date",
+   "label": "Month",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Any date in the month; stored as the 1st.",
+   "idx": 1
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "label": "Network",
+   "options": "Meta\nGoogle\nLinkedIn",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "idx": 2
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "label": "Brand",
+   "options": "Ads Brand",
+   "in_list_view": 1,
+   "columns": 2,
+   "idx": 3
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "label": "Ad Account",
+   "options": "Ads Account",
+   "in_list_view": 1,
+   "columns": 2,
+   "idx": 4
+  },
+  {
+   "fieldname": "planned_spend",
+   "fieldtype": "Currency",
+   "label": "Planned Spend",
+   "options": "currency",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "idx": 5
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 6
+  },
+  {
+   "fieldname": "target_leads",
+   "fieldtype": "Float",
+   "label": "Target Leads",
+   "in_list_view": 1,
+   "columns": 1,
+   "idx": 7
+  },
+  {
+   "fieldname": "target_purchases",
+   "fieldtype": "Float",
+   "label": "Target Purchases",
+   "idx": 8
+  },
+  {
+   "fieldname": "target_revenue",
+   "fieldtype": "Currency",
+   "label": "Target Revenue",
+   "options": "currency",
+   "idx": 9
+  },
+  {
+   "fieldname": "target_cpl",
+   "fieldtype": "Currency",
+   "label": "Target CPL",
+   "options": "currency",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Filled from planned spend ÷ target leads when left empty (and the other way round).",
+   "idx": 10
+  },
+  {
+   "fieldname": "target_roas",
+   "fieldtype": "Float",
+   "label": "Target ROAS",
+   "precision": "2",
+   "description": "Filled from target revenue ÷ planned spend when left empty (and the other way round).",
+   "idx": 11
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes",
+   "idx": 12
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "hidden": 1,
+   "read_only": 1,
+   "idx": 13
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Budget Plan Line",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "istable": 1,
+ "editable_grid": 1
+}

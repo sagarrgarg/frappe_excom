@@ -1,0 +1,265 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:source_name",
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "source_name",
+  "provider",
+  "enabled",
+  "cb_1",
+  "company",
+  "workspace",
+  "fetch_schedule",
+  "lookback_months",
+  "sb_meta",
+  "meta_connection",
+  "business_id",
+  "sb_google",
+  "google_connection",
+  "customer_id",
+  "cb_google",
+  "billing_setup_id",
+  "sb_status",
+  "last_fetched_at",
+  "last_status",
+  "cb_2",
+  "last_documents",
+  "last_error"
+ ],
+ "fields": [
+  {
+   "fieldname": "source_name",
+   "fieldtype": "Data",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Source Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "idx": 2,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Platform",
+   "options": "Meta\nGoogle",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "idx": 3,
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 4
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "idx": 5,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "idx": 6,
+   "label": "Workspace",
+   "options": "Ads Workspace"
+  },
+  {
+   "default": "Daily",
+   "description": "Daily: every night (invoices can appear or change any day). Monthly: the first 7 days of each month. Manual: only from Fetch Now.",
+   "fieldname": "fetch_schedule",
+   "fieldtype": "Select",
+   "idx": 7,
+   "label": "Fetch",
+   "options": "Daily\nMonthly\nManual"
+  },
+  {
+   "default": "2",
+   "description": "Each fetch reads invoices issued in this many past months plus the current one. Re-reading is safe: an invoice is stored once.",
+   "fieldname": "lookback_months",
+   "fieldtype": "Int",
+   "idx": 8,
+   "label": "Months to look back",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.provider=='Meta'",
+   "fieldname": "sb_meta",
+   "fieldtype": "Section Break",
+   "idx": 9,
+   "label": "Meta"
+  },
+  {
+   "description": "Its system-user token must belong to the Business that is on Meta monthly invoicing (credit line) and have Finance access to it.",
+   "fieldname": "meta_connection",
+   "fieldtype": "Link",
+   "idx": 10,
+   "label": "Excom Meta Connection",
+   "mandatory_depends_on": "eval:doc.provider=='Meta'",
+   "options": "Excom Meta Connection"
+  },
+  {
+   "fetch_from": "meta_connection.business_id",
+   "fieldname": "business_id",
+   "fieldtype": "Data",
+   "idx": 11,
+   "label": "Business ID",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.provider=='Google'",
+   "fieldname": "sb_google",
+   "fieldtype": "Section Break",
+   "idx": 12,
+   "label": "Google Ads"
+  },
+  {
+   "fieldname": "google_connection",
+   "fieldtype": "Link",
+   "idx": 13,
+   "label": "Ads Connection",
+   "mandatory_depends_on": "eval:doc.provider=='Google'",
+   "options": "Ads Connection"
+  },
+  {
+   "description": "A serving (non-manager) account on monthly invoicing. With consolidated billing Google returns every account under the same billing setup.",
+   "fieldname": "customer_id",
+   "fieldtype": "Data",
+   "idx": 14,
+   "label": "Customer ID",
+   "mandatory_depends_on": "eval:doc.provider=='Google'"
+  },
+  {
+   "fieldname": "cb_google",
+   "fieldtype": "Column Break",
+   "idx": 15
+  },
+  {
+   "description": "Optional. Empty: every approved billing setup of the customer is read.",
+   "fieldname": "billing_setup_id",
+   "fieldtype": "Data",
+   "idx": 16,
+   "label": "Billing Setup ID"
+  },
+  {
+   "fieldname": "sb_status",
+   "fieldtype": "Section Break",
+   "idx": 17,
+   "label": "Last fetch"
+  },
+  {
+   "fieldname": "last_fetched_at",
+   "fieldtype": "Datetime",
+   "idx": 18,
+   "label": "Last Fetched",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_status",
+   "fieldtype": "Select",
+   "idx": 19,
+   "in_list_view": 1,
+   "label": "Last Status",
+   "no_copy": 1,
+   "options": "\nSuccess\nPartial\nFailed\nNot On Invoicing",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 20
+  },
+  {
+   "fieldname": "last_documents",
+   "fieldtype": "Int",
+   "idx": 21,
+   "label": "Invoices Read",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "idx": 22,
+   "label": "Last Error",
+   "no_copy": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Bill Source",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "write": 1
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "write": 0
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "export": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Marketing",
+   "write": 0
+  }
+ ],
+ "show_title_field_in_link": 1,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "source_name",
+ "track_changes": 1
+}

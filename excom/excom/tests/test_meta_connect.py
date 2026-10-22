@@ -18,6 +18,7 @@ def fake_get(url, params):
 	if url.endswith("/owned_whatsapp_business_accounts"): return WABAS
 	if url.endswith("/client_whatsapp_business_accounts"): return {"data": []}
 	if url.endswith("/444/phone_numbers"): return NUMBERS
+	if url.endswith("/me/adaccounts") or url.endswith("/owned_ad_accounts") or url.endswith("/client_ad_accounts"): return {"data": []}
 	if "/debug_token" in url: return {"data": {"is_valid": True, "scopes": ["pages_messaging", "leads_retrieval"]}}
 	raise AssertionError(f"unexpected GET {url}")
 

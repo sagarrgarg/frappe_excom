@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Plus, Sun, Inbox, KanbanSquare, Users, Radio, BarChart3, Building2, ChevronsUpDown,
   Shield, GitMerge, ListChecks, Cog, Settings, Rows3, LogOut, Bug, Sparkles, ArrowLeftRight, Keyboard, ListTodo, Phone,
-  CheckSquare,
+  CheckSquare, Megaphone,
 } from "lucide-react";
 import { hasRole } from "../../lib/ui-flag";
 import { cn } from "../ui/utils";
@@ -42,6 +42,7 @@ const RAIL_EXPLAIN: Record<string, string> = {
   "/contacts": "Everyone you have talked to, with their ERP record.",
   "/broadcasts": "Template sends to subscriber lists, with delivery logs.",
   "/analytics": "Response times, volumes, funnel.",
+  "/marketing": "Ads across Meta and Google: spend, results, campaigns, account health and alerts.",
 };
 
 export function Rail() {
@@ -76,6 +77,7 @@ export function Rail() {
     ...(voiceEnabled ? [{ to: "/calls", label: "Calls", icon: <Phone /> } as RailItem] : []),
     { to: "/broadcasts", label: "Broadcasts", icon: <Radio /> },
     { to: "/analytics", label: "Analytics", icon: <BarChart3 /> },
+    ...(hasRole("Excom Marketing") || isManager ? [{ to: "/marketing", label: "Marketing", icon: <Megaphone /> } as RailItem] : []),
   ];
 
   const inboxActive = location.pathname.startsWith("/inbox") || location.pathname.startsWith("/t/");

@@ -82,8 +82,8 @@ app_include_js = "/assets/excom/js/excom_navbar.js"
 # Installation
 # ------------
 
-after_install = "excom.setup.after_install"
-after_migrate = ["excom.setup.after_migrate"]
+after_install = ["excom.setup.after_install", "excom.excom_ads.setup.after_install"]
+after_migrate = ["excom.setup.after_migrate", "excom.excom_ads.setup.after_migrate"]
 
 boot_session = "excom.boot.boot_session"
 
@@ -126,6 +126,32 @@ permission_query_conditions = {
 	# services/crm_visibility.py; switch it off with Excom Settings > enforce_crm_visibility.
 	"Lead": "excom.excom.services.crm_visibility.lead_query_conditions",
 	"Opportunity": "excom.excom.services.crm_visibility.opportunity_query_conditions",
+	# Excom Ads: every ads record is scoped by company / workspace / brand / account (excom_ads/permissions.py).
+	"Ads Access Profile": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Account": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Ad Group": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Connection": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Advertisement": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Alert": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Attribution Touch": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Brand": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Campaign": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Metric Snapshot": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Notification Policy": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Sync Job": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Workspace": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Billing Snapshot": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Billing Record": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Budget Plan": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Bill Source": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Bill Account Map": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Bill Document": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads TDS Certificate Log": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Analytics Property": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Web Snapshot": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Metric Import": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Report Template": "excom.excom_ads.permissions.get_permission_query_conditions",
+	"Ads Report Delivery": "excom.excom_ads.permissions.get_permission_query_conditions",
 }
 
 has_permission = {
@@ -133,6 +159,31 @@ has_permission = {
 	"Excom Call": "excom.excom.doctype.excom_call.excom_call.has_permission",
 	"Lead": "excom.excom.services.crm_visibility.lead_has_permission",
 	"Opportunity": "excom.excom.services.crm_visibility.opportunity_has_permission",
+	"Ads Access Profile": "excom.excom_ads.permissions.has_permission",
+	"Ads Account": "excom.excom_ads.permissions.has_permission",
+	"Ads Ad Group": "excom.excom_ads.permissions.has_permission",
+	"Ads Connection": "excom.excom_ads.permissions.has_permission",
+	"Ads Advertisement": "excom.excom_ads.permissions.has_permission",
+	"Ads Alert": "excom.excom_ads.permissions.has_permission",
+	"Ads Attribution Touch": "excom.excom_ads.permissions.has_permission",
+	"Ads Brand": "excom.excom_ads.permissions.has_permission",
+	"Ads Campaign": "excom.excom_ads.permissions.has_permission",
+	"Ads Metric Snapshot": "excom.excom_ads.permissions.has_permission",
+	"Ads Notification Policy": "excom.excom_ads.permissions.has_permission",
+	"Ads Sync Job": "excom.excom_ads.permissions.has_permission",
+	"Ads Workspace": "excom.excom_ads.permissions.has_permission",
+	"Ads Billing Snapshot": "excom.excom_ads.permissions.has_permission",
+	"Ads Billing Record": "excom.excom_ads.permissions.has_permission",
+	"Ads Budget Plan": "excom.excom_ads.permissions.has_permission",
+	"Ads Bill Source": "excom.excom_ads.permissions.has_permission",
+	"Ads Bill Account Map": "excom.excom_ads.permissions.has_permission",
+	"Ads Bill Document": "excom.excom_ads.permissions.has_permission",
+	"Ads TDS Certificate Log": "excom.excom_ads.permissions.has_permission",
+	"Ads Analytics Property": "excom.excom_ads.permissions.has_permission",
+	"Ads Web Snapshot": "excom.excom_ads.permissions.has_permission",
+	"Ads Metric Import": "excom.excom_ads.permissions.has_permission",
+	"Ads Report Template": "excom.excom_ads.permissions.has_permission",
+	"Ads Report Delivery": "excom.excom_ads.permissions.has_permission",
 }
 
 # DocType Class
@@ -178,10 +229,25 @@ doc_events = {
 			"excom.excom.services.crm_flow.on_lead_created",
 		],
 		"on_update": "excom.excom.services.crm_flow.on_lead_updated",
+		# Ads attribution touches hold click IDs tied to the person: they go with the record.
+		"on_trash": "excom.excom_ads.attribution.on_reference_trash",
+		"after_delete": "excom.excom.services.identity_hooks.on_entity_deleted",
 	},
 	"Opportunity": {
 		"after_insert": "excom.excom.services.crm_flow.on_opportunity_created",
 		"on_update": "excom.excom.services.crm_flow.on_opportunity_updated",
+		"on_trash": "excom.excom_ads.attribution.on_reference_trash",
+		"after_delete": "excom.excom.services.identity_hooks.on_entity_deleted",
+	},
+	# A storefront order with UTM values / click IDs (webshop copies them) is an ads Order touch.
+	"Sales Order": {
+		"on_submit": "excom.excom_ads.attribution.on_sales_order_submit",
+		"on_trash": "excom.excom_ads.attribution.on_reference_trash",
+	},
+	# A Purchase Invoice drafted from an Ads Bill Document is submitted only through the ad bill
+	# approval (maker-checker) or the auto-submit rules. Inert for every other Purchase Invoice.
+	"Purchase Invoice": {
+		"before_submit": "excom.excom_ads.bills.before_purchase_invoice_submit",
 	},
 	"Prospect": {
 		"after_insert": "excom.excom.services.identity_hooks.on_entity_created",
@@ -236,6 +302,11 @@ scheduler_events = {
 		"excom.excom.tasks.crm_sla.check_crm_sla",
 		"excom.excom.utils.trigger_whatsapp_notifications_hourly",
 		"excom.excom.utils.trigger_whatsapp_notifications_hourly_long",
+		"excom.excom_ads.tasks.enqueue_structure",
+		"excom.excom_ads.tasks.enqueue_budget_checks",
+		# GA4: today + recent days (enqueue only); Data Stale alerts for sources that stopped syncing.
+		"excom.excom_ads.tasks.enqueue_analytics",
+		"excom.excom_ads.tasks.check_stale_data",
 	],
 	"daily": [
 		"excom.excom.services.whatsapp_service.sync_phone_profiles",
@@ -248,12 +319,26 @@ scheduler_events = {
 		"excom.excom.tasks.intake.purge_old_payloads",
 		"excom.excom.tasks.intake.reconcile_meta_leads",
 		"excom.excom.channels.voice.recording.purge_expired_recordings",
+		"excom.excom_ads.tasks.enqueue_settle",
+		"excom.excom_ads.connections.check_credentials",
+		"excom.excom_ads.tasks.enqueue_relink",
+		# Ad bills: fetch platform invoices (enqueue only), GSTR-2B match status, TDS certificate reminders.
+		"excom.excom_ads.bill_tasks.enqueue_bill_fetch",
+		"excom.excom_ads.bill_tasks.enqueue_bill_checks",
+		# GA4 settle re-pull / backfill resume; account vs campaign spend reconciliation (Spend Mismatch).
+		"excom.excom_ads.tasks.enqueue_analytics_settle",
+		"excom.excom_ads.tasks.enqueue_spend_checks",
 	],
 	"cron": {
-		"*/5 * * * *": ["excom.excom.tasks.intake.pull_due_sources"],
+		# Ads alert escalation: Open alerts past their policy's threshold (cheap no-op without escalation policies).
+		"*/5 * * * *": ["excom.excom.tasks.intake.pull_due_sources", "excom.excom_ads.escalation.enqueue_escalations"],
 		# Duration and cost land at the provider a minute or two after a call ends. Without this
 		# sweep, completed calls sit at duration = 0 forever.
 		"*/3 * * * *": ["excom.excom.channels.voice.reconcile.reconcile_pending_calls"],
+		# Ads: today's spend and results. Structure is hourly, the 28-day settle re-pull is daily.
+		"*/30 * * * *": ["excom.excom_ads.tasks.enqueue_intraday", "excom.excom_ads.tasks.wake_snoozed_alerts"],
+		# Ads: scheduled reports that are due (enqueue only, once per period).
+		"*/15 * * * *": ["excom.excom_ads.report_schedule.enqueue_due"],
 	},
 	"daily_maintenance": [
 		"excom.excom.scheduler.daily.sync_invalid_tokens",
@@ -261,6 +346,7 @@ scheduler_events = {
 	"weekly": [
 		"excom.excom.utils.trigger_whatsapp_notifications_weekly",
 		"excom.excom.utils.trigger_whatsapp_notifications_weekly_long",
+		"excom.excom_ads.tasks.purge_raw_payloads",
 	],
 	"monthly": [
 		"excom.excom.utils.trigger_whatsapp_notifications_monthly",

@@ -20,6 +20,8 @@ GUARDS = {
 	"_check_admin_access",
 	# Voice webhooks: verifies the provider's HMAC signature and returns the line it belongs to.
 	"_verified_account",
+	# Excom Ads: scope (company / workspace / brand / account) and per-user rights.
+	"require_access", "require", "_visible", "_require_connection", "_require_import",
 }
 # Public by design. Each line says why it is safe to leave open.
 ALLOWED = {
@@ -34,6 +36,7 @@ ALLOWED = {
 	"excom.excom.channels.whatsapp.api.webhook": "delegates to utils.webhook.webhook which verifies HMAC",
 	"excom.excom.channels.whatsapp.api.handle_flow_request": "delegates to api.flow_endpoint which verifies HMAC",
 	"excom.excom.utils.webhook.webhook": "dispatcher: GET verifies hub.verify_token, POST verifies X-Hub-Signature-256 in post()",
+	"excom.excom.api.intake.google_lead_form": "Google Ads lead form webhook: 403 unless the per-form google_key matches (constant time, adapters.google_leads.find_source) before anything is stored; rate limited",
 }
 
 

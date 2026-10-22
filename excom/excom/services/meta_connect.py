@@ -16,6 +16,7 @@ from frappe.utils import now_datetime
 GRAPH = "https://graph.facebook.com"
 PAGE_FIELDS = "id,name,category,access_token,instagram_business_account{id,username,name}"
 FORM_FIELDS = "id,name,status,leads_count,created_time"
+AD_ACCOUNT_FIELDS = "id,name,account_id,currency,timezone_name,account_status"
 
 
 def _conn(name):
@@ -30,7 +31,11 @@ def _token(conn) -> str:
 
 
 def _get(url: str, params: dict) -> dict:
-	resp = requests.get(url, params=params, timeout=30)
+	try:
+		resp = requests.get(url, params=params, timeout=30)
+	except requests.RequestException as e:
+		# requests quotes the full URL (access token included) in its message: keep only the type.
+		raise frappe.ValidationError(f"Graph: could not reach Meta ({type(e).__name__})") from None
 	data = resp.json() if resp.content else {}
 	if resp.status_code != 200:
 		err = (data.get("error") or {}).get("message") or resp.text[:300]
@@ -39,7 +44,11 @@ def _get(url: str, params: dict) -> dict:
 
 
 def _post(url: str, params: dict, payload: dict | None = None) -> dict:
-	resp = requests.post(url, params=params, json=payload or {}, timeout=30)
+	try:
+		resp = requests.post(url, params=params, json=payload or {}, timeout=30)
+	except requests.RequestException as e:
+		# requests quotes the full URL (access token included) in its message: keep only the type.
+		raise frappe.ValidationError(f"Graph: could not reach Meta ({type(e).__name__})") from None
 	data = resp.json() if resp.content else {}
 	if resp.status_code != 200:
 		err = (data.get("error") or {}).get("message") or resp.text[:300]
@@ -79,8 +88,29 @@ def debug_token(name: str) -> dict:
 	secret = conn.get_password("app_secret", raise_exception=False)
 	app_token = f"{conn.app_id}|{secret}" if conn.app_id and secret else tok
 	data = _get(f"{GRAPH}/{conn.api_version or 'v21.0'}/debug_token", {"input_token": tok, "access_token": app_token}).get("data") or {}
-	frappe.db.set_value("Excom Meta Connection", name, {"token_valid": 1 if data.get("is_valid") else 0, "token_scopes": ", ".join(data.get("scopes") or [])}, update_modified=False)
+	values = {"token_valid": 1 if data.get("is_valid") else 0, "token_scopes": ", ".join(data.get("scopes") or [])}
+	meta = frappe.get_meta("Excom Meta Connection")
+	if meta.has_field("token_expires_at"):
+		# Graph gives Unix seconds; 0 means the token never expires (system-user tokens).
+		values["token_expires_at"] = _from_epoch(data.get("expires_at"))
+		values["data_access_expires_at"] = _from_epoch(data.get("data_access_expires_at"))
+		values["token_checked_at"] = now_datetime()
+	frappe.db.set_value("Excom Meta Connection", name, values, update_modified=False)
 	return data
+
+
+def _from_epoch(value):
+	try:
+		seconds = int(value or 0)
+	except (TypeError, ValueError):
+		return None
+	if seconds <= 0:
+		return None
+	from datetime import datetime, timezone
+
+	from frappe.utils import convert_utc_to_system_timezone
+
+	return convert_utc_to_system_timezone(datetime.fromtimestamp(seconds, tz=timezone.utc).replace(tzinfo=None)).replace(tzinfo=None)
 
 
 # ─── discovery ────────────────────────────────────────────────────────────────
@@ -118,6 +148,19 @@ def discover(name: str) -> dict:
 						found.append({"asset_type": "WhatsApp Number", "asset_id": n["id"], "asset_name": f"{n.get('verified_name') or ''} {n.get('display_phone_number') or ''}".strip(), "page_id": waba["id"], "extra": {"waba_id": waba["id"], "waba_name": waba.get("name"), "quality": n.get("quality_rating")}})
 			except frappe.ValidationError:
 				pass
+	# Ad accounts (needs ads_read). Read by the Excom Ads module once enabled; nothing else uses them.
+	ad_accounts: dict = {}
+	edges = [f"{GRAPH}/{v}/me/adaccounts"]
+	if conn.business_id:
+		edges += [f"{GRAPH}/{v}/{conn.business_id}/owned_ad_accounts", f"{GRAPH}/{v}/{conn.business_id}/client_ad_accounts"]
+	for url in edges:
+		try:
+			for a in _paged(url, {"access_token": tok, "fields": AD_ACCOUNT_FIELDS, "limit": 100}):
+				ad_accounts.setdefault(a["id"], a)
+		except frappe.ValidationError:
+			pass  # token without ads_read, or no business_management for the business edges
+	for a in ad_accounts.values():
+		found.append({"asset_type": "Ad Account", "asset_id": a["id"], "asset_name": a.get("name") or a["id"], "page_id": None, "extra": {"currency": a.get("currency"), "timezone_name": a.get("timezone_name"), "account_status": a.get("account_status")}})
 	# Merge into the child table. Rows Meta did not return this time are KEPT (manually added numbers, assets the
 	# token cannot see yet) and flagged, never dropped — enabling/disabling is the only thing that changes state.
 	existing = {(a.asset_type, a.asset_id): a for a in conn.assets}
@@ -191,6 +234,10 @@ def enable_asset(name: str, asset_type: str, asset_id: str, enable: int = 1) -> 
 		if row.linked_doctype and row.linked_name and frappe.db.exists(row.linked_doctype, row.linked_name):
 			if row.linked_doctype == "Excom Channel Account":
 				frappe.db.set_value(row.linked_doctype, row.linked_name, "status", "Inactive")
+			elif row.linked_doctype == "Ads Account":
+				from excom.excom_ads.accounts import disable as disable_ad_account
+
+				disable_ad_account(row.linked_name)
 			else:
 				frappe.db.set_value(row.linked_doctype, row.linked_name, "enabled", 0)
 		row.enabled = 0
@@ -224,6 +271,11 @@ def enable_asset(name: str, asset_type: str, asset_id: str, enable: int = 1) -> 
 	elif asset_type == "WhatsApp Number":
 		linked_dt = "Excom Channel Account"
 		linked_name = _upsert_account(conn, "whatsapp", f"WhatsApp · {row.asset_name}", {"wa_phone_id": asset_id, "wa_business_id": extra.get("waba_id"), "wa_token": _token(conn), "wa_app_id": conn.app_id, "wa_app_secret": conn.get_password("app_secret", raise_exception=False) or "", "wa_webhook_verify_token": conn.webhook_verify_token, "wa_url": "https://graph.facebook.com", "wa_version": conn.api_version or "v21.0", "status": "Active"})
+	elif asset_type == "Ad Account":
+		from excom.excom_ads.accounts import upsert_meta_ad_account
+
+		linked_dt = "Ads Account"
+		linked_name = upsert_meta_ad_account(conn, row)
 	if int(enable or 0):
 		row.enabled = 1
 		row.linked_doctype = linked_dt

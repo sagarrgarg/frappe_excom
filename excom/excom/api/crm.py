@@ -226,6 +226,12 @@ def promote_thread(thread: str, customer_type: str = "") -> dict:
 	if existing:
 		return {"ref": existing[0], "created": False, "title": gw.get_title(existing[0])}
 	r = gw.promote_thread(thread, customer_type, by=frappe.session.user)
+	try:
+		# The conversation came from a click-to-WhatsApp ad: the new Lead carries that ad.
+		from excom.excom_ads.attribution import attach_thread_touches
+		attach_thread_touches(thread, r)
+	except Exception:
+		frappe.log_error(title=f"Excom: ad attribution on promote failed for {thread}", message=frappe.get_traceback())
 	crm_flow.post_system_message(identity, _("Promoted to {0} {1}").format(r.doctype, r.name))
 	return {"ref": r, "created": True, "title": gw.get_title(r)}
 

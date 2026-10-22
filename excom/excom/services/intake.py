@@ -27,7 +27,7 @@ from excom.excom.utils.phone import normalize_phone as _normalize_phone_util
 # given a template in the form and would silently never send it. The rule is now the obvious one:
 # a template that is set is a template that gets sent. Kept only for the SLA copy that names them.
 MARKETPLACE_TYPES = {"IndiaMART", "TradeIndia", "Meta Lead Ads"}
-CHANNEL_FOR_TYPE = {"Website": "Web Form", "IndiaMART": "Marketplace", "TradeIndia": "Marketplace", "Meta Lead Ads": "Facebook", "Exhibition": "Manual", "Manual": "Manual"}
+CHANNEL_FOR_TYPE = {"Website": "Web Form", "IndiaMART": "Marketplace", "TradeIndia": "Marketplace", "Meta Lead Ads": "Facebook", "Google Lead Form": "Web Form", "Exhibition": "Manual", "Manual": "Manual"}
 
 # Default vendor → gateway key maps, used when a source has no field_map rows.
 DEFAULT_MAPS = {
@@ -35,7 +35,15 @@ DEFAULT_MAPS = {
 	"TradeIndia": {"sender_name": "name", "sender_mobile": "phone", "sender_email": "email", "sender_co": "company_name", "sender_city": "city", "sender_state": "state", "sender_country": "country", "subject": "subject", "message": "message", "product_name": "product"},
 	"Website": {"name": "name", "email": "email", "phone": "phone", "message": "message", "company": "company_name", "city": "city", "country": "country"},
 	"Meta Lead Ads": {"full_name": "name", "email": "email", "phone_number": "phone", "company_name": "company_name", "city": "city", "country": "country"},
+	# Google Ads lead form webhook: user_column_data[].column_id (developers.google.com/google-ads/webhook/docs/implementation)
+	"Google Lead Form": {
+		"FULL_NAME": "name", "FIRST_NAME": "first_name", "LAST_NAME": "last_name", "EMAIL": "email", "WORK_EMAIL": "email",
+		"PHONE_NUMBER": "phone", "WORK_PHONE": "phone", "COMPANY_NAME": "company_name", "CITY": "city", "REGION": "state",
+		"COUNTRY": "country", "POSTAL_CODE": "postal_code", "JOB_TITLE": "job_title",
+	},
 }
+# Google column answers that are not lead fields still reach the lead, as lines of the enquiry note.
+GOOGLE_NOTE_KEYS = {"postal_code": "Postal code", "job_title": "Job title"}
 
 
 def record(source, dedupe_key: str, raw: dict, received_at=None) -> tuple[str, bool]:
@@ -135,8 +143,34 @@ def map_payload(source, raw: dict) -> dict:
 		for fd in raw["field_data"]:
 			k = fd.get("name")
 			v = (fd.get("values") or [None])[0]
+			# Meta's Lead Ads Testing Tool answers '<test lead: dummy data for …>': a placeholder, not a value
+			# (it would also be stripped to an empty name as HTML). The lead is flagged as a test lead instead.
+			if isinstance(v, str) and v.strip().lower().startswith("<test lead"):
+				continue
 			if k and v and k in mapping:
 				out[mapping[k][0]] = _transform(v, mapping[k][1] or "")
+	# Google lead forms: user_column_data is a list of {column_id, string_value, column_name}. A field map
+	# row may name the column_id or the column_name; unmapped answers (custom questions) go to the note.
+	if source.source_type == "Google Lead Form" and isinstance(raw.get("user_column_data"), list):
+		extra_lines = []
+		for col in raw["user_column_data"]:
+			if not isinstance(col, dict):
+				continue
+			cid, label, v = col.get("column_id") or "", col.get("column_name") or "", col.get("string_value")
+			if v in (None, ""):
+				continue
+			key = cid if cid in mapping else (label if label in mapping else None)
+			if key:
+				out[mapping[key][0]] = _transform(v, mapping[key][1] or "")
+			else:
+				extra_lines.append(f"{label or cid}: {v}")
+		if not out.get("name") and (out.get("first_name") or out.get("last_name")):
+			out["name"] = " ".join(filter(None, [out.get("first_name"), out.get("last_name")]))
+		for k, label in GOOGLE_NOTE_KEYS.items():
+			if out.get(k):
+				extra_lines.insert(0, f"{label}: {out[k]}")
+		if extra_lines:
+			out["message"] = "\n".join(filter(None, [out.get("message"), *extra_lines]))
 	if out.get("phone"):
 		out["phone"] = normalize_phone(out["phone"])
 	if out.get("country"):
@@ -145,6 +179,10 @@ def map_payload(source, raw: dict) -> dict:
 			out.pop("country")
 	if out.get("email"):
 		out["email"] = str(out["email"]).strip().lower()
+		# Platform test tools send placeholders ('<test lead: dummy data for email>'): an address the Lead
+		# would refuse must not fail the whole intake; the phone still identifies the person.
+		if not frappe.utils.validate_email_address(out["email"]):
+			out.pop("email")
 	return out
 
 
@@ -182,18 +220,28 @@ def process_log(log_name: str, force: bool = False) -> None:
 
 		enquiry = "\n".join(filter(None, [mapped.get("subject"), mapped.get("product"), mapped.get("message")]))
 		notes = "\n".join(filter(None, [f"Enquiry from {source.source_name}", enquiry, f"Page: {raw.get('page_url')}" if raw.get("page_url") else ""]))
-		utm = raw.get("utm") or {}
+		utm = raw.get("utm") if isinstance(raw.get("utm"), dict) else {}
+		ads = _ads_context(source, raw)
+		if ads and ads.get("is_test"):
+			notes = "Platform TEST lead (kept out of KPIs)\n" + notes
+		ads_medium = None
+		if ads and ads.get("touch_source") == "Lead Form":
+			from excom.excom_ads.attribution import MEDIUM
+			ads_medium = "organic" if ads.get("is_organic") else MEDIUM.get(ads.get("provider"))
 		payload = {
 			"name": mapped.get("name"), "email": mapped.get("email"), "phone": mapped.get("phone"), "company_name": mapped.get("company_name"),
 			"city": mapped.get("city"), "state": mapped.get("state"), "country": mapped.get("country"), "customer_type": mapped.get("customer_type") or "",
 			"company": source.company, "owner": source.default_lead_owner, "notes": notes,
-			"source": source.source_name, "campaign": utm.get("campaign") or mapped.get("campaign") or source.get("default_campaign"), "medium": utm.get("medium") or mapped.get("medium") or source.get("default_medium"),
+			"source": source.source_name,
+			"campaign": utm.get("campaign") or utm.get("utm_campaign") or mapped.get("campaign") or (ads or {}).get("utm_campaign") or (ads or {}).get("campaign_name") or source.get("default_campaign"),
+			"medium": utm.get("medium") or utm.get("utm_medium") or mapped.get("medium") or (ads or {}).get("utm_medium") or source.get("default_medium") or ads_medium,
 			"source_reference": log.dedupe_key, "intake_source": source.name, "first_touch_channel": CHANNEL_FOR_TYPE.get(source.source_type, "Manual"),
 		}
 		r, created = crm_flow.resolve_or_create_lead(identity_name, payload["first_touch_channel"], payload, ignore_permissions=True)
 		log.lead_doctype, log.lead = r.doctype, r.name
 		if created:
 			frappe.db.set_value(r.doctype, r.name, "intake_stage", "Deduped", update_modified=False)
+		_record_ads_touch(ads, log, source, r, identity_name)
 
 		# thread on the auto-ack channel account, so the reply lands in the inbox
 		thread = None
@@ -207,7 +255,8 @@ def process_log(log_name: str, force: bool = False) -> None:
 		# Acknowledge when there is a template to send, somewhere to send it from and somebody to send
 		# it to. A repeat enquiry is acknowledged only if the source asks for it, so a customer who
 		# writes in twice is not messaged twice by default.
-		if source.auto_ack_template and source.channel_account and mapped.get("phone"):
+		# A platform test lead carries sample contact details: never message them.
+		if source.auto_ack_template and source.channel_account and mapped.get("phone") and not (ads and ads.get("is_test")):
 			if created or source.get("auto_ack_repeat"):
 				frappe.enqueue("excom.excom.services.intake.send_auto_ack", queue="short", log_name=log.name, enqueue_after_commit=True)
 
@@ -224,6 +273,30 @@ def process_log(log_name: str, force: bool = False) -> None:
 		log.save(ignore_permissions=True)
 		frappe.db.commit()
 		frappe.log_error(title=f"Excom intake failed: {log.name}", message=log.error)
+
+
+def _ads_context(source, raw: dict) -> dict | None:
+	"""Which ad (form, ad, ad set, campaign, click IDs) this payload names. Never fails the intake."""
+	try:
+		from excom.excom_ads.attribution import intake_context
+		return intake_context(source, raw)
+	except Exception:
+		frappe.log_error(title="Excom intake: ad context failed", message=frappe.get_traceback())
+		return None
+
+
+def _record_ads_touch(ads, log, source, ref, identity) -> None:
+	"""Ads Attribution Touch for this log + the Lead's ad fields. In a savepoint: a failure here is logged,
+	the lead is still created, and the touch can be rebuilt from the raw log."""
+	if not ads:
+		return
+	frappe.db.savepoint("excom_ads_touch")
+	try:
+		from excom.excom_ads.attribution import on_intake
+		on_intake(ads, log, source, ref, identity)
+	except Exception:
+		frappe.db.rollback(save_point="excom_ads_touch")
+		frappe.log_error(title=f"Excom intake: ad attribution failed for {log.name}", message=frappe.get_traceback())
 
 
 def _ack_cooldown_passed(log, source) -> bool:

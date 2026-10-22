@@ -4,7 +4,8 @@ from frappe.model.document import Document
 
 # How each source type talks to Excom. Website: the site posts to our webhook (push). TradeIndia: we poll.
 # IndiaMART / Meta: we poll (authoritative) and accept their push as an accelerator. Manual/Exhibition: neither.
-MODE_BY_TYPE = {"Website": "Push", "TradeIndia": "Pull", "IndiaMART": "Both", "Meta Lead Ads": "Both", "Exhibition": "", "Manual": "", "Channel": ""}
+MODE_BY_TYPE = {"Website": "Push", "TradeIndia": "Pull", "IndiaMART": "Both", "Meta Lead Ads": "Both", "Google Lead Form": "Push", "Exhibition": "", "Manual": "", "Channel": ""}
+GOOGLE_WEBHOOK_PATH = "/api/method/excom.excom.api.intake.google_lead_form"
 
 
 class ExcomSource(Document):
@@ -23,6 +24,16 @@ class ExcomSource(Document):
 		self._clear_ack_when_it_cannot_apply()
 		if self.source_type == "TradeIndia" and self.enabled and not self.api_url:
 			frappe.msgprint(_("TradeIndia needs the 'My Inquiry API' URL before it can poll."), indicator="orange")
+		if self.source_type == "Google Lead Form":
+			self.google_webhook_url = frappe.utils.get_url(GOOGLE_WEBHOOK_PATH)
+			self.form_id = (self.form_id or "").strip()
+			typed = self.google_key or ""
+			# A newly typed key (a stored one reads back as asterisks) is the only secret guarding a public
+			# webhook: require something that cannot be guessed at 120 tries a minute.
+			if typed and set(typed) != {"*"} and len(typed.strip()) < 16:
+				frappe.throw(_("Use a key of at least 16 random characters; Google Ads accepts long keys."))
+			if self.enabled and not self.get_password("google_key", raise_exception=False):
+				frappe.msgprint(_("Set the Key: Google Ads sends it with every lead, and a lead without the right key is refused."), indicator="orange")
 		if self.source_type == "Website" and self.enabled and not self.get_password("push_token", raise_exception=False):
 			frappe.msgprint(_("Generate a push token (embed panel) — the website cannot post without it."), indicator="orange")
 		if self.auto_ack_template and not self.channel_account:

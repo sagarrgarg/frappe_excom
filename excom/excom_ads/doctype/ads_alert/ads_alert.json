@@ -1,0 +1,324 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "alert_type",
+  "severity",
+  "status",
+  "cb_1",
+  "reference_doctype",
+  "reference_name",
+  "company",
+  "workspace",
+  "brand",
+  "account",
+  "sb_detail",
+  "message",
+  "dedupe_key",
+  "occurrences",
+  "cb_2",
+  "first_seen",
+  "last_seen",
+  "notified_at",
+  "notified_severity",
+  "quiet_held",
+  "escalated",
+  "escalated_at",
+  "escalated_to",
+  "sb_life",
+  "acknowledged_by",
+  "acknowledged_at",
+  "snoozed_until",
+  "cb_3",
+  "resolved_by",
+  "resolved_at",
+  "resolution"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "alert_type",
+   "fieldtype": "Select",
+   "idx": 2,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Alert Type",
+   "options": "Sync Failed\nToken Problem\nPermission Missing\nRate Limited\nAccount Status\nData Stale\nSpend Mismatch\nLow Headroom\nOverspend\nAd Disapproved\nHigh-Value Lead\nLead SLA Missed\nBill Needs Review\nGSTIN Mismatch\nBill Missing\nTDS Certificate Due\nReport Delivery Failed\nOther",
+   "reqd": 1
+  },
+  {
+   "default": "Medium",
+   "fieldname": "severity",
+   "fieldtype": "Select",
+   "idx": 3,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Severity",
+   "options": "Info\nMedium\nHigh\nCritical",
+   "reqd": 1
+  },
+  {
+   "default": "Open",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "idx": 4,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Open\nAcknowledged\nSnoozed\nResolved"
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 5
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "idx": 6,
+   "label": "Reference Doctype",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "idx": 7,
+   "label": "Reference Name",
+   "options": "reference_doctype",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "idx": 8,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "idx": 9,
+   "label": "Workspace",
+   "options": "Ads Workspace",
+   "read_only": 1
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "idx": 10,
+   "label": "Brand",
+   "options": "Ads Brand",
+   "read_only": 1
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "idx": 11,
+   "in_standard_filter": 1,
+   "label": "Account",
+   "options": "Ads Account",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_detail",
+   "fieldtype": "Section Break",
+   "idx": 12,
+   "label": "Detail"
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "idx": 13,
+   "label": "Message",
+   "read_only": 1
+  },
+  {
+   "description": "One open alert per key; repeats count up instead of creating new alerts.",
+   "fieldname": "dedupe_key",
+   "fieldtype": "Data",
+   "idx": 14,
+   "label": "Dedupe Key",
+   "read_only": 1,
+   "search_index": 1,
+   "length": 255
+  },
+  {
+   "default": "1",
+   "fieldname": "occurrences",
+   "fieldtype": "Int",
+   "idx": 15,
+   "label": "Occurrences",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 16
+  },
+  {
+   "fieldname": "first_seen",
+   "fieldtype": "Datetime",
+   "idx": 17,
+   "label": "First Seen",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_seen",
+   "fieldtype": "Datetime",
+   "idx": 18,
+   "label": "Last Seen",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notified_at",
+   "fieldtype": "Datetime",
+   "idx": 19,
+   "label": "Notified At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notified_severity",
+   "fieldtype": "Data",
+   "idx": 20,
+   "label": "Notified Severity",
+   "read_only": 1
+  },
+  {
+   "description": "Notification policies that skipped this alert during their quiet hours; it is delivered to them once quiet hours end.",
+   "fieldname": "quiet_held",
+   "fieldtype": "Small Text",
+   "idx": 21,
+   "label": "Held For Quiet Hours",
+   "read_only": 1
+  },
+  {
+   "fieldname": "escalated",
+   "fieldtype": "Check",
+   "label": "Escalated",
+   "read_only": 1,
+   "default": "0",
+   "in_standard_filter": 1,
+   "idx": 22
+  },
+  {
+   "fieldname": "escalated_at",
+   "fieldtype": "Datetime",
+   "label": "Escalated At",
+   "read_only": 1,
+   "idx": 23
+  },
+  {
+   "fieldname": "escalated_to",
+   "fieldtype": "Small Text",
+   "label": "Escalated To",
+   "read_only": 1,
+   "idx": 24
+  },
+  {
+   "fieldname": "sb_life",
+   "fieldtype": "Section Break",
+   "idx": 25,
+   "label": "Lifecycle"
+  },
+  {
+   "fieldname": "acknowledged_by",
+   "fieldtype": "Link",
+   "idx": 26,
+   "label": "Acknowledged By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "acknowledged_at",
+   "fieldtype": "Datetime",
+   "idx": 27,
+   "label": "Acknowledged At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "snoozed_until",
+   "fieldtype": "Datetime",
+   "idx": 28,
+   "label": "Snoozed Until"
+  },
+  {
+   "fieldname": "cb_3",
+   "fieldtype": "Column Break",
+   "idx": 29
+  },
+  {
+   "description": "A user, or 'system' when the condition cleared itself.",
+   "fieldname": "resolved_by",
+   "fieldtype": "Data",
+   "idx": 30,
+   "label": "Resolved By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "resolved_at",
+   "fieldtype": "Datetime",
+   "idx": 31,
+   "label": "Resolved At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "resolution",
+   "fieldtype": "Small Text",
+   "idx": 32,
+   "label": "Resolution"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 23:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Alert",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "delete": 0,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Excom Marketing",
+   "write": 1
+  }
+ ],
+ "show_title_field_in_link": 1,
+ "sort_field": "last_seen",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title",
+ "track_changes": 1
+}

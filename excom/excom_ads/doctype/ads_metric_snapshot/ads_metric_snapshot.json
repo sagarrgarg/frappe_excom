@@ -1,0 +1,346 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "date",
+  "level",
+  "account",
+  "campaign",
+  "ad_group",
+  "advertisement",
+  "entity_external_id",
+  "cb_1",
+  "workspace",
+  "company",
+  "brand",
+  "provider",
+  "breakdown_key",
+  "breakdown_value",
+  "attribution_key",
+  "sb_metrics",
+  "currency",
+  "spend",
+  "impressions",
+  "reach",
+  "clicks",
+  "link_clicks",
+  "cb_2",
+  "leads",
+  "purchases",
+  "purchase_value",
+  "messaging_conversations",
+  "cb_3",
+  "company_currency",
+  "exchange_rate",
+  "spend_company_currency",
+  "sb_raw",
+  "metrics_json",
+  "synced_at",
+  "source_window"
+ ],
+ "fields": [
+  {
+   "description": "In the ad account's own time zone.",
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "idx": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Date",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "level",
+   "fieldtype": "Select",
+   "idx": 2,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Level",
+   "options": "Account\nCampaign\nAd Group\nAd",
+   "reqd": 1
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "idx": 3,
+   "in_standard_filter": 1,
+   "label": "Account",
+   "options": "Ads Account",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "campaign",
+   "fieldtype": "Link",
+   "idx": 4,
+   "in_standard_filter": 1,
+   "label": "Campaign",
+   "options": "Ads Campaign",
+   "search_index": 1
+  },
+  {
+   "fieldname": "ad_group",
+   "fieldtype": "Link",
+   "idx": 5,
+   "label": "Ad Group",
+   "options": "Ads Ad Group"
+  },
+  {
+   "fieldname": "advertisement",
+   "fieldtype": "Link",
+   "idx": 6,
+   "label": "Advertisement",
+   "options": "Ads Advertisement"
+  },
+  {
+   "fieldname": "entity_external_id",
+   "fieldtype": "Data",
+   "idx": 7,
+   "label": "Platform Entity ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 8
+  },
+  {
+   "fetch_from": "account.workspace",
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "idx": 9,
+   "in_standard_filter": 1,
+   "label": "Workspace",
+   "options": "Ads Workspace",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "account.company",
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "idx": 10,
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "account.brand",
+   "fetch_if_empty": 1,
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "idx": 11,
+   "in_standard_filter": 1,
+   "label": "Brand",
+   "options": "Ads Brand",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "account.provider",
+   "fieldname": "provider",
+   "fieldtype": "Data",
+   "idx": 12,
+   "label": "Provider",
+   "read_only": 1
+  },
+  {
+   "default": "none",
+   "fieldname": "breakdown_key",
+   "fieldtype": "Data",
+   "idx": 13,
+   "label": "Breakdown Key",
+   "read_only": 1
+  },
+  {
+   "fieldname": "breakdown_value",
+   "fieldtype": "Data",
+   "idx": 14,
+   "label": "Breakdown Value",
+   "read_only": 1
+  },
+  {
+   "default": "default",
+   "description": "Platform default attribution unless stated. Never sum rows with different keys.",
+   "fieldname": "attribution_key",
+   "fieldtype": "Data",
+   "idx": 15,
+   "label": "Attribution Key",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_metrics",
+   "fieldtype": "Section Break",
+   "idx": 16,
+   "label": "Platform-reported metrics"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "idx": 17,
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "spend",
+   "fieldtype": "Currency",
+   "idx": 18,
+   "in_list_view": 1,
+   "label": "Spend",
+   "options": "currency"
+  },
+  {
+   "fieldname": "impressions",
+   "fieldtype": "Int",
+   "idx": 19,
+   "label": "Impressions"
+  },
+  {
+   "fieldname": "reach",
+   "fieldtype": "Int",
+   "idx": 20,
+   "label": "Reach"
+  },
+  {
+   "fieldname": "clicks",
+   "fieldtype": "Int",
+   "idx": 21,
+   "label": "Clicks"
+  },
+  {
+   "fieldname": "link_clicks",
+   "fieldtype": "Int",
+   "idx": 22,
+   "label": "Link Clicks"
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 23
+  },
+  {
+   "fieldname": "leads",
+   "fieldtype": "Float",
+   "idx": 24,
+   "label": "Leads",
+   "precision": "2"
+  },
+  {
+   "fieldname": "purchases",
+   "fieldtype": "Float",
+   "idx": 25,
+   "label": "Purchases",
+   "precision": "2"
+  },
+  {
+   "fieldname": "purchase_value",
+   "fieldtype": "Currency",
+   "idx": 26,
+   "label": "Purchase Value (platform)",
+   "options": "currency"
+  },
+  {
+   "fieldname": "messaging_conversations",
+   "fieldtype": "Float",
+   "idx": 27,
+   "label": "Messaging Conversations Started",
+   "precision": "2"
+  },
+  {
+   "fieldname": "cb_3",
+   "fieldtype": "Column Break",
+   "idx": 28
+  },
+  {
+   "fieldname": "company_currency",
+   "fieldtype": "Link",
+   "idx": 29,
+   "label": "Company Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "exchange_rate",
+   "fieldtype": "Float",
+   "idx": 30,
+   "label": "Exchange Rate",
+   "precision": "9",
+   "read_only": 1
+  },
+  {
+   "fieldname": "spend_company_currency",
+   "fieldtype": "Currency",
+   "idx": 31,
+   "label": "Spend (Company Currency)",
+   "options": "company_currency"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sb_raw",
+   "fieldtype": "Section Break",
+   "idx": 32,
+   "label": "Raw"
+  },
+  {
+   "fieldname": "metrics_json",
+   "fieldtype": "Code",
+   "idx": 33,
+   "label": "All Metrics",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "synced_at",
+   "fieldtype": "Datetime",
+   "idx": 34,
+   "label": "Synced At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "source_window",
+   "fieldtype": "Data",
+   "idx": 35,
+   "label": "Source Window",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Metric Snapshot",
+ "naming_rule": "By script",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  },
+  {
+   "delete": 0,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin"
+  },
+  {
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Marketing"
+  }
+ ],
+ "sort_field": "date",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

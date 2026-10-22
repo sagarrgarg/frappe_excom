@@ -1,0 +1,255 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 22:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "template",
+  "period_key",
+  "period_from",
+  "period_to",
+  "channel",
+  "status",
+  "cb_1",
+  "recipient_user",
+  "recipient_email",
+  "rendered_as",
+  "company",
+  "workspace",
+  "brand",
+  "sb_result",
+  "sent_at",
+  "size_bytes",
+  "attachments",
+  "data_note",
+  "cb_2",
+  "email_queue",
+  "whatsapp_message_id",
+  "triggered_by",
+  "attempts",
+  "error"
+ ],
+ "fields": [
+  {
+   "fieldname": "template",
+   "fieldtype": "Link",
+   "label": "Report",
+   "options": "Ads Report Template",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "idx": 1
+  },
+  {
+   "fieldname": "period_key",
+   "fieldtype": "Data",
+   "label": "Period Key",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "description": "One delivery per report, period, recipient and channel: a retry never sends twice.",
+   "idx": 2
+  },
+  {
+   "fieldname": "period_from",
+   "fieldtype": "Date",
+   "label": "Period From",
+   "read_only": 1,
+   "idx": 3
+  },
+  {
+   "fieldname": "period_to",
+   "fieldtype": "Date",
+   "label": "Period To",
+   "read_only": 1,
+   "idx": 4
+  },
+  {
+   "fieldname": "channel",
+   "fieldtype": "Select",
+   "label": "Channel",
+   "options": "Email\nWhatsApp",
+   "read_only": 1,
+   "in_list_view": 1,
+   "idx": 5
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Sending\nSent\nFailed\nSkipped",
+   "default": "Sending",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "idx": 6
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 7
+  },
+  {
+   "fieldname": "recipient_user",
+   "fieldtype": "Link",
+   "label": "Recipient User",
+   "options": "User",
+   "read_only": 1,
+   "in_list_view": 1,
+   "idx": 8
+  },
+  {
+   "fieldname": "recipient_email",
+   "fieldtype": "Data",
+   "label": "Recipient Address",
+   "read_only": 1,
+   "idx": 9
+  },
+  {
+   "fieldname": "rendered_as",
+   "fieldtype": "Link",
+   "label": "Rendered In Scope Of",
+   "options": "User",
+   "read_only": 1,
+   "idx": 10
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1,
+   "fetch_from": "template.company",
+   "idx": 11
+  },
+  {
+   "fieldname": "workspace",
+   "fieldtype": "Link",
+   "label": "Workspace",
+   "options": "Ads Workspace",
+   "read_only": 1,
+   "fetch_from": "template.workspace",
+   "idx": 12
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "label": "Brand",
+   "options": "Ads Brand",
+   "read_only": 1,
+   "fetch_from": "template.brand",
+   "idx": 13
+  },
+  {
+   "fieldname": "sb_result",
+   "fieldtype": "Section Break",
+   "label": "Result",
+   "idx": 14
+  },
+  {
+   "fieldname": "sent_at",
+   "fieldtype": "Datetime",
+   "label": "Sent At",
+   "read_only": 1,
+   "idx": 15
+  },
+  {
+   "fieldname": "size_bytes",
+   "fieldtype": "Int",
+   "label": "Size (bytes)",
+   "read_only": 1,
+   "idx": 16
+  },
+  {
+   "fieldname": "attachments",
+   "fieldtype": "Small Text",
+   "label": "Attachments",
+   "read_only": 1,
+   "idx": 17
+  },
+  {
+   "fieldname": "data_note",
+   "fieldtype": "Small Text",
+   "label": "Data Freshness",
+   "read_only": 1,
+   "idx": 18
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break",
+   "idx": 19
+  },
+  {
+   "fieldname": "email_queue",
+   "fieldtype": "Data",
+   "label": "Email Queue",
+   "read_only": 1,
+   "idx": 20
+  },
+  {
+   "fieldname": "whatsapp_message_id",
+   "fieldtype": "Data",
+   "label": "WhatsApp Message ID",
+   "read_only": 1,
+   "idx": 21
+  },
+  {
+   "fieldname": "triggered_by",
+   "fieldtype": "Data",
+   "label": "Triggered By",
+   "read_only": 1,
+   "idx": 22
+  },
+  {
+   "fieldname": "attempts",
+   "fieldtype": "Int",
+   "label": "Attempts",
+   "read_only": 1,
+   "default": "0",
+   "idx": 23
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Error",
+   "read_only": 1,
+   "idx": 24
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-18 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Report Delivery",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "Excom Admin",
+   "read": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "Excom Marketing",
+   "read": 1,
+   "report": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "naming_rule": "By script",
+ "title_field": "template",
+ "in_create": 1,
+ "description": "One row per report, period, recipient and channel. Holds no figures."
+}

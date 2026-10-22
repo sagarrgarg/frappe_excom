@@ -1,0 +1,374 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-18 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "meta_api_version",
+  "cb_1",
+  "settle_days",
+  "today_lookback_days",
+  "backfill_days",
+  "sb_levels",
+  "sync_ad_level_metrics",
+  "max_pages_per_call",
+  "sb_alerts",
+  "alert_whatsapp_template",
+  "sb_leads",
+  "ctwa_create_lead",
+  "sb_billing",
+  "low_headroom_days",
+  "cap_exhaustion_alerts",
+  "cb_billing",
+  "billing_stale_hours",
+  "overspend_threshold_pct",
+  "sb_bills",
+  "bills_auto_submit",
+  "bill_service_item",
+  "bill_naming_series",
+  "bill_return_naming_series",
+  "cb_bills",
+  "gstr2b_missing_after_days",
+  "tds_certificate_alert_days",
+  "sb_ga4",
+  "ga4_lookback_days",
+  "ga4_settle_days",
+  "cb_ga4",
+  "ga4_backfill_days",
+  "ga4_stale_hours",
+  "sb_quality",
+  "spend_mismatch_pct",
+  "spend_mismatch_min_amount",
+  "cb_quality",
+  "data_stale_hours",
+  "sb_reports",
+  "report_whatsapp_template"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "description": "Master switch for every scheduled ads job on this site.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "idx": 1,
+   "label": "Enable Ads Sync"
+  },
+  {
+   "default": "v26.0",
+   "description": "Used for ads calls. Excom Meta Connection keeps its own version for messaging.",
+   "fieldname": "meta_api_version",
+   "fieldtype": "Data",
+   "idx": 2,
+   "label": "Meta Marketing API Version"
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break",
+   "idx": 3
+  },
+  {
+   "default": "28",
+   "description": "Meta finalises results for 28 days, so the daily job re-pulls this many days.",
+   "fieldname": "settle_days",
+   "fieldtype": "Int",
+   "idx": 4,
+   "label": "Settle Window (days)"
+  },
+  {
+   "default": "2",
+   "description": "The 30-minute job refreshes today and this many days before it.",
+   "fieldname": "today_lookback_days",
+   "fieldtype": "Int",
+   "idx": 5,
+   "label": "Intraday Lookback (days)"
+  },
+  {
+   "default": "90",
+   "fieldname": "backfill_days",
+   "fieldtype": "Int",
+   "idx": 6,
+   "label": "Backfill on First Sync (days)"
+  },
+  {
+   "fieldname": "sb_levels",
+   "fieldtype": "Section Break",
+   "idx": 7,
+   "label": "What to sync"
+  },
+  {
+   "default": "1",
+   "fieldname": "sync_ad_level_metrics",
+   "fieldtype": "Check",
+   "idx": 8,
+   "label": "Daily Metrics at Ad Level"
+  },
+  {
+   "default": "200",
+   "description": "Safety cap on paging for one list call.",
+   "fieldname": "max_pages_per_call",
+   "fieldtype": "Int",
+   "idx": 9,
+   "label": "Max Pages per Graph Call"
+  },
+  {
+   "fieldname": "sb_alerts",
+   "fieldtype": "Section Break",
+   "idx": 10,
+   "label": "Alerts"
+  },
+  {
+   "description": "Approved template with three body variables: severity, title, detail. Empty = no WhatsApp alerts.",
+   "fieldname": "alert_whatsapp_template",
+   "fieldtype": "Link",
+   "idx": 11,
+   "label": "Alert WhatsApp Template",
+   "options": "WhatsApp Templates"
+  },
+  {
+   "fieldname": "sb_leads",
+   "fieldtype": "Section Break",
+   "label": "Leads",
+   "idx": 12
+  },
+  {
+   "default": "1",
+   "fieldname": "ctwa_create_lead",
+   "fieldtype": "Check",
+   "label": "Create a lead for every click-to-WhatsApp ad conversation",
+   "description": "A chat that starts from a click-to-WhatsApp ad becomes a Lead (source Click to WhatsApp) linked to the ad. Off: the referral is still stored on the conversation and attached when an agent promotes it.",
+   "idx": 13
+  },
+  {
+   "fieldname": "sb_billing",
+   "fieldtype": "Section Break",
+   "label": "Billing and budgets",
+   "idx": 14
+  },
+  {
+   "default": "3",
+   "description": "Low Headroom alert when the account's spend cap (or Google account budget), or the prepaid balance estimated from our top-up ledger, lasts fewer days than this at the last 7 days' average spend.",
+   "fieldname": "low_headroom_days",
+   "fieldtype": "Int",
+   "label": "Low headroom below (days)",
+   "non_negative": 1,
+   "idx": 15
+  },
+  {
+   "default": "1",
+   "description": "Also alert when the cap is projected to run out before the end of the month.",
+   "fieldname": "cap_exhaustion_alerts",
+   "fieldtype": "Check",
+   "label": "Alert on cap exhaustion before month end",
+   "idx": 16
+  },
+  {
+   "fieldname": "cb_billing",
+   "fieldtype": "Column Break",
+   "idx": 17
+  },
+  {
+   "default": "6",
+   "description": "A billing reading older than this is shown as Stale.",
+   "fieldname": "billing_stale_hours",
+   "fieldtype": "Int",
+   "label": "Billing reading is stale after (hours)",
+   "non_negative": 1,
+   "idx": 18
+  },
+  {
+   "default": "15",
+   "description": "Overspend alert when month-to-date spend is more than this percentage above the approved budget plan prorated to today.",
+   "fieldname": "overspend_threshold_pct",
+   "fieldtype": "Int",
+   "label": "Overspend above prorated plan (%)",
+   "non_negative": 1,
+   "idx": 19
+  },
+  {
+   "fieldname": "sb_bills",
+   "fieldtype": "Section Break",
+   "label": "Ad bills (Purchase Invoices)",
+   "idx": 20
+  },
+  {
+   "default": "0",
+   "description": "Off (default): every ad bill waits as a draft Purchase Invoice for a second person to approve. On: a bill read from the platform's invoice API is submitted automatically, but only when supplier and company GSTIN match the account map, the GST split matches the invoice to the rupee, TDS is set and the bill number is new.",
+   "fieldname": "bills_auto_submit",
+   "fieldtype": "Check",
+   "label": "Submit clean API bills automatically",
+   "idx": 21
+  },
+  {
+   "description": "Non-stock service item (SAC 998365) used when an account map names none.",
+   "fieldname": "bill_service_item",
+   "fieldtype": "Link",
+   "label": "Bill Service Item",
+   "options": "Item",
+   "idx": 22
+  },
+  {
+   "default": "ADB-.YY.-.#####",
+   "description": "Purchase Invoice naming series for ad bills. Must produce names of 16 characters or fewer (GST document number rule for reverse-charge self invoices).",
+   "fieldname": "bill_naming_series",
+   "fieldtype": "Data",
+   "label": "Bill Naming Series",
+   "idx": 23
+  },
+  {
+   "default": "ADR-.YY.-.#####",
+   "description": "Naming series for debit notes made from platform credit memos (16 characters or fewer).",
+   "fieldname": "bill_return_naming_series",
+   "fieldtype": "Data",
+   "label": "Debit Note Naming Series",
+   "idx": 24
+  },
+  {
+   "fieldname": "cb_bills",
+   "fieldtype": "Column Break",
+   "idx": 25
+  },
+  {
+   "default": "45",
+   "description": "A domestic platform Purchase Invoice older than this that GSTR-2B (as imported by India Compliance) does not show raises a Bill Missing alert.",
+   "fieldname": "gstr2b_missing_after_days",
+   "fieldtype": "Int",
+   "label": "Flag bills missing from GSTR-2B after (days)",
+   "non_negative": 1,
+   "idx": 26
+  },
+  {
+   "default": "15",
+   "description": "TDS Certificate Due alert this many days before the platform's deadline.",
+   "fieldname": "tds_certificate_alert_days",
+   "fieldtype": "Int",
+   "label": "TDS certificate reminder (days before)",
+   "non_negative": 1,
+   "idx": 27
+  },
+  {
+   "fieldname": "sb_ga4",
+   "fieldtype": "Section Break",
+   "label": "Website Analytics (GA4)",
+   "idx": 28
+  },
+  {
+   "fieldname": "ga4_lookback_days",
+   "fieldtype": "Int",
+   "label": "Hourly re-pull (days)",
+   "default": "2",
+   "non_negative": 1,
+   "description": "Each hourly GA4 sync re-reads today and this many days before it. GA4 processes a day's data in about 12 hours.",
+   "idx": 29
+  },
+  {
+   "fieldname": "ga4_settle_days",
+   "fieldtype": "Int",
+   "label": "Settle re-pull (days)",
+   "default": "14",
+   "non_negative": 1,
+   "description": "Daily re-read of the trailing days: GA4 data can change for 24-48 hours and key-event attribution for up to 12 days.",
+   "idx": 30
+  },
+  {
+   "fieldname": "cb_ga4",
+   "fieldtype": "Column Break",
+   "idx": 31
+  },
+  {
+   "fieldname": "ga4_backfill_days",
+   "fieldtype": "Int",
+   "label": "First backfill (days)",
+   "default": "480",
+   "non_negative": 1,
+   "description": "History read when a property is enabled (about 16 months). Bounds quota use; GA4's data-retention setting does not limit aggregated reports.",
+   "idx": 32
+  },
+  {
+   "fieldname": "ga4_stale_hours",
+   "fieldtype": "Int",
+   "label": "GA4 stale after (hours)",
+   "default": "36",
+   "non_negative": 1,
+   "idx": 33
+  },
+  {
+   "fieldname": "sb_quality",
+   "fieldtype": "Section Break",
+   "label": "Data Quality",
+   "idx": 34
+  },
+  {
+   "fieldname": "spend_mismatch_pct",
+   "fieldtype": "Float",
+   "label": "Spend mismatch threshold (%)",
+   "default": "0.5",
+   "non_negative": 1,
+   "description": "A day whose account-level spend differs from the sum of its campaigns by more than this raises a Spend Mismatch alert.",
+   "idx": 35
+  },
+  {
+   "fieldname": "spend_mismatch_min_amount",
+   "fieldtype": "Int",
+   "label": "Ignore gaps below (account currency)",
+   "default": "1",
+   "non_negative": 1,
+   "idx": 36
+  },
+  {
+   "fieldname": "cb_quality",
+   "fieldtype": "Column Break",
+   "idx": 37
+  },
+  {
+   "fieldname": "data_stale_hours",
+   "fieldtype": "Int",
+   "label": "Ad data stale after (hours)",
+   "default": "6",
+   "non_negative": 1,
+   "description": "An enabled connected account whose last metrics sync is older raises a Data Stale alert.",
+   "idx": 38
+  },
+  {
+   "fieldname": "sb_reports",
+   "fieldtype": "Section Break",
+   "label": "Reports",
+   "idx": 39
+  },
+  {
+   "fieldname": "report_whatsapp_template",
+   "fieldtype": "Link",
+   "label": "Report WhatsApp Template",
+   "options": "WhatsApp Templates",
+   "description": "Approved template for scheduled reports on WhatsApp. Body variables: report name, period, summary. A DOCUMENT header carries the Excel file. Empty: reports go by email only.",
+   "idx": 40
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-18 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom Ads",
+ "name": "Ads Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Excom Admin",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
