@@ -1,0 +1,128 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-04 12:00:00.000000",
+ "description": "A WhatsApp QR code / short link (wa.me/message/…) of one number, mirrored from Meta. Creating, editing or deleting one here changes it on Meta.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "channel_account",
+  "prefilled_message",
+  "image_format",
+  "column_break_1",
+  "code",
+  "deep_link_url",
+  "qr_image_url",
+  "qr_image",
+  "last_synced_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "channel_account",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "WhatsApp Number",
+   "options": "Excom Channel Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "prefilled_message",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Prefilled Message",
+   "reqd": 1,
+   "description": "What the person's WhatsApp types for them when they scan or tap. At most 140 characters."
+  },
+  {
+   "fieldname": "image_format",
+   "fieldtype": "Select",
+   "label": "Image Format",
+   "options": "PNG\nSVG",
+   "default": "PNG",
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Code",
+   "read_only": 1,
+   "unique": 1,
+   "description": "Meta's code. Codes never expire; a deleted one shows \"This QR code has expired\"."
+  },
+  {
+   "fieldname": "deep_link_url",
+   "fieldtype": "Data",
+   "label": "Short Link",
+   "options": "URL",
+   "read_only": 1
+  },
+  {
+   "fieldname": "qr_image_url",
+   "fieldtype": "Small Text",
+   "label": "Meta Image Link",
+   "read_only": 1
+  },
+  {
+   "fieldname": "qr_image",
+   "fieldtype": "Attach Image",
+   "label": "QR Image",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_synced_on",
+   "fieldtype": "Datetime",
+   "label": "Last Synced On",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 0,
+ "istable": 0,
+ "is_submittable": 0,
+ "links": [],
+ "modified": "2026-11-04 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom",
+ "name": "Excom WhatsApp QR Code",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Excom Agent"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "prefilled_message",
+ "track_changes": 1
+}

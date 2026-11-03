@@ -46,6 +46,14 @@
   "catalog_brand",
   "catalog_origin_country",
   "catalog_nightly_sync",
+  "wa_number_section",
+  "wa_two_step_pin",
+  "wa_data_localization_region",
+  "wa_welcome_message",
+  "column_break_wa_number",
+  "wa_registration_log",
+  "wa_number_webhook_url",
+  "wa_waba_webhook_url",
   "email_section",
   "email_address",
   "email_connected_app",
@@ -392,6 +400,66 @@
    "default": "0",
    "depends_on": "eval:doc.channel=='whatsapp'",
    "description": "Every night, push all current prices of the Catalogue Price List to Meta."
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_number_section",
+   "fieldtype": "Section Break",
+   "label": "WhatsApp Number Settings",
+   "collapsible": 1,
+   "description": "Business profile, blocked users, QR codes, ice breakers and commands, registration, webhook and commerce settings are managed in Admin → WhatsApp number."
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_two_step_pin",
+   "fieldtype": "Password",
+   "label": "Two-step Verification PIN",
+   "length": 6,
+   "read_only": 1,
+   "description": "Set from Admin → WhatsApp number → Registration, which also sets it on Meta. Meta is phasing out the PIN check at registration from 2026-09-23 (gradually); keep a PIN until Meta announces the API change."
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_data_localization_region",
+   "fieldtype": "Select",
+   "label": "Data Localisation Region",
+   "options": "\nAU\nID\nIN\nJP\nSG\nKR\nDE\nCH\nGB\nBR\nBH\nZA\nAE\nCA",
+   "description": "Optional. Sent with Register so message data at rest stays in that country. Changing it needs deregister, then register again."
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_welcome_message",
+   "fieldtype": "Select",
+   "label": "Welcome Message Events",
+   "options": "\nOn\nOff",
+   "description": "Sent to Meta as enable_welcome_message with the ice breakers, only when set. It is no longer in Meta's documentation: Meta may ignore it, and excom leaves it out if Meta refuses it."
+  },
+  {
+   "fieldname": "column_break_wa_number",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_registration_log",
+   "fieldtype": "Code",
+   "label": "Register / Deregister Attempts",
+   "options": "JSON",
+   "read_only": 1,
+   "description": "Meta allows 10 register / deregister requests per number in 72 hours; the next one blocks the number for 72 hours (error 133016)."
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_number_webhook_url",
+   "fieldtype": "Data",
+   "label": "Webhook Override (number)",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_waba_webhook_url",
+   "fieldtype": "Data",
+   "label": "Webhook Override (WhatsApp account)",
+   "read_only": 1
   },
   {
    "depends_on": "eval:doc.channel=='email'",
@@ -802,7 +870,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-04 10:00:00.000000",
+ "modified": "2026-11-04 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Channel Account",

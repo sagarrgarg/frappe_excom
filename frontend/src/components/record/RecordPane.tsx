@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useFrappePostCall } from "frappe-react-sdk";
+import { useFrappeGetCall } from "@/lib/api";
 import { toast } from "sonner";
-import { MessageSquare, ListTodo, StickyNote, History, Lock, ArrowRightLeft, Tag, Sparkles, ExternalLink, AlertOctagon, Archive, ArchiveRestore, Trash2, Copy, Eye, EyeOff, UserPlus, PanelRight, Loader2 } from "lucide-react";
+import { MessageSquare, ListTodo, StickyNote, History, Lock, ArrowRightLeft, Tag, Sparkles, ExternalLink, AlertOctagon, Archive, ArchiveRestore, Trash2, Copy, Eye, EyeOff, UserPlus, PanelRight, Loader2, Ban, ShieldCheck } from "lucide-react";
 import { RecordHeader } from "./RecordHeader";
 import { ContextStrip } from "./ContextStrip";
 import { MessageFeed } from "./MessageFeed";
@@ -111,6 +112,12 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
   const { call: markRead } = useFrappePostCall("excom.excom.api.chat.mark_read");
   const { call: markUnread } = useFrappePostCall("excom.excom.api.chat.mark_unread");
   const { call: assignCall } = useFrappePostCall("excom.excom.api.chat.assign_thread");
+  // Block on WhatsApp: per number, so it acts on the WhatsApp conversation being replied on (or the first one).
+  const waThread: string | undefined = (via?.channel === "whatsapp" ? via.id : undefined) || contact.allAccounts.find((a: Account) => a.channel === "whatsapp")?.id;
+  const { data: waBlock, mutate: mutateWaBlock } = useFrappeGetCall<{ message: { whatsapp: boolean; blocked: boolean } }>(
+    waThread ? "excom.excom.api.whatsapp_account.thread_block_status" : null, waThread ? { thread_id: waThread } : undefined, waThread ? `wa-block:${waThread}` : null, { revalidateOnFocus: false });
+  const { call: waBlockCall } = useFrappePostCall("excom.excom.api.whatsapp_account.block_thread_contact");
+  const { call: waUnblockCall } = useFrappePostCall("excom.excom.api.whatsapp_account.unblock_thread_contact");
 
   const claimedOnce = useRef(false);
   useEffect(() => {
@@ -162,6 +169,9 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
         ? { id: "unarchive", label: "Reopen", icon: <ArchiveRestore />, onSelect: async () => { try { await reopenCall({ omni_identity: contact.id }); toast.success("Reopened — back in the inbox"); refreshThreads(); } catch (err) { try { await all((id) => unarchiveCall({ thread_id: id })); refreshThreads(); } catch { toastError(err, "Failed"); } } } }
         : { id: "close", label: "Close…", icon: <Archive />, shortcut: "e", onSelect: () => setCloseOpen(true) },
       ...(!archived ? [{ id: "archive", label: "Archive without outcome", icon: <Archive />, onSelect: async () => { try { await all((id) => archiveCall({ thread_id: id })); toast.success("Archived"); closeRecord(); refreshThreads(); } catch (err) { toastError(err, "Failed"); } } }] : []),
+      ...(waThread && waBlock?.message?.whatsapp ? [waBlock.message.blocked
+        ? { id: "wa-unblock", label: "Unblock on WhatsApp", icon: <ShieldCheck />, onSelect: async () => { try { await waUnblockCall({ thread_id: waThread }); toast.success("Unblocked on WhatsApp"); void mutateWaBlock(); } catch (err) { toastError(err, "Could not unblock"); } } }
+        : { id: "wa-block", label: "Block on WhatsApp", icon: <Ban />, danger: true, hint: "Only someone who wrote in the last 24 hours", onSelect: async () => { if (!window.confirm("Block this person on WhatsApp? They will not be able to message or call this number, and you will not be able to message them.")) return; try { await waBlockCall({ thread_id: waThread }); toast.success("Blocked on WhatsApp"); void mutateWaBlock(); } catch (err) { toastError(err, "Could not block"); } } }] : []),
       { id: "spam", label: "Mark as spam", icon: <AlertOctagon />, danger: true, onSelect: async () => { try { await all((id) => spamCall({ thread_id: id })); toast.success("Marked as spam"); closeRecord(); refreshThreads(); } catch (err) { toastError(err, "Failed"); } } },
       ...(hasRole("System Manager") ? [{ id: "delete", label: "Delete", icon: <Trash2 />, danger: true, onSelect: async () => { if (!window.confirm("Delete this conversation and all its threads?")) return; try { await all((id) => deleteCall({ thread_id: id })); toast.success("Deleted"); closeRecord(); refreshThreads(); } catch (err) { toastError(err, "Failed"); } } }] : []),
     ],

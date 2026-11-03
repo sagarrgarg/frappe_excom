@@ -88,9 +88,13 @@ def ingest_inbound_message(
     wa_user_id: str = "",
     wa_username: str = "",
     wa_waba: str = "",
+    opens_window: bool = True,
 ) -> str:
     """
     Full inbound message ingestion pipeline.
+
+    opens_window: False for events that are not a message from the person (a WhatsApp welcome
+    request), so last_inbound_at — the 24 h window — stays as it was.
 
     1. Resolve identity
     2. Upsert thread
@@ -154,7 +158,7 @@ def ingest_inbound_message(
         """
         UPDATE `tabExcom Thread`
         SET last_message_at = %(now)s,
-            last_inbound_at = %(now)s,
+            last_inbound_at = CASE WHEN %(opens_window)s THEN %(now)s ELSE last_inbound_at END,
             unread_count = unread_count + 1,
             last_message_preview = %(preview)s,
             last_message_direction = 'Inbound',
@@ -162,7 +166,7 @@ def ingest_inbound_message(
             modified = %(now)s
         WHERE name = %(thread)s
         """,
-        {"now": now, "preview": preview, "thread": thread_name},
+        {"now": now, "preview": preview, "thread": thread_name, "opens_window": 1 if opens_window else 0},
     )
     if was_closed and was_closed.status == "Closed":
         _reopened_by_customer(thread_name, identity_name, was_closed.closure_outcome)

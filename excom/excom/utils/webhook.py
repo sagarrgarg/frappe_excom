@@ -29,16 +29,32 @@ def get():
 	hub_challenge = frappe.form_dict.get("hub.challenge")
 	verify_token = frappe.form_dict.get("hub.verify_token")
 
-	if not verify_token:
+	# all asterisks would match the masked column of a Password field
+	if not verify_token or set(verify_token) == {"*"}:
 		return Response("Missing verify token", status=403)
 
 	match = frappe.db.exists("Excom Channel Account", {"wa_webhook_verify_token": verify_token}) or (
 		frappe.db.exists("DocType", "Excom Meta Connection") and frappe.db.exists("Excom Meta Connection", {"webhook_verify_token": verify_token})
-	)
+	) or _account_verify_token_matches(verify_token)
 	if not match:
 		return Response("No matching account", status=403)
 
 	return Response(hub_challenge, status=200)
+
+
+def _account_verify_token_matches(verify_token: str) -> bool:
+	"""The account's token is a Password field (the column only holds asterisks), so compare decrypted values.
+
+	Needed for the webhook overrides (services/whatsapp_account.py): Meta checks the override URL
+	with the account's token before saving it.
+	"""
+	from frappe.utils.password import get_decrypted_password
+
+	for name in frappe.get_all("Excom Channel Account", filters={"channel": "whatsapp"}, pluck="name"):
+		stored = get_decrypted_password("Excom Channel Account", name, "wa_webhook_verify_token", raise_exception=False) or ""
+		if stored and hmac.compare_digest(stored.encode(), verify_token.encode()):
+			return True
+	return False
 
 
 def _candidate_secrets() -> list[str]:
@@ -625,7 +641,12 @@ def _process_inbound_message(message, sender_profile_name, channel_account, acco
 		wa_user_id=wa_user_id,
 		wa_username=wa_username,
 		wa_waba=channel_account.get("wa_business_id") or "",
+		# a welcome request is not a message from the person: it does not open the 24 h window
+		opens_window=message_type != "request_welcome",
 	)
+	if message_name and message_type == "request_welcome":
+		_record_event("messages", "request_welcome", "Info", message, channel_account=channel_account,
+			subject=frappe.db.get_value("Excom Message", message_name, "omni_identity") or "")
 
 	# Click-to-WhatsApp ads: Meta adds `referral` (ad id, headline, ctwa_clid …) to the message that
 	# came from the ad. Only a newly stored message is attributed, so a redelivery adds nothing.
@@ -661,6 +682,16 @@ def _parse_inbound(message: dict, message_type: str, channel_account) -> tuple:
 
 	if message_type == "text":
 		content_text = (message.get("text") or {}).get("body", "")
+		# a WhatsApp command ("/tickets …") stays a text message; handlers get its name
+		from excom.excom.services.whatsapp_account import parse_command
+
+		command = parse_command(content_text)
+		if command:
+			kind, payload = "command", command
+
+	elif message_type == "request_welcome":
+		# UNVERIFIED (gone from Meta's current docs): the person opened the chat for the first time
+		content_text, kind, payload = "👋 Opened the chat (welcome request)", "welcome", message.get("request_welcome") or {}
 
 	elif message_type == "reaction":
 		content_text = (message.get("reaction") or {}).get("emoji", "")

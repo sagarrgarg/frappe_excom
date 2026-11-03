@@ -43,6 +43,9 @@
   "wa_marketing_opt_out",
   "wa_marketing_opt_out_on",
   "wa_marketing_opt_out_source",
+  "wa_blocked",
+  "wa_blocked_on",
+  "wa_blocked_account",
   "aliases_section",
   "aliases",
   "ai_section",
@@ -291,6 +294,29 @@
    "read_only": 1
   },
   {
+   "default": "0",
+   "fieldname": "wa_blocked",
+   "fieldtype": "Check",
+   "label": "Blocked on WhatsApp",
+   "read_only": 1,
+   "description": "Blocked through WhatsApp's Block Users API: they cannot message or call that number, and it cannot message them."
+  },
+  {
+   "fieldname": "wa_blocked_on",
+   "fieldtype": "Datetime",
+   "label": "Blocked On",
+   "read_only": 1,
+   "depends_on": "eval:doc.wa_blocked"
+  },
+  {
+   "fieldname": "wa_blocked_account",
+   "fieldtype": "Link",
+   "label": "Blocked On Number",
+   "options": "Excom Channel Account",
+   "read_only": 1,
+   "depends_on": "eval:doc.wa_blocked"
+  },
+  {
    "collapsible": 1,
    "fieldname": "aliases_section",
    "fieldtype": "Section Break",
@@ -326,7 +352,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-03 12:00:00.000000",
+ "modified": "2026-11-04 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Omni Identity",
