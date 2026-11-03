@@ -352,12 +352,13 @@
    "fieldname": "wa_template_extras",
    "fieldtype": "JSON",
    "label": "Template Extras",
-   "description": "JSON object for offer, coupon, carousel and product templates: coupon_code, offer_expiration_ms, cards, sections, product_retailer_id, thumbnail_product_retailer_id, voice_call. The same for every recipient."
+   "description": "JSON object for offer, coupon, carousel and product templates: coupon_code, offer_expiration_ms, cards, sections, product_retailer_id, thumbnail_product_retailer_id, voice_call. The same for every recipient. Can be corrected while the broadcast is paused (e.g. a later offer end), then resumed.",
+   "allow_on_submit": 1
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-04 12:00:00.000000",
+ "modified": "2026-11-04 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Broadcast",

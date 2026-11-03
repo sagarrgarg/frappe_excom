@@ -278,7 +278,8 @@
    "fieldtype": "Data",
    "label": "From Library Template",
    "read_only": 1,
-   "description": "Set when the template was created from Meta's template library."
+   "description": "Set when the template was created from Meta's template library.",
+   "length": 512
   },
   {
    "fieldname": "section_break_types",
@@ -351,7 +352,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-04 12:00:00.000000",
+ "modified": "2026-11-04 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "WhatsApp Templates",

@@ -59,8 +59,14 @@ const emptyCard = (t: ExtrasTemplate, i: number): CardState => {
   return { header_media: "", header_name: "", product_retailer_id: "", body: new Array(placeholders(def?.card_body || "").length).fill(""), buttons: cardButtonTypes(t).map(() => "") };
 };
 
+/** A media carousel whose cards did not come through template sync: nothing to fill in. */
+const cardsMissing = (t: ExtrasTemplate) => t.template_type === "Media Carousel" && (t.cards || []).length === 0;
+const CARDS_MISSING = "This carousel's cards did not sync. Run Sync templates (Admin → WhatsApp templates), then try again.";
+
 export function emptyExtras(t: ExtrasTemplate | null): ExtrasState {
-  const n = t && CAROUSELS.includes(t.template_type || "") ? Math.max((t.cards || []).length, 2) : 0;
+  const tt = t?.template_type || "";
+  // media carousels send exactly the approved cards; product carousels start with 2
+  const n = !t || !CAROUSELS.includes(tt) ? 0 : tt === "Media Carousel" ? (t.cards || []).length : Math.max((t.cards || []).length, 2);
   return {
     coupon_code: "", offer_end: "", cards: t ? Array.from({ length: n }, (_, i) => emptyCard(t, i)) : [],
     thumbnail: "", sections: [{ title: "", ids: "" }], product: "", call_ttl: "", call_payload: "",
@@ -111,6 +117,7 @@ export function extrasProblem(t: ExtrasTemplate | null, s: ExtrasState): string 
   }
   if (CAROUSELS.includes(tt)) {
     const types = cardButtonTypes(t);
+    if (cardsMissing(t)) return CARDS_MISSING;
     if (tt === "Product Carousel" && (s.cards.length < 2 || s.cards.length > 10)) return "A product carousel sends 2–10 cards";
     for (let i = 0; i < s.cards.length; i++) {
       const c = s.cards[i];
@@ -185,7 +192,8 @@ export function TemplateExtrasFields({ template: t, value: s, onChange }: { temp
         </Field>
       )}
 
-      {CAROUSELS.includes(tt) && (
+      {/* no synced cards: extrasProblem() says so under the form instead of showing empty cards */}
+      {CAROUSELS.includes(tt) && !cardsMissing(t) && (
         <Field label={`Cards (${s.cards.length})`} required hint={tt === "Media Carousel" ? `This carousel was approved with ${(t.cards || []).length} cards; send exactly that many.` : "2–10 products from the WhatsApp catalogue."}>
           <div className="space-y-2">
             {s.cards.map((c, i) => {

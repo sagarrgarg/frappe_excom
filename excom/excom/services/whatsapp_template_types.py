@@ -96,6 +96,9 @@ CARD_BUTTON_TYPES = {
 }
 
 COPY_CODE_DEFAULT_LABEL = "Copy offer code"
+VOICE_CALL_DEFAULT_LABEL = "Call Now"
+# buttons whose label may be left empty (Meta fixes or defaults it)
+LABEL_OPTIONAL = ("Copy Code", "Voice Call")
 
 # Send-time sub_type per button. Meta's catalogue example uses "CATALOG" in capitals; the
 # others are lowercase.
@@ -142,17 +145,43 @@ def is_named(names: list) -> bool:
 	return bool(names) and not all(n.isdigit() for n in names)
 
 
-def body_example(text: str, samples: list, key: str = "body_text") -> dict | None:
-	"""Meta example block for a body: positional `body_text` or `body_text_named_params`."""
+def body_example(text: str, samples: list, key: str = "body_text", what: str = "") -> dict | None:
+	"""Meta example block for a body: positional `body_text` or `body_text_named_params`.
+
+	Every variable needs a real sample; a made-up one would go to Meta's review."""
 	names = placeholder_names(text)
 	if not names:
 		return None
 	samples = list(samples or [])
+	if len(samples) < len(names) or any(str(s if s is not None else "").strip() == "" for s in samples[:len(names)]):
+		_fail(_("{0}: enter a sample for each variable ({1} needed).").format(what or _("Body"), len(names)))
 	if is_named(names):
-		return {f"{key}_named_params": [
-			{"param_name": n, "example": str(samples[i]) if i < len(samples) else n} for i, n in enumerate(names)
-		]}
-	return {key: [[str(samples[i]) if i < len(samples) else f"sample{i + 1}" for i in range(len(names))]]}
+		return {f"{key}_named_params": [{"param_name": n, "example": str(samples[i])} for i, n in enumerate(names)]}
+	return {key: [[str(samples[i]) for i in range(len(names))]]}
+
+
+def parameter_names(doc) -> list:
+	"""Every placeholder Meta numbers or names together: body, text header and card bodies."""
+	from excom.excom.whatsapp_template_utils import is_text_header
+
+	names = placeholder_names(_get(doc, "template") or "")
+	if is_text_header(_get(doc, "header_type")):
+		names += placeholder_names(_get(doc, "header") or "")
+	if template_type(doc) == TYPE_MEDIA_CAROUSEL:
+		for c in _get(doc, "cards") or []:
+			names += placeholder_names(_get(c, "card_body") or "")
+	return names
+
+
+def uses_named(doc) -> bool:
+	"""Meta's parameter_format is one setting for the whole template, cards included."""
+	return is_named(parameter_names(doc))
+
+
+def _check_parameter_format(doc) -> None:
+	names = parameter_names(doc)
+	if any(n.isdigit() for n in names) and not all(n.isdigit() for n in names):
+		_fail(_("Use either numbered variables ({{1}}) or named ones ({{name}}) in the whole template, body, header and cards, not both."))
 
 
 def json_list(raw) -> list:
@@ -199,6 +228,7 @@ def validate_template(doc) -> None:
 	category = (doc.get("category") or "").upper()
 	header_type = (doc.get("header_type") or "").upper()
 
+	_check_parameter_format(doc)
 	if kinds.count("Copy Code") > 1:
 		_fail(_("A template can have only one Copy Code button."))
 	if kinds.count("Voice Call") > 1:
@@ -213,6 +243,8 @@ def validate_template(doc) -> None:
 				_fail(_("Copy Code button: enter an example code (Meta needs a sample to review)."))
 			_check_len(b.example_code, code_max, _("Copy Code example"))
 		elif b.button_type == "Voice Call":
+			if not (b.get("button_label") or "").strip():
+				b.button_label = VOICE_CALL_DEFAULT_LABEL  # Meta: text is optional, "Call Now" by default
 			_check_len(b.button_label, VOICE_LABEL_MAX, _("Voice Call button label"))
 			ttl = int(b.get("ttl_minutes") or 0)
 			if ttl and not (VOICE_TTL_TEMPLATE[0] <= ttl <= VOICE_TTL_TEMPLATE[1]):
@@ -277,8 +309,11 @@ def _validate_lto(doc, kinds: list, header_type: str) -> None:
 
 
 def card_button_types(doc) -> list:
-	"""The button types every card shares, in order (Meta: all cards have the same structure)."""
-	return [t for t in (doc.get("card_button_1_type"), doc.get("card_button_2_type")) if t]
+	"""The button types every card shares, in order (Meta: all cards have the same structure).
+	A product card has one button, so its (hidden) second type is ignored."""
+	if template_type(doc) == TYPE_PRODUCT_CAROUSEL:
+		return [t for t in (_get(doc, "card_button_1_type"),) if t]
+	return [t for t in (_get(doc, "card_button_1_type"), _get(doc, "card_button_2_type")) if t]
 
 
 def _validate_carousel(doc, ttype: str, header_type: str) -> None:
@@ -289,7 +324,9 @@ def _validate_carousel(doc, ttype: str, header_type: str) -> None:
 		_fail(_("Create a product carousel with exactly {0} cards; once approved it can send up to {1}.").format(PRODUCT_CAROUSEL_CREATE_CARDS, CARDS_MAX))
 	if not (CARDS_MIN <= len(cards) <= CARDS_MAX):
 		_fail(_("A carousel needs {0}–{1} cards (found {2}).").format(CARDS_MIN, CARDS_MAX, len(cards)))
-	if doc.get("card_button_2_type") and not doc.get("card_button_1_type"):
+	if ttype == TYPE_PRODUCT_CAROUSEL:
+		doc.card_button_2_type = None  # hidden on product carousels; never validated or sent
+	elif doc.get("card_button_2_type") and not doc.get("card_button_1_type"):
 		_fail(_("Set Card Button 1 Type before Card Button 2 Type."))
 	types = card_button_types(doc)
 	allowed = CARD_BUTTON_TYPES[ttype]
@@ -335,6 +372,20 @@ def _validate_carousel(doc, ttype: str, header_type: str) -> None:
 				_check_len(value, PHONE_MAX, _("Card {0} phone number").format(i))
 
 
+def validate_for_meta(doc) -> None:
+	"""Checks for a create or content update about to be posted (after the card uploads):
+	every card body variable has a sample and every media card has an uploaded handle."""
+	if template_type(doc) != TYPE_MEDIA_CAROUSEL:
+		return
+	fmt = (doc.get("card_header_format") or "image").lower()
+	for i, c in enumerate(doc.get("cards") or [], start=1):
+		body_example(c.get("card_body") or "", json_list(c.get("body_variable_samples")), what=_("Card {0} body").format(i))
+		if not (c.get("header_handle") or "").strip():
+			if c.get("header_sample_url"):
+				_fail(_("Card {0}: attach the sample {1} again before changing this carousel. WhatsApp needs an uploaded sample; the copy from template sync is only a preview link.").format(i, fmt))
+			_fail(_("Card {0}: attach a sample {1} (Meta reviews every card).").format(i, fmt))
+
+
 # ── create payload ───────────────────────────────────────────────────────────
 
 def meta_button(btn) -> dict | None:
@@ -363,18 +414,19 @@ def carousel_component(doc) -> dict:
 	ttype = template_type(doc)
 	types = card_button_types(doc)
 	cards = []
-	for c in doc.get("cards") or []:
+	for k, c in enumerate(doc.get("cards") or [], start=1):
 		comps = []
 		if ttype == TYPE_PRODUCT_CAROUSEL:
 			comps.append({"type": "HEADER", "format": "PRODUCT"})
 		else:
 			header = {"type": "HEADER", "format": (doc.get("card_header_format") or "IMAGE").upper()}
+			# only an uploaded handle; Meta's synced preview link (header_sample_url) is refused as a handle
 			if c.get("header_handle"):
 				header["example"] = {"header_handle": [c.header_handle]}
 			comps.append(header)
 			if (c.get("card_body") or "").strip():
 				body = {"type": "BODY", "text": c.card_body}
-				ex = body_example(c.card_body, json_list(c.get("body_variable_samples")))
+				ex = body_example(c.card_body, json_list(c.get("body_variable_samples")), what=_("Card {0} body").format(k))
 				if ex:
 					body["example"] = ex
 				comps.append(body)
@@ -426,12 +478,19 @@ def button_from_meta(button: dict) -> dict:
 		row["example_code"] = (ex[0] if isinstance(ex, list) and ex else ex) or ""
 		row["button_label"] = button.get("text") or COPY_CODE_DEFAULT_LABEL
 	elif kind == "VOICE_CALL":
-		row["ttl_minutes"] = int(button.get("ttl_minutes") or 0) or None
+		try:
+			row["ttl_minutes"] = int(button.get("ttl_minutes") or 0) or None
+		except (TypeError, ValueError):
+			row["ttl_minutes"] = None
+		row["button_label"] = button.get("text") or VOICE_CALL_DEFAULT_LABEL
 	return row
 
 
-def apply_meta_components(doc, components: list) -> None:
-	"""LIMITED_TIME_OFFER, CAROUSEL and call-permission components into the doc; the type last."""
+def apply_meta_components(doc, components: list, old_cards: list | None = None, old_format: str = "") -> None:
+	"""LIMITED_TIME_OFFER, CAROUSEL and call-permission components into the doc; the type last.
+
+	old_cards / old_format: the cards and card header format stored before this sync, so a card
+	whose content Meta did not change keeps its local sample and uploaded handle."""
 	kinds = set()
 	for comp in components or []:
 		ctype = (comp.get("type") or "").upper()
@@ -441,7 +500,7 @@ def apply_meta_components(doc, components: list) -> None:
 			doc.lto_has_expiration = 1 if lto.get("has_expiration") else 0
 			kinds.add(TYPE_LTO)
 		elif ctype == "CAROUSEL":
-			_cards_from_meta(doc, comp.get("cards") or [])
+			_cards_from_meta(doc, comp.get("cards") or [], old_cards or [], old_format)
 			kinds.add("carousel")
 		elif ctype == CALL_PERMISSION_COMPONENT.upper():
 			doc.call_permission_request = 1
@@ -464,7 +523,18 @@ def apply_meta_components(doc, components: list) -> None:
 		doc.template_type = TYPE_STANDARD
 
 
-def _cards_from_meta(doc, cards: list) -> None:
+# card fields that are the card's content on Meta; equal content keeps the local sample
+CARD_CONTENT_FIELDS = ("card_body", "button_1_text", "button_1_value", "button_1_example",
+	"button_2_text", "button_2_value", "button_2_example")
+CARD_LOCAL_FIELDS = ("header_sample", "handle_sample", "header_handle")
+
+
+def _same_card(old, new: dict) -> bool:
+	return all((_get(old, f) or "") == (new.get(f) or "") for f in CARD_CONTENT_FIELDS)
+
+
+def _cards_from_meta(doc, cards: list, old_cards: list = (), old_format: str = "") -> None:
+	old_format = (old_format or "").upper()
 	doc.set("cards", [])
 	product = False
 	types: list = []
@@ -479,8 +549,9 @@ def _cards_from_meta(doc, cards: list) -> None:
 					product = True
 				else:
 					doc.card_header_format = fmt
-					handle = ((comp.get("example") or {}).get("header_handle") or [None])[0]
-					row["header_handle"] = handle
+					# GET returns a preview link here, not an upload handle: never stored as the handle
+					link = ((comp.get("example") or {}).get("header_handle") or [None])[0]
+					row["header_sample_url"] = link if isinstance(link, str) else None
 			elif ctype == "BODY":
 				row["card_body"] = comp.get("text") or ""
 				row["body_variable_samples"] = json.dumps(_samples_from_example(comp.get("example") or {})) if comp.get("example") else None
@@ -496,9 +567,15 @@ def _cards_from_meta(doc, cards: list) -> None:
 					elif kind == "Call Phone":
 						row[f"button_{j}_value"] = b.get("phone_number") or ""
 		types = types or card_types
+		k = len(doc.get("cards") or [])
+		old = old_cards[k] if k < len(old_cards) else None
+		if old is not None and not product and (doc.get("card_header_format") or "") == old_format and _same_card(old, row):
+			for f in CARD_LOCAL_FIELDS:
+				if _get(old, f):
+					row[f] = _get(old, f)
 		doc.append("cards", row)
 	doc.card_button_1_type = types[0] if len(types) > 0 else None
-	doc.card_button_2_type = types[1] if len(types) > 1 else None
+	doc.card_button_2_type = types[1] if len(types) > 1 and not product else None
 	doc.template_type = TYPE_PRODUCT_CAROUSEL if product else TYPE_MEDIA_CAROUSEL
 
 
@@ -540,6 +617,14 @@ def needs_extras(doc) -> bool:
 	return any(b.button_type == "Copy Code" for b in (doc.get("buttons") or []))
 
 
+def refuse_without_extras(doc, where: str) -> None:
+	"""For send paths that cannot pass `extras` (notifications, transactional sends, resend):
+	a clear refusal instead of an obscure Meta error."""
+	if needs_extras(doc):
+		_fail(_("Template {0} ({1}) needs send-time values (coupon code, offer end, cards or products) that {2} cannot supply. Send it from the inbox or a broadcast.").format(
+			_get(doc, "template_name") or _get(doc, "name") or "", template_type(doc), where))
+
+
 def expiration_ms(extras: dict, now_ms: int | None = None) -> int:
 	"""Offer end as Unix epoch milliseconds, from `offer_expiration_ms` or `offer_expires_at` (site time)."""
 	raw = extras.get("offer_expiration_ms")
@@ -547,7 +632,10 @@ def expiration_ms(extras: dict, now_ms: int | None = None) -> int:
 		at = extras.get("offer_expires_at")
 		if not at:
 			_fail(_("This limited-time offer shows a countdown: set when the offer ends."))
-		raw = site_time_ms(at)
+		try:
+			raw = site_time_ms(at)
+		except Exception:
+			_fail(_("Offer end must be a date and time, e.g. 2026-12-31 18:00:00."))
 	try:
 		ms = int(raw)
 	except (TypeError, ValueError):
@@ -577,6 +665,8 @@ def _values(text: str, values, what: str) -> list:
 	names = placeholder_names(text)
 	if not names:
 		return []
+	if values is not None and not isinstance(values, (list, dict)):
+		_fail(_("{0}: send the values as a list, or an object of name: value.").format(what))
 	if isinstance(values, dict):
 		missing = [n for n in names if values.get(n) in (None, "")]
 		if missing:
@@ -618,6 +708,8 @@ def send_components(doc, extras: dict, account=None, media_fn=None, dry_run: boo
 	the values only (broadcast validation) and never uploads.
 	"""
 	extras = extras or {}
+	if not isinstance(extras, dict):
+		_fail(_("Template extras must be a JSON object."))
 	ttype = template_type(doc)
 	out = {"header": [], "after_body": [], "buttons": [], "carousel": []}
 
@@ -650,9 +742,14 @@ def send_components(doc, extras: dict, account=None, media_fn=None, dry_run: boo
 				"parameters": [{"type": "action", "action": _mpm_action(extras)}]})
 		elif kind == "Voice Call":
 			vc = extras.get("voice_call") or {}
+			if not isinstance(vc, dict):
+				_fail(_("voice_call must be an object: {\"ttl_minutes\": 100, \"payload\": \"…\"}."))
 			params = []
 			if vc.get("ttl_minutes") not in (None, ""):
-				ttl = int(vc["ttl_minutes"])
+				try:
+					ttl = int(vc["ttl_minutes"])
+				except (TypeError, ValueError):
+					_fail(_("Call link time must be a whole number of minutes (got {0}).").format(str(vc["ttl_minutes"])[:20]))
 				if not (VOICE_TTL_SEND[0] <= ttl <= VOICE_TTL_SEND[1]):
 					_fail(_("Call link time must be {0}–{1} minutes.").format(*VOICE_TTL_SEND))
 				params.append({"type": "ttl_minutes", "ttl_minutes": ttl})
@@ -672,17 +769,24 @@ def send_components(doc, extras: dict, account=None, media_fn=None, dry_run: boo
 
 def _mpm_action(extras: dict) -> dict:
 	sections = extras.get("sections") or []
+	if not isinstance(sections, list):
+		_fail(_("Product sections must be a list."))
 	if not sections:
 		_fail(_("A multi-product template needs at least one section of products."))
 	if len(sections) > MPM_SECTIONS_MAX:
 		_fail(_("At most {0} sections (found {1}).").format(MPM_SECTIONS_MAX, len(sections)))
 	out, total = [], 0
 	for s in sections:
+		if not isinstance(s, dict):
+			_fail(_("Each product section must be an object: {\"title\": …, \"product_retailer_ids\": […]}."))
 		title = str(s.get("title") or "").strip()
 		if not title:
 			_fail(_("Every product section needs a title."))
 		_check_len(title, MPM_SECTION_TITLE_MAX, _("Section title"))
-		ids = [str(r).strip() for r in (s.get("product_retailer_ids") or []) if str(r).strip()]
+		raw_ids = s.get("product_retailer_ids") or []
+		if not isinstance(raw_ids, list):
+			_fail(_("Section {0}: product_retailer_ids must be a list.").format(title))
+		ids = [str(r).strip() for r in raw_ids if str(r).strip()]
 		if not ids:
 			_fail(_("Section {0} has no products.").format(title))
 		total += len(ids)
@@ -699,6 +803,8 @@ def _send_cards(doc, extras: dict, account, media_fn, dry_run: bool) -> list:
 	sent = extras.get("cards") or []
 	if not isinstance(sent, list):
 		_fail(_("Cards must be a list."))
+	if ttype == TYPE_MEDIA_CAROUSEL and not defs:
+		_fail(_("This carousel's cards are missing here (template sync could not read them). Sync templates again, then send."))
 	if ttype == TYPE_MEDIA_CAROUSEL and len(sent) != len(defs):
 		_fail(_("This carousel was approved with {0} cards; send exactly {0} (you sent {1}).").format(len(defs), len(sent)))
 	if ttype == TYPE_PRODUCT_CAROUSEL and not (CARDS_MIN <= len(sent) <= CARDS_MAX):
@@ -710,6 +816,8 @@ def _send_cards(doc, extras: dict, account, media_fn, dry_run: bool) -> list:
 	for k, card in enumerate(sent):
 		card = card or {}
 		what = _("Card {0}").format(k + 1)
+		if not isinstance(card, dict):
+			_fail(_("{0} must be an object.").format(what))
 		cdef = defs[k] if k < len(defs) else (defs[0] if defs else {})
 		comps = []
 		if ttype == TYPE_PRODUCT_CAROUSEL:
@@ -723,7 +831,9 @@ def _send_cards(doc, extras: dict, account, media_fn, dry_run: bool) -> list:
 			params = _values(_get(cdef, "card_body") or "", card.get("body"), _("{0} body").format(what))
 			if params:
 				comps.append({"type": "body", "parameters": params})
-		values = list(card.get("buttons") or [])
+		values = card.get("buttons") or []
+		if not isinstance(values, list):
+			_fail(_("{0}: buttons must be a list, one value per card button.").format(what))
 		for j, t in enumerate(types):
 			val = str(values[j]).strip() if j < len(values) and values[j] is not None else ""
 			if t == "Quick Reply" and val:
@@ -740,7 +850,7 @@ def _send_cards(doc, extras: dict, account, media_fn, dry_run: bool) -> list:
 
 def preview_lines(doc, extras: dict) -> list:
 	"""Short inbox lines describing the parts of the message a plain preview would miss."""
-	extras = extras or {}
+	extras = extras if isinstance(extras, dict) else {}
 	ttype = template_type(doc)
 	lines = []
 	if ttype == TYPE_LTO:
@@ -768,15 +878,21 @@ def preview_lines(doc, extras: dict) -> list:
 	if extras.get("coupon_code") and any(b.button_type == "Copy Code" for b in (doc.get("buttons") or [])):
 		lines.append(_("🏷 Code: {0}").format(extras["coupon_code"]))
 	if ttype in CAROUSEL_TYPES:
-		cards = extras.get("cards") or []
+		cards = extras.get("cards") if isinstance(extras.get("cards"), list) else []
 		lines.append(_("🗂 Carousel: {0} card(s)").format(len(cards)))
 		defs = doc.get("cards") or []
 		for k, c in enumerate(cards[:10]):
+			c = c if isinstance(c, dict) else {}
 			if ttype == TYPE_PRODUCT_CAROUSEL:
 				lines.append(f"  {k + 1}. {c.get('product_retailer_id') or ''}")
 			else:
 				body = _get(defs[k], "card_body") if k < len(defs) else ""
-				vals = c.get("body") if isinstance(c.get("body"), list) else list((c.get("body") or {}).values())
+				raw = c.get("body")
+				if isinstance(raw, dict):
+					# {name: value}: in the order the placeholders appear, not the dict's order
+					vals = [raw.get(n, "{{" + n + "}}") for n in placeholder_names(body or "")]
+				else:
+					vals = raw if isinstance(raw, list) else []
 				if body:
 					from excom.excom.api.chat import _replace_placeholders
 
@@ -786,7 +902,7 @@ def preview_lines(doc, extras: dict) -> list:
 	if ttype == TYPE_CATALOG:
 		lines.append(_("🛍 Catalogue"))
 	if ttype == TYPE_MPM:
-		sections = extras.get("sections") or []
+		sections = [s for s in (extras.get("sections") or []) if isinstance(s, dict)] if isinstance(extras.get("sections"), list) else []
 		n = sum(len(s.get("product_retailer_ids") or []) for s in sections)
 		lines.append(_("🛍 {0} product(s) in {1} section(s)").format(n, len(sections)))
 	if ttype == TYPE_SPM and extras.get("product_retailer_id"):

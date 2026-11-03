@@ -31,3 +31,4 @@ excom.patches.v1_0.seed_voice_channel
 excom.patches.v1_0.name_identities_from_records
 excom.patches.v1_0.broadcast_logs_kept_two_years
 excom.patches.v1_0.upgrade_graph_api_version
+excom.patches.v1_0.whatsapp_template_types_backfill

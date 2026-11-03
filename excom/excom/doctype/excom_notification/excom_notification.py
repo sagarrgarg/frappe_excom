@@ -42,6 +42,10 @@ class ExcomNotification(Document):
                 ))
 
         self.validate_delay_fields()
+        if self.template and frappe.db.exists("WhatsApp Templates", self.template):
+            from excom.excom.services import whatsapp_template_types as wtt
+
+            wtt.refuse_without_extras(frappe.get_doc("WhatsApp Templates", self.template), _("a notification"))
 
     def _queue_delayed_notification(self, doc, doc_data, phone_number):
         """Create a Pending Excom Notification Log for delayed dispatch."""
@@ -303,6 +307,9 @@ class ExcomNotification(Document):
         success = False
         result = {}
         try:
+            from excom.excom.services import whatsapp_template_types as wtt
+
+            wtt.refuse_without_extras(template_doc, _("a notification"))  # the template may have changed since it was picked
             result = send_template_message(
                 account=account_doc,
                 to=to_number,

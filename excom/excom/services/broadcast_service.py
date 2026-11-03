@@ -40,6 +40,7 @@ def execute_broadcast(broadcast_name: str):
     sent, failed = 0, 0
 
     from excom.excom.services import whatsapp_errors as wae
+    from excom.excom.services.whatsapp_template_types import TemplateTypeError
 
     # A paused broadcast that is queued again continues where it stopped, and the broadcasts of one
     # document (Reference, one per subscriber list) skip whoever a sibling already reached: nobody gets it twice.
@@ -95,6 +96,15 @@ def execute_broadcast(broadcast_name: str):
         except wae.ExcomConsentError as e:
             # opted out since joining the list: not a failure, nothing was sent
             _log_delivery(broadcast.name, oi_name, "Skipped", error=e.message)
+        except TemplateTypeError as e:
+            # the extras are the same for everyone (e.g. the offer ended during a wave pause or the
+            # wait for the messaging limit): every remaining send would fail the same way, so stop
+            # here like a campaign stopper. This recipient was not sent to and gets it on resume.
+            msg = frappe.utils.strip_html(str(e)) or _("the template values are no longer valid.")
+            broadcast.db_set({"status": "Paused", "sent_count": sent, "failed_count": failed}, update_modified=True)
+            broadcast.add_comment("Comment", _("Paused: {0} Fix the template values (for example a later offer end), then resume.").format(msg))
+            frappe.db.commit()
+            return
         except wae.WhatsAppAPIError as e:
             failed += 1
             _log_delivery(broadcast.name, oi_name, "Failed", error=e.message)

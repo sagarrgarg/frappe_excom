@@ -53,6 +53,23 @@ class ExcomBroadcast(Document):
                 )
             self._validate_whatsapp_variables()
             self._validate_template_extras()
+            self._validate_media_access()
+
+    def before_update_after_submit(self) -> None:
+        """Template extras may be corrected on a paused broadcast (e.g. a later offer end), then resumed."""
+        if self.channel == "WhatsApp" and self.wa_template and self.has_value_changed("wa_template_extras"):
+            if self.status not in ("Paused", "Scheduled", "Waiting"):
+                frappe.throw(_("Change the template values only while the broadcast is paused or waiting (it is {0}).").format(self.status))
+            self._validate_template_extras()
+            self._validate_media_access()
+
+    def _validate_media_access(self) -> None:
+        """The job sends later as the owner or Administrator, so the owner's File access is checked now."""
+        from excom.excom.api.chat import check_template_media_access
+        from excom.excom.services import whatsapp_template_types as wtt
+
+        check_template_media_access(self.get("wa_header_media") or "", wtt.parse_extras(self.get("wa_template_extras")),
+            user=self.owner or frappe.session.user)
 
     def _validate_template_extras(self) -> None:
         """Coupon code, offer end, cards and products checked now, not at the first send (Meta 131008)."""

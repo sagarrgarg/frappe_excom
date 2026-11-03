@@ -47,16 +47,27 @@ class WhatsAppTemplates(Document):
         for b in self.buttons or []:
             if b.button_type == "Copy Code" and not b.button_label:
                 b.button_label = wtt.COPY_CODE_DEFAULT_LABEL  # Meta fixes the label; the row still needs one
+            elif b.button_type == "Voice Call" and not (b.button_label or "").strip():
+                b.button_label = wtt.VOICE_CALL_DEFAULT_LABEL  # Meta's default text
         self.validate_button_count()
         wtt.validate_template(self)
 
+        # Meta is called only after every local check (Frappe's own length and mandatory checks run
+        # after validate): the create in after_insert, a content update in on_update. A refusal there
+        # rolls the local save back, and a local failure never leaves Meta changed.
+        posting = self.is_new() or self._has_content_changed()
+        self.flags.meta_update = bool(posting and not self.is_new())
+        if not posting:
+            return
         if (self.header_type or "").upper() in ("IMAGE", "VIDEO", "DOCUMENT") and self.sample:
             self.get_session_id()
             self.get_media_id()
         if self.template_type == wtt.TYPE_MEDIA_CAROUSEL:
             self._upload_card_samples()
+        wtt.validate_for_meta(self)
 
-        if not self.is_new() and self._has_content_changed():
+    def on_update(self):
+        if self.flags.pop("meta_update", False):
             self.update_template()
 
     def validate_button_count(self):
@@ -74,6 +85,8 @@ class WhatsAppTemplates(Document):
             if n > limit:
                 frappe.throw(_("A template can have at most {0} {1} (found {2})").format(limit, label, n))
         for b in self.buttons:
+            if b.button_type not in wtt.LABEL_OPTIONAL and not (b.button_label or "").strip():
+                frappe.throw(_("Button {0} ({1}): enter the button text.").format(b.idx or "", b.button_type or ""))
             if b.button_type != "Copy Code" and len(b.button_label or "") > 25:
                 frappe.throw(_("Button label '{0}' is longer than 25 characters").format(b.button_label))
         # Meta: quick replies must sit together (QR, QR, URL is valid; QR, URL, QR is not)
@@ -211,7 +224,7 @@ class WhatsAppTemplates(Document):
     def _upload_card_samples(self) -> None:
         """Resumable upload of each card's sample (same mechanism as the header), only when it changed."""
         for card in self.get("cards") or []:
-            if card.get("header_sample") and card.header_sample != card.get("handle_sample"):
+            if card.get("header_sample") and (card.header_sample != card.get("handle_sample") or not card.get("header_handle")):
                 card.header_handle = self._upload_bytes(self._start_upload(card.header_sample), card.header_sample)
                 card.handle_sample = card.header_sample
 
@@ -259,8 +272,7 @@ class WhatsAppTemplates(Document):
 
 
     def after_insert(self):
-        if self.flags.get("skip_meta_create"):
-            return  # already on Meta (e.g. created from the template library)
+        # sync and the template library store rows with upsert_doc_without_hooks, so this never runs for them
         if self.template_name:
             self.actual_name = self.template_name.lower().replace(" ", "_")
 
@@ -294,7 +306,7 @@ class WhatsAppTemplates(Document):
         """Update template on Meta.
 
         Only called when content fields have actually changed
-        (guarded by ``_has_content_changed`` in validate).
+        (``_has_content_changed`` in validate sets the flag; on_update calls this after the local checks).
         """
         if not self.id:
             return
@@ -345,13 +357,9 @@ class WhatsAppTemplates(Document):
                 )
 
     def uses_named_parameters(self) -> bool:
-        """Meta NAMED parameters ({{rate}}) vs POSITIONAL ({{1}}): decided by the body and header text."""
-        from excom.excom.whatsapp_template_utils import ordered_placeholder_names
-
-        names = ordered_placeholder_names(self.template or "")
-        if is_text_header(self.header_type):
-            names += ordered_placeholder_names(self.header or "")
-        return bool(names) and not all(n.isdigit() for n in names)
+        """Meta NAMED parameters ({{rate}}) vs POSITIONAL ({{1}}): one setting for the body, the
+        text header and the carousel card bodies (mixing them is refused in validate)."""
+        return wtt.uses_named(self)
 
     def meta_components(self) -> list:
         """BODY / HEADER / FOOTER / BUTTONS for creating or updating the template on Meta."""
@@ -577,88 +585,116 @@ def _fetch_all_templates(creds: dict, biz_id: str) -> dict:
 
 
 
-def _store_templates(response: dict, acct_names: list, errors: list = None, representative: str = "") -> None:
-    """Upsert every template from a fetch response onto this site (hooks off, so nothing is pushed back to Meta)."""
+def _store_templates(response: dict, acct_names: list, errors: list = None, representative: str = "") -> int:
+    """Upsert every template from a fetch response onto this site (hooks off, so nothing is pushed back to Meta).
+
+    One template that cannot be stored is logged and skipped; the others are still stored and the
+    error goes into *errors* (shown in the fetch result). Returns how many were stored.
+    """
+    stored = 0
     for template in response.get("data") or []:
-        if frappe.db.exists("WhatsApp Templates", {"actual_name": template["name"]}):
-            doc = frappe.get_doc("WhatsApp Templates", {"actual_name": template["name"]})
-        else:
-            doc = frappe.new_doc("WhatsApp Templates")
-            doc.template_name = template["name"]
-            doc.actual_name = template["name"]
+        label = f"{template.get('name') or '?'} ({template.get('language') or '?'})"
+        messages = len(frappe.local.message_log or [])
+        frappe.db.savepoint("excom_wa_template")
+        try:
+            _store_template(template, acct_names)
+            stored += 1
+        except Exception as e:
+            try:
+                frappe.db.rollback(save_point="excom_wa_template")
+            except Exception:
+                frappe.db.rollback()  # the savepoint went with the template's own commit
+            del frappe.local.message_log[messages:]  # reported once, in the fetch result
+            frappe.log_error(title=f"WhatsApp template sync: could not store {label}", message=frappe.get_traceback())
+            if errors is not None:
+                errors.append(f"{label}: {frappe.utils.strip_html(str(e))[:200] or type(e).__name__}")
+    return stored
 
-        doc.status = template["status"]
-        doc.language_code = template["language"]
-        doc.category = template["category"]
-        doc.id = template["id"]
-        if template.get("library_template_name"):
-            doc.library_template_name = template["library_template_name"]
-        _merge_template_linked_accounts(doc, acct_names)
-        wtt.reset_type_fields(doc)
 
-        for component in template.get("components") or []:
-            ctype = (component.get("type") or "").upper()
+def _store_template(template: dict, acct_names: list) -> None:
+    """One fetched template into its WhatsApp Templates row."""
+    if frappe.db.exists("WhatsApp Templates", {"actual_name": template["name"]}):
+        doc = frappe.get_doc("WhatsApp Templates", {"actual_name": template["name"]})
+    else:
+        doc = frappe.new_doc("WhatsApp Templates")
+        doc.template_name = template["name"]
+        doc.actual_name = template["name"]
 
-            if ctype == "HEADER":
-                fmt = (component.get("format") or "").upper()
-                doc.header_type = fmt
-                if fmt == "TEXT":
-                    doc.header = component.get("text") or ""
-                    doc.header_variable_samples = _extract_header_samples(
-                        component.get("example") or {}
-                    )
-                else:
-                    doc.header_variable_samples = None
+    doc.status = template["status"]
+    doc.language_code = template["language"]
+    doc.category = template["category"]
+    doc.id = template["id"]
+    if template.get("library_template_name"):
+        doc.library_template_name = template["library_template_name"]
+    _merge_template_linked_accounts(doc, acct_names)
+    old_cards = [c.as_dict() for c in doc.get("cards") or []]
+    old_card_format = doc.get("card_header_format") or ""
+    wtt.reset_type_fields(doc)
+    # parts Meta no longer has must not survive the sync (a removed footer, header or Copy Code button)
+    doc.header_type = ""
+    doc.header = ""
+    doc.header_variable_samples = None
+    doc.footer = ""
+    doc.set("buttons", [])
 
-            elif ctype == "FOOTER":
-                doc.footer = component.get("text") or ""
+    for component in template.get("components") or []:
+        ctype = (component.get("type") or "").upper()
 
-            elif ctype == "BODY":
-                doc.template = component.get("text") or ""
-                if component.get("example"):
-                    body_text = component["example"].get("body_text")
-                    named = component["example"].get("body_text_named_params")
-                    if body_text and isinstance(body_text, list) and body_text:
-                        doc.body_variable_samples = json.dumps(body_text[0])
-                        doc.sample_values = ""
-                    elif named and isinstance(named, list):
-                        doc.body_variable_samples = json.dumps([p.get("example", "") if isinstance(p, dict) else str(p) for p in named])
-                        doc.sample_values = ""
-
-            elif ctype == "BUTTONS":
-                doc.set("buttons", [])
-                frappe.db.delete(
-                    "WhatsApp Button",
-                    {"parent": doc.name, "parenttype": "WhatsApp Templates"},
+        if ctype == "HEADER":
+            fmt = (component.get("format") or "").upper()
+            doc.header_type = fmt
+            if fmt == "TEXT":
+                doc.header = component.get("text") or ""
+                doc.header_variable_samples = _extract_header_samples(
+                    component.get("example") or {}
                 )
-                type_map = wtt.META_TO_BUTTON  # URL, PHONE_NUMBER, QUICK_REPLY, FLOW + the Phase 4 types
-                for i, button in enumerate(component.get("buttons", []), start=1):
-                    btn: dict = {
-                        "button_type": type_map.get((button.get("type") or "").upper(), button.get("type")),
-                        "button_label": button.get("text"),
-                        "sequence": i,
-                    }
-                    btn.update(wtt.button_from_meta(button))
-                    if button["type"] == "URL":
-                        btn["website_url"] = button.get("url") or ""
-                        btn["url_type"] = (
-                            "Dynamic" if "{{" in btn["website_url"] else "Static"
-                        )
-                        if button.get("example"):
-                            btn["example_url"] = ",".join(button["example"])
-                    elif button["type"] == "PHONE_NUMBER":
-                        btn["phone_number"] = button.get("phone_number")
-                    elif button["type"] == "FLOW":
-                        # Meta returns flow_id; link the local Flow so later edits keep the button
-                        btn["flow"] = frappe.db.get_value("WhatsApp Flow", {"flow_id": str(button.get("flow_id") or "")}, "name") if button.get("flow_id") else None
-                        btn["flow_action"] = (button.get("flow_action") or "navigate").upper()
-                        btn["navigate_screen"] = button.get("navigate_screen") or ""
 
-                    doc.append("buttons", btn)
+        elif ctype == "FOOTER":
+            doc.footer = component.get("text") or ""
 
-        wtt.apply_meta_components(doc, template.get("components") or [])
-        upsert_doc_without_hooks(doc, "WhatsApp Button", "buttons", extra_children=[("WhatsApp Carousel Card", "cards")])
-        _persist_linked_accounts(doc)
+        elif ctype == "BODY":
+            doc.template = component.get("text") or ""
+            if component.get("example"):
+                body_text = component["example"].get("body_text")
+                named = component["example"].get("body_text_named_params")
+                if body_text and isinstance(body_text, list) and body_text:
+                    doc.body_variable_samples = json.dumps(body_text[0])
+                    doc.sample_values = ""
+                elif named and isinstance(named, list):
+                    doc.body_variable_samples = json.dumps([p.get("example", "") if isinstance(p, dict) else str(p) for p in named])
+                    doc.sample_values = ""
+
+        elif ctype == "BUTTONS":
+            type_map = wtt.META_TO_BUTTON  # URL, PHONE_NUMBER, QUICK_REPLY, FLOW + the Phase 4 types
+            for i, button in enumerate(component.get("buttons", []), start=1):
+                kind = (button.get("type") or "").upper()
+                btn: dict = {
+                    "button_type": type_map.get(kind, button.get("type")),
+                    "button_label": button.get("text"),
+                    "sequence": i,
+                }
+                btn.update(wtt.button_from_meta(button))
+                if kind == "URL":
+                    btn["website_url"] = button.get("url") or ""
+                    btn["url_type"] = (
+                        "Dynamic" if "{{" in btn["website_url"] else "Static"
+                    )
+                    if button.get("example"):
+                        ex = button["example"]
+                        btn["example_url"] = ",".join(ex) if isinstance(ex, list) else str(ex)
+                elif kind == "PHONE_NUMBER":
+                    btn["phone_number"] = button.get("phone_number")
+                elif kind == "FLOW":
+                    # Meta returns flow_id; link the local Flow so later edits keep the button
+                    btn["flow"] = frappe.db.get_value("WhatsApp Flow", {"flow_id": str(button.get("flow_id") or "")}, "name") if button.get("flow_id") else None
+                    btn["flow_action"] = (button.get("flow_action") or "navigate").upper()
+                    btn["navigate_screen"] = button.get("navigate_screen") or ""
+
+                doc.append("buttons", btn)
+
+    wtt.apply_meta_components(doc, template.get("components") or [], old_cards=old_cards, old_format=old_card_format)
+    upsert_doc_without_hooks(doc, "WhatsApp Button", "buttons", extra_children=[("WhatsApp Carousel Card", "cards")])
+    _persist_linked_accounts(doc)
 
 
 @frappe.whitelist()
@@ -714,7 +750,7 @@ def fetch():
                     try:
                         response = _fetch_all_templates(creds, real["id"])
                         errors.append(f"{representative}: Business Account ID corrected to {real['id']} ({real['name']})")
-                        _store_templates(response, acct_names)
+                        _store_templates(response, acct_names, errors)
                         continue
                     except Exception as e2:
                         detail = _meta_error_from(e2) or detail
@@ -725,11 +761,11 @@ def fetch():
             errors.append(f"{representative}: {detail}")
             continue
 
-        _store_templates(response, acct_names)
+        _store_templates(response, acct_names, errors)
 
     if errors:
         frappe.msgprint(
-            _("Some accounts failed: {0}").format("<br>".join(errors)),
+            _("Some accounts or templates failed: {0}").format("<br>".join(frappe.utils.escape_html(e) for e in errors)),
             title=_("Partial Fetch"),
             indicator="orange",
         )

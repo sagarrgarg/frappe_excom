@@ -33,6 +33,10 @@ USECASES = (
 	"SHIPMENT_CONFIRMATION", "STATEMENT_ATTACHMENT", "STATEMENT_AVAILABLE", "TRANSACTION_ALERT",
 )
 BUTTON_INPUT_TYPES = ("QUICK_REPLY", "URL", "PHONE_NUMBER", "OTP", "MPM", "CATALOG", "FLOW", "VOICE_CALL", "APP")
+# Only these take a business value at create time ("the website and/or phone number of the business").
+INPUT_BUTTONS = ("URL", "PHONE_NUMBER")
+# Search shows a form (Flow) button as "FORMS"; the create inputs and the template call it FLOW.
+SEARCH_TYPE_ALIASES = {"FORMS": "FLOW", "FORM": "FLOW"}
 BODY_INPUT_KEYS = ("add_contact_number", "add_learn_more_link", "add_security_recommendation",
 	"add_track_package_link", "code_expiration_minutes")
 # Meta: "Must be UTILITY". Whether AUTHENTICATION library templates are accepted is UNVERIFIED.
@@ -99,16 +103,15 @@ def search(account_name: str = "", search: str = "", topic: str = "", usecase: s
 
 def normalise(item: dict) -> dict:
 	"""A library entry for the browser, plus the button inputs a create call must supply."""
-	buttons = item.get("buttons") or []
+	buttons = [b for b in (item.get("buttons") or []) if isinstance(b, dict)]
 	needs = []
 	for i, b in enumerate(buttons):
-		kind = (b.get("type") or "").upper()
+		kind = button_type(b.get("type"))
+		# quick replies, forms (Flow) and the rest need nothing from us
 		if kind == "URL":
 			needs.append({"index": i, "type": "URL", "text": b.get("text") or "", "default": b.get("url") or ""})
 		elif kind == "PHONE_NUMBER":
 			needs.append({"index": i, "type": "PHONE_NUMBER", "text": b.get("text") or "", "default": b.get("phone_number") or ""})
-		else:
-			needs.append({"index": i, "type": kind, "text": b.get("text") or ""})
 	industry = item.get("industry")
 	return {
 		"id": item.get("id"),
@@ -122,20 +125,30 @@ def normalise(item: dict) -> dict:
 		"body": item.get("body") or "",
 		"body_params": item.get("body_params") or [],
 		"body_param_types": item.get("body_param_types") or [],
-		"buttons": buttons,
+		"buttons": [dict(b, type=button_type(b.get("type"))) for b in buttons],
 		"button_inputs": needs,
 	}
 
 
+def button_type(raw) -> str:
+	kind = str(raw or "").upper()
+	return SEARCH_TYPE_ALIASES.get(kind, kind)
+
+
 def build_button_inputs(inputs: list) -> list:
-	"""Validated `library_template_button_inputs` (sent as a JSON array; Meta's guide shows a string, UNVERIFIED)."""
+	"""Validated `library_template_button_inputs` (sent as a JSON array; Meta's guide shows a string, UNVERIFIED).
+
+	Only URL and PHONE_NUMBER carry a value. Other known types (quick reply, forms / Flow, catalogue…)
+	need no input and are left out; an OTP input is kept only when it carries OTP settings."""
 	out = []
 	for i, b in enumerate(inputs or []):
 		if not isinstance(b, dict):
 			frappe.throw(_("Button input {0} must be an object").format(i + 1))
-		kind = (b.get("type") or "").upper()
+		kind = button_type(b.get("type"))
 		if kind not in BUTTON_INPUT_TYPES:
 			frappe.throw(_("Button input {0}: unknown type {1}").format(i + 1, kind or "—"))
+		if kind not in INPUT_BUTTONS and not (kind == "OTP" and any(k in b for k in ("otp_type", "zero_tap_terms_accepted", "supported_apps"))):
+			continue
 		row = {"type": kind}
 		if kind == "URL":
 			url = b.get("url") or {}
@@ -210,15 +223,14 @@ def create(library_template_name: str, name: str, language: str, account_name: s
 	if not result.get("id"):
 		frappe.throw(_("Meta did not return a template id."), title=_("WhatsApp template library"))
 
-	# Read the template back so the stored copy matches Meta exactly (body, header, buttons).
-	try:
-		template = _call("get", f"{base}/{result['id']}", account, params={"fields": TEMPLATE_FIELDS}, headers=headers)
-	except frappe.ValidationError:
-		template = {}
+	# The template now exists on Meta, so nothing below may fail the call: a read-back or store
+	# problem is logged and the next sync fills in the rest.
+	notes = []
+	template = _read_back(base, headers, result["id"], account)
 	if not template.get("name"):
-		# the next sync fills in the components
 		template = {"name": name, "language": language, "category": result.get("category") or LIBRARY_CATEGORY,
 			"id": result["id"], "status": result.get("status") or "PENDING", "components": []}
+		notes.append(_("Created on WhatsApp. Its text and buttons appear here after the next Sync templates."))
 	template.setdefault("status", result.get("status") or "PENDING")
 	template.setdefault("library_template_name", library_template_name.strip())
 
@@ -228,6 +240,27 @@ def create(library_template_name: str, name: str, language: str, account_name: s
 		"wa_business_id": waba}, pluck="name") or [account.name]
 	if account.name not in accounts:
 		accounts.insert(0, account.name)
-	_store_templates({"data": [template]}, accounts)
+	errors: list = []
+	_store_templates({"data": [template]}, accounts, errors)
+	if errors:
+		notes.append(_("Created on WhatsApp, but it could not be saved here yet; run Sync templates."))
 	doc_name = frappe.db.get_value("WhatsApp Templates", {"actual_name": template["name"]}, "name")
-	return {"name": doc_name, "id": result["id"], "status": template.get("status"), "category": template.get("category")}
+	out = {"name": doc_name, "id": result["id"], "status": template.get("status"), "category": template.get("category")}
+	if notes:
+		out["note"] = " ".join(notes)
+	return out
+
+
+def _read_back(base: str, headers: dict, template_id: str, account) -> dict:
+	"""GET the new template; {} on any failure (logged, never shown to the user)."""
+	try:
+		resp = http_requests.get(f"{base}/{template_id}", params={"fields": TEMPLATE_FIELDS}, headers=headers, timeout=30)
+		data = resp.json() if resp.content else {}
+		if resp.status_code >= 400 or not isinstance(data, dict) or data.get("error"):
+			err = (data.get("error") or {}) if isinstance(data, dict) else {}
+			raise ValueError(f"HTTP {resp.status_code}: {(err.get('message') or '')[:200]}")
+		return data
+	except Exception:
+		frappe.log_error(title="WhatsApp template library: read-back failed",
+			message=f"template id {template_id}, account {account.name}\n{frappe.get_traceback()}")
+		return {}

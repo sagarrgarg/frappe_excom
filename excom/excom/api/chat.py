@@ -1808,6 +1808,9 @@ def send_template_to_thread(
             )
         )
 
+    # the agent may only send files they can open themselves
+    check_template_media_access(header_media_url, extras_dict)
+
     ht_upper = (template_doc.header_type or "").upper()
     if ht_upper in ("IMAGE", "VIDEO", "DOCUMENT") and not header_media_url:
         frappe.throw(
@@ -2005,15 +2008,15 @@ def _build_template_components(
     """
     from excom.excom.services import whatsapp_template_types as wtt
 
-    def _card_media(file_url):
+    def _media(file_url):
         if media_cache is not None and file_url in media_cache:
-            return media_cache[file_url]
+            return dict(media_cache[file_url])
         ref = _header_media(account, file_url)
         if media_cache is not None:
-            media_cache[file_url] = ref
+            media_cache[file_url] = dict(ref)
         return ref
 
-    typed = wtt.send_components(template_doc, extras or {}, account=account, media_fn=_card_media)
+    typed = wtt.send_components(template_doc, extras or {}, account=account, media_fn=_media)
     from excom.excom.whatsapp_template_utils import (
         body_variable_slot_count,
         header_variable_slot_count,
@@ -2064,7 +2067,7 @@ def _build_template_components(
             "type": "header",
             "parameters": [{
                 "type": "image",
-                "image": _header_media(account, header_media_url),
+                "image": _media(header_media_url),
             }],
         })
     elif ht == "VIDEO" and header_media_url:
@@ -2072,7 +2075,7 @@ def _build_template_components(
             "type": "header",
             "parameters": [{
                 "type": "video",
-                "video": _header_media(account, header_media_url),
+                "video": _media(header_media_url),
             }],
         })
     elif ht == "DOCUMENT" and header_media_url:
@@ -2082,7 +2085,7 @@ def _build_template_components(
             "parameters": [{
                 "type": "document",
                 "document": {
-                    **_header_media(account, header_media_url),
+                    **_media(header_media_url),
                     "filename": filename,
                 },
             }],
@@ -2167,6 +2170,23 @@ def _get_site_url() -> str:
             return f"{scheme}://{host}".rstrip("/")
 
     return (frappe.conf.get("host_name") or frappe.utils.get_url()).rstrip("/")
+
+
+def check_template_media_access(header_media_url: str = "", extras: dict = None, user: str = None) -> None:
+    """Refuse private header or card media the user cannot read (File permission), and `..` paths.
+
+    Inbox sends check the agent; a broadcast checks its owner when it is saved, because its job
+    runs later as the owner or Administrator.
+    """
+    from excom.excom.services.whatsapp_service import check_file_access
+
+    urls = [header_media_url]
+    cards = (extras or {}).get("cards") if isinstance(extras, dict) else None
+    if isinstance(cards, list):
+        urls += [c.get("header_media") for c in cards if isinstance(c, dict)]
+    for url in urls:
+        if url and isinstance(url, str):
+            check_file_access(url.strip(), user=user)
 
 
 def _header_media(account, file_url: str) -> dict:

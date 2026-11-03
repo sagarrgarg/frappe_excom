@@ -56,6 +56,7 @@ function TemplateLibrary({ onCreated }: { onCreated: () => void }) {
   const [accounts, setAccounts] = useState<{ name: string; account_name: string }[]>([]);
   const [items, setItems] = useState<LibItem[]>([]);
   const [after, setAfter] = useState("");
+  const [error, setError] = useState("");
   const [picked, setPicked] = useState<LibItem | null>(null);
   const { call: search, loading } = useFrappePostCall("excom.excom.api.chat.search_template_library");
   const { call: fetchAccounts } = useFrappePostCall("excom.excom.api.chat.get_channel_accounts");
@@ -68,7 +69,12 @@ function TemplateLibrary({ onCreated }: { onCreated: () => void }) {
       const m = (r as any)?.message || {};
       setItems((prev) => (more ? [...prev, ...(m.data || [])] : m.data || []));
       setAfter(m.after || "");
-    } catch (e) { toast.error(serverMessage(e)); }
+      setError("");
+    } catch (e) {
+      // say why instead of an empty "No library templates"
+      setError(serverMessage(e));
+      if (!more) { setItems([]); setAfter(""); }
+    }
   }, [search, q, topic, usecase, industry, language, account, after]);
 
   useEffect(() => { const h = setTimeout(() => run(false), 350); return () => clearTimeout(h); }, [q, topic, usecase, industry, language, account]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -91,6 +97,7 @@ function TemplateLibrary({ onCreated }: { onCreated: () => void }) {
         </Field>
       )}
       {loading && items.length === 0 ? <div className="flex justify-center py-8 text-ink-3"><Loader2 className="size-5 animate-spin" /></div>
+        : error && items.length === 0 ? <EmptyState icon={<BookOpen />} title="Could not search Meta's library" hint={error} compact />
         : items.length === 0 ? <EmptyState icon={<BookOpen />} title="No library templates" hint="Try another word or clear the filters." compact />
         : (
           <div className="space-y-1.5">
@@ -106,6 +113,7 @@ function TemplateLibrary({ onCreated }: { onCreated: () => void }) {
                 </div>
               </button>
             ))}
+            {error && <p className="text-xs text-crayon-amber-text">{error}</p>}
             {after && <Button size="sm" variant="ghost" disabled={loading} onClick={() => run(true)} className="w-full">{loading ? <Loader2 className="animate-spin" /> : null}More</Button>}
           </div>
         )}
@@ -123,8 +131,7 @@ function CreateFromLibrary({ item, account, onBack, onCreated }: { item: LibItem
   const inputs = item.button_inputs.map((b) => {
     const v = values[b.index] || { main: "", example: "" };
     if (b.type === "URL") return { type: "URL", url: { base_url: v.main.trim(), ...(v.main.includes("{{") ? { url_suffix_example: v.example.trim() } : {}) } };
-    if (b.type === "PHONE_NUMBER") return { type: "PHONE_NUMBER", phone_number: v.main.trim() };
-    return { type: b.type };
+    return { type: "PHONE_NUMBER", phone_number: v.main.trim() };
   });
   const problem = !nameOk ? "Name: lowercase letters, digits and _ only"
     : item.button_inputs.some((b) => (b.type === "URL" || b.type === "PHONE_NUMBER") && !(values[b.index]?.main || "").trim()) ? "Fill every button"
@@ -134,7 +141,7 @@ function CreateFromLibrary({ item, account, onBack, onCreated }: { item: LibItem
     try {
       const r = await create({ library_template_name: item.name, template_name: name, language: item.language, whatsapp_account: account, button_inputs: JSON.stringify(inputs) });
       const m = (r as any)?.message || {};
-      toast.success(`Created ${name} — ${m.status || "submitted"}`);
+      toast.success(`Created ${name} — ${m.status || "submitted"}`, m.note ? { description: m.note } : undefined);
       window.dispatchEvent(new Event("excom:templates-synced"));
       onCreated();
     } catch (e) { toast.error(serverMessage(e)); }

@@ -195,6 +195,14 @@ def _send_whatsapp(
             out["skipped"] = "template_not_found"
             return out
         template = frappe.get_doc("WhatsApp Templates", tpl_name)
+        from excom.excom.services import whatsapp_template_types as wtt
+
+        if wtt.needs_extras(template):
+            # coupon / offer / carousel / product values cannot be given here
+            frappe.log_error(title=f"excom.send_transactional: template {tpl_name} needs send-time extras ({purpose})",
+                             message="Use a template without a Copy Code button, offer countdown, carousel or product header.")
+            out["skipped"] = "template_needs_extras"
+            return out
 
         idt = frappe.get_doc("Omni Identity", identity)
         to = idt.primary_whatsapp or idt.primary_phone

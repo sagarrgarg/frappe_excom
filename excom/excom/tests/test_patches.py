@@ -72,3 +72,19 @@ class TestPerformanceIndexPatch(FrappeTestCase):
 			add_performance_indexes.execute()
 
 		self.assertEqual(created, [], "an existing index must not be created twice")
+
+
+class TestTemplateTypesBackfillPatch(FrappeTestCase):
+	def test_a_site_without_the_template_tables_still_migrates(self):
+		"""frappe_whatsapp's copy of the doctypes (or none at all) has no template_type column yet."""
+		from excom.patches.v1_0 import whatsapp_template_types_backfill
+
+		with patch.object(frappe.db, "table_exists", return_value=False), patch.object(
+			frappe.db, "sql", side_effect=AssertionError("no SQL on a missing table")
+		):
+			whatsapp_template_types_backfill.execute()   # must not raise
+
+		with patch.object(frappe.db, "table_exists", return_value=True), patch.object(
+			frappe.db, "has_column", return_value=False
+		), patch.object(frappe.db, "sql", side_effect=AssertionError("no SQL without the new columns")):
+			whatsapp_template_types_backfill.execute()

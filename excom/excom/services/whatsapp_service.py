@@ -267,6 +267,43 @@ def _is_local_file(file_url: str) -> bool:
 	return bool(file_url) and (file_url.startswith("/files/") or file_url.startswith("/private/files/"))
 
 
+def _safe_site_file_path(file_url: str) -> str:
+	"""The real path of /files/… or /private/files/… inside this site's folder; refuses `..` and
+	anything that resolves (symlinks included) outside it."""
+	import os
+
+	url = (file_url or "").split("?", 1)[0]
+	if ".." in url.replace("\\", "/").split("/") or not _is_local_file(url):
+		frappe.throw(_("Not a file of this site: {0}").format(url[:120]), frappe.PermissionError)
+	rel = url.lstrip("/")
+	if rel.startswith("files/"):
+		rel = "public/" + rel  # /files/x is served from <site>/public/files/x
+	site = os.path.realpath(frappe.get_site_path())
+	path = os.path.realpath(os.path.join(site, rel))
+	if os.path.commonpath([site, path]) != site:
+		frappe.throw(_("Not a file of this site: {0}").format(url[:120]), frappe.PermissionError)
+	return path
+
+
+def check_file_access(file_url: str, user: str | None = None) -> None:
+	"""Refuse a private file the user may not read (an agent must not send someone else's ID scan).
+	Public files and external links pass. Background sends check the owner when they are queued."""
+	url = (file_url or "").strip()
+	if not url.startswith("/private/"):
+		if ".." in url.replace("\\", "/").split("/"):
+			frappe.throw(_("Not a file of this site: {0}").format(url[:120]), frappe.PermissionError)
+		return
+	_safe_site_file_path(url)
+	user = user or frappe.session.user
+	name = frappe.db.get_value("File", {"file_url": url.split("?", 1)[0]}, "name")
+	if not name:
+		if user != "Administrator":
+			frappe.throw(_("Attachment not found: {0}").format(url[:120]), frappe.PermissionError)
+		return
+	if not frappe.has_permission("File", "read", doc=frappe.get_doc("File", name), user=user):
+		frappe.throw(_("You do not have access to the attachment {0}.").format(url.rsplit("/", 1)[-1][:120]), frappe.PermissionError)
+
+
 def _local_file_bytes(file_url: str) -> tuple[bytes, str, str]:
 	"""(content, filename, mimetype) for a Frappe file URL, private or public."""
 	import mimetypes
@@ -278,10 +315,10 @@ def _local_file_bytes(file_url: str) -> tuple[bytes, str, str]:
 		content = f.get_content(encodings=())
 		filename = f.file_name or os.path.basename(file_url)
 	else:
-		path = frappe.get_site_path(file_url.lstrip("/"))
+		path = _safe_site_file_path(file_url)
 		with open(path, "rb") as fh:
 			content = fh.read()
-		filename = os.path.basename(file_url)
+		filename = os.path.basename(path)
 	mimetype = mimetypes.guess_type(filename)[0] or "application/octet-stream"
 	return content, filename, mimetype
 

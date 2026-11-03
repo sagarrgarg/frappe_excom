@@ -117,6 +117,11 @@ def retry_failed_message(message_name: str) -> dict:
     if not to_number:
         frappe.throw(_("No phone number on identity to send to"))
 
+    if msg.message_type == "Template" and msg.template and frappe.db.exists("WhatsApp Templates", msg.template):
+        from excom.excom.services import whatsapp_template_types as wtt
+
+        wtt.refuse_without_extras(frappe.get_doc("WhatsApp Templates", msg.template), _("a resend"))
+
     frappe.db.set_value(
         "Excom Message", message_name,
         {"delivery_status": "Queued", "failure_reason": ""},
