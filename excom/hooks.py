@@ -447,4 +447,5 @@ default_log_clearing_doctypes = {
 	"Excom Broadcast Log": 720,
 	"Excom Stage Change Log": 365,
 	"Excom Thread Transfer Log": 365,
+	"Excom WhatsApp Event": 365,
 }

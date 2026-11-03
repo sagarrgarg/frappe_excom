@@ -8,9 +8,10 @@ from frappe.utils import get_datetime
 
 from excom.excom.services import intake
 from excom.excom.services.intake import ingest
+from excom.excom.utils.graph import DEFAULT_GRAPH_VERSION, graph_version
 
 GRAPH_BASE = "https://graph.facebook.com"
-DEFAULT_VERSION = "v21.0"
+DEFAULT_VERSION = DEFAULT_GRAPH_VERSION  # kept for callers that import it
 # Lead fields read from Graph. ad / ad set / campaign IDs and names tie the lead to the Excom Ads mirrors;
 # is_organic marks a lead from a form shared without an ad. Reading ad fields needs ads_management on the token.
 LEAD_FIELDS = "id,created_time,field_data,ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,form_id,is_organic,platform"
@@ -23,7 +24,7 @@ def _graph(src=None) -> str:
 	if src is not None:
 		conn = frappe.db.get_value("Excom Meta Connection", {"status": "Active"}, "api_version") if frappe.db.exists("DocType", "Excom Meta Connection") else None
 		version = conn or ""
-	version = version or DEFAULT_VERSION
+	version = graph_version(version)
 	if not version.startswith("v"):
 		version = "v" + version
 	return f"{GRAPH_BASE}/{version}"

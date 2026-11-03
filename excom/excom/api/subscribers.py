@@ -11,7 +11,21 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
-from excom.excom.api.chat import _check_excom_access, _check_identity_access
+from excom.excom.api.chat import _check_excom_access, _check_identity_access, _check_manager_access
+
+
+def _guard_withdrawn(subscriber_list: str, omni_identity: str) -> None:
+    """A person who left this list (or asked not to be contacted) is only re-added by a manager.
+
+    Consent comes from the person (DPDP s.6): an agent re-adding them would put "consent" in the
+    ledger that they never gave. A manager may — the ledger then says it was staff-asserted.
+    """
+    from excom.excom.services.consent import latest_consent
+
+    withdrawn = latest_consent(omni_identity, channel="all", purpose=f"list:{subscriber_list}") == "Withdrawn"
+    blocked = frappe.db.get_value("Omni Identity", omni_identity, "do_not_contact")
+    if withdrawn or blocked:
+        _check_manager_access()
 
 
 @frappe.whitelist()
@@ -108,6 +122,7 @@ def add_subscriber(subscriber_list: str, omni_identity: str) -> dict:
         {"subscriber_list": subscriber_list, "omni_identity": omni_identity},
     ):
         return {"success": False, "message": "Already subscribed"}
+    _guard_withdrawn(subscriber_list, omni_identity)
 
     doc = frappe.get_doc({
         "doctype": "Excom Subscriber",
@@ -148,6 +163,7 @@ def add_subscriber_by_contact(subscriber_list: str, phone: str = "", email: str 
         {"subscriber_list": subscriber_list, "omni_identity": identity_name},
     ):
         return {"success": True, "omni_identity": identity_name, "already_exists": True}
+    _guard_withdrawn(subscriber_list, identity_name)
 
     doc = frappe.get_doc({
         "doctype": "Excom Subscriber",
@@ -180,19 +196,21 @@ def unsubscribe_subscriber(subscriber_name: str) -> dict:
         subscriber_name,
         {"status": "Unsubscribed", "unsubscribed_on": now_datetime()},
     )
+    _record_subscription(subscriber_name, False)
     frappe.db.commit()
     return {"success": True}
 
 
 @frappe.whitelist()
 def resubscribe(subscriber_name: str) -> dict:
-    """Re-subscribe a previously unsubscribed member."""
-    _check_excom_access()
+    """Re-subscribe a previously unsubscribed member (managers only: the person withdrew)."""
+    _check_manager_access()
     frappe.db.set_value(
         "Excom Subscriber",
         subscriber_name,
         {"status": "Subscribed", "unsubscribed_on": None},
     )
+    _record_subscription(subscriber_name, True, staff_asserted=True)
     frappe.db.commit()
     return {"success": True}
 
@@ -278,3 +296,16 @@ def search_identities(search: str = "", limit: int = 20) -> list:
         params,
         as_dict=True,
     )
+
+
+def _record_subscription(subscriber_name: str, subscribed: bool, staff_asserted: bool = False) -> None:
+    """Consent ledger row for a status change made with db.set_value (the controller does not run)."""
+    row = frappe.db.get_value("Excom Subscriber", subscriber_name, ["subscriber_list", "omni_identity"], as_dict=True)
+    if row:
+        from excom.excom.services.consent import record_consent
+        record_consent(
+            row.omni_identity, "Granted" if subscribed else "Withdrawn", channel="all",
+            purpose=f"list:{row.subscriber_list}", source="manual",
+            reference_doctype="Excom Subscriber", reference_name=subscriber_name,
+            notes=f"staff-asserted by {frappe.session.user}" if staff_asserted else "",
+        )

@@ -8,6 +8,7 @@ from frappe.utils import flt, now_datetime
 from excom.excom.services.access import deny
 from excom.excom.services.thread_service import send_outbound_message
 from excom.excom.utils.errors import ExcomProviderError, ExcomRateLimitError
+from excom.excom.services.whatsapp_errors import ExcomConsentError
 
 # Anyone who may open Excom at all. Excom Admin belongs here too: the tier that owns the
 # system must be able to use the thing it configures.
@@ -1810,9 +1811,13 @@ def send_template_to_thread(
             template_name=template_doc.actual_name or template_doc.template_name,
             language_code=template_doc.language_code or "en_US",
             components=components,
+            identity=thread.omni_identity,
         )
         provider_message_id = result.get("provider_message_id", "")
         delivery_status = result.get("status", "Sent")
+    except ExcomConsentError as e:
+        # shown to the agent; still an ExcomConsentError so automated callers (auto-ack) can tell
+        frappe.throw(e.message, exc=ExcomConsentError, title=_("Opted out"))
     except ExcomRateLimitError as e:
         delivery_status = "Failed"
         failure_reason = f"Rate limit: {e.message}"

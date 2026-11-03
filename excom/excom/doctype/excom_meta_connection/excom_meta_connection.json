@@ -51,7 +51,7 @@
    "fieldname": "api_version",
    "fieldtype": "Data",
    "label": "Graph API Version",
-   "default": "v21.0"
+   "default": "v26.0"
   },
   {
    "fieldname": "webhook_verify_token",
@@ -148,7 +148,7 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "creation": "2026-09-03 00:00:00",
- "modified": "2026-10-18 18:30:00.000000",
+ "modified": "2026-11-03 12:00:00.000000",
  "owner": "Administrator",
  "modified_by": "Administrator",
  "idx": 0,

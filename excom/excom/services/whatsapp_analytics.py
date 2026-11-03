@@ -18,6 +18,7 @@ from frappe import _
 from frappe.utils.password import get_decrypted_password
 
 from excom.excom.utils.errors import ExcomProviderError
+from excom.excom.utils.graph import graph_version
 
 
 def _resolve_waba_credentials(account_name: str) -> tuple[str, str, str, str]:
@@ -52,7 +53,7 @@ def _resolve_waba_credentials(account_name: str) -> tuple[str, str, str, str]:
         )
 
     base_url = getattr(account, "wa_url", None) or "https://graph.facebook.com"
-    version = getattr(account, "wa_version", None) or "v21.0"
+    version = graph_version(getattr(account, "wa_version", None))
 
     return waba_id, token, base_url, version
 
@@ -141,40 +142,39 @@ def get_conversation_analytics(
     conversation_categories: Optional[list[str]] = None,
 ) -> dict:
     """
-    Fetch conversation analytics (counts, costs, categories) from Meta.
+    Conversation-shaped analytics, now built from Meta's pricing_analytics.
+
+    Meta removed `conversation_analytics` on 2026-11-01 (per-message pricing replaced
+    conversations on 2025-07-01). This keeps the old response shape — data[0].data_points with
+    `conversation`, `cost` and `conversation_category` — so existing screens keep working,
+    with `volume` mapped to `conversation` and `pricing_category` to `conversation_category`.
 
     Args:
         account_name: Excom Channel Account name
         start/end: UNIX timestamps
         granularity: DAILY | HALF_HOUR | MONTHLY
-        dimensions: list of CONVERSATION_CATEGORY, CONVERSATION_TYPE, COUNTRY, PHONE
-        conversation_categories: AUTHENTICATION, MARKETING, SERVICE, UTILITY
+        dimensions: CONVERSATION_CATEGORY / CONVERSATION_TYPE / COUNTRY / PHONE (mapped to pricing dimensions)
+        conversation_categories: filter on AUTHENTICATION, MARKETING, SERVICE, UTILITY
 
     Returns:
-        dict with conversation data points
+        dict with conversation-shaped data points
     """
-    waba_id, token, base_url, version = _resolve_waba_credentials(account_name)
-
-    if not start or not end:
-        start, end = _default_range(30)
-
-    granularity = granularity.upper()
-    if granularity not in ("DAILY", "HALF_HOUR", "MONTHLY"):
-        granularity = "DAILY"
-
-    fields = f"conversation_analytics.start({start}).end({end}).granularity({granularity})"
-    fields += ".phone_numbers([])"
-
-    if dimensions:
-        dim_str = ",".join(f'"{d}"' for d in dimensions)
-        fields += f".dimensions([{dim_str}])"
-
-    if conversation_categories:
-        cat_str = ",".join(f'"{c}"' for c in conversation_categories)
-        fields += f".conversation_categories([{cat_str}])"
-
-    data = _call_analytics_api(waba_id, token, base_url, version, fields)
-    return data.get("conversation_analytics", {})
+    mapping = {"CONVERSATION_CATEGORY": "PRICING_CATEGORY", "CONVERSATION_TYPE": "PRICING_TYPE"}
+    pricing_dims = [mapping.get(d, d) for d in (dimensions or [])]
+    pricing = get_pricing_analytics(account_name, start, end, granularity, dimensions=pricing_dims or None)
+    wanted = {c.upper() for c in (conversation_categories or [])}
+    points = []
+    for dp in (pricing.get("data") or [{}])[0].get("data_points", []) if pricing.get("data") else []:
+        category = (dp.get("pricing_category") or "").upper()
+        if wanted and category not in wanted:
+            continue
+        points.append({
+            **dp,
+            "conversation": dp.get("volume", 0),
+            "conversation_category": category or "UNKNOWN",
+            "conversation_type": dp.get("pricing_type", ""),
+        })
+    return {"data": [{"data_points": points}], "source": "pricing_analytics"}
 
 
 def get_template_analytics(
@@ -293,20 +293,18 @@ def get_account_overview(account_name: str, days: int = 30) -> dict:
         frappe.log_error(title="Excom: messaging analytics fetch error")
 
     try:
-        conversation = get_conversation_analytics(
-            account_name, start, end, "DAILY",
-            dimensions=["CONVERSATION_CATEGORY"],
-        )
-    except Exception:
-        frappe.log_error(title="Excom: conversation analytics fetch error")
-
-    try:
         pricing = get_pricing_analytics(
             account_name, start, end, "DAILY",
             dimensions=["PRICING_CATEGORY"],
         )
     except Exception:
         frappe.log_error(title="Excom: pricing analytics fetch error")
+
+    # conversation_analytics is gone (2026-11-01); the conversation card is derived from pricing.
+    conversation = {"data": [{"data_points": [
+        {**dp, "conversation": dp.get("volume", 0), "conversation_category": (dp.get("pricing_category") or "UNKNOWN").upper()}
+        for dp in ((pricing.get("data") or [{}])[0].get("data_points", []) if pricing.get("data") else [])
+    ]}]}
 
     total_sent = sum(dp.get("sent", 0) for dp in messaging.get("data_points", []))
     total_delivered = sum(dp.get("delivered", 0) for dp in messaging.get("data_points", []))

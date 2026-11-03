@@ -1,0 +1,172 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-03 12:00:00.000000",
+ "description": "Append-only record of every consent given or withdrawn, with where it came from. Proof of consent under the DPDP Act / Rules 2025.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "omni_identity",
+  "action",
+  "channel",
+  "purpose",
+  "column_break_1",
+  "recorded_on",
+  "recorded_by",
+  "method",
+  "source",
+  "evidence_section",
+  "notice_version",
+  "evidence",
+  "column_break_2",
+  "reference_doctype",
+  "reference_name",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "omni_identity",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Identity",
+   "options": "Omni Identity",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "action",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Action",
+   "options": "Granted\nWithdrawn",
+   "reqd": 1
+  },
+  {
+   "default": "whatsapp",
+   "fieldname": "channel",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Channel",
+   "options": "whatsapp\nemail\nall",
+   "reqd": 1
+  },
+  {
+   "default": "marketing",
+   "description": "marketing (all promotional messages), all (every message), or a list: \"list:<Subscriber List>\"",
+   "fieldname": "purpose",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Purpose",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Now",
+   "fieldname": "recorded_on",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Recorded On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "recorded_by",
+   "fieldtype": "Link",
+   "label": "Recorded By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "method",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Method",
+   "options": "WhatsApp Reply\nMeta Preference\nDelivery Error\nUnsubscribe Link\nWeb Form\nImport\nSales Visit\nSubscriber List\nManual"
+  },
+  {
+   "description": "Machine source, e.g. whatsapp_stop, meta_user_preferences, meta_131050",
+   "fieldname": "source",
+   "fieldtype": "Data",
+   "label": "Source"
+  },
+  {
+   "fieldname": "evidence_section",
+   "fieldtype": "Section Break",
+   "label": "Evidence"
+  },
+  {
+   "description": "Version of the consent notice the person saw (DPDP: an itemised notice must precede consent)",
+   "fieldname": "notice_version",
+   "fieldtype": "Data",
+   "label": "Notice Version"
+  },
+  {
+   "fieldname": "evidence",
+   "fieldtype": "Attach",
+   "label": "Evidence File"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference Type",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Reference",
+   "options": "reference_doctype"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "in_create": 0,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-03 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom",
+ "name": "Excom Consent",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Excom Agent"
+  }
+ ],
+ "sort_field": "recorded_on",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "omni_identity",
+ "track_changes": 0
+}

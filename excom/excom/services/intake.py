@@ -341,7 +341,11 @@ def send_auto_ack(log_name: str) -> None:
 		if log.lead:
 			frappe.db.set_value(log.lead_doctype, log.lead, {"auto_ack_sent_at": now_datetime(), "intake_stage": "Responded"}, update_modified=False)
 		frappe.db.commit()
-	except Exception:
+	except Exception as e:
+		from excom.excom.services.whatsapp_errors import ExcomConsentError
+
+		if isinstance(e, ExcomConsentError):
+			return  # the person opted out: no auto-ack, and not an error
 		frappe.log_error(title=f"Excom auto-ack failed: {log_name}", message=frappe.get_traceback())
 
 

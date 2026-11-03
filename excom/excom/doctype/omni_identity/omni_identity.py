@@ -19,6 +19,27 @@ class OmniIdentity(Document):
 		self.prune_dead_links()
 		self.validate_unique_links()
 
+	def on_update(self):
+		"""Opt-out ticks changed by a save (Desk, merge) go into the consent ledger too.
+
+		set_opt_out / clear_opt_out write with db.set_value and record their own rows, so they never
+		pass through here.
+		"""
+		before = self.get_doc_before_save()
+		if not before:
+			return
+		source = self.flags.consent_source or "manual"
+		from excom.excom.services.consent import record_consent
+
+		for field, channel, purpose in (
+			("do_not_contact", "all", "all"),
+			("whatsapp_opt_out", "whatsapp", "all"),
+			("email_opt_out", "email", "all"),
+			("wa_marketing_opt_out", "whatsapp", "marketing"),
+		):
+			if bool(before.get(field)) != bool(self.get(field)):
+				record_consent(self.name, "Withdrawn" if self.get(field) else "Granted", channel, purpose, source)
+
 	def normalize_identifiers(self):
 		if self.primary_phone:
 			self.normalized_phone = normalize_phone(self.primary_phone)
@@ -141,6 +162,30 @@ class OmniIdentity(Document):
 			master_identity.primary_email = self.primary_email
 		if not master_identity.primary_whatsapp and self.primary_whatsapp:
 			master_identity.primary_whatsapp = self.primary_whatsapp
+
+		# Consent follows the person: the strictest choice of either record wins (on_update writes
+		# the ledger rows for anything the master newly carries).
+		for flag in ("do_not_contact", "whatsapp_opt_out", "email_opt_out", "wa_marketing_opt_out"):
+			if self.get(flag) and not master_identity.get(flag):
+				master_identity.set(flag, 1)
+		if self.get("wa_marketing_opt_out") and not master_identity.get("wa_marketing_opt_out_source"):
+			master_identity.wa_marketing_opt_out_on = self.get("wa_marketing_opt_out_on")
+			master_identity.wa_marketing_opt_out_source = self.get("wa_marketing_opt_out_source")
+		master_identity.flags.consent_source = f"merge:{self.name}"
+		known = {(a.alias_type, a.alias_value_normalized) for a in master_identity.get("aliases", [])}
+		for a in self.get("aliases", []):
+			if (a.alias_type, a.alias_value_normalized) not in known:
+				master_identity.append("aliases", {"alias_type": a.alias_type, "alias_value_raw": a.alias_value_raw,
+					"alias_value_normalized": a.alias_value_normalized, "verified": a.verified, "source": a.source or "Auto"})
+		if self.get("wa_bsuid"):
+			if not master_identity.get("wa_bsuid"):
+				master_identity.wa_bsuid = self.wa_bsuid
+				master_identity.wa_bsuid_waba = self.get("wa_bsuid_waba")
+			elif ("WhatsApp User ID", self.wa_bsuid) not in known:
+				master_identity.append("aliases", {"alias_type": "WhatsApp User ID", "alias_value_raw": self.wa_bsuid,
+					"alias_value_normalized": self.wa_bsuid, "verified": 1, "source": "Auto"})
+		if self.get("wa_username") and not master_identity.get("wa_username"):
+			master_identity.wa_username = self.wa_username
 
 		group_id = master_identity.merge_group_id or master_identity.name
 		master_identity.merge_group_id = group_id
@@ -269,11 +314,13 @@ def resolve_identity(phone: str = "", email: str = "", channel: str = "", channe
 	)
 
 
-def resolve_identity_internal(phone: str = "", email: str = "", channel: str = "", channel_user_id: str = "", display_name: str = ""):
+def resolve_identity_internal(phone: str = "", email: str = "", channel: str = "", channel_user_id: str = "", display_name: str = "", wa_user_id: str = "", wa_username: str = "", wa_waba: str = ""):
 	"""
 	Identity resolution entry point.
 
 	Resolution chain (first match wins, all skip Merged records):
+	  0. WhatsApp business-scoped user id (BSUID) — Meta always sends it, even when the person
+	     hides their number behind a username (2026), so it is the most specific key
 	  1. normalized_phone on Omni Identity
 	  2. alias phone/WhatsApp in Omni Identity Alias
 	  3. channel_user_id in Omni Identity Channel
@@ -292,14 +339,18 @@ def resolve_identity_internal(phone: str = "", email: str = "", channel: str = "
 	"""
 	norm_phone = normalize_phone(phone)
 	norm_email = normalize_email(email)
-	identity_name = None
+	wa_user_id = (wa_user_id or "").strip()
+	wa_username = (wa_username or "").strip()
+	identity_name = find_by_bsuid(wa_user_id) if wa_user_id else None
+	matched_by_bsuid = bool(identity_name)
+	recycled_from = ""
 
 	# --- Step 1: normalized_phone on Omni Identity ---
 	# Every spelling of the number, not just the one we were handed. An exact match is why the same
 	# person arrived twice: a telephony webhook says 919250333699, an older import of the same
 	# contact says 09250333699, and as strings those never met — so a second identity was created
 	# and the conversation split in half. The variants are exact and bounded, never a LIKE.
-	if norm_phone:
+	if not identity_name and norm_phone:
 		for candidate in phone_variants(norm_phone):
 			identity_name = frappe.db.get_value(
 				"Omni Identity",
@@ -402,6 +453,16 @@ def resolve_identity_internal(phone: str = "", email: str = "", channel: str = "
 				if oi_status != "Merged":
 					identity_name = linked_oi
 
+	# --- A known number arriving with a different user id from the same WhatsApp account ---
+	# A user id only changes together with a user_changed_* system message (handled by
+	# relink_whatsapp_user). A different one on a number we know therefore means a different
+	# person — a recycled number, common in India. Do not hand them the old customer's record,
+	# threads and opt-outs: open a new identity and flag it for review.
+	if identity_name and not matched_by_bsuid and wa_user_id and _bsuid_conflict(identity_name, wa_user_id, wa_waba):
+		recycled_from, identity_name = identity_name, None
+		if norm_phone:
+			_release_number(recycled_from, norm_phone)
+
 	# --- Found an existing identity: attach and enrich ---
 	if identity_name:
 		identity = frappe.get_doc("Omni Identity", identity_name)
@@ -409,6 +470,9 @@ def resolve_identity_internal(phone: str = "", email: str = "", channel: str = "
 
 		if channel and channel_user_id:
 			identity.add_channel(channel, channel_user_id, verified=True)
+			changed = True
+
+		if wa_user_id and _attach_bsuid(identity, wa_user_id, wa_username, wa_waba):
 			changed = True
 
 		# Backfill primary identifiers if missing
@@ -455,13 +519,15 @@ def resolve_identity_internal(phone: str = "", email: str = "", channel: str = "
 	# --- Step 8: No match found — create new identity ---
 	doc = frappe.get_doc({
 		"doctype": "Omni Identity",
-		"display_name": display_name or phone or email or "Unknown",
+		"display_name": display_name or wa_username or phone or email or "Unknown",
 		"primary_phone": phone or "",
 		"primary_email": email or "",
 		"primary_whatsapp": normalize_phone(phone) if phone else "",
 		"status": "Active",
 		"is_master": 1,
 	})
+	if wa_user_id:
+		_attach_bsuid(doc, wa_user_id, wa_username, wa_waba)
 
 	if channel and channel_user_id:
 		doc.append("channels", {
@@ -473,7 +539,7 @@ def resolve_identity_internal(phone: str = "", email: str = "", channel: str = "
 
 	# Duplicate detection: flag if a similar identity is found by name or partial phone.
 	# The new record is still created — it is up to a supervisor to review and merge.
-	suspected_duplicate = _find_potential_duplicate(
+	suspected_duplicate = recycled_from or _find_potential_duplicate(
 		display_name or phone or email, norm_phone, norm_email,
 		normalize_phone(phone) if phone else "",
 	)
@@ -485,6 +551,134 @@ def resolve_identity_internal(phone: str = "", email: str = "", channel: str = "
 	frappe.db.commit()
 
 	return doc.name
+
+
+def find_by_bsuid(wa_user_id: str) -> str:
+	"""Identity holding this WhatsApp business-scoped user id (current or a past one), or ''."""
+	if not wa_user_id:
+		return ""
+	name = frappe.db.get_value("Omni Identity", {"wa_bsuid": wa_user_id, "status": ["!=", "Merged"]}, "name")
+	if name:
+		return name
+	hit = frappe.db.sql(
+		"""
+		SELECT oia.parent FROM `tabOmni Identity Alias` oia
+		JOIN `tabOmni Identity` oi ON oi.name = oia.parent
+		WHERE oia.alias_type = 'WhatsApp User ID' AND oia.alias_value_normalized = %(v)s
+		AND oi.status != 'Merged'
+		LIMIT 1
+		""",
+		{"v": wa_user_id},
+		as_dict=True,
+	)
+	return hit[0].parent if hit else ""
+
+
+def _release_number(identity_name: str, norm_phone: str) -> None:
+	"""The number now belongs to someone else: the old record keeps it as history only.
+
+	Its primary phone, phone aliases and WhatsApp channel rows for that number go (they would
+	route the new owner's messages here), and the record is flagged for review.
+	"""
+	variants = set(phone_variants(norm_phone))
+	doc = frappe.get_doc("Omni Identity", identity_name)
+	if doc.normalized_phone in variants:
+		doc.primary_phone = ""
+		if normalize_phone(doc.primary_whatsapp) in variants:
+			doc.primary_whatsapp = ""
+	doc.set("aliases", [a for a in doc.get("aliases", []) if not (a.alias_type in ("Phone", "WhatsApp") and a.alias_value_normalized in variants)])
+	doc.set("channels", [c for c in doc.get("channels", []) if not (c.channel_type == "whatsapp" and normalize_phone(c.channel_user_id) in variants)])
+	doc.append("aliases", {"alias_type": "Other", "alias_value_raw": f"former WhatsApp number {norm_phone} (now another WhatsApp account)", "verified": 1, "source": "Inbound"})
+	doc.needs_review = 1
+	doc.save(ignore_permissions=True)
+
+
+def _bsuid_conflict(identity_name: str, wa_user_id: str, wa_waba: str) -> bool:
+	"""True when the identity already has a *different* current user id from the same WhatsApp account."""
+	if not wa_waba:
+		return False  # user ids differ across business portfolios, so without the account nothing is proven
+	row = frappe.db.get_value("Omni Identity", identity_name, ["wa_bsuid", "wa_bsuid_waba"], as_dict=True) or {}
+	return bool(row.get("wa_bsuid")) and row.get("wa_bsuid_waba") == wa_waba and row.get("wa_bsuid") != wa_user_id
+
+
+def _attach_bsuid(identity, wa_user_id: str, wa_username: str = "", wa_waba: str = "") -> bool:
+	"""Record a WhatsApp user id on the identity; every id it ever had stays as an alias.
+
+	User ids are per business portfolio and change when the person changes number, so one human
+	can carry several. The id from another account than the current one is kept as an alias only.
+	Returns True when the document changed (caller saves).
+	"""
+	changed = False
+	if wa_username and identity.get("wa_username") != wa_username:
+		identity.wa_username = wa_username
+		changed = True
+	other_account = bool(wa_waba and identity.get("wa_bsuid_waba") and identity.get("wa_bsuid_waba") != wa_waba)
+	if identity.get("wa_bsuid") != wa_user_id and (not identity.get("wa_bsuid") or not other_account):
+		identity.wa_bsuid = wa_user_id
+		if wa_waba:
+			identity.wa_bsuid_waba = wa_waba
+		changed = True
+	elif not identity.get("wa_bsuid_waba") and wa_waba and identity.get("wa_bsuid") == wa_user_id:
+		identity.wa_bsuid_waba = wa_waba
+		changed = True
+	if not any(a.alias_type == "WhatsApp User ID" and (a.alias_value_normalized or a.alias_value_raw) == wa_user_id for a in identity.get("aliases", [])):
+		identity.append("aliases", {
+			"alias_type": "WhatsApp User ID",
+			"alias_value_raw": f"{wa_user_id}@{wa_waba}" if wa_waba else wa_user_id,
+			"alias_value_normalized": wa_user_id,
+			"verified": 1,
+			"source": "Inbound",
+			"last_seen": frappe.utils.now_datetime(),
+		})
+		changed = True
+	return changed
+
+
+def relink_whatsapp_user(previous_user_id: str = "", new_user_id: str = "", new_phone: str = "", old_phone: str = "", wa_waba: str = "") -> str:
+	"""Follow a WhatsApp identity change (system messages user_changed_number / user_changed_user_id).
+
+	The identity is found by the previous BSUID (or the old phone); the new BSUID becomes current
+	and the old one stays as an alias. A new number becomes the primary one and the old number is
+	kept as an alias, so history and future messages land on the same person.
+	Returns the identity name, or '' when nobody matched.
+	"""
+	name = find_by_bsuid(previous_user_id) if previous_user_id else ""
+	if not name and old_phone:
+		for candidate in phone_variants(normalize_phone(old_phone)):
+			name = frappe.db.get_value("Omni Identity", {"normalized_phone": candidate, "status": ["!=", "Merged"]}, "name")
+			if name:
+				break
+	if not name:
+		return ""
+	identity = frappe.get_doc("Omni Identity", name)
+	changed = False
+	if previous_user_id and not any(a.alias_type == "WhatsApp User ID" and a.alias_value_normalized == previous_user_id for a in identity.get("aliases", [])):
+		identity.append("aliases", {"alias_type": "WhatsApp User ID", "alias_value_raw": previous_user_id, "alias_value_normalized": previous_user_id, "verified": 1, "source": "Inbound"})
+		changed = True
+	if new_user_id and identity.get("wa_bsuid") != new_user_id:
+		# a relink replaces the current id (same account by definition); the old one stays an alias
+		identity.wa_bsuid = ""
+		changed = _attach_bsuid(identity, new_user_id, wa_waba=wa_waba or identity.get("wa_bsuid_waba") or "") or changed
+	norm_new = normalize_phone(new_phone)
+	if norm_new and norm_new != identity.normalized_phone:
+		old = identity.normalized_phone
+		if old:
+			# Kept as history only ("Other" aliases never resolve): the old number may be reissued to
+			# someone else, who must not land on this person's record.
+			identity.append("aliases", {"alias_type": "Other", "alias_value_raw": f"former WhatsApp number {old}", "alias_value_normalized": f"former:{old}", "verified": 1, "source": "Inbound"})
+			identity.set("aliases", [a for a in identity.get("aliases", []) if not (a.alias_type in ("Phone", "WhatsApp") and a.alias_value_normalized in phone_variants(old))])
+			identity.set("channels", [c for c in identity.get("channels", []) if not (c.channel_type == "whatsapp" and normalize_phone(c.channel_user_id) in phone_variants(old))])
+		holder = frappe.db.get_value("Omni Identity", {"normalized_phone": ["in", phone_variants(norm_new)], "status": ["!=", "Merged"], "name": ["!=", identity.name]}, "name")
+		if holder:
+			identity.needs_review = 1
+			identity.potential_duplicate_of = holder
+		identity.primary_phone = norm_new
+		identity.primary_whatsapp = norm_new
+		identity.add_channel("whatsapp", norm_new, verified=True)
+		changed = True
+	if changed:
+		identity.save(ignore_permissions=True)
+	return identity.name
 
 
 def _find_potential_duplicate(display_name: str, norm_phone: str, norm_email: str = "", primary_whatsapp: str = "") -> str:
@@ -595,6 +789,8 @@ def set_opt_out(identity_name: str, channel: str = "all", source: str = "manual"
 	if channel == "all":
 		updates["do_not_contact"] = 1
 	frappe.db.set_value("Omni Identity", identity_name, updates, update_modified=False)
+	from excom.excom.services.consent import record_consent
+	record_consent(identity_name, "Withdrawn", channel=channel, purpose="all", source=source)
 
 
 def clear_opt_out(identity_name: str, channel: str = "all", source: str = "manual") -> None:
@@ -607,6 +803,8 @@ def clear_opt_out(identity_name: str, channel: str = "all", source: str = "manua
 	if channel == "all":
 		updates["do_not_contact"] = 0
 	frappe.db.set_value("Omni Identity", identity_name, updates, update_modified=False)
+	from excom.excom.services.consent import record_consent
+	record_consent(identity_name, "Granted", channel=channel, purpose="all", source=source)
 
 
 def on_doctype_update():

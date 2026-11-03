@@ -37,6 +37,12 @@
   "column_break_consent",
   "opt_out_on",
   "opt_out_source",
+  "wa_bsuid",
+  "wa_bsuid_waba",
+  "wa_username",
+  "wa_marketing_opt_out",
+  "wa_marketing_opt_out_on",
+  "wa_marketing_opt_out_source",
   "aliases_section",
   "aliases",
   "ai_section",
@@ -245,6 +251,46 @@
    "description": "How the opt-out was recorded, e.g. whatsapp_stop, email_unsubscribe, manual."
   },
   {
+   "fieldname": "wa_bsuid",
+   "fieldtype": "Data",
+   "label": "WhatsApp User ID (BSUID)",
+   "read_only": 1,
+   "search_index": 1,
+   "description": "Meta's business-scoped user id. Present even when the person hides their number behind a WhatsApp username."
+  },
+  {
+   "fieldname": "wa_bsuid_waba",
+   "fieldtype": "Data",
+   "label": "WhatsApp User ID Account",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "WhatsApp Business Account the current user id belongs to (user ids are per business portfolio)."
+  },
+  {
+   "fieldname": "wa_username",
+   "fieldtype": "Data",
+   "label": "WhatsApp Username",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_marketing_opt_out",
+   "fieldtype": "Check",
+   "label": "Stopped WhatsApp Marketing",
+   "description": "Set when the person taps Stop promotions in WhatsApp (or Meta answers 131050). Blocks marketing templates only; order and service messages still go."
+  },
+  {
+   "fieldname": "wa_marketing_opt_out_on",
+   "fieldtype": "Datetime",
+   "label": "Marketing Opt-out On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_marketing_opt_out_source",
+   "fieldtype": "Data",
+   "label": "Marketing Opt-out Source",
+   "read_only": 1
+  },
+  {
    "collapsible": 1,
    "fieldname": "aliases_section",
    "fieldtype": "Section Break",
@@ -280,7 +326,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-02-23 00:00:00.000000",
+ "modified": "2026-11-03 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Omni Identity",

@@ -85,6 +85,9 @@ def ingest_inbound_message(
     reply_to_provider_id: str = "",
     provider_timestamp: str = "",
     channel_user_id: str = "",
+    wa_user_id: str = "",
+    wa_username: str = "",
+    wa_waba: str = "",
 ) -> str:
     """
     Full inbound message ingestion pipeline.
@@ -105,8 +108,13 @@ def ingest_inbound_message(
     identity_name = resolve_identity_internal(
         phone=phone,
         channel=channel,
-        channel_user_id=channel_user_id or phone,  # PSID / IGSID for Meta DMs, phone for WhatsApp
+        # PSID / IGSID for Meta DMs; phone for WhatsApp, or the business-scoped user id when the
+        # person shares a username instead of a number
+        channel_user_id=channel_user_id or phone or wa_user_id,
         display_name=display_name,
+        wa_user_id=wa_user_id,
+        wa_username=wa_username,
+        wa_waba=wa_waba,
     )
 
     thread_name = upsert_thread(identity_name, channel, account)
@@ -275,7 +283,8 @@ def send_outbound_message(
             result = meta_dm.send_text(account, to_id, content_text, thread=thread)
         provider_message_id = result.get("provider_message_id", "")
     elif thread.channel == "whatsapp":
-        to_number = identity.primary_whatsapp or identity.primary_phone
+        # A username-only contact has no number but can be reached by business-scoped user id.
+        to_number = identity.primary_whatsapp or identity.primary_phone or identity.get("wa_bsuid")
         if not to_number:
             frappe.throw(_("No phone number on identity to send to"))
 
@@ -358,35 +367,62 @@ def send_outbound_message(
     return msg.name
 
 
+# A status only moves forward: Meta does not guarantee webhook order, so a late "delivered"
+# must not overwrite "read". "failed" can follow "sent" (Meta drops held or capped messages
+# after accepting them) but never a delivered or read message.
+_STATUS_RANK = {"Queued": 0, "Scheduled": 0, "Sent": 1, "Delivered": 2, "Read": 3}
+_STATUS_MAP = {"sent": "Sent", "delivered": "Delivered", "read": "Read", "played": "Read", "failed": "Failed"}
+
+
 def update_delivery_status(
     provider_message_id: str,
     status: str,
     conversation_id: str = "",
     failure_reason: str = "",
-) -> None:
-    """Update delivery status on an Excom Message by provider_message_id."""
+    failure_code=None,
+    pricing_category: str = "",
+    pricing_type: str = "",
+) -> str:
+    """Update delivery status on an Excom Message by provider_message_id.
+
+    Returns the Excom Message name ('' when the message is not ours).
+    """
     msg = frappe.db.get_value(
         "Excom Message",
         {"provider_message_id": provider_message_id},
-        ["name", "thread"],
+        ["name", "thread", "delivery_status"],
         as_dict=True,
     )
     if not msg:
-        return
+        return ""
 
-    status_map = {
-        "sent": "Sent",
-        "delivered": "Delivered",
-        "read": "Read",
-        "failed": "Failed",
-    }
-    mapped = status_map.get(status, status)
-
-    updates: dict = {"delivery_status": mapped}
-    if mapped == "Failed" and failure_reason:
-        updates["failure_reason"] = failure_reason
+    mapped = _STATUS_MAP.get(status, status)
+    current = msg.delivery_status or ""
+    updates: dict = {}
+    if mapped == "Failed":
+        if current not in ("Delivered", "Read"):
+            updates["delivery_status"] = "Failed"
+            if failure_reason:
+                updates["failure_reason"] = failure_reason[:1000]
+            if failure_code not in (None, ""):
+                try:
+                    updates["failure_code"] = int(failure_code)
+                except (TypeError, ValueError):
+                    pass
+    elif mapped in _STATUS_RANK and (current == "Failed" or _STATUS_RANK[mapped] > _STATUS_RANK.get(current, -1)):
+        # a real delivery after a "failed" (a retried send reusing the id) wins too
+        updates["delivery_status"] = mapped
+    if pricing_category:
+        updates["wa_pricing_category"] = pricing_category
+    if pricing_type:
+        updates["wa_pricing_type"] = pricing_type
+    if not updates:
+        # Nothing to change here, but a broadcast still counts a late "delivered" event.
+        _attribute_broadcast_status(provider_message_id, status)
+        return msg.name
 
     frappe.db.set_value("Excom Message", msg.name, updates, update_modified=True)
+    mapped = updates.get("delivery_status", current)
 
     frappe.publish_realtime(
         "excom:message_status_updated",
@@ -399,13 +435,18 @@ def update_delivery_status(
         after_commit=True,
     )
 
+    _attribute_broadcast_status(provider_message_id, status)
+
+    frappe.db.commit()
+    return msg.name
+
+
+def _attribute_broadcast_status(provider_message_id: str, status: str) -> None:
     try:
         from excom.excom.services.broadcast_metrics import attribute_delivery_status
         attribute_delivery_status(provider_message_id, status)
     except Exception:
         frappe.log_error(title="Excom: broadcast metric attribution failed")
-
-    frappe.db.commit()
 
 
 

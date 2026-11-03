@@ -67,6 +67,8 @@ def unsubscribe():
             "unsubscribed_on": now_datetime(),
         },
     )
+    from excom.excom.services.consent import on_subscription_change
+    on_subscription_change(omni_identity, subscriber_list, False, source="unsubscribe_link", subscriber=subscriber_name)
     frappe.db.commit()
 
     display_name = frappe.db.get_value(

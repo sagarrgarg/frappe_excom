@@ -39,12 +39,24 @@ def execute_broadcast(broadcast_name: str):
 
     sent, failed = 0, 0
 
+    from excom.excom.services import whatsapp_errors as wae
+
+    # A paused broadcast that is queued again continues where it stopped: nobody gets it twice.
+    already_sent = set(frappe.get_all(
+        "Excom Broadcast Log",
+        filters={"broadcast": broadcast.name, "status": "Sent"},
+        pluck="omni_identity",
+    ))
+    sent = len(already_sent)
+
     for oi_name in subscribers:
+        if oi_name in already_sent:
+            continue
         try:
             if broadcast.channel == "Email":
                 success = _send_email_to_subscriber(broadcast, oi_name)
             elif broadcast.channel == "WhatsApp":
-                success = _send_whatsapp_to_subscriber(broadcast, oi_name)
+                success = _send_with_retry(broadcast, oi_name)
             else:
                 success = False
 
@@ -52,6 +64,22 @@ def execute_broadcast(broadcast_name: str):
                 sent += 1
             else:
                 failed += 1
+        except wae.ExcomConsentError as e:
+            # opted out since joining the list: not a failure, nothing was sent
+            _log_delivery(broadcast.name, oi_name, "Skipped", error=e.message)
+        except wae.WhatsAppAPIError as e:
+            failed += 1
+            _log_delivery(broadcast.name, oi_name, "Failed", error=e.message)
+            if e.error_class == wae.OPTED_OUT:
+                from excom.excom.services.consent import set_marketing_opt_out
+                set_marketing_opt_out(oi_name, source="meta_131050", reference_doctype="Excom Broadcast", reference_name=broadcast.name)
+            if e.error_class in wae.CAMPAIGN_STOPPERS:
+                # template paused / portfolio pacing drop / account restricted: every remaining send
+                # would fail the same way and can hurt the account further — stop and say why.
+                broadcast.db_set({"status": "Paused", "sent_count": sent, "failed_count": failed}, update_modified=True)
+                broadcast.add_comment("Comment", _("Paused by Meta error {0}: {1}").format(e.code, e.message))
+                frappe.db.commit()
+                return
         except Exception as e:
             failed += 1
             _log_delivery(broadcast.name, oi_name, "Failed", error=str(e))
@@ -145,6 +173,13 @@ def _send_email_to_subscriber(broadcast, omni_identity_name: str) -> bool:
             recipient="", error="No email address",
         )
         return False
+    if identity.do_not_contact or identity.email_opt_out:
+        # e.g. UNSUBSCRIBE / STOP ALL on WhatsApp: no campaign email either
+        _log_delivery(
+            broadcast.name, omni_identity_name, "Skipped",
+            recipient=email, error="Opted out of email",
+        )
+        return False
 
     rendered_body = render_email_body(broadcast.email_body, omni_identity_name)
 
@@ -225,10 +260,33 @@ def _build_unsubscribe_footer(
 # ---------------------------------------------------------------------------
 
 
+def _send_with_retry(broadcast, omni_identity_name: str) -> bool:
+    """One WhatsApp send, retried once after the wait Meta asks for on rate / transient errors."""
+    from excom.excom.services import whatsapp_errors as wae
+
+    try:
+        return _send_whatsapp_to_subscriber(broadcast, omni_identity_name)
+    except wae.WhatsAppAPIError as e:
+        # Only rate limits are retried: after a Meta-side error the message may already have been
+        # accepted, and a second marketing message to the same person is worse than one missing.
+        waits = {wae.RETRY_GLOBAL: min(int(e.retry_after or 60), 60), wae.RETRY_RECIPIENT: 6}
+        if e.error_class not in waits:
+            raise
+        _sleep(waits[e.error_class])
+        return _send_whatsapp_to_subscriber(broadcast, omni_identity_name)
+
+
+def _sleep(seconds: int) -> None:
+    if not frappe.flags.in_test:
+        import time
+        time.sleep(seconds)
+
+
 def _send_whatsapp_to_subscriber(broadcast, omni_identity_name: str) -> bool:
     """Send a WhatsApp template message to a subscriber with variables and header media."""
     identity = frappe.get_doc("Omni Identity", omni_identity_name)
-    phone = identity.primary_whatsapp or identity.primary_phone
+    # Meta recommends marketing to phone numbers; a username-only contact is reached by user id.
+    phone = identity.primary_whatsapp or identity.primary_phone or identity.get("wa_bsuid")
     if not phone:
         _log_delivery(
             broadcast.name, omni_identity_name, "Skipped",
@@ -270,6 +328,8 @@ def _send_whatsapp_to_subscriber(broadcast, omni_identity_name: str) -> bool:
         template_name=template.actual_name or template.name,
         language_code=language_code,
         components=components,
+        identity=omni_identity_name,
+        gate_category="MARKETING",  # a list campaign is marketing whatever the template category
     )
 
     from excom.excom.api.chat import _build_template_preview

@@ -14,6 +14,7 @@ from frappe.model.document import Document
 from frappe.utils.password import get_decrypted_password
 
 from excom.excom.utils.errors import ExcomProviderError
+from excom.excom.utils.graph import graph_version
 
 MAX_STATIC_KB = 100
 MAX_ANIMATED_KB = 500
@@ -121,7 +122,7 @@ class ExcomSticker(Document):
             )
 
         base_url = getattr(account, "wa_url", None) or "https://graph.facebook.com"
-        version = getattr(account, "wa_version", None) or "v21.0"
+        version = graph_version(getattr(account, "wa_version", None))
         phone_id = getattr(account, "wa_phone_id", None)
         if not phone_id:
             frappe.throw(

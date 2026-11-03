@@ -26,6 +26,10 @@
   "provider_timestamp",
   "column_break_provider",
   "failure_reason",
+  "failure_code",
+  "wa_message_status",
+  "wa_pricing_category",
+  "wa_pricing_type",
   "relations_section",
   "reply_to",
   "created_by_user",
@@ -168,6 +172,31 @@
    "label": "Failure Reason"
   },
   {
+   "fieldname": "failure_code",
+   "fieldtype": "Int",
+   "label": "Failure Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_message_status",
+   "fieldtype": "Data",
+   "label": "Meta Send Status",
+   "read_only": 1,
+   "description": "accepted / held_for_quality_assessment (Meta paces new templates and smaller accounts)."
+  },
+  {
+   "fieldname": "wa_pricing_category",
+   "fieldtype": "Data",
+   "label": "Pricing Category",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_pricing_type",
+   "fieldtype": "Data",
+   "label": "Pricing Type",
+   "read_only": 1
+  },
+  {
    "collapsible": 1,
    "fieldname": "relations_section",
    "fieldtype": "Section Break",
@@ -247,7 +276,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-02 10:00:00.000000",
+ "modified": "2026-11-03 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Message",

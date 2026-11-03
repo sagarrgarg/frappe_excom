@@ -12,6 +12,7 @@ import frappe
 from frappe import _
 
 from excom.excom.api.chat import _check_admin_access, _check_manager_access
+from excom.excom.utils.graph import graph_version
 
 # Doctypes the generic editor may touch. Read-only ones are audit logs.
 ADMIN_DOCTYPES: dict[str, dict] = {
@@ -562,7 +563,7 @@ def diagnose_whatsapp() -> list:
 	out = []
 	for name in frappe.get_all("Excom Channel Account", filters={"channel": ["in", ["whatsapp", "WhatsApp"]], "status": "Active"}, pluck="name"):
 		acc = frappe.get_doc("Excom Channel Account", name)
-		row = {"account": name, "phone_id": acc.wa_phone_id or "", "waba_id": acc.wa_business_id or "", "version": acc.wa_version or "v21.0", "checks": []}
+		row = {"account": name, "phone_id": acc.wa_phone_id or "", "waba_id": acc.wa_business_id or "", "version": graph_version(acc.wa_version), "stored_version": acc.wa_version or "", "checks": []}
 		def add(label, ok, detail=""):
 			row["checks"].append({"label": label, "ok": bool(ok), "detail": detail})
 		stored = frappe.db.sql("SELECT 1 FROM `__Auth` WHERE doctype = 'Excom Channel Account' AND name = %s AND fieldname = 'wa_token' LIMIT 1", (name,))
@@ -579,8 +580,7 @@ def diagnose_whatsapp() -> list:
 		add("Business Account ID (WABA) set", bool(acc.wa_business_id), "" if acc.wa_business_id else "Meta → WhatsApp Manager → the WhatsApp Business Account id (not the Business Manager id, not the phone id)")
 		if token:
 			base = (acc.wa_url or "https://graph.facebook.com").rstrip("/")
-			ver = acc.wa_version or "v21.0"
-			ver = ver if ver.startswith("v") else "v" + ver
+			ver = graph_version(acc.wa_version)
 			h = {"authorization": f"Bearer {token}"}
 			def probe(label, url, params=None):
 				try:
@@ -593,11 +593,18 @@ def diagnose_whatsapp() -> list:
 				except Exception as e:
 					add(label, False, f"network: {frappe.utils.strip_html(str(e))[:140]}")
 				return None
-			probe("Token can read the phone number", f"{base}/{ver}/{acc.wa_phone_id}", {"fields": "display_phone_number,verified_name"})
+			from excom.excom.utils.graph import is_outdated
+			add("Graph API version is current", not is_outdated(acc.wa_version),
+				"" if not is_outdated(acc.wa_version) else f"stored {acc.wa_version or 'nothing'} — calls already use {ver}; set API Version to {ver} (v21.0 stops working on 2027-01-21)")
+			phone = probe("Token can read the phone number", f"{base}/{ver}/{acc.wa_phone_id}", {"fields": "display_phone_number,verified_name,quality_rating"})
+			if phone:
+				row["quality_rating"] = phone.get("quality_rating") or ""
+				add("Number quality is not RED", (phone.get("quality_rating") or "").upper() != "RED", "quality RED — Meta can pause templates and block scaling; slow down marketing")
 			if acc.wa_business_id:
 				meta = probe("Business Account ID is readable", f"{base}/{ver}/{acc.wa_business_id}", {"metadata": 1, "fields": "id,name"})
 				if meta:
 					row["id_type"] = ((meta.get("metadata") or {}).get("type") or "unknown").lower()
+				_whatsapp_platform_checks(acc, base, ver, h, add, row, requests)
 				data = probe("Template list readable", f"{base}/{ver}/{acc.wa_business_id}/message_templates", {"limit": 1})
 				if data is not None:
 					row["templates_visible"] = len(data.get("data") or [])
@@ -618,7 +625,7 @@ def diagnose_whatsapp() -> list:
 			app_secret = acc.get_password("wa_app_secret", raise_exception=False) or ""
 			if acc.wa_app_id and app_secret:
 				try:
-					dbg = requests.get(f"{base}/{ver}/debug_token", params={"input_token": token, "access_token": f"{acc.wa_app_id}|{app_secret}"}, timeout=25)
+					dbg = requests.get(f"{base}/{ver}/debug_token", params={"input_token": token}, headers={"Authorization": f"Bearer {acc.wa_app_id}|{app_secret}"}, timeout=25)
 					d = (dbg.json().get("data") or {}) if dbg.content else {}
 					wabas = [t for g in (d.get("granular_scopes") or []) if g.get("scope") in ("whatsapp_business_management", "whatsapp_business_messaging") for t in (g.get("target_ids") or [])]
 					row["token_wabas"] = sorted(set(wabas))
@@ -631,6 +638,94 @@ def diagnose_whatsapp() -> list:
 		row["ok"] = all(c["ok"] for c in row["checks"])
 		out.append(row)
 	return out
+
+
+REQUIRED_WEBHOOK_FIELDS = (
+	"messages",
+	"message_template_status_update",
+	"template_category_update",
+	"message_template_quality_update",
+	"phone_number_quality_update",
+	"account_update",
+	"account_alerts",
+	"business_capability_update",
+	"user_preferences",
+)
+
+
+def _whatsapp_platform_checks(acc, base, ver, headers, add, row, requests) -> None:
+	"""Deadline checks (Nov 2026): INR billing, webhook fields and version, app subscription,
+	Marketing Messages API onboarding, webhook signature. Read-only."""
+	from excom.excom.utils.graph import is_outdated
+
+	def get(url, params=None, h=None):
+		try:
+			r = requests.get(url, headers=h if h is not None else headers, params=params or {}, timeout=25)
+			return (r.json() if r.content else {}) if r.status_code == 200 else None
+		except Exception:
+			return None
+
+	def waba_field(field):
+		# one field per call: an unknown field fails the whole Graph request
+		return (get(f"{base}/{ver}/{acc.wa_business_id}", {"fields": field}) or {}).get(field)
+
+	currency = waba_field("currency") or ""
+	row["billing_currency"] = currency
+	if currency:
+		country = frappe.db.get_value("Company", acc.company, "country") if acc.get("company") else ""
+		indian = (country or "India") == "India"
+		add("Billing currency is INR", currency == "INR" or not indian,
+			"" if currency == "INR" or not indian else (
+				f"billed in {currency}: Indian accounts must move to INR by 2026-12-31 or Meta stops delivery on 2027-01-01 "
+				"(WhatsApp Manager → Payment settings). The migration creates a new WhatsApp Business Account and new template ids: "
+				"afterwards put the new Business Account ID here, subscribe the app to it, and run template sync."))
+
+	app_secret = acc.get_password("wa_app_secret", raise_exception=False) or ""
+	add("App secret set (webhook signatures checked)", bool(app_secret),
+		"" if app_secret else "without the App Secret, webhooks are accepted unsigned and may not change consent or identities — paste it from App Dashboard → Settings → Basic")
+
+	subscribed = get(f"{base}/{ver}/{acc.wa_business_id}/subscribed_apps")
+	if subscribed is not None:
+		apps = [((a.get("whatsapp_business_api_data") or {}).get("id") or a.get("id")) for a in subscribed.get("data") or []]
+		ok = bool(apps) and (not acc.wa_app_id or acc.wa_app_id in apps)
+		add("App is subscribed to this WhatsApp account", ok,
+			"" if ok else "no webhook delivery: POST /{waba_id}/subscribed_apps with the system user token (or Admin → Meta Business → reconnect)")
+
+	if acc.wa_app_id and app_secret:
+		# app access token in the header, not the URL, so it never lands in proxy logs
+		subs = get(f"{base}/{ver}/{acc.wa_app_id}/subscriptions", h={"Authorization": f"Bearer {acc.wa_app_id}|{app_secret}"})
+		if subs is not None:
+			waba_sub = next((x for x in subs.get("data") or [] if x.get("object") == "whatsapp_business_account"), None) or {}
+			fields = waba_sub.get("fields") or []
+			have = {(f.get("name") if isinstance(f, dict) else str(f)) for f in fields}
+			old = sorted({f.get("name") for f in fields if isinstance(f, dict) and is_outdated(f.get("version"))})
+			missing = [f for f in REQUIRED_WEBHOOK_FIELDS if f not in have]
+			row["webhook_fields"] = sorted(have)
+			add("Webhook fields subscribed", not missing,
+				"" if not missing else "subscribe in Meta App Dashboard → WhatsApp → Configuration → Webhook fields: " + ", ".join(missing))
+			if old:
+				add("Webhook payload version is v24.0 or later", False,
+					"webhook payloads follow the subscription version, not the API version: set these fields to v24.0+ in the App Dashboard: " + ", ".join(old))
+
+	onboarding = waba_field("marketing_messages_onboarding_status") or ""
+	row["marketing_messages_status"] = onboarding
+	if acc.get("wa_marketing_api_enabled"):
+		ok = onboarding == "ONBOARDED" or (not onboarding and bool(acc.get("wa_marketing_terms_signed")))
+		add("Marketing Messages API onboarded", ok,
+			"" if ok else f"status {onboarding or 'unknown'}: accept the terms in App Dashboard → WhatsApp → Quickstart (Marketing Messages card) and add a payment method")
+	else:
+		add("Marketing goes through the Marketing Messages API", False,
+			"marketing still uses /messages, which Meta retires on 2027-10-13 — accept the Marketing Messages API terms, then tick 'Send Marketing via Marketing Messages API'"
+			+ (f" (Meta reports: {onboarding})" if onboarding else ""))
+
+	health = waba_field("health_status")
+	if isinstance(health, dict) and health.get("can_send_message"):
+		can = health.get("can_send_message")
+		add("Meta says this account can send", can == "AVAILABLE", "" if can == "AVAILABLE" else f"health: {can} — see WhatsApp Manager → Account tools")
+
+	limit = get(f"{base}/{ver}/{acc.wa_phone_id}", {"fields": "whatsapp_business_manager_messaging_limit"})
+	if limit and limit.get("whatsapp_business_manager_messaging_limit") is not None:
+		row["messaging_limit"] = limit["whatsapp_business_manager_messaging_limit"]
 
 
 @frappe.whitelist()

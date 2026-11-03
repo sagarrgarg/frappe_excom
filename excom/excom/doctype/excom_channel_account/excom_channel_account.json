@@ -26,6 +26,18 @@
   "wa_webhook_verify_token",
   "wa_app_secret",
   "wa_allow_auto_read_receipt",
+  "wa_platform_section",
+  "wa_marketing_api_enabled",
+  "wa_marketing_product_policy",
+  "wa_marketing_activity_sharing",
+  "wa_marketing_terms_signed",
+  "column_break_wa_platform",
+  "wa_quality_rating",
+  "wa_messaging_limit",
+  "wa_throughput",
+  "wa_billing_currency",
+  "wa_health_checked_on",
+  "wa_last_platform_event",
   "email_section",
   "email_address",
   "email_connected_app",
@@ -167,12 +179,13 @@
    "mandatory_depends_on": "eval:doc.channel=='whatsapp'"
   },
   {
-   "default": "v21.0",
+   "default": "v26.0",
    "depends_on": "eval:doc.channel=='whatsapp'",
    "fieldname": "wa_version",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "API Version"
+   "label": "API Version",
+   "description": "Graph API version. Anything older than v24.0 is called as v26.0 (v21.0 stops working on 2027-01-21)."
   },
   {
    "fieldname": "column_break_wa",
@@ -231,6 +244,91 @@
    "fieldname": "wa_allow_auto_read_receipt",
    "fieldtype": "Check",
    "label": "Auto Read Receipt"
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_platform_section",
+   "fieldtype": "Section Break",
+   "label": "WhatsApp Platform",
+   "collapsible": 1
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_marketing_api_enabled",
+   "fieldtype": "Check",
+   "label": "Send Marketing via Marketing Messages API",
+   "description": "Marketing templates go to /marketing_messages. Accept the Marketing Messages API terms in the Meta App Dashboard first. Meta stops marketing on the Cloud API /messages endpoint on 2027-10-13 (2027-04-13 for accounts created from then)."
+  },
+  {
+   "default": "CLOUD_API_FALLBACK",
+   "depends_on": "eval:doc.channel=='whatsapp' && doc.wa_marketing_api_enabled",
+   "fieldname": "wa_marketing_product_policy",
+   "fieldtype": "Select",
+   "label": "Marketing Product Policy",
+   "options": "CLOUD_API_FALLBACK\nSTRICT",
+   "description": "CLOUD_API_FALLBACK: Meta falls back to the Cloud API when the Marketing Messages API cannot deliver. STRICT: never fall back."
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp' && doc.wa_marketing_api_enabled",
+   "fieldname": "wa_marketing_activity_sharing",
+   "fieldtype": "Select",
+   "label": "Share Message Activity with Meta",
+   "description": "Blank: Meta's account default. On/Off: sent with every marketing message (lets Meta use read signals to optimise delivery).",
+   "options": "\nOn\nOff"
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_marketing_terms_signed",
+   "fieldtype": "Check",
+   "label": "Marketing Messages Terms Signed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_wa_platform",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_quality_rating",
+   "fieldtype": "Data",
+   "label": "Quality Rating",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_messaging_limit",
+   "fieldtype": "Data",
+   "label": "Messaging Limit (portfolio)",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_throughput",
+   "fieldtype": "Data",
+   "label": "Throughput",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_billing_currency",
+   "fieldtype": "Data",
+   "label": "Billing Currency",
+   "read_only": 1,
+   "description": "Indian WhatsApp accounts must bill in INR by 2026-12-31 or Meta stops delivery on 2027-01-01."
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_health_checked_on",
+   "fieldtype": "Datetime",
+   "label": "Health Checked On",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_last_platform_event",
+   "fieldtype": "Small Text",
+   "label": "Last Platform Event",
+   "read_only": 1
   },
   {
    "depends_on": "eval:doc.channel=='email'",
@@ -395,7 +493,7 @@
    "fieldname": "meta_api_version",
    "fieldtype": "Data",
    "label": "Graph API Version",
-   "default": "v21.0"
+   "default": "v26.0"
   },
   {
    "fieldname": "meta_poll_interval_minutes",
@@ -514,7 +612,7 @@
   },
   {
    "depends_on": "eval:doc.voice_provider=='Twilio'",
-   "description": "Twilio only. Signs the browser softphone token. Created under Account \u2192 API keys \u2014 this is not the account auth token.",
+   "description": "Twilio only. Signs the browser softphone token. Created under Account → API keys — this is not the account auth token.",
    "fieldname": "voice_api_key_sid",
    "fieldtype": "Data",
    "label": "API Key SID"
@@ -641,7 +739,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-30 12:00:00.000000",
+ "modified": "2026-11-03 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Channel Account",

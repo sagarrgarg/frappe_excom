@@ -18,7 +18,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Type",
-   "options": "Phone\nEmail\nWhatsApp\nOther",
+   "options": "Phone\nEmail\nWhatsApp\nWhatsApp User ID\nOther",
    "reqd": 1
   },
   {
@@ -61,7 +61,7 @@
  "index_web_pages_for_search": 0,
  "istable": 1,
  "links": [],
- "modified": "2026-02-23 00:00:00.000000",
+ "modified": "2026-11-03 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Omni Identity Alias",

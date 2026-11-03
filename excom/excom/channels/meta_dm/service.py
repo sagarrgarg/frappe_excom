@@ -18,6 +18,7 @@ from frappe import _
 from frappe.utils import add_to_date, get_datetime, now_datetime, time_diff_in_seconds
 
 from excom.excom.utils.site_time import epoch_to_site_time
+from excom.excom.utils.graph import graph_version
 
 GRAPH = "https://graph.facebook.com"
 PLATFORMS = {"instagram": "instagram", "messenger": "messenger"}
@@ -32,7 +33,7 @@ def _creds(account) -> dict:
 	token = account.get_password("meta_page_token", raise_exception=False) or ""
 	if not token or not account.meta_page_id:
 		frappe.throw(_("Meta page id / page token missing on account {0}").format(account.name))
-	return {"token": token, "page_id": account.meta_page_id, "ig_id": account.meta_ig_user_id or "", "version": account.meta_api_version or "v21.0"}
+	return {"token": token, "page_id": account.meta_page_id, "ig_id": account.meta_ig_user_id or "", "version": graph_version(account.meta_api_version)}
 
 
 def _get(url: str, params: dict) -> dict:

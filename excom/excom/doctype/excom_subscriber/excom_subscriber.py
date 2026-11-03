@@ -36,12 +36,27 @@ class ExcomSubscriber(Document):
 
     def after_insert(self):
         self._update_list_counts()
+        self._record_consent()
 
     def on_trash(self):
         self._update_list_counts()
+        if self.status == "Subscribed":
+            # removing someone from a list ends their consent for it; the ledger keeps the proof
+            from excom.excom.services.consent import on_subscription_change
+
+            on_subscription_change(self.omni_identity, self.subscriber_list, False, source="manual", subscriber=self.name)
 
     def on_update(self):
         self._update_list_counts()
+        if not self.flags.in_insert and self.has_value_changed("status"):
+            self._record_consent()
+
+    def _record_consent(self):
+        """Joining or leaving a list is a consent event (Excom Consent ledger)."""
+        from excom.excom.services.consent import on_subscription_change
+
+        source = self.flags.consent_source or ("import" if frappe.flags.in_import else "subscriber_list")
+        on_subscription_change(self.omni_identity, self.subscriber_list, self.status == "Subscribed", source=source, subscriber=self.name)
 
     def _update_list_counts(self):
         """Refresh subscriber counts on the parent list."""

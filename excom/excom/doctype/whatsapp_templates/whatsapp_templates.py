@@ -17,6 +17,7 @@ from excom.excom.whatsapp_template_utils import (
     get_header_variable_samples,
     is_text_header,
 )
+from excom.excom.utils.graph import graph_version
 
 _TEMPLATE_CONTENT_FIELDS = frozenset({
     "template", "header_type", "header", "footer", "category",
@@ -476,7 +477,7 @@ def resolve_waba_ids(creds: dict, some_id: str) -> list[dict]:
     """WhatsApp Business Accounts reachable from an id. Meta calls several things a 'business account';
     a Business Portfolio id has owned_/client_whatsapp_business_accounts edges, a WABA has none."""
     base = (creds["url"] or "https://graph.facebook.com").rstrip("/")
-    version = creds["version"] or "v21.0"
+    version = graph_version(creds["version"])
     if not version.startswith("v"):
         version = "v" + version
     out: list[dict] = []
@@ -499,7 +500,7 @@ def _fetch_all_templates(creds: dict, biz_id: str) -> dict:
     large limit with a plain 400, so a first failure is retried with the bare request the vendor apps use.
     """
     base = (creds["url"] or "https://graph.facebook.com").rstrip("/")
-    version = creds["version"] or "v21.0"
+    version = graph_version(creds["version"])
     if not version.startswith("v"):
         version = "v" + version
     root = f"{base}/{version}/{biz_id}/message_templates"

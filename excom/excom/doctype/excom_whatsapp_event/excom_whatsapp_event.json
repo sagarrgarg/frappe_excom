@@ -1,0 +1,128 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-03 12:00:00.000000",
+ "description": "Account, number, template and preference events Meta sends to the webhook (quality, limits, category changes, restrictions).",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "received_on",
+  "field",
+  "event",
+  "severity",
+  "column_break_1",
+  "channel_account",
+  "waba_id",
+  "subject",
+  "details_section",
+  "summary",
+  "payload"
+ ],
+ "fields": [
+  {
+   "default": "Now",
+   "fieldname": "received_on",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Received On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "field",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Webhook Field",
+   "read_only": 1
+  },
+  {
+   "fieldname": "event",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Event",
+   "read_only": 1
+  },
+  {
+   "default": "Info",
+   "fieldname": "severity",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Severity",
+   "options": "Info\nWarning\nCritical",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "channel_account",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Channel Account",
+   "options": "Excom Channel Account",
+   "read_only": 1
+  },
+  {
+   "fieldname": "waba_id",
+   "fieldtype": "Data",
+   "label": "WhatsApp Business Account ID",
+   "read_only": 1
+  },
+  {
+   "description": "Template, phone number or user the event is about",
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "label": "Subject",
+   "read_only": 1
+  },
+  {
+   "fieldname": "details_section",
+   "fieldtype": "Section Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Small Text",
+   "label": "Summary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payload",
+   "fieldtype": "Code",
+   "label": "Payload",
+   "options": "JSON",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-03 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom",
+ "name": "Excom WhatsApp Event",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin"
+  }
+ ],
+ "sort_field": "received_on",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "event",
+ "track_changes": 0
+}

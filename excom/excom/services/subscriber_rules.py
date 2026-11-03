@@ -136,6 +136,13 @@ def _subscribe_if_needed(identity_name: str, subscriber_list: str) -> None:
     )
     if exists:
         return
+    # An automatic rule never re-adds someone who left this list or asked not to be contacted.
+    from excom.excom.services.consent import latest_consent
+
+    if frappe.db.get_value("Omni Identity", identity_name, "do_not_contact") or latest_consent(
+        identity_name, channel="all", purpose=f"list:{subscriber_list}"
+    ) == "Withdrawn":
+        return
 
     frappe.get_doc({
         "doctype": "Excom Subscriber",

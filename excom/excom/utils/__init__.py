@@ -3,6 +3,7 @@ import frappe
 from frappe.utils import now_datetime, time_diff_in_seconds
 
 from frappe.core.doctype.server_script.server_script_utils import EVENT_MAP
+from excom.excom.utils.graph import graph_version
 
 
 def run_server_script_for_doc_event(doc, event):
@@ -270,7 +271,7 @@ def get_wa_credentials(account_doc) -> dict:
         frappe.throw(f"No access token configured for account {account_doc.name}")
 
     url = account_doc.wa_url or "https://graph.facebook.com"
-    version = account_doc.wa_version or "v21.0"
+    version = graph_version(account_doc.wa_version)
     phone_id = account_doc.wa_phone_id
     business_id = account_doc.wa_business_id or ""
     app_id = account_doc.wa_app_id or ""

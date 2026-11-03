@@ -214,6 +214,7 @@ def _send_whatsapp(
             template_name=template.actual_name or template.name,
             language_code=template.language_code or "en_US",
             components=components,
+            identity=identity,
         )
         out["ok"] = True
         out["message_id"] = res.get("provider_message_id", "")
@@ -232,7 +233,12 @@ def _send_whatsapp(
             purpose=purpose,
             reference=reference,
         )
-    except Exception:
+    except Exception as e:
+        from excom.excom.services.whatsapp_errors import ExcomConsentError
+
+        if isinstance(e, ExcomConsentError):
+            out["skipped"] = "opted_out"  # e.g. stopped marketing in WhatsApp; not an error
+            return out
         frappe.log_error(title=f"excom.send_transactional: WhatsApp send failed ({purpose})")
         out["skipped"] = "whatsapp_error"
     return out

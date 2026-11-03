@@ -136,6 +136,7 @@ def retry_failed_message(message_name: str) -> dict:
         send_template_message,
     )
     from excom.excom.utils.errors import ExcomProviderError, ExcomRateLimitError
+    from excom.excom.services.whatsapp_errors import ExcomConsentError
 
     result: dict = {}
     try:
@@ -154,6 +155,7 @@ def retry_failed_message(message_name: str) -> dict:
                 to_number,
                 template_doc.actual_name or template_doc.template_name,
                 template_doc.language_code or "en_US",
+                identity=msg.omni_identity,
             )
 
         elif msg.message_type in ("Image", "Video", "Audio", "Document") and msg.media_file:
@@ -163,6 +165,12 @@ def retry_failed_message(message_name: str) -> dict:
 
         else:
             result = send_text_message(account, to_number, msg.content_text or "")
+
+    except ExcomConsentError as e:
+        # opted out since the first attempt: not a delivery failure, and never retried
+        frappe.db.set_value("Excom Message", message_name, {"delivery_status": "Failed", "failure_reason": e.message}, update_modified=False)
+        frappe.db.commit()
+        frappe.throw(e.message, title=_("Opted out"))
 
     except (ExcomProviderError, ExcomRateLimitError) as e:
         frappe.db.set_value(

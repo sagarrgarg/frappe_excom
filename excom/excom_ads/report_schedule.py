@@ -38,7 +38,7 @@ STUCK_AFTER = timedelta(minutes=30)
 MAX_EMAIL_BYTES = 15 * 1024 * 1024
 FINAL = ("Sent", "Skipped")
 # send_transactional "skipped" reasons that a retry cannot fix and that need nobody's attention.
-WA_SKIP = {"no_contact", "do_not_contact", "no_reachable_channel", "no_whatsapp_number"}
+WA_SKIP = {"no_contact", "do_not_contact", "no_reachable_channel", "no_whatsapp_number", "opted_out"}
 
 
 def failure_key(template: str) -> str:

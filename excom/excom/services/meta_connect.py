@@ -12,6 +12,7 @@ import frappe
 import requests
 from frappe import _
 from frappe.utils import now_datetime
+from excom.excom.utils.graph import graph_version
 
 GRAPH = "https://graph.facebook.com"
 PAGE_FIELDS = "id,name,category,access_token,instagram_business_account{id,username,name}"
@@ -75,7 +76,7 @@ def exchange_token(name: str, short_lived_token: str) -> dict:
 	secret = conn.get_password("app_secret", raise_exception=False)
 	if not conn.app_id or not secret:
 		frappe.throw(_("App id and app secret are required to exchange a token"))
-	data = _get(f"{GRAPH}/{conn.api_version or 'v21.0'}/oauth/access_token", {"grant_type": "fb_exchange_token", "client_id": conn.app_id, "client_secret": secret, "fb_exchange_token": short_lived_token})
+	data = _get(f"{GRAPH}/{graph_version(conn.api_version)}/oauth/access_token", {"grant_type": "fb_exchange_token", "client_id": conn.app_id, "client_secret": secret, "fb_exchange_token": short_lived_token})
 	conn.system_user_token = data["access_token"]
 	conn.save(ignore_permissions=True)
 	frappe.db.commit()
@@ -87,7 +88,7 @@ def debug_token(name: str) -> dict:
 	tok = _token(conn)
 	secret = conn.get_password("app_secret", raise_exception=False)
 	app_token = f"{conn.app_id}|{secret}" if conn.app_id and secret else tok
-	data = _get(f"{GRAPH}/{conn.api_version or 'v21.0'}/debug_token", {"input_token": tok, "access_token": app_token}).get("data") or {}
+	data = _get(f"{GRAPH}/{graph_version(conn.api_version)}/debug_token", {"input_token": tok, "access_token": app_token}).get("data") or {}
 	values = {"token_valid": 1 if data.get("is_valid") else 0, "token_scopes": ", ".join(data.get("scopes") or [])}
 	meta = frappe.get_meta("Excom Meta Connection")
 	if meta.has_field("token_expires_at"):
@@ -119,7 +120,7 @@ def discover(name: str) -> dict:
 	"""Refresh the asset table from Graph: pages (+ IG accounts), lead forms per page, WhatsApp numbers."""
 	conn = _conn(name)
 	tok = _token(conn)
-	v = conn.api_version or "v21.0"
+	v = graph_version(conn.api_version)
 	found: list[dict] = []
 	pages = _paged(f"{GRAPH}/{v}/me/accounts", {"access_token": tok, "fields": PAGE_FIELDS, "limit": 100})
 	if conn.business_id:
@@ -218,7 +219,7 @@ def _upsert_account(conn, channel: str, account_name: str, values: dict) -> str:
 def _subscribe_page(conn, page_id: str, fields: str) -> None:
 	"""Webhook accelerator: subscribe the page to our app. Polling works without it."""
 	try:
-		_post(f"{GRAPH}/{conn.api_version or 'v21.0'}/{page_id}/subscribed_apps", {"access_token": _page_token(conn, page_id), "subscribed_fields": fields})
+		_post(f"{GRAPH}/{graph_version(conn.api_version)}/{page_id}/subscribed_apps", {"access_token": _page_token(conn, page_id), "subscribed_fields": fields})
 	except Exception:
 		frappe.log_error(title=f"Excom Meta: page subscribe failed {page_id}", message=frappe.get_traceback())
 
@@ -243,11 +244,11 @@ def enable_asset(name: str, asset_type: str, asset_id: str, enable: int = 1) -> 
 		row.enabled = 0
 	elif asset_type == "Page":
 		linked_dt = "Excom Channel Account"
-		linked_name = _upsert_account(conn, "messenger", f"Messenger · {row.asset_name}", {"meta_page_id": asset_id, "meta_page_token": _page_token(conn, asset_id), "meta_api_version": conn.api_version or "v21.0", "meta_poll_interval_minutes": 1, "status": "Active"})
+		linked_name = _upsert_account(conn, "messenger", f"Messenger · {row.asset_name}", {"meta_page_id": asset_id, "meta_page_token": _page_token(conn, asset_id), "meta_api_version": graph_version(conn.api_version), "meta_poll_interval_minutes": 1, "status": "Active"})
 		_subscribe_page(conn, asset_id, "messages,messaging_postbacks,message_deliveries,message_reads")
 	elif asset_type == "Instagram":
 		linked_dt = "Excom Channel Account"
-		linked_name = _upsert_account(conn, "instagram", f"Instagram · {row.asset_name}", {"meta_ig_user_id": asset_id, "meta_page_id": row.page_id, "meta_page_token": _page_token(conn, row.page_id), "meta_api_version": conn.api_version or "v21.0", "meta_poll_interval_minutes": 1, "status": "Active"})
+		linked_name = _upsert_account(conn, "instagram", f"Instagram · {row.asset_name}", {"meta_ig_user_id": asset_id, "meta_page_id": row.page_id, "meta_page_token": _page_token(conn, row.page_id), "meta_api_version": graph_version(conn.api_version), "meta_poll_interval_minutes": 1, "status": "Active"})
 		_subscribe_page(conn, row.page_id, "messages")
 	elif asset_type == "Lead Form":
 		linked_dt = "Excom Source"
@@ -270,7 +271,7 @@ def enable_asset(name: str, asset_type: str, asset_id: str, enable: int = 1) -> 
 		_subscribe_page(conn, row.page_id, "leadgen")
 	elif asset_type == "WhatsApp Number":
 		linked_dt = "Excom Channel Account"
-		linked_name = _upsert_account(conn, "whatsapp", f"WhatsApp · {row.asset_name}", {"wa_phone_id": asset_id, "wa_business_id": extra.get("waba_id"), "wa_token": _token(conn), "wa_app_id": conn.app_id, "wa_app_secret": conn.get_password("app_secret", raise_exception=False) or "", "wa_webhook_verify_token": conn.webhook_verify_token, "wa_url": "https://graph.facebook.com", "wa_version": conn.api_version or "v21.0", "status": "Active"})
+		linked_name = _upsert_account(conn, "whatsapp", f"WhatsApp · {row.asset_name}", {"wa_phone_id": asset_id, "wa_business_id": extra.get("waba_id"), "wa_token": _token(conn), "wa_app_id": conn.app_id, "wa_app_secret": conn.get_password("app_secret", raise_exception=False) or "", "wa_webhook_verify_token": conn.webhook_verify_token, "wa_url": "https://graph.facebook.com", "wa_version": graph_version(conn.api_version), "status": "Active"})
 	elif asset_type == "Ad Account":
 		from excom.excom_ads.accounts import upsert_meta_ad_account
 
