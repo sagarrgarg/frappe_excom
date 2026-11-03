@@ -9,6 +9,7 @@
  "field_order": [
   "template_name",
   "actual_name",
+  "library_template_name",
   "column_break_bthp",
   "status",
   "quality_score",
@@ -29,6 +30,7 @@
   "field_names",
   "column_break_6",
   "category",
+  "template_type",
   "language",
   "language_code",
   "whatsapp_account",
@@ -40,7 +42,17 @@
   "column_break_tbvf",
   "footer",
   "section_break_wu2vp",
-  "buttons"
+  "buttons",
+  "section_break_types",
+  "lto_text",
+  "lto_has_expiration",
+  "call_permission_request",
+  "column_break_types",
+  "card_header_format",
+  "card_button_1_type",
+  "card_button_2_type",
+  "section_break_cards",
+  "cards"
  ],
  "fields": [
   {
@@ -161,7 +173,8 @@
    "fieldname": "header_type",
    "fieldtype": "Select",
    "label": "Header Type",
-   "options": "\nTEXT\nIMAGE\nVIDEO\nDOCUMENT\nLOCATION"
+   "options": "\nTEXT\nIMAGE\nVIDEO\nDOCUMENT\nLOCATION\nPRODUCT",
+   "description": "PRODUCT is the header of a single-product template (set automatically)."
   },
   {
    "depends_on": "eval:doc.header_type && ['IMAGE','VIDEO','DOCUMENT'].includes(doc.header_type)",
@@ -249,12 +262,96 @@
    "options": "Excom Channel Account",
    "read_only": 1,
    "description": "Filled from the first entry in WhatsApp Accounts (default for Desk / notifications). Edit accounts in the multi-select above."
+  },
+  {
+   "default": "Standard",
+   "fieldname": "template_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Template Type",
+   "options": "Standard\nLimited-Time Offer\nMedia Carousel\nProduct Carousel\nCatalog\nMulti-Product\nSingle-Product",
+   "description": "Standard covers text/media templates, including Copy Code and Voice Call buttons. Offer, carousel and product types must be Marketing."
+  },
+  {
+   "fieldname": "library_template_name",
+   "fieldtype": "Data",
+   "label": "From Library Template",
+   "read_only": 1,
+   "description": "Set when the template was created from Meta's template library."
+  },
+  {
+   "fieldname": "section_break_types",
+   "fieldtype": "Section Break",
+   "label": "Offer, Carousel and Calls"
+  },
+  {
+   "depends_on": "eval:doc.template_type=='Limited-Time Offer'",
+   "fieldname": "lto_text",
+   "fieldtype": "Data",
+   "label": "Offer Text",
+   "description": "Up to 16 characters, shown above the body. No footer is allowed on an offer."
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.template_type=='Limited-Time Offer'",
+   "fieldname": "lto_has_expiration",
+   "fieldtype": "Check",
+   "label": "Show Countdown",
+   "description": "The offer end time is then required at every send."
+  },
+  {
+   "default": "0",
+   "fieldname": "call_permission_request",
+   "fieldtype": "Check",
+   "label": "Ask Permission to Call",
+   "description": "Adds Meta's call-permission request to the template (Marketing or Utility). Business-initiated calls need it."
+  },
+  {
+   "fieldname": "column_break_types",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.template_type=='Media Carousel'",
+   "fieldname": "card_header_format",
+   "fieldtype": "Select",
+   "label": "Card Header Format",
+   "options": "\nIMAGE\nVIDEO"
+  },
+  {
+   "depends_on": "eval:['Media Carousel','Product Carousel'].includes(doc.template_type)",
+   "fieldname": "card_button_1_type",
+   "fieldtype": "Select",
+   "label": "Card Button 1 Type",
+   "options": "\nQuick Reply\nVisit Website\nCall Phone\nSPM",
+   "description": "Every card has the same buttons. Media cards: Quick Reply / Visit Website / Call Phone. Product cards: one SPM (View) or Visit Website."
+  },
+  {
+   "depends_on": "eval:doc.template_type=='Media Carousel'",
+   "fieldname": "card_button_2_type",
+   "fieldtype": "Select",
+   "label": "Card Button 2 Type",
+   "options": "\nQuick Reply\nVisit Website\nCall Phone"
+  },
+  {
+   "depends_on": "eval:['Media Carousel','Product Carousel'].includes(doc.template_type)",
+   "fieldname": "section_break_cards",
+   "fieldtype": "Section Break",
+   "label": "Carousel Cards"
+  },
+  {
+   "depends_on": "eval:['Media Carousel','Product Carousel'].includes(doc.template_type)",
+   "fieldname": "cards",
+   "fieldtype": "Table",
+   "label": "Cards",
+   "options": "WhatsApp Carousel Card",
+   "description": "2–10 cards for a media carousel (sends carry the same number). A product carousel is created with exactly 2."
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-03 12:00:00.000000",
+ "modified": "2026-11-04 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "WhatsApp Templates",

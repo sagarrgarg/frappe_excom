@@ -397,7 +397,13 @@ def _send_whatsapp_to_subscriber(broadcast, omni_identity_name: str) -> bool:
     from excom.excom.api.chat import _build_template_components
 
     button_payloads = json.loads(broadcast.get("wa_button_payloads") or "[]")
-    components = _build_template_components(template, variables, header_media, button_urls, account=account, button_payloads=button_payloads)
+    from excom.excom.services.whatsapp_template_types import parse_extras
+
+    extras = parse_extras(broadcast.get("wa_template_extras"))
+    # card images are uploaded once per broadcast run, not once per recipient
+    media_cache = broadcast.flags.setdefault("wa_media_cache", {})
+    components = _build_template_components(template, variables, header_media, button_urls, account=account,
+        button_payloads=button_payloads, extras=extras, media_cache=media_cache)
 
     from excom.excom.services.whatsapp_service import send_template_message
 
@@ -412,7 +418,7 @@ def _send_whatsapp_to_subscriber(broadcast, omni_identity_name: str) -> bool:
     )
 
     from excom.excom.api.chat import _build_template_preview
-    preview = _build_template_preview(template, variables)
+    preview = _build_template_preview(template, variables, extras=extras)
 
     _create_broadcast_message(
         broadcast=broadcast,

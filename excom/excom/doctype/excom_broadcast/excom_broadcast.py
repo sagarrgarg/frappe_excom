@@ -52,6 +52,27 @@ class ExcomBroadcast(Document):
                     title=_("WhatsApp template"),
                 )
             self._validate_whatsapp_variables()
+            self._validate_template_extras()
+
+    def _validate_template_extras(self) -> None:
+        """Coupon code, offer end, cards and products checked now, not at the first send (Meta 131008)."""
+        from excom.excom.services import whatsapp_template_types as wtt
+
+        extras = wtt.parse_extras(self.get("wa_template_extras"))
+        template = frappe.get_doc("WhatsApp Templates", self.wa_template)
+        if not extras and not wtt.needs_extras(template):
+            return
+        if self.wa_channel_account:
+            account = frappe.get_doc("Excom Channel Account", self.wa_channel_account)
+        else:
+            from excom.excom.utils import get_channel_account
+
+            account = get_channel_account(channel="whatsapp")  # the account the send will use
+        wtt.send_components(template, extras, account=account, dry_run=True)
+        if template.get("template_type") == wtt.TYPE_LTO and template.get("lto_has_expiration") and self.get("scheduled_at"):
+            # the offer must still be running when the scheduled broadcast starts
+            if wtt.expiration_ms(extras) <= wtt.site_time_ms(self.scheduled_at):
+                frappe.throw(_("The offer ends before the broadcast is scheduled to start."), title=_("WhatsApp template"))
 
     def before_submit(self) -> None:
         """Ensure a future ``scheduled_at`` when the user schedules a send."""

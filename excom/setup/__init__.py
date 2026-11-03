@@ -94,7 +94,9 @@ SHARED_DOCTYPES = [
 ]
 
 REQUIRED_SHARED_FIELDS = {
-	"WhatsApp Templates": ["linked_whatsapp_accounts", "header_variable_samples", "body_variable_samples", "approved_at", "submitted_at", "rejected_at", "paused_at", "rejection_reason"],
+	"WhatsApp Templates": ["linked_whatsapp_accounts", "header_variable_samples", "body_variable_samples", "approved_at", "submitted_at", "rejected_at", "paused_at", "rejection_reason",
+		"template_type", "lto_text", "cards", "card_button_1_type", "call_permission_request", "library_template_name"],
+	"WhatsApp Button": ["example_code", "ttl_minutes"],
 }
 
 

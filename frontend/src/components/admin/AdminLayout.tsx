@@ -15,6 +15,7 @@ import { AuditAdmin } from "./AuditAdmin";
 import { MetaConnectAdmin } from "./MetaConnectAdmin";
 import { VoiceAdmin } from "./VoiceAdmin";
 import { WhatsAppNumberAdmin } from "./WhatsAppNumberAdmin";
+import { TemplateLibraryButton } from "./TemplateLibrary";
 import { serverMessage } from "./util";
 
 interface Section { id: string; label: string; icon: React.ReactNode; group: "People" | "Channels" | "Content" | "Automation" | "System" | "Lists"; render?: () => React.ReactNode; to?: string; hint?: string }
@@ -77,7 +78,7 @@ const SECTIONS: Section[] = [
   { id: "accounts", label: "Channel accounts", icon: <Radio />, group: "Channels", render: () => <DocAdmin doctype="Excom Channel Account" hint="WhatsApp Cloud API, Gmail and web-chat accounts. Tokens are write-only here; leave a password field blank to keep it." /> },
   { id: "voice", label: "Calls", icon: <PhoneCall />, group: "Channels", render: () => <VoiceAdmin />, hint: "Webhook URLs for the provider console, and a softphone for each agent on the line." },
   { id: "whatsapp-number", label: "WhatsApp number", icon: <MessageCircle />, group: "Channels", render: () => <WhatsAppNumberAdmin />, hint: "Per number: business profile, blocked users, QR codes, ice breakers and commands, registration and PIN, webhook URL, commerce settings." },
-  { id: "templates", label: "WhatsApp templates", icon: <FileText />, group: "Channels", render: () => <DocAdmin doctype="WhatsApp Templates" headerAction={<><DiagnoseWhatsApp /><SyncTemplates /></>} hint="Approved templates are pulled from Meta. Create or edit here to submit a new one." /> },
+  { id: "templates", label: "WhatsApp templates", icon: <FileText />, group: "Channels", render: () => <DocAdmin doctype="WhatsApp Templates" headerAction={<><DiagnoseWhatsApp /><TemplateLibraryButton /><SyncTemplates /></>} hint="Approved templates are pulled from Meta. Create or edit here to submit a new one, or start from Meta's library (Utility templates, approved at once). Offer, carousel and product templates: pick the Template Type; card media is attached in Desk." /> },
   { id: "intake", label: "Sources", icon: <Inbox />, group: "Channels", render: () => <DocAdmin doctype="Excom Source" hint="The one list of where leads come from. Integrations (Website, IndiaMART, TradeIndia, Meta) poll or receive; Exhibition / Manual are typed in; Channel rows are organic conversations. Each row mirrors itself into ERPNext's Lead Source so attribution never needs a second list." /> },
   { id: "canned", label: "Canned responses", icon: <MessageSquare />, group: "Content", render: () => <DocAdmin doctype="Excom Canned Response" hint="Type / in the composer to use them. Global ones are visible to every team." /> },
   { id: "tags", label: "Tags", icon: <Tag />, group: "Content", render: () => <DocAdmin doctype="Excom Tag" /> },

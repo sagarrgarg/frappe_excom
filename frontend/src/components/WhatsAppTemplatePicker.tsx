@@ -20,6 +20,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { toast } from "sonner";
 import { toastError } from "./ErrorDialog";
+import { TemplateExtrasFields, buildExtras, emptyExtras, extrasProblem, hasExtras, type ExtrasState, type ExtrasTemplate } from "./TemplateExtrasForm";
 
 interface WhatsAppTemplatePickerProps {
   threadId: string;
@@ -33,9 +34,11 @@ interface TemplateButton {
   website_url?: string;
   url_type?: string;
   example_url?: string;
+  example_code?: string;
+  ttl_minutes?: number;
 }
 
-interface TemplateItem {
+interface TemplateItem extends ExtrasTemplate {
   name: string;
   template_name: string;
   actual_name: string;
@@ -57,6 +60,7 @@ interface TemplateItem {
   header_sample_variables?: string[];
   buttons?: TemplateButton[];
   has_dynamic_url?: boolean;
+  template_type?: string;
 }
 
 interface WindowInfo {
@@ -85,6 +89,7 @@ export function WhatsAppTemplatePicker({
   /** Suffix for each dynamic URL button, same order as template buttons. */
   const [buttonUrls, setButtonUrls] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
+  const [extras, setExtras] = useState<ExtrasState>(() => emptyExtras(null));
   const [windowInfo, setWindowInfo] = useState<WindowInfo | null>(null);
 
   const [headerMediaUrl, setHeaderMediaUrl] = useState("");
@@ -186,6 +191,7 @@ export function WhatsAppTemplatePicker({
     setHeaderMediaUrl("");
     setHeaderFileName("");
     setHeaderLocation({ latitude: "", longitude: "", name: "", address: "" });
+    setExtras(emptyExtras(t));
     setStep("fill");
   };
 
@@ -259,13 +265,16 @@ export function WhatsAppTemplatePicker({
     !needsLocation ||
     (headerLocation.latitude.trim() !== "" && headerLocation.longitude.trim() !== "");
 
+  const extrasMissing = extrasProblem(selectedTemplate, extras);
+
   const canSend =
     !sending &&
     selectedTemplate &&
     (!needsMedia || headerMediaUrl) &&
     locationFilled &&
     varSlotsFilled &&
-    dynFilled;
+    dynFilled &&
+    !extrasMissing;
 
   const handleSend = async () => {
     if (!selectedTemplate) return;
@@ -286,6 +295,7 @@ export function WhatsAppTemplatePicker({
         header_media_url: headerMediaUrl,
         button_urls: JSON.stringify(buttonUrls.slice(0, dyn.length)),
         header_location: needsLocation ? JSON.stringify(headerLocation) : "",
+        extras: JSON.stringify(buildExtras(selectedTemplate, extras)),
       });
       toast.success("Template sent");
       onSent();
@@ -428,6 +438,9 @@ export function WhatsAppTemplatePicker({
                     </p>
                     <div className="flex items-center gap-3 text-xs text-ink-3">
                       <span className="bg-surface-sunken px-1.5 py-0.5 rounded">{t.category}</span>
+                      {t.template_type && t.template_type !== "Standard" && (
+                        <span className="bg-crayon-violet-tint text-crayon-violet-text px-1.5 py-0.5 rounded">{t.template_type}</span>
+                      )}
                       <span>{t.language_code}</span>
                       {((t.header_variable_count ?? 0) + (t.variable_count ?? 0)) > 0 && (
                         <span className="text-crayon-blue-text">
@@ -655,6 +668,16 @@ export function WhatsAppTemplatePicker({
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {hasExtras(selectedTemplate) && (
+                <div className="space-y-2">
+                  <p className="text-xs text-ink-3 font-medium">
+                    {selectedTemplate.template_type && selectedTemplate.template_type !== "Standard" ? selectedTemplate.template_type : "Button values"}
+                  </p>
+                  <TemplateExtrasFields template={selectedTemplate} value={extras} onChange={setExtras} />
+                  {extrasMissing && <p className="text-xs text-crayon-amber-text">{extrasMissing}</p>}
                 </div>
               )}
 

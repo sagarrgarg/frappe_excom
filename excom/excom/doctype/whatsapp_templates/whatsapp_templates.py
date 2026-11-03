@@ -18,11 +18,18 @@ from excom.excom.whatsapp_template_utils import (
     is_text_header,
 )
 from excom.excom.utils.graph import graph_version
+from excom.excom.services import whatsapp_template_types as wtt
 
 _TEMPLATE_CONTENT_FIELDS = frozenset({
     "template", "header_type", "header", "footer", "category",
     "header_variable_samples", "body_variable_samples", "sample",
+    "template_type", "lto_text", "lto_has_expiration", "call_permission_request",
+    "card_header_format", "card_button_1_type", "card_button_2_type",
 })
+_BUTTON_FIELDS = ["button_type", "button_label", "website_url", "example_url", "url_type", "phone_number",
+                  "flow", "flow_action", "navigate_screen", "example_code", "ttl_minutes"]
+_CARD_FIELDS = ["card_body", "body_variable_samples", "button_1_text", "button_1_value", "button_1_example",
+                "button_2_text", "button_2_value", "button_2_example", "header_sample", "header_handle"]
 
 
 class WhatsAppTemplates(Document):
@@ -37,11 +44,17 @@ class WhatsAppTemplates(Document):
             lang_code = frappe.db.get_value("Language", self.language) or "en"
             self.language_code = lang_code.replace("-", "_")
 
+        for b in self.buttons or []:
+            if b.button_type == "Copy Code" and not b.button_label:
+                b.button_label = wtt.COPY_CODE_DEFAULT_LABEL  # Meta fixes the label; the row still needs one
         self.validate_button_count()
+        wtt.validate_template(self)
 
         if (self.header_type or "").upper() in ("IMAGE", "VIDEO", "DOCUMENT") and self.sample:
             self.get_session_id()
             self.get_media_id()
+        if self.template_type == wtt.TYPE_MEDIA_CAROUSEL:
+            self._upload_card_samples()
 
         if not self.is_new() and self._has_content_changed():
             self.update_template()
@@ -54,13 +67,14 @@ class WhatsAppTemplates(Document):
         count = lambda kind: sum(1 for b in self.buttons if b.button_type == kind)
         limits = ((None, 10, _("buttons")), ("Quick Reply", 10, _("Quick Reply buttons")),
                   ("Visit Website", 2, _("Visit Website buttons")), ("Call Phone", 1, _("Call Phone buttons")),
-                  ("Flow", 1, _("Flow buttons")))
+                  ("Flow", 1, _("Flow buttons")), ("Copy Code", 1, _("Copy Code buttons")),
+                  ("Voice Call", 1, _("Voice Call buttons")))
         for kind, limit, label in limits:
             n = len(self.buttons) if kind is None else count(kind)
             if n > limit:
                 frappe.throw(_("A template can have at most {0} {1} (found {2})").format(limit, label, n))
         for b in self.buttons:
-            if len(b.button_label or "") > 25:
+            if b.button_type != "Copy Code" and len(b.button_label or "") > 25:
                 frappe.throw(_("Button label '{0}' is longer than 25 characters").format(b.button_label))
         # Meta: quick replies must sit together (QR, QR, URL is valid; QR, URL, QR is not)
         kinds = [b.button_type == "Quick Reply" for b in self.buttons]
@@ -170,34 +184,41 @@ class WhatsAppTemplates(Document):
             if self.has_value_changed(field):
                 return True
 
-        old_buttons = frappe.get_all(
-            "WhatsApp Button",
-            filters={"parent": self.name, "parenttype": self.doctype},
-            fields=["button_type", "button_label", "website_url", "example_url",
-                     "url_type", "phone_number", "flow", "flow_action", "navigate_screen"],
-            order_by="idx asc",
-        )
-        new_buttons = [
-            {
-                "button_type": b.button_type, "button_label": b.button_label,
-                "website_url": b.get("website_url"), "example_url": b.get("example_url"),
-                "url_type": b.get("url_type"), "phone_number": b.get("phone_number"),
-                "flow": b.get("flow"), "flow_action": b.get("flow_action"), "navigate_screen": b.get("navigate_screen"),
-            }
-            for b in (self.buttons or [])
-        ]
-        if len(old_buttons) != len(new_buttons):
-            return True
-        for old, new in zip(old_buttons, new_buttons):
-            if dict(old) != new:
+        for child_dt, child_field, fields in (("WhatsApp Button", "buttons", _BUTTON_FIELDS),
+                                              ("WhatsApp Carousel Card", "cards", _CARD_FIELDS)):
+            old_rows = frappe.get_all(
+                child_dt,
+                filters={"parent": self.name, "parenttype": self.doctype},
+                fields=fields,
+                order_by="idx asc",
+            )
+            new_rows = [{f: _norm(r.get(f)) for f in fields} for r in (self.get(child_field) or [])]
+            if len(old_rows) != len(new_rows):
                 return True
+            for old, new in zip(old_rows, new_rows):
+                if {f: _norm(v) for f, v in dict(old).items()} != new:
+                    return True
 
         return False
 
     def get_session_id(self):
         """Upload media to Meta for template header sample."""
+        self._session_id = self._start_upload(self.sample)
+
+    def get_media_id(self):
+        self._media_id = self._upload_bytes(self._session_id, self.sample)
+
+    def _upload_card_samples(self) -> None:
+        """Resumable upload of each card's sample (same mechanism as the header), only when it changed."""
+        for card in self.get("cards") or []:
+            if card.get("header_sample") and card.header_sample != card.get("handle_sample"):
+                card.header_handle = self._upload_bytes(self._start_upload(card.header_sample), card.header_sample)
+                card.handle_sample = card.header_sample
+
+    def _start_upload(self, file_url: str) -> str:
+        """Resumable Upload API, step 1: an upload session for this file."""
         creds = self._get_creds()
-        file_path = self.get_absolute_path(self.sample)
+        file_path = self.get_absolute_path(file_url)
         mime = magic.Magic(mime=True)
         file_type = mime.from_file(file_path)
 
@@ -212,21 +233,22 @@ class WhatsAppTemplates(Document):
             headers=creds['headers'],
             data=json.loads(json.dumps(payload))
         )
-        self._session_id = response['id']
+        return response['id']
 
-    def get_media_id(self):
+    def _upload_bytes(self, session_id: str, file_url: str) -> str:
+        """Resumable Upload API, step 2: send the bytes; Meta answers with the handle ("h")."""
         creds = self._get_creds()
         headers = {"authorization": f"OAuth {creds['token']}"}
-        file_name = self.get_absolute_path(self.sample)
+        file_name = self.get_absolute_path(file_url)
         with open(file_name, mode='rb') as file:
             file_content = file.read()
 
         response = make_post_request(
-            f"{creds['url']}/{creds['version']}/{self._session_id}",
+            f"{creds['url']}/{creds['version']}/{session_id}",
             headers=headers,
             data=file_content
         )
-        self._media_id = response['h']
+        return response['h']
 
     def get_absolute_path(self, file_name):
         if file_name.startswith('/files/'):
@@ -237,6 +259,8 @@ class WhatsAppTemplates(Document):
 
 
     def after_insert(self):
+        if self.flags.get("skip_meta_create"):
+            return  # already on Meta (e.g. created from the template library)
         if self.template_name:
             self.actual_name = self.template_name.lower().replace(" ", "_")
 
@@ -347,13 +371,22 @@ class WhatsAppTemplates(Document):
         components = [body]
         if self.header_type:
             components.append(self.get_header())
+        if self.get("template_type") == wtt.TYPE_LTO:
+            components.append(wtt.lto_component(self))
         if self.footer:
             components.append({"type": "FOOTER", "text": self.footer})
         if self.buttons:
             components.append({"type": "BUTTONS", "buttons": [self._meta_button(btn) for btn in self.buttons]})
+        if self.get("template_type") in wtt.CAROUSEL_TYPES:
+            components.append(wtt.carousel_component(self))
+        if self.get("call_permission_request"):
+            components.append(wtt.call_permission_component())
         return components
 
     def _meta_button(self, btn) -> dict:
+        new_type = wtt.meta_button(btn)  # Copy Code, Catalog, MPM, SPM, Voice Call
+        if new_type:
+            return new_type
         b = {"type": btn.button_type, "text": btn.button_label}
         if btn.button_type == "Visit Website":
             b["type"] = "URL"
@@ -386,6 +419,7 @@ class WhatsAppTemplates(Document):
         - TEXT: header_text is a flat list ``["val"]``
         - IMAGE/VIDEO/DOCUMENT: header_handle with uploaded media ID
         - LOCATION: no parameters (location supplied at send time)
+        - PRODUCT: no example (single-product templates; the product is chosen at send time)
         """
         fmt = (self.header_type or "").strip().upper()
         header = {"type": "HEADER", "format": fmt}
@@ -402,12 +436,17 @@ class WhatsAppTemplates(Document):
                     ]}
                 else:
                     header["example"] = {"header_text": h_samples}
-        elif fmt == "LOCATION":
+        elif fmt in ("LOCATION", "PRODUCT"):
             pass
         elif hasattr(self, "_media_id") and self._media_id:
             header["example"] = {"header_handle": [self._media_id]}
 
         return header
+
+
+def _norm(v):
+    """Compare child rows across DB and memory: None, "" and 0 are the same."""
+    return None if v in (None, "", 0) else str(v)
 
 
 def _meta_error_from(exc: Exception) -> str:
@@ -552,7 +591,10 @@ def _store_templates(response: dict, acct_names: list, errors: list = None, repr
         doc.language_code = template["language"]
         doc.category = template["category"]
         doc.id = template["id"]
+        if template.get("library_template_name"):
+            doc.library_template_name = template["library_template_name"]
         _merge_template_linked_accounts(doc, acct_names)
+        wtt.reset_type_fields(doc)
 
         for component in template.get("components") or []:
             ctype = (component.get("type") or "").upper()
@@ -575,8 +617,12 @@ def _store_templates(response: dict, acct_names: list, errors: list = None, repr
                 doc.template = component.get("text") or ""
                 if component.get("example"):
                     body_text = component["example"].get("body_text")
+                    named = component["example"].get("body_text_named_params")
                     if body_text and isinstance(body_text, list) and body_text:
                         doc.body_variable_samples = json.dumps(body_text[0])
+                        doc.sample_values = ""
+                    elif named and isinstance(named, list):
+                        doc.body_variable_samples = json.dumps([p.get("example", "") if isinstance(p, dict) else str(p) for p in named])
                         doc.sample_values = ""
 
             elif ctype == "BUTTONS":
@@ -585,18 +631,14 @@ def _store_templates(response: dict, acct_names: list, errors: list = None, repr
                     "WhatsApp Button",
                     {"parent": doc.name, "parenttype": "WhatsApp Templates"},
                 )
-                type_map = {
-                    "URL": "Visit Website",
-                    "PHONE_NUMBER": "Call Phone",
-                    "QUICK_REPLY": "Quick Reply",
-                    "FLOW": "Flow",
-                }
+                type_map = wtt.META_TO_BUTTON  # URL, PHONE_NUMBER, QUICK_REPLY, FLOW + the Phase 4 types
                 for i, button in enumerate(component.get("buttons", []), start=1):
                     btn: dict = {
-                        "button_type": type_map.get(button["type"], button["type"]),
+                        "button_type": type_map.get((button.get("type") or "").upper(), button.get("type")),
                         "button_label": button.get("text"),
                         "sequence": i,
                     }
+                    btn.update(wtt.button_from_meta(button))
                     if button["type"] == "URL":
                         btn["website_url"] = button.get("url") or ""
                         btn["url_type"] = (
@@ -614,7 +656,8 @@ def _store_templates(response: dict, acct_names: list, errors: list = None, repr
 
                     doc.append("buttons", btn)
 
-        upsert_doc_without_hooks(doc, "WhatsApp Button", "buttons")
+        wtt.apply_meta_components(doc, template.get("components") or [])
+        upsert_doc_without_hooks(doc, "WhatsApp Button", "buttons", extra_children=[("WhatsApp Carousel Card", "cards")])
         _persist_linked_accounts(doc)
 
 
@@ -711,16 +754,22 @@ def _persist_linked_accounts(doc) -> None:
         row.db_insert()
 
 
-def upsert_doc_without_hooks(doc, child_dt, child_field):
-    """Insert or update a parent document and its children without hooks."""
+def upsert_doc_without_hooks(doc, child_dt, child_field, extra_children=None):
+    """Insert or update a parent document and its children without hooks.
+
+    extra_children: more (child doctype, fieldname) pairs stored the same way (carousel cards).
+    """
+    tables = [(child_dt, child_field)] + list(extra_children or [])
     if frappe.db.exists(doc.doctype, doc.name):
         doc.db_update()
-        frappe.db.delete(child_dt, {"parent": doc.name, "parenttype": doc.doctype})
+        for dt, _field in tables:
+            frappe.db.delete(dt, {"parent": doc.name, "parenttype": doc.doctype})
     else:
         doc.db_insert()
-    for d in doc.get(child_field):
-        d.parent = doc.name
-        d.parenttype = doc.doctype
-        d.parentfield = child_field
-        d.db_insert()
+    for _dt, field in tables:
+        for d in doc.get(field) or []:
+            d.parent = doc.name
+            d.parenttype = doc.doctype
+            d.parentfield = field
+            d.db_insert()
     frappe.db.commit()

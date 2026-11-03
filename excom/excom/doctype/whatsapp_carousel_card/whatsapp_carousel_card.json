@@ -1,0 +1,101 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-11-04 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "card_body",
+  "body_variable_samples",
+  "button_1_text",
+  "button_1_value",
+  "button_1_example",
+  "button_2_text",
+  "button_2_value",
+  "button_2_example",
+  "header_sample",
+  "header_handle",
+  "handle_sample"
+ ],
+ "fields": [
+  {
+   "fieldname": "card_body",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Card Body",
+   "description": "Optional, up to 160 characters, variables allowed. If one card has a body, every card must."
+  },
+  {
+   "fieldname": "body_variable_samples",
+   "fieldtype": "Small Text",
+   "label": "Card Body Samples",
+   "description": "JSON array, one example per card body variable, e.g. [\"20%\"]"
+  },
+  {
+   "fieldname": "button_1_text",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Button 1 Text"
+  },
+  {
+   "fieldname": "button_1_value",
+   "fieldtype": "Data",
+   "label": "Button 1 URL / Phone",
+   "description": "URL for a Visit Website button ({{1}} allowed at the end), number for a Call Phone button"
+  },
+  {
+   "fieldname": "button_1_example",
+   "fieldtype": "Data",
+   "label": "Button 1 URL Example",
+   "description": "Example value for the URL variable"
+  },
+  {
+   "fieldname": "button_2_text",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Button 2 Text"
+  },
+  {
+   "fieldname": "button_2_value",
+   "fieldtype": "Data",
+   "label": "Button 2 URL / Phone"
+  },
+  {
+   "fieldname": "button_2_example",
+   "fieldtype": "Data",
+   "label": "Button 2 URL Example"
+  },
+  {
+   "fieldname": "header_sample",
+   "fieldtype": "Attach",
+   "label": "Header Media Sample",
+   "description": "Sample image or video for this card (media carousels). Uploaded to Meta for review."
+  },
+  {
+   "fieldname": "header_handle",
+   "fieldtype": "Data",
+   "label": "Meta Media Handle",
+   "read_only": 1
+  },
+  {
+   "fieldname": "handle_sample",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Handle Made From",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-04 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom",
+ "name": "WhatsApp Carousel Card",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

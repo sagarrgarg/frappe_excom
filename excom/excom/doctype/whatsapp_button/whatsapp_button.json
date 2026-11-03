@@ -16,7 +16,9 @@
   "url_type",
   "flow",
   "flow_action",
-  "navigate_screen"
+  "navigate_screen",
+  "example_code",
+  "ttl_minutes"
  ],
  "fields": [
   {
@@ -24,7 +26,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Button Type",
-   "options": "Quick Reply\nCall Phone\nVisit Website\nFlow",
+   "options": "Quick Reply\nCall Phone\nVisit Website\nFlow\nCopy Code\nCatalog\nMPM\nSPM\nVoice Call",
    "reqd": 1
   },
   {
@@ -80,12 +82,26 @@
    "fieldtype": "Data",
    "label": "First Screen",
    "description": "Screen id the Flow opens on (NAVIGATE flows)"
+  },
+  {
+   "depends_on": "eval:doc.button_type=='Copy Code'",
+   "fieldname": "example_code",
+   "fieldtype": "Data",
+   "label": "Example Code",
+   "description": "Sample coupon code for Meta's review (up to 20 characters; 15 on a limited-time offer). The real code is given at send time."
+  },
+  {
+   "depends_on": "eval:doc.button_type=='Voice Call'",
+   "fieldname": "ttl_minutes",
+   "fieldtype": "Int",
+   "label": "Call Link Minutes",
+   "description": "How long the call button works after delivery: 1440–43200 minutes (Meta's default is 10080, 7 days)."
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-11-03 13:00:00.000000",
+ "modified": "2026-11-04 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "WhatsApp Button",

@@ -1614,6 +1614,13 @@ def get_whatsapp_templates(search: str = "", whatsapp_account: str = "") -> list
             "header",
             "footer",
             "whatsapp_account",
+            "template_type",
+            "lto_text",
+            "lto_has_expiration",
+            "call_permission_request",
+            "card_header_format",
+            "card_button_1_type",
+            "card_button_2_type",
         ],
         order_by="template_name asc",
         limit=100,
@@ -1643,11 +1650,23 @@ def get_whatsapp_templates(search: str = "", whatsapp_account: str = "") -> list
         buttons = frappe.get_all(
             "WhatsApp Button",
             filters={"parent": ["in", all_names], "parenttype": "WhatsApp Templates"},
-            fields=["parent", "button_type", "button_label", "website_url", "url_type", "example_url", "phone_number"],
+            fields=["parent", "button_type", "button_label", "website_url", "url_type", "example_url", "phone_number",
+                    "example_code", "ttl_minutes"],
             order_by="idx asc",
         )
         for btn in buttons:
             buttons_by_parent.setdefault(btn.parent, []).append(btn)
+    cards_by_parent: dict = {}
+    carousel_names = [t.name for t in templates if t.get("template_type") in ("Media Carousel", "Product Carousel")]
+    if carousel_names:
+        for card in frappe.get_all(
+            "WhatsApp Carousel Card",
+            filters={"parent": ["in", carousel_names], "parenttype": "WhatsApp Templates"},
+            fields=["parent", "card_body", "body_variable_samples", "button_1_text", "button_1_value",
+                    "button_2_text", "button_2_value"],
+            order_by="idx asc",
+        ):
+            cards_by_parent.setdefault(card.parent, []).append(card)
 
     lang_groups: dict = {}
     for t in templates:
@@ -1658,6 +1677,8 @@ def get_whatsapp_templates(search: str = "", whatsapp_account: str = "") -> list
         t["sample_variables"] = variables
         t["header_sample_variables"] = header_samples
         t["buttons"] = buttons_by_parent.get(t.name, [])
+        t["template_type"] = t.get("template_type") or "Standard"
+        t["cards"] = cards_by_parent.get(t.name, [])
         t["has_dynamic_url"] = any(
             b.get("url_type") == "Dynamic" for b in t["buttons"]
             if b.get("button_type") == "Visit Website"
@@ -1695,6 +1716,39 @@ def get_subscriber_variable_fields() -> list:
 
 
 @frappe.whitelist()
+def search_template_library(
+    search: str = "", topic: str = "", usecase: str = "", industry: str = "", language: str = "",
+    whatsapp_account: str = "", after: str = "",
+) -> dict:
+    """Search Meta's template library (pre-written utility templates). Admins only: it is template management."""
+    _check_admin_access()
+    from excom.excom.services import whatsapp_template_library as lib
+
+    return lib.search(account_name=whatsapp_account, search=search, topic=topic, usecase=usecase,
+                      industry=industry, language=language, after=after)
+
+
+@frappe.whitelist(methods=["POST"])
+def create_template_from_library(
+    library_template_name: str, template_name: str, language: str, whatsapp_account: str = "",
+    button_inputs: str = "[]", body_inputs: str = "{}",
+) -> dict:
+    """Create a template from a library entry on Meta (Utility, approved at once) and store it here."""
+    _check_admin_access()
+    from excom.excom.services import whatsapp_template_library as lib
+
+    try:
+        buttons = json.loads(button_inputs) if isinstance(button_inputs, str) else button_inputs
+        body = json.loads(body_inputs) if isinstance(body_inputs, str) else body_inputs
+    except (json.JSONDecodeError, TypeError):
+        frappe.throw(_("Button and body inputs must be JSON."))
+    if buttons is not None and not isinstance(buttons, list):
+        frappe.throw(_("Button inputs must be a JSON array."))
+    return lib.create(library_template_name, template_name, language, account_name=whatsapp_account,
+                      button_inputs=buttons or [], body_inputs=body or {})
+
+
+@frappe.whitelist()
 def send_template_to_thread(
     thread_id: str,
     template_name: str,
@@ -1702,6 +1756,7 @@ def send_template_to_thread(
     header_media_url: str = "",
     button_urls: str = "[]",
     header_location: str = "",
+    extras: str = "{}",
 ) -> dict:
     """
     Send an approved WhatsApp template message on an existing thread.
@@ -1714,8 +1769,13 @@ def send_template_to_thread(
         header_media_url: Frappe file URL for IMAGE/VIDEO/DOCUMENT header attachments
         button_urls: JSON array of suffix strings for each dynamic URL button, in order
         header_location: JSON object ``{"latitude","longitude","name","address"}`` for LOCATION headers
+        extras: JSON object for coupon, offer, carousel, catalogue, product and call-button values
+            (see ``excom.excom.services.whatsapp_template_types``)
     """
+    from excom.excom.services.whatsapp_template_types import parse_extras
+
     _check_thread_access(thread_id)
+    extras_dict = parse_extras(extras)
     _claim_on_talk(thread_id)
 
     thread = frappe.db.get_value(
@@ -1793,9 +1853,9 @@ def send_template_to_thread(
     if not isinstance(btn_list, list):
         btn_list = []
 
-    components = _build_template_components(template_doc, var_list, header_media_url, btn_list, location_data, account=account)
+    components = _build_template_components(template_doc, var_list, header_media_url, btn_list, location_data, account=account, extras=extras_dict)
 
-    preview = _build_template_preview(template_doc, var_list, location_data)
+    preview = _build_template_preview(template_doc, var_list, location_data, extras=extras_dict)
     now = now_datetime()
 
     from excom.excom.services.whatsapp_service import send_template_message as wa_send_template
@@ -1919,6 +1979,7 @@ def _build_template_components(
     template_doc, body_variables: list, header_media_url: str = "",
     button_urls: list = None, location_data: dict = None, account=None,
     button_payloads: list = None, flow_actions: list = None,
+    extras: dict = None, media_cache: dict = None,
 ) -> list:
     """Build Meta Cloud API ``components`` for template sends.
 
@@ -1937,7 +1998,22 @@ def _build_template_components(
         ``button.payload`` when tapped (e.g. "RU:RU-0001:view"), so a reply is routed by its
         payload, never by the button text. Missing entries keep Meta's default (the button text).
     flow_actions: one dict per Flow button, in button order: {"flow_token": ..., "flow_action_data": {...}}.
+    extras: coupon code, offer end, carousel cards, catalogue / product ids and call-button values
+        (see ``whatsapp_template_types``). Checked here, before Meta sees the message.
+    media_cache: {file_url: media ref} shared across the sends of one broadcast, so a card image
+        is uploaded once, not once per recipient.
     """
+    from excom.excom.services import whatsapp_template_types as wtt
+
+    def _card_media(file_url):
+        if media_cache is not None and file_url in media_cache:
+            return media_cache[file_url]
+        ref = _header_media(account, file_url)
+        if media_cache is not None:
+            media_cache[file_url] = ref
+        return ref
+
+    typed = wtt.send_components(template_doc, extras or {}, account=account, media_fn=_card_media)
     from excom.excom.whatsapp_template_utils import (
         body_variable_slot_count,
         header_variable_slot_count,
@@ -2024,12 +2100,14 @@ def _build_template_components(
                 },
             }],
         })
+    components.extend(typed["header"])  # PRODUCT header (single-product templates)
 
     if b_n:
         components.append({
             "type": "body",
             "parameters": [_text(v, body_names[i] if i < len(body_names) else None) for i, v in enumerate(body_vals)],
         })
+    components.extend(typed["after_body"])  # limited-time offer expiry
 
     qr_idx = flow_idx = 0
     for i, btn in enumerate(template_doc.get("buttons") or []):
@@ -2072,6 +2150,8 @@ def _build_template_components(
         })
         url_idx += 1
 
+    components.extend(typed["buttons"])  # copy code, catalogue, MPM, voice call
+    components.extend(typed["carousel"])
     return components
 
 
@@ -2159,11 +2239,12 @@ def template_values(template_doc, variables) -> list:
     return [variables[n] for n in names]
 
 
-def _build_template_preview(template_doc, body_variables: list, location_data: dict = None) -> str:
+def _build_template_preview(template_doc, body_variables: list, location_data: dict = None, extras: dict = None) -> str:
     """Build a human-readable preview of the template with variables filled in.
 
     *body_variables* follows the inbox convention: header values first, then body values
-    (or a {name: value} dict for named templates).
+    (or a {name: value} dict for named templates). *extras* adds the offer, code, cards and
+    products as short lines under the body.
     """
     from excom.excom.whatsapp_template_utils import header_variable_slot_count, is_text_header
 
@@ -2187,6 +2268,10 @@ def _build_template_preview(template_doc, body_variables: list, location_data: d
             parts.append(f"[Location: {loc_preview}]")
 
     parts.append(_replace_placeholders(template_doc.template or "", body_vals))
+
+    from excom.excom.services.whatsapp_template_types import preview_lines
+
+    parts.extend(preview_lines(template_doc, extras or {}))
 
     return "\n".join(parts)[:500]
 

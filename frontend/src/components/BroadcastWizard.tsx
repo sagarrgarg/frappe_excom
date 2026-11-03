@@ -6,10 +6,11 @@ import { Sheet, Button, Input, Field, Select, Textarea, Chip, EmptyState } from 
 import { DateTimePicker } from "./ui/date-time-picker";
 import { cn } from "./ui/utils";
 import { toastError } from "./ErrorDialog";
+import { TemplateExtrasFields, buildExtras, emptyExtras, extrasProblem, extrasSummary, hasExtras, type ExtrasState, type ExtrasTemplate } from "./TemplateExtrasForm";
 
 interface SubscriberListOption { name: string; list_name: string; active_subscribers: number }
-interface TemplateButton { button_type: string; button_label: string; website_url?: string; url_type?: string; example_url?: string; phone_number?: string }
-interface TemplateItem {
+interface TemplateButton { button_type: string; button_label: string; website_url?: string; url_type?: string; example_url?: string; phone_number?: string; example_code?: string; ttl_minutes?: number }
+interface TemplateItem extends ExtrasTemplate {
   name: string; template_name: string; actual_name: string; template: string; language_code: string; category: string;
   header_type: string; header: string; footer: string; sample_values: string; field_names: string; variable_count: number;
   sample_variables: string[]; buttons: TemplateButton[]; has_dynamic_url: boolean; available_languages: string[];
@@ -56,6 +57,7 @@ export function BroadcastWizard({ open, onOpenChange, onCreated, presetList }: {
   const [selectedLanguage, setSelectedLanguage] = useState("");
   const [variableSlots, setVariableSlots] = useState<WaVariableSlotState[]>([]);
   const [buttonUrls, setButtonUrls] = useState<string[]>([]);
+  const [extras, setExtras] = useState<ExtrasState>(() => emptyExtras(null));
   const [subscriberFields, setSubscriberFields] = useState<SubscriberField[]>([]);
   const [headerMediaUrl, setHeaderMediaUrl] = useState("");
   const [headerFileName, setHeaderFileName] = useState("");
@@ -86,7 +88,7 @@ export function BroadcastWizard({ open, onOpenChange, onCreated, presetList }: {
     if (subscriberFields.length === 0) fetchSubFields({}).then((res) => setSubscriberFields((res as any)?.message || [])).catch(() => {});
   }, [step, channel, waAccounts.length, subscriberFields.length, fetchWaAccounts, fetchSubFields]);
 
-  useEffect(() => { if (waChannelAccount) { setSelectedTemplate(null); setVariableSlots([]); setHeaderMediaUrl(""); setHeaderFileName(""); setButtonUrls([]); } }, [waChannelAccount]);
+  useEffect(() => { if (waChannelAccount) { setSelectedTemplate(null); setVariableSlots([]); setHeaderMediaUrl(""); setHeaderFileName(""); setButtonUrls([]); setExtras(emptyExtras(null)); } }, [waChannelAccount]);
 
   const loadTemplates = useCallback(async (search = "") => {
     if (!waChannelAccount) { setTemplates([]); return; }
@@ -105,7 +107,8 @@ export function BroadcastWizard({ open, onOpenChange, onCreated, presetList }: {
   const needsMedia = ["IMAGE", "VIDEO", "DOCUMENT"].includes(selectedTemplate?.header_type || "");
   const variableSlotsComplete = !selectedTemplate || selectedTemplate.variable_count === 0 || (variableSlots.length === selectedTemplate.variable_count && variableSlots.every((s) => (s.kind === "literal" ? s.value.trim() : s.field.trim())));
   const canAudience = Boolean(name.trim() && subscriberList);
-  const canContent = channel === "WhatsApp" ? Boolean(selectedTemplate && (!needsMedia || headerMediaUrl) && waChannelAccount && variableSlotsComplete) : Boolean(emailSubject.trim() && emailBody.trim());
+  const extrasMissing = extrasProblem(selectedTemplate, extras);
+  const canContent = channel === "WhatsApp" ? Boolean(selectedTemplate && (!needsMedia || headerMediaUrl) && waChannelAccount && variableSlotsComplete && !extrasMissing) : Boolean(emailSubject.trim() && emailBody.trim());
   const canNext = [canAudience, canContent, true, true][step];
 
   const getPreview = (): string => {
@@ -132,6 +135,7 @@ export function BroadcastWizard({ open, onOpenChange, onCreated, presetList }: {
         wa_template_variables: "[]", wa_variable_mapping: "[]",
         wa_header_media: channel === "WhatsApp" ? headerMediaUrl : "",
         wa_button_urls: channel === "WhatsApp" ? JSON.stringify(buttonUrls.filter(Boolean)) : "[]",
+        wa_template_extras: channel === "WhatsApp" && hasExtras(selectedTemplate) ? JSON.stringify(buildExtras(selectedTemplate, extras)) : "",
         email_subject: channel === "Email" ? emailSubject : "", email_body: channel === "Email" ? emailBody : "",
         scheduled_at: scheduledAtFrappe,
       });
@@ -227,7 +231,7 @@ export function BroadcastWizard({ open, onOpenChange, onCreated, presetList }: {
                     <div className="relative mb-2"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-ink-muted" /><Input placeholder="Search templates" value={templateSearch} onChange={(e) => setTemplateSearch(e.target.value)} className="pl-8" autoFocus /></div>
                     <div className="space-y-1 max-h-[45vh] overflow-y-auto">
                       {(() => { const seen = new Set<string>(); return templates.filter((t) => { const k = t.actual_name || t.template_name; if (seen.has(k)) return false; seen.add(k); return true; }); })().map((t) => (
-                        <button key={t.name} type="button" onClick={() => { setSelectedTemplate(t); setSelectedLanguage(t.language_code); setVariableSlots(emptyVariableSlots(t.variable_count)); setHeaderMediaUrl(""); setHeaderFileName(""); setButtonUrls(new Array((t.buttons || []).filter((b) => b.button_type === "Visit Website" && b.url_type === "Dynamic").length).fill("")); }}
+                        <button key={t.name} type="button" onClick={() => { setSelectedTemplate(t); setSelectedLanguage(t.language_code); setVariableSlots(emptyVariableSlots(t.variable_count)); setHeaderMediaUrl(""); setHeaderFileName(""); setExtras(emptyExtras(t)); setButtonUrls(new Array((t.buttons || []).filter((b) => b.button_type === "Visit Website" && b.url_type === "Dynamic").length).fill("")); }}
                           className="w-full text-left rounded-md border border-border p-2.5 hover:bg-surface-hover min-w-0">
                           <div className="flex items-center gap-2 min-w-0"><span className="text-sm font-medium text-ink-1 truncate flex-1">{t.template_name}</span><ChevronRight className="size-4 text-ink-muted shrink-0" /></div>
                           <p className="text-xs text-ink-3 line-clamp-2 mt-0.5">{t.template || "No preview"}</p>
@@ -238,6 +242,7 @@ export function BroadcastWizard({ open, onOpenChange, onCreated, presetList }: {
                             {t.header_type === "IMAGE" && <Chip size="sm" accent="violet" icon={<ImageIcon />} label="Photo" />}
                             {t.header_type === "DOCUMENT" && <Chip size="sm" accent="amber" icon={<Paperclip />} label="Document" />}
                             {t.has_dynamic_url && <Chip size="sm" accent="amber" label="Dynamic URL" />}
+                            {t.template_type && t.template_type !== "Standard" && <Chip size="sm" accent="plum" label={t.template_type} />}
                           </div>
                         </button>
                       ))}
@@ -256,7 +261,7 @@ export function BroadcastWizard({ open, onOpenChange, onCreated, presetList }: {
                       <Field label="Language">
                         <div className="chip-row h-7">
                           {selectedTemplate.available_languages.map((lang) => (
-                            <Chip key={lang} label={lang} accent={selectedLanguage === lang ? "green" : "neutral"} onClick={() => { setSelectedLanguage(lang); const m = templates.find((t) => (t.actual_name || t.template_name) === (selectedTemplate.actual_name || selectedTemplate.template_name) && t.language_code === lang); if (m && m.name !== selectedTemplate.name) { setSelectedTemplate(m); setVariableSlots(emptyVariableSlots(m.variable_count)); } }} />
+                            <Chip key={lang} label={lang} accent={selectedLanguage === lang ? "green" : "neutral"} onClick={() => { setSelectedLanguage(lang); const m = templates.find((t) => (t.actual_name || t.template_name) === (selectedTemplate.actual_name || selectedTemplate.template_name) && t.language_code === lang); if (m && m.name !== selectedTemplate.name) { setSelectedTemplate(m); setVariableSlots(emptyVariableSlots(m.variable_count)); setExtras(emptyExtras(m)); } }} />
                           ))}
                         </div>
                       </Field>
@@ -298,6 +303,12 @@ export function BroadcastWizard({ open, onOpenChange, onCreated, presetList }: {
                             </div>
                           ))}
                         </div>
+                      </Field>
+                    )}
+                    {hasExtras(selectedTemplate) && (
+                      <Field label={selectedTemplate.template_type && selectedTemplate.template_type !== "Standard" ? selectedTemplate.template_type : "Button values"} hint="The same for every recipient.">
+                        <TemplateExtrasFields template={selectedTemplate} value={extras} onChange={setExtras} />
+                        {extrasMissing && <p className="text-xs text-crayon-amber-text mt-1">{extrasMissing}</p>}
                       </Field>
                     )}
                     {selectedTemplate.has_dynamic_url && (() => {
@@ -344,7 +355,7 @@ export function BroadcastWizard({ open, onOpenChange, onCreated, presetList }: {
               {[
                 ["Name", name], ["List", selectedListData?.list_name || subscriberList], ["Recipients", `${selectedListData?.active_subscribers ?? "—"} active`], ["Channel", channel],
                 ...(channel === "WhatsApp" && waChannelAccount ? [["Account", waAccounts.find((a) => a.name === waChannelAccount)?.account_name || waChannelAccount]] : []),
-                ...(channel === "WhatsApp" && selectedTemplate ? [["Template", selectedTemplate.template_name], ["Language", selectedLanguage], ["Variables", selectedTemplate.variable_count === 0 ? "None" : `${variableSlots.filter((s) => s.kind === "literal").length} same · ${variableSlots.filter((s) => s.kind === "subscriber_field").length} per subscriber`]] : []),
+                ...(channel === "WhatsApp" && selectedTemplate ? [["Template", selectedTemplate.template_name], ["Language", selectedLanguage], ["Variables", selectedTemplate.variable_count === 0 ? "None" : `${variableSlots.filter((s) => s.kind === "literal").length} same · ${variableSlots.filter((s) => s.kind === "subscriber_field").length} per subscriber`], ...(hasExtras(selectedTemplate) ? [["Extras", extrasSummary(selectedTemplate, extras)]] : [])] : []),
                 ...(channel === "Email" ? [["Subject", emailSubject]] : []),
                 ["Send time", scheduleAt ? new Date(scheduleAt).toLocaleString() : "Immediately"],
               ].map(([k, v]) => (
