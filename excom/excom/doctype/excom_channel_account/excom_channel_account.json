@@ -50,6 +50,7 @@
   "wa_two_step_pin",
   "wa_data_localization_region",
   "wa_welcome_message",
+  "wa_command_names",
   "column_break_wa_number",
   "wa_registration_log",
   "wa_number_webhook_url",
@@ -433,6 +434,14 @@
    "label": "Welcome Message Events",
    "options": "\nOn\nOff",
    "description": "Sent to Meta as enable_welcome_message with the ice breakers, only when set. It is no longer in Meta's documentation: Meta may ignore it, and excom leaves it out if Meta refuses it."
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_command_names",
+   "fieldtype": "Small Text",
+   "label": "Command Names",
+   "read_only": 1,
+   "description": "The number's WhatsApp commands as last saved or read in Admin → WhatsApp number (JSON list). An inbound \"/name\" text is dispatched as kind \"command\" only for these names."
   },
   {
    "fieldname": "column_break_wa_number",
@@ -870,7 +879,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-04 12:00:00.000000",
+ "modified": "2026-11-04 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Channel Account",

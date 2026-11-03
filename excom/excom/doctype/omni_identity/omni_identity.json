@@ -46,6 +46,7 @@
   "wa_blocked",
   "wa_blocked_on",
   "wa_blocked_account",
+  "wa_blocked_numbers",
   "aliases_section",
   "aliases",
   "ai_section",
@@ -314,7 +315,17 @@
    "label": "Blocked On Number",
    "options": "Excom Channel Account",
    "read_only": 1,
-   "depends_on": "eval:doc.wa_blocked"
+   "depends_on": "eval:doc.wa_blocked",
+   "description": "The latest block; see Blocked Numbers for every number."
+  },
+  {
+   "fieldname": "wa_blocked_numbers",
+   "fieldtype": "Code",
+   "label": "Blocked Numbers",
+   "options": "JSON",
+   "read_only": 1,
+   "depends_on": "eval:doc.wa_blocked",
+   "description": "A block is per WhatsApp number: {Excom Channel Account: blocked on}."
   },
   {
    "collapsible": 1,
@@ -352,7 +363,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-04 12:00:00.000000",
+ "modified": "2026-11-04 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Omni Identity",

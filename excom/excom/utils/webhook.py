@@ -29,6 +29,8 @@ def get():
 	hub_challenge = frappe.form_dict.get("hub.challenge")
 	verify_token = frappe.form_dict.get("hub.verify_token")
 
+	if frappe.form_dict.get("hub.mode") != "subscribe":
+		return Response("Unsupported mode", status=403)
 	# all asterisks would match the masked column of a Password field
 	if not verify_token or set(verify_token) == {"*"}:
 		return Response("Missing verify token", status=403)
@@ -50,7 +52,9 @@ def _account_verify_token_matches(verify_token: str) -> bool:
 	"""
 	from frappe.utils.password import get_decrypted_password
 
-	for name in frappe.get_all("Excom Channel Account", filters={"channel": "whatsapp"}, pluck="name"):
+	# the masked column holds one "*" per character: only same-length tokens are decrypted
+	masked = "*" * len(verify_token)
+	for name in frappe.get_all("Excom Channel Account", filters={"channel": "whatsapp", "wa_webhook_verify_token": masked}, pluck="name"):
 		stored = get_decrypted_password("Excom Channel Account", name, "wa_webhook_verify_token", raise_exception=False) or ""
 		if stored and hmac.compare_digest(stored.encode(), verify_token.encode()):
 			return True
@@ -682,12 +686,11 @@ def _parse_inbound(message: dict, message_type: str, channel_account) -> tuple:
 
 	if message_type == "text":
 		content_text = (message.get("text") or {}).get("body", "")
-		# a WhatsApp command ("/tickets …") stays a text message; handlers get its name
-		from excom.excom.services.whatsapp_account import parse_command
+		# "/name …" is kind "command" only for one of this number's commands; any other text stays
+		# "text" (payload: the parsed "/name" as a hint, else None)
+		from excom.excom.services.whatsapp_account import inbound_command
 
-		command = parse_command(content_text)
-		if command:
-			kind, payload = "command", command
+		kind, payload = inbound_command(content_text, channel_account)
 
 	elif message_type == "request_welcome":
 		# UNVERIFIED (gone from Meta's current docs): the person opened the chat for the first time

@@ -7,7 +7,9 @@ Apps (and excom's own features) register in hooks.py:
 Each handler gets one `event` dict and decides from it whether the message is theirs:
 
 	kind                 text | button | list | flow | address | order | location | reaction | media | contact
-	                     | command (a text "/name …": payload {"command", "args"}) | welcome (request_welcome)
+	                     | command (a text "/name …" naming one of the number's commands: payload {"command", "args"})
+	                     | welcome (request_welcome). Any other "/word" text is kind text with the same
+	                     payload as a hint; a plain text has payload None.
 	message              Excom Message name (already stored)
 	identity, thread     Omni Identity / Excom Thread names
 	account, waba        Excom Channel Account name, WhatsApp Business Account id

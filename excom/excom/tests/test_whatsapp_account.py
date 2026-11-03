@@ -9,18 +9,23 @@ Every Meta call is faked; the tests assert the exact URL, method, query and body
 """
 
 import json
+import struct
+import zlib
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import add_to_date, now_datetime
+from frappe.utils import add_to_date, get_datetime, now_datetime
 
 from excom.excom.services import whatsapp_account as wa
 from excom.excom.services.whatsapp_errors import WhatsAppAPIError
+from excom.excom.tests.fixtures import purge_user
 from excom.excom.utils import webhook
 
-PHONE_ID = "QAPHONEP5"
-WABA = "QAWABAP5"
-APP_ID = "QAAPPP5"
+# Meta ids are digits only (they go into URL paths)
+PHONE_ID = "109900500000005"
+WABA = "209900500000005"
+APP_ID = "309900500000005"
+AGENT = "qa.p5.agent@example.com"
 TOKEN = "qa-token-p5-0000000000"
 BASE = "https://graph.facebook.com/v26.0"
 EVENTS: list = []
@@ -41,6 +46,14 @@ class FakeResp:
 		return self._b
 
 
+def _png() -> bytes:
+	"""A real 1×1 PNG: binary bytes that do not decode as UTF-8."""
+	def chunk(kind, data):
+		return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+	return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0))
+		+ chunk(b"IDAT", zlib.compress(b"\x00\xff\x80\x81\x9d")) + chunk(b"IEND", b""))
+
+
 def _payload(value):
 	return json.dumps({"object": "whatsapp_business_account", "entry": [{"id": WABA, "changes": [{"field": "messages", "value": {"metadata": {"phone_number_id": PHONE_ID}, **value}}]}]})
 
@@ -58,11 +71,11 @@ def _cleanup(account):
 	for name in frappe.get_all("Excom WhatsApp QR Code", filters={"channel_account": account}, pluck="name"):
 		frappe.db.delete("File", {"attached_to_doctype": "Excom WhatsApp QR Code", "attached_to_name": name})
 		frappe.db.delete("Excom WhatsApp QR Code", name)
-	frappe.db.delete("File", {"file_name": "qa-p5-photo.png"})
+	frappe.db.delete("File", {"file_name": ["in", ("qa-p5-photo.png", "qa-p5-binary.png", "qa-p5-old-qr.png")]})
 	if STARTED["at"]:
 		for title in ("Excom: WhatsApp block refused%", "Excom: WhatsApp unblock refused%", "Excom: WhatsApp number%", "Excom: QR image download failed%"):
 			frappe.db.delete("Error Log", {"method": ["like", title], "creation": [">=", STARTED["at"]]})
-	frappe.db.set_value("Excom Channel Account", account, {"wa_registration_log": "", "wa_welcome_message": "", "wa_catalog_id": "",
+	frappe.db.set_value("Excom Channel Account", account, {"wa_registration_log": "", "wa_welcome_message": "", "wa_catalog_id": "", "wa_command_names": "",
 		"wa_data_localization_region": "", "wa_number_webhook_url": "", "wa_waba_webhook_url": ""}, update_modified=False)
 	frappe.db.sql("DELETE FROM `__Auth` WHERE doctype = 'Excom Channel Account' AND name = %s AND fieldname IN ('wa_two_step_pin', 'wa_webhook_verify_token')", account)
 
@@ -96,17 +109,23 @@ class TestWhatsAppAccount(FrappeTestCase):
 		EVENTS.clear()
 
 	def tearDown(self):
+		frappe.set_user("Administrator")
+		# roll back while Meta is still faked: a QR code made in the test is deleted "on Meta" on rollback
+		frappe.db.rollback()
 		for m, fn in self._orig.items():
 			setattr(wa.http_requests, m, fn)
-		frappe.set_user("Administrator")
-		frappe.db.rollback()
 		_cleanup(self.acc.name)
 		frappe.db.commit()
 
 	def _fake(self, method):
 		def call(url, **kw):
 			self.calls.append({"method": method, "url": url, "params": kw.get("params"), "json": kw.get("json"), "data": kw.get("data"), "headers": kw.get("headers") or {}})
-			return self.replies.pop(0) if self.replies else FakeResp(200, {"success": True})
+			if getattr(self, "on_call", None):
+				self.on_call(self.calls[-1])
+			reply = self.replies.pop(0) if self.replies else FakeResp(200, {"success": True})
+			if isinstance(reply, Exception):
+				raise reply
+			return reply
 		return call
 
 	def _account(self):
@@ -126,7 +145,7 @@ class TestWhatsAppAccount(FrappeTestCase):
 	# ── business profile ─────────────────────────────────────────────────────
 	def test_profile_limits_are_checked_before_meta(self):
 		for bad in ({"about": "x" * 140}, {"about": ""}, {"address": "x" * 257}, {"description": "x" * 513}, {"email": "not-an-email"},
-				{"email": "a" * 120 + "@ex.com1"}, {"websites": ["https://a.in", "https://b.in", "https://c.in"]}, {"websites": ["www.a.in"]},
+				{"email": "a" * 121 + "@ex.com1"}, {"websites": ["https://a.in", "https://b.in", "https://c.in"]}, {"websites": ["www.a.in"]},
 				{"websites": ["https://" + "a" * 250]}, {"vertical": "NOT_A_BIZ"}):
 			with self.assertRaises(wa.AccountSettingError, msg=str(bad)):
 				wa.update_business_profile(self._account(), bad)
@@ -159,6 +178,45 @@ class TestWhatsAppAccount(FrappeTestCase):
 		self.assertEqual(send["headers"]["file_offset"], "0")
 		self.assertEqual(send["data"], png)
 		self.assertEqual(apply["json"], {"messaging_product": "whatsapp", "profile_picture_handle": "4::HANDLE"})
+
+	def test_profile_photo_upload_sends_raw_bytes(self):
+		# File.get_content() would decode these bytes as windows-1250 text; Meta must get the bytes
+		png = _png()
+		with self.assertRaises(UnicodeDecodeError):
+			png.decode("utf-8")
+		f = frappe.get_doc({"doctype": "File", "file_name": "qa-p5-binary.png", "content": png, "is_private": 1,
+			"attached_to_doctype": "Excom Channel Account", "attached_to_name": self.acc.name}).insert(ignore_permissions=True)
+		self.replies = [FakeResp(200, {"id": "upload:SESSION2"}), FakeResp(200, {"h": "4::HANDLE2"}), FakeResp(200, {"success": True})]
+		wa.set_profile_photo(self._account(), f.file_url)
+		self.assertIsInstance(self.calls[1]["data"], bytes)
+		self.assertEqual(self.calls[1]["data"], png)
+
+	def test_profile_photo_must_be_readable_or_attached_to_the_number(self):
+		png = _png()
+		f = frappe.get_doc({"doctype": "File", "file_name": "qa-p5-photo.png", "content": png, "is_private": 1}).insert(ignore_permissions=True)
+		orig = frappe.has_permission
+		frappe.has_permission = lambda *a, **k: False  # a user who may not read that file
+		self.addCleanup(setattr, frappe, "has_permission", orig)
+		with self.assertRaises(wa.AccountSettingError):
+			wa.set_profile_photo(self._account(), f.file_url)
+		self.assertEqual(self.calls, [])
+		frappe.db.set_value("File", f.name, {"attached_to_doctype": "Excom Channel Account", "attached_to_name": self.acc.name})
+		self.replies = [FakeResp(200, {"id": "upload:SESSION3"}), FakeResp(200, {"h": "4::HANDLE3"}), FakeResp(200, {"success": True})]
+		wa.set_profile_photo(self._account(), f.file_url)  # attached to this number: allowed
+		self.assertEqual(len(self.calls), 3)
+
+	def test_meta_ids_must_be_digits(self):
+		for field, value in (("wa_phone_id", "123/../me"), ("wa_business_id", "me?fields=x"), ("wa_app_id", "abc")):
+			acc = self._account()
+			acc.set(field, value)
+			with self.assertRaises(wa.AccountSettingError, msg=field):
+				if field == "wa_phone_id":
+					wa.get_business_profile(acc)
+				elif field == "wa_business_id":
+					wa.linked_catalogs(acc)
+				else:
+					wa.set_profile_photo(acc, "/private/files/whatever.png")
+		self.assertEqual(self.calls, [])
 
 	def test_profile_photo_needs_app_id_and_an_image(self):
 		acc = self._account()
@@ -198,6 +256,7 @@ class TestWhatsAppAccount(FrappeTestCase):
 		row = frappe.db.get_value("Omni Identity", identity, ["wa_blocked", "wa_blocked_on", "wa_blocked_account"], as_dict=True)
 		self.assertEqual((row.wa_blocked, row.wa_blocked_account), (1, self.acc.name))
 		self.assertTrue(row.wa_blocked_on)
+		self.assertEqual(list(wa.blocked_numbers(identity)), [self.acc.name])
 
 	def test_block_uses_the_user_id_of_this_account(self):
 		identity, _thread = self._person("919900500004", bsuid="IN.QAP5USER4")
@@ -224,6 +283,56 @@ class TestWhatsAppAccount(FrappeTestCase):
 		self.assertEqual((self.calls[-1]["method"], self.calls[-1]["url"]), ("DELETE", f"{BASE}/{PHONE_ID}/block_users"))
 		self.assertEqual(self.calls[-1]["json"], {"messaging_product": "whatsapp", "block_users": [{"user": "+919900500006"}]})
 		self.assertEqual(frappe.db.get_value("Omni Identity", identity, "wa_blocked"), 0)
+
+	def test_a_block_is_per_number(self):
+		from excom.excom.api import whatsapp_account as api
+
+		identity, thread = self._person("919900500008", hours_ago=100)
+		other = "QA P5 Other Number"
+		wa._set_blocked([identity], other, True)  # blocked on another WhatsApp number only
+		self.assertTrue(frappe.db.get_value("Omni Identity", identity, "wa_blocked"))
+		self.assertFalse(api.thread_block_status(thread)["blocked"])
+
+		self.replies = [FakeResp(200, {"block_users": {"removed_users": [{"input": "+919900500008", "wa_id": "919900500008"}]}})]
+		wa.unblock_person(self._account(), identity=identity)  # unblocking here leaves the other block
+		self.assertEqual(list(wa.blocked_numbers(identity)), [other])
+		self.assertEqual(frappe.db.get_value("Omni Identity", identity, "wa_blocked_account"), other)
+
+		wa._set_blocked([identity], self.acc.name, True)
+		self.assertTrue(api.thread_block_status(thread)["blocked"])
+		self.assertEqual(set(wa.blocked_numbers(identity)), {other, self.acc.name})
+		wa._set_blocked([identity], other, False)
+		self.assertTrue(api.thread_block_status(thread)["blocked"])
+		self.assertEqual(frappe.db.get_value("Omni Identity", identity, "wa_blocked_account"), self.acc.name)
+
+	def test_block_endpoints_for_an_agent_follow_thread_access(self):
+		from excom.excom.api import whatsapp_account as api
+
+		purge_user(AGENT)
+		user = frappe.get_doc({"doctype": "User", "email": AGENT, "first_name": "QA P5 Agent", "send_welcome_email": 0})
+		user.insert(ignore_permissions=True)
+		user.add_roles("Excom Agent")
+		self.addCleanup(purge_user, AGENT)
+		_i1, mine = self._person("919900500020")
+		_i2, theirs = self._person("919900500021")
+		frappe.db.set_value("Excom Thread", mine, "assigned_to", AGENT)
+		frappe.db.set_value("Excom Thread", theirs, "assigned_to", "Administrator")
+
+		frappe.set_user(AGENT)
+		self.assertEqual(api.thread_block_status(mine), {"whatsapp": True, "blocked": False, "blocked_on": ""})
+		self.replies = [FakeResp(200, {"block_users": {"added_users": [{"input": "+919900500020", "wa_id": "919900500020"}]}})]
+		api.block_thread_contact(mine)
+		self.assertTrue(api.thread_block_status(mine)["blocked"])
+		self.replies = [FakeResp(200, {"block_users": {"removed_users": [{"input": "+919900500020", "wa_id": "919900500020"}]}})]
+		api.unblock_thread_contact(mine)
+		self.assertFalse(api.thread_block_status(mine)["blocked"])
+		n = len(self.calls)
+		for fn in (api.thread_block_status, api.block_thread_contact, api.unblock_thread_contact):
+			with self.assertRaises(frappe.PermissionError, msg=fn.__name__):
+				fn(theirs)
+		with self.assertRaises(frappe.PermissionError):  # the admin screen's block is not for agents
+			api.block(self.acc.name, "919900500021")
+		self.assertEqual(len(self.calls), n)
 
 	def test_block_from_a_conversation_and_the_block_list(self):
 		from excom.excom.api import whatsapp_account as api
@@ -261,6 +370,46 @@ class TestWhatsAppAccount(FrappeTestCase):
 		frappe.delete_doc("Excom WhatsApp QR Code", qr.name)
 		self.assertEqual((self.calls[-1]["method"], self.calls[-1]["url"]), ("DELETE", f"{BASE}/{PHONE_ID}/message_qrdls/QAP5CODE000001"))
 
+	def test_qr_code_is_deleted_on_meta_when_the_insert_rolls_back(self):
+		self.replies = [FakeResp(200, {"code": "QAP5ORPH000001", "prefilled_message": "Orphan", "deep_link_url": "https://wa.me/message/QAP5ORPH000001"})]
+		self._new_qr("Orphan")
+		frappe.db.rollback()  # e.g. the insert or the request failed after Meta made the code
+		self.assertEqual((self.calls[-1]["method"], self.calls[-1]["url"]), ("DELETE", f"{BASE}/{PHONE_ID}/message_qrdls/QAP5ORPH000001"))
+
+	def _meta_qr(self, code, message="From Meta"):
+		d = frappe.get_doc({"doctype": "Excom WhatsApp QR Code", "channel_account": self.acc.name, "code": code, "prefilled_message": message})
+		d.flags.from_meta = True
+		return d.insert()
+
+	def test_refresh_qr_image_replaces_the_file(self):
+		from excom.excom.api import whatsapp_account as api
+
+		qr = self._meta_qr("QAP5REFR000001")
+		old = frappe.get_doc({"doctype": "File", "file_name": "qa-p5-old-qr.png", "content": b"\x89PNG-old", "is_private": 1,
+			"attached_to_doctype": qr.doctype, "attached_to_name": qr.name, "attached_to_field": "qr_image"}).insert(ignore_permissions=True)
+		qr.db_set("qr_image", old.file_url)
+		self.replies = [FakeResp(200, {"data": [{"code": "QAP5REFR000001", "qr_image_url": "https://scontent.example/new.png"}]}),
+			FakeResp(200, {}, content=b"\x89PNG-new")]
+		out = api.refresh_qr_image(qr.name)
+		self.assertEqual(self.calls[0]["params"]["fields"], "code,prefilled_message,deep_link_url,qr_image_url.format(PNG)")
+		self.assertFalse(frappe.db.exists("File", old.name))
+		files = frappe.get_all("File", filters={"attached_to_doctype": qr.doctype, "attached_to_name": qr.name}, fields=["file_url"])
+		self.assertEqual([f.file_url for f in files], [out["qr_image"]])
+		self.assertEqual(frappe.db.get_value("Excom WhatsApp QR Code", qr.name, "qr_image"), out["qr_image"])
+
+	def test_delete_when_the_code_is_already_gone_on_meta(self):
+		qr = self._meta_qr("QAP5GONE000001")
+		self.replies = [FakeResp(400, {"error": {"message": "(#100) QR code does not exist", "code": 100}})]
+		frappe.delete_doc("Excom WhatsApp QR Code", qr.name)
+		self.assertEqual(self.calls[-1]["method"], "DELETE")
+		self.assertFalse(frappe.db.exists("Excom WhatsApp QR Code", qr.name))
+
+		qr = self._meta_qr("QAP5KEPT000001")
+		self.replies = [FakeResp(401, {"error": {"message": "Invalid OAuth access token", "code": 190}})]
+		with self.assertRaises(WhatsAppAPIError):  # any other refusal keeps the local copy
+			frappe.delete_doc("Excom WhatsApp QR Code", qr.name)
+		self.assertTrue(frappe.db.exists("Excom WhatsApp QR Code", qr.name))
+
 	def test_qr_limits(self):
 		with self.assertRaises(frappe.ValidationError):
 			self._new_qr("x" * 141)
@@ -297,18 +446,21 @@ class TestWhatsAppAccount(FrappeTestCase):
 	# ── conversational components ────────────────────────────────────────────
 	def test_conversational_limits(self):
 		cmd = lambda n, d="Does it": {"command_name": n, "command_description": d}
-		for prompts, commands in ((["a", "b", "c", "d", "e"], []), (["x" * 81], []), (["Hi 😀"], []), (["Same", "same"], []),
+		for prompts, commands in ((["a", "b", "c", "d", "e"], []), (["x" * 81], []), (["Hi 😀"], []), (["Rate us ⭐"], []), (["Call ☎️"], []), (["Same", "same"], []),
 				([], [cmd(f"c{i}") for i in range(31)]), ([], [cmd("x" * 33)]), ([], [cmd("two words")]), ([], [cmd("dup"), cmd("DUP")]),
-				([], [cmd("ok", "x" * 257)]), ([], [cmd("ok", "")])):
+				([], [cmd("ok", "x" * 257)]), ([], [cmd("ok", "")]), ([], [cmd("ok", "Five ✨ stars")])):
 			with self.assertRaises(wa.AccountSettingError, msg=str((prompts, commands))):
 				wa.validate_conversational(prompts, commands)
 		self.assertEqual(wa.validate_conversational(["Book a flight", " "], [cmd("/tickets", "Book flight tickets")]),
 			(["Book a flight"], [{"command_name": "tickets", "command_description": "Book flight tickets"}]))
+		# not emoji: accents, Devanagari, arrows, punctuation
+		self.assertEqual(wa.validate_conversational(["Café → menu", "नमस्ते, ऑर्डर?"], [])[0], ["Café → menu", "नमस्ते, ऑर्डर?"])
 
 	def test_conversational_shape_and_welcome_fallback(self):
 		wa.set_conversational_automation(self._account(), ["Book a flight"], [{"command_name": "tickets", "command_description": "Book flight tickets"}])
 		self.assertEqual(self.calls[-1]["url"], f"{BASE}/{PHONE_ID}/conversational_automation")
 		self.assertEqual(self.calls[-1]["json"], {"prompts": ["Book a flight"], "commands": [{"command_name": "tickets", "command_description": "Book flight tickets"}]})
+		self.assertEqual(wa.command_names(self._account()), {"tickets"})  # kept for inbound dispatch
 
 		frappe.db.set_value("Excom Channel Account", self.acc.name, "wa_welcome_message", "On")
 		self.replies = [FakeResp(400, {"error": {"message": "Invalid parameter", "code": 100}}), FakeResp(200, {"success": True})]
@@ -322,12 +474,21 @@ class TestWhatsAppAccount(FrappeTestCase):
 		with self.assertRaises(WhatsAppAPIError):  # no welcome setting to drop: Meta's refusal stands
 			wa.set_conversational_automation(self._account(), ["x"], [])
 
+		# only code 100 (invalid parameter) is retried without the welcome setting
+		frappe.db.set_value("Excom Channel Account", self.acc.name, "wa_welcome_message", "Off")
+		n = len(self.calls)
+		self.replies = [FakeResp(401, {"error": {"message": "Invalid OAuth access token", "code": 190}})]
+		with self.assertRaises(WhatsAppAPIError):
+			wa.set_conversational_automation(self._account(), ["x"], [])
+		self.assertEqual(len(self.calls), n + 1)
+
 	def test_conversational_read_back(self):
 		self.replies = [FakeResp(200, {"conversational_automation": {"prompts": ["Find hotels"], "commands": [{"command_name": "tickets", "command_description": "Book"}]}, "id": PHONE_ID})]
 		out = wa.get_conversational_automation(self._account())
 		self.assertEqual(self.calls[0]["url"], f"{BASE}/{PHONE_ID}")
 		self.assertEqual(self.calls[0]["params"], {"fields": "conversational_automation"})
 		self.assertEqual(out, {"prompts": ["Find hotels"], "commands": [{"command_name": "tickets", "command_description": "Book"}]})
+		self.assertEqual(wa.command_names(self._account()), {"tickets"})  # what Meta has now is kept
 
 	def _hooks(self, *paths):
 		from excom.excom.services import inbound_dispatch
@@ -347,6 +508,7 @@ class TestWhatsAppAccount(FrappeTestCase):
 
 	def test_inbound_command_and_welcome_are_dispatched(self):
 		self._hooks("excom.excom.tests.test_whatsapp_account.record_event")
+		frappe.db.set_value("Excom Channel Account", self.acc.name, "wa_command_names", json.dumps(["tickets"]))
 		webhook._process_webhook_payload(self._in("wamid.P5CMD", "919900500010", type="text", text={"body": "/tickets to Delhi"}))
 		msg = frappe.db.get_value("Excom Message", {"provider_message_id": "wamid.P5CMD"}, ["message_type", "content_text"], as_dict=True)
 		self.assertEqual((msg.message_type, msg.content_text), ("Text", "/tickets to Delhi"))
@@ -360,6 +522,27 @@ class TestWhatsAppAccount(FrappeTestCase):
 		# a welcome request is not a message: the 24 h window stays closed
 		self.assertIsNone(frappe.db.get_value("Excom Thread", msg.thread, "last_inbound_at"))
 		self.assertTrue(frappe.db.exists("Excom WhatsApp Event", {"channel_account": self.acc.name, "event": "request_welcome"}))
+
+	def test_plain_and_unknown_slash_texts_stay_text(self):
+		self._hooks("excom.excom.tests.test_whatsapp_account.record_event")
+		frappe.db.set_value("Excom Channel Account", self.acc.name, "wa_command_names", json.dumps(["tickets"]))
+		webhook._process_webhook_payload(self._in("wamid.P5TXT", "919900500012", type="text", text={"body": "hello"}))
+		webhook._process_webhook_payload(self._in("wamid.P5UNK", "919900500012", type="text", text={"body": "/help me"}))
+		self.assertEqual((EVENTS[0]["kind"], EVENTS[0]["payload"], EVENTS[0]["text"]), ("text", None, "hello"))
+		# not one of the number's commands: still text, with the parse as a hint
+		self.assertEqual((EVENTS[1]["kind"], EVENTS[1]["payload"]), ("text", {"command": "help", "args": "me"}))
+		self.assertEqual(wa.inbound_command("/tickets", self._account()), ("command", {"command": "tickets", "args": ""}))
+		frappe.db.set_value("Excom Channel Account", self.acc.name, "wa_command_names", "")
+		self.assertEqual(wa.inbound_command("/tickets", self._account())[0], "text")  # no commands known
+
+	def test_welcome_keeps_an_open_window_as_it_was(self):
+		_identity, thread = self._person("919900500013", hours_ago=3)
+		before = frappe.db.get_value("Excom Thread", thread, "last_inbound_at")
+		self.assertTrue(before)
+		webhook._process_webhook_payload(self._in("wamid.P5WEL2", "919900500013", type="request_welcome"))
+		msg_thread = frappe.db.get_value("Excom Message", {"provider_message_id": "wamid.P5WEL2"}, "thread")
+		self.assertEqual(msg_thread, thread)
+		self.assertEqual(get_datetime(frappe.db.get_value("Excom Thread", thread, "last_inbound_at")), get_datetime(before))
 
 	# ── two-step PIN and registration ────────────────────────────────────────
 	def test_pin_is_six_digits_and_stored_encrypted(self):
@@ -379,11 +562,54 @@ class TestWhatsAppAccount(FrappeTestCase):
 		wa.register_number(self._account(), region="in")
 		self.assertEqual((self.calls[-1]["url"], self.calls[-1]["json"]), (f"{BASE}/{PHONE_ID}/register",
 			{"messaging_product": "whatsapp", "pin": "246810", "data_localization_region": "IN"}))
+		self.assertEqual(frappe.db.get_value("Excom Channel Account", self.acc.name, "wa_data_localization_region"), "IN")
 		with self.assertRaises(wa.AccountSettingError):
 			wa.register_number(self._account(), region="FR")
 		wa.deregister_number(self._account())
 		self.assertEqual((self.calls[-1]["url"], self.calls[-1]["json"], self.calls[-1]["data"]), (f"{BASE}/{PHONE_ID}/deregister", None, None))
 		self.assertEqual([a["action"] for a in wa.registration_attempts(self.acc.name)], ["register", "deregister"])
+
+	def test_register_region_is_stored_only_when_meta_accepts(self):
+		from excom.excom.api import whatsapp_account as api
+
+		wa._store_secret(self.acc.name, "wa_two_step_pin", "246810")
+		region = lambda: frappe.db.get_value("Excom Channel Account", self.acc.name, "wa_data_localization_region") or ""
+		self.replies = [FakeResp(400, {"error": {"message": "already registered or in invalid state", "code": 100}})]
+		with self.assertRaises(frappe.ValidationError):
+			api.register(self.acc.name, region="DE")
+		self.assertEqual(region(), "")  # refused: nothing stored
+		api.register(self.acc.name, region="DE")
+		self.assertEqual(region(), "DE")
+		api.register(self.acc.name)  # left out: the stored region is sent and kept
+		self.assertEqual(self.calls[-1]["json"].get("data_localization_region"), "DE")
+		api.register(self.acc.name, region="")  # "None" in the screen: no region, and the stored one is cleared
+		self.assertNotIn("data_localization_region", self.calls[-1]["json"])
+		self.assertEqual(region(), "")
+
+	def test_a_register_timeout_counts_against_the_budget(self):
+		import requests
+
+		wa._store_secret(self.acc.name, "wa_two_step_pin", "246810")
+		self.replies = [requests.exceptions.ReadTimeout("read timed out")]
+		with self.assertRaises(wa.MetaUnreachable):
+			wa.register_number(self._account())
+		self.replies = [requests.exceptions.ConnectionError("reset")]
+		with self.assertRaises(wa.MetaUnreachable):
+			wa.deregister_number(self._account())
+		attempts = wa.registration_attempts(self.acc.name)
+		self.assertEqual([(a["action"], a["ok"], a.get("code")) for a in attempts], [("register", False, "no answer"), ("deregister", False, "no answer")])
+		self.assertEqual(wa.registration_budget(self.acc.name)["used"], 2)
+
+	def test_registration_screen_shows_the_budget_when_meta_cannot_be_read(self):
+		from excom.excom.api import whatsapp_account as api
+
+		frappe.db.set_value("Excom Channel Account", self.acc.name, "wa_registration_log",
+			json.dumps([{"at": str(add_to_date(now_datetime(), hours=-1)), "action": "register", "ok": True}]))
+		self.replies = [FakeResp(401, {"error": {"message": "Invalid OAuth access token", "code": 190}})]
+		out = api.get_registration(self.acc.name)
+		self.assertTrue(out["meta_error"])
+		self.assertEqual((out["budget"]["used"], out["budget"]["left"], out["has_pin"]), (1, 9, False))
+		self.assertNotIn("status", out)
 
 	def test_ten_register_calls_per_72_hours(self):
 		wa._store_secret(self.acc.name, "wa_two_step_pin", "246810")
@@ -432,16 +658,30 @@ class TestWhatsAppAccount(FrappeTestCase):
 		wa.default_webhook_url = lambda: "https://qa-p5.example.com/api/method/excom.excom.utils.webhook.webhook"
 		self.addCleanup(setattr, wa, "default_webhook_url", orig)
 		self.addCleanup(setattr, frappe.local, "form_dict", frappe._dict())
+		# the new token must be committed before Meta checks the URL (from another request)
+		commits, db = [], frappe.local.db
+		orig_commit = db.commit
+		db.commit = lambda *a, **k: (commits.append(1), orig_commit(*a, **k))
+		self.addCleanup(lambda: db.__dict__.pop("commit", None))
+		seen = {}
+		self.on_call = lambda call: seen.update(commits=len(commits), token=wa._stored_secret(self.acc.name, "wa_webhook_verify_token"))
 		wa.set_number_webhook(self._account())
+		self.on_call = None
 		url = wa.default_webhook_url()
 		token = wa._stored_secret(self.acc.name, "wa_webhook_verify_token")
 		self.assertTrue(token)
+		self.assertEqual(seen, {"commits": 1, "token": token})
 		self.assertEqual((self.calls[-1]["url"], self.calls[-1]["json"]), (f"{BASE}/{PHONE_ID}", {"webhook_configuration": {"override_callback_uri": url, "verify_token": token}}))
 		# Meta's GET check of the new URL with that token passes
-		frappe.local.form_dict = frappe._dict({"hub.challenge": "CH123", "hub.verify_token": token})
+		hub = lambda tok, mode="subscribe": frappe._dict({"hub.mode": mode, "hub.challenge": "CH123", "hub.verify_token": tok})
+		frappe.local.form_dict = hub(token)
 		self.assertEqual(webhook.get().status_code, 200)
-		frappe.local.form_dict = frappe._dict({"hub.challenge": "CH123", "hub.verify_token": "wrong"})
-		self.assertEqual(webhook.get().status_code, 403)
+		for form in (hub("wrong"), hub(token, mode="unsubscribe"), hub(token, mode=""), hub("*" * len(token)), hub("*")):
+			frappe.local.form_dict = form
+			self.assertEqual(webhook.get().status_code, 403, form)
+		# a second override reuses the token: no new one, no extra commit
+		wa.set_number_webhook(self._account())
+		self.assertEqual((len(commits), self.calls[-1]["json"]["webhook_configuration"]["verify_token"]), (1, token))
 
 		wa.clear_number_webhook(self._account())
 		self.assertEqual(self.calls[-1]["json"], {"webhook_configuration": {"override_callback_uri": ""}})

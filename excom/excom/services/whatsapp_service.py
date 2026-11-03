@@ -274,7 +274,8 @@ def _local_file_bytes(file_url: str) -> tuple[bytes, str, str]:
 	name = frappe.db.get_value("File", {"file_url": file_url}, "name")
 	if name:
 		f = frappe.get_doc("File", name)
-		content = f.get_content()
+		# no encodings: the raw bytes (get_content() would decode a PNG as windows-1250 text)
+		content = f.get_content(encodings=())
 		filename = f.file_name or os.path.basename(file_url)
 	else:
 		path = frappe.get_site_path(file_url.lstrip("/"))

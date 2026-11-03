@@ -18,6 +18,7 @@ Never log the access token, the PIN or a verification code.
 
 import json
 import re
+import unicodedata
 
 import frappe
 import requests as http_requests
@@ -33,6 +34,10 @@ class AccountSettingError(frappe.ValidationError):
 	"""A value Meta would refuse (too long, too many, wrong format), caught before calling Meta."""
 
 
+class MetaUnreachable(ExcomProviderError):
+	"""No answer from Meta (timeout, connection error): the call may or may not have reached it."""
+
+
 def _fail(message: str):
 	raise AccountSettingError(message)
 
@@ -44,15 +49,26 @@ def _creds(account):
 	return token, (base_url or "https://graph.facebook.com").rstrip("/"), version, phone_id
 
 
+_GRAPH_ID = re.compile(r"^[0-9]+$")
+
+
+def _graph_id(value, label: str, account) -> str:
+	"""A Meta object id that goes into a URL path: digits only, so it cannot point at another node."""
+	value = str(value or "").strip()
+	if not _GRAPH_ID.match(value):
+		_fail(_("The {0} of {1} must be digits only (it is {2}).").format(label, account.name, value or "''"))
+	return value
+
+
 def _phone(account) -> str:
-	return _creds(account)[3]
+	return _graph_id(_creds(account)[3], _("Phone Number ID"), account)
 
 
 def _waba(account) -> str:
 	waba = (account.get("wa_business_id") or "").strip()
 	if not waba:
 		_fail(_("Set the WhatsApp Business Account ID on {0} first.").format(account.name))
-	return waba
+	return _graph_id(waba, _("WhatsApp Business Account ID"), account)
 
 
 def _graph(account, method: str, node: str, *, params=None, body=None, data=None, headers=None, keep: str = "", timeout=(10, 60)) -> dict:
@@ -76,7 +92,7 @@ def _graph(account, method: str, node: str, *, params=None, body=None, data=None
 		resp = getattr(http_requests, method.lower())(url, **kw)
 	except http_requests.exceptions.RequestException as e:
 		# the URL never carries a secret here (PIN and codes go in the body)
-		raise ExcomProviderError(_("WhatsApp API connection error: {0}").format(e), provider="whatsapp") from e
+		raise MetaUnreachable(_("WhatsApp API connection error: {0}").format(e), provider="whatsapp") from e
 	try:
 		out = resp.json() if resp.content else {}
 	except ValueError:
@@ -99,11 +115,17 @@ def _as_bool(value):
 	return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
-_EMOJI = re.compile("[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0001F1E6-\U0001F1FF️‍]")
+# Misc symbols and dingbats, arrows and stars (⭐), the emoji planes, keycap, variation selector, tags
+_EMOJI_RANGES = ((0x2600, 0x27BF), (0x2B00, 0x2BFF), (0x1F000, 0x1FAFF), (0x20E3, 0x20E3), (0xFE0F, 0xFE0F), (0xE0020, 0xE007F))
 
 
 def _has_emoji(text: str) -> bool:
-	return bool(_EMOJI.search(text or ""))
+	"""Any emoji or pictograph: Unicode "other symbol" (So) or one of the emoji ranges."""
+	for ch in text or "":
+		cp = ord(ch)
+		if unicodedata.category(ch) == "So" or any(lo <= cp <= hi for lo, hi in _EMOJI_RANGES):
+			return True
+	return False
 
 
 # ─── B.1 Business profile ────────────────────────────────────────────────────
@@ -173,14 +195,29 @@ def update_business_profile(account, values: dict) -> dict:
 	return _graph(account, "POST", f"{_phone(account)}/whatsapp_business_profile", body={"messaging_product": "whatsapp", **fields})
 
 
+def _assert_photo_readable(account, file_url: str) -> None:
+	"""The photo must be a File the user may read, or one attached to this channel account."""
+	files = frappe.get_all("File", filters={"file_url": file_url}, fields=["name", "attached_to_doctype", "attached_to_name"]) if file_url else []
+	if not files:
+		_fail(_("Upload the photo first."))
+	for f in files:
+		if f.attached_to_doctype == account.doctype and f.attached_to_name == account.name:
+			return
+		if frappe.has_permission("File", "read", doc=frappe.get_doc("File", f.name)):
+			return
+	_fail(_("You cannot use that file as the profile photo."))
+
+
 def upload_profile_photo(account, file_url: str) -> str:
 	"""Resumable Upload API: start a session on the app, send the bytes, return Meta's handle."""
 	app_id = (account.get("wa_app_id") or "").strip()
 	if not app_id:
 		_fail(_("Set the App ID on {0}: Meta's upload API runs on the app.").format(account.name))
-	if not file_url or not frappe.db.exists("File", {"file_url": file_url}):
-		_fail(_("Upload the photo first."))
+	app_id = _graph_id(app_id, _("App ID"), account)
+	_assert_photo_readable(account, file_url)
 	content, filename, mimetype = ws._local_file_bytes(file_url)
+	if not isinstance(content, bytes):  # never send text-decoded image bytes
+		raise ExcomProviderError(_("The profile photo could not be read as an image file"), provider="whatsapp")
 	mimetype = "image/jpeg" if mimetype == "image/jpg" else mimetype
 	if mimetype not in PHOTO_TYPES:
 		_fail(_("The profile photo must be a JPEG or PNG image."))
@@ -188,7 +225,8 @@ def upload_profile_photo(account, file_url: str) -> str:
 		_fail(_("The profile photo may be at most 5 MB."))
 	session = _graph(account, "POST", f"{app_id}/uploads",
 		params={"file_name": filename, "file_length": len(content), "file_type": mimetype}).get("id") or ""
-	if not session.startswith("upload:"):
+	# Meta's session id (may hold base64 "/" and "?sig="): only refuse what would break the URL
+	if not session.startswith("upload:") or re.search(r"[\s#]", session):
 		raise ExcomProviderError(_("Meta did not start an upload session"), provider="whatsapp")
 	token = _creds(account)[0]
 	handle = _graph(account, "POST", session, data=content, timeout=(10, 120),
@@ -302,12 +340,40 @@ def _raise_failed(failed: list, account) -> None:
 		code=code, details=(err.get("error_data") or {}).get("details") or "")
 
 
+def blocked_numbers(identity: str) -> dict:
+	"""{Excom Channel Account: blocked on} — a block is per WhatsApp number, not per person."""
+	row = frappe.db.get_value("Omni Identity", identity, ["wa_blocked_numbers", "wa_blocked", "wa_blocked_on", "wa_blocked_account"], as_dict=True)
+	if not row:
+		return {}
+	try:
+		numbers = json.loads(row.wa_blocked_numbers or "{}")
+	except (TypeError, ValueError):
+		numbers = {}
+	if not isinstance(numbers, dict):
+		numbers = {}
+	# recorded before the per-number map: the one number in wa_blocked_account
+	if not numbers and row.wa_blocked and row.wa_blocked_account:
+		numbers = {row.wa_blocked_account: str(row.wa_blocked_on or "")}
+	return numbers
+
+
 def _set_blocked(identities: list, account_name: str, blocked: bool) -> None:
+	"""Record a block / unblock on this number only; a block on another number stays."""
 	for identity in identities:
+		numbers = blocked_numbers(identity)
+		if blocked:
+			numbers[account_name] = str(now_datetime())
+		elif account_name in numbers:
+			numbers.pop(account_name)
+		else:
+			continue
+		# wa_blocked / _on / _account summarise the map: any block, and the latest one
+		latest = max(numbers.items(), key=lambda kv: kv[1] or "") if numbers else None
 		frappe.db.set_value("Omni Identity", identity, {
-			"wa_blocked": 1 if blocked else 0,
-			"wa_blocked_on": now_datetime() if blocked else None,
-			"wa_blocked_account": account_name if blocked else None,
+			"wa_blocked_numbers": json.dumps(numbers) if numbers else "",
+			"wa_blocked": 1 if numbers else 0,
+			"wa_blocked_on": (latest[1] or None) if latest else None,
+			"wa_blocked_account": latest[0] if latest else None,
 		}, update_modified=False)
 
 
@@ -466,14 +532,31 @@ def sync_qr_codes(account) -> dict:
 	return {"created": created, "updated": updated, "removed": removed, "total": len(remote)}
 
 
+def delete_qr_code_on_rollback(account, code: str) -> None:
+	"""Meta made the code before our record is saved: if the insert or the request fails, delete it on Meta too."""
+
+	def undo():
+		try:
+			delete_qr_code(account, code)
+		except Exception:
+			frappe.log_error(title=f"Excom: orphan WhatsApp QR code {code}", message=frappe.get_traceback())
+
+	frappe.db.after_rollback.add(undo)
+
+
 def attach_qr_image(doc) -> str:
-	"""Keep a copy of Meta's QR image on the record (Meta's image links are CDN links that can expire)."""
+	"""Keep a copy of Meta's QR image on the record (Meta's image links are CDN links that can expire).
+	The previous copy is deleted once the new image has downloaded."""
 	if not doc.qr_image_url:
 		return ""
 	try:
 		resp = http_requests.get(doc.qr_image_url, timeout=(10, 30))
 		if resp.status_code != 200 or not resp.content:
 			return ""
+		for old in frappe.get_all("File", filters={"attached_to_doctype": doc.doctype, "attached_to_name": doc.name,
+				"attached_to_field": "qr_image"}, pluck="name"):
+			frappe.delete_doc("File", old, ignore_permissions=True)
+			doc.db_set("qr_image", "", update_modified=False)
 		ext = "svg" if (doc.image_format or "").upper() == "SVG" or b"<svg" in resp.content[:200] else "png"
 		f = frappe.get_doc({"doctype": "File", "file_name": f"whatsapp-qr-{doc.code}.{ext}", "content": resp.content, "is_private": 1,
 			"attached_to_doctype": doc.doctype, "attached_to_name": doc.name, "attached_to_field": "qr_image"})
@@ -536,6 +619,8 @@ def get_conversational_automation(account) -> dict:
 	"""{"prompts": [...], "commands": [...], "enable_welcome_message"?: bool} as Meta has them now."""
 	data = _graph(account, "GET", _phone(account), params={"fields": "conversational_automation"})
 	conv = data.get("conversational_automation") or {}
+	if remember_commands(account, conv.get("commands") or []):
+		frappe.local.flags.commit = True  # a GET request: keep what Meta has now
 	return {"prompts": conv.get("prompts") or [], "commands": conv.get("commands") or [],
 		**({"enable_welcome_message": conv["enable_welcome_message"]} if "enable_welcome_message" in conv else {})}
 
@@ -549,14 +634,37 @@ def set_conversational_automation(account, prompts, commands) -> dict:
 	if welcome in ("On", "Off"):
 		body["enable_welcome_message"] = welcome == "On"
 	node = f"{_phone(account)}/conversational_automation"
+	warning = ""
 	try:
 		_graph(account, "POST", node, body=body)
-		return {"success": True, "warning": ""}
-	except WhatsAppAPIError:
-		if "enable_welcome_message" not in body:
+	except WhatsAppAPIError as e:
+		# only an invalid-parameter refusal can be the welcome setting; a token or rate error stands
+		if "enable_welcome_message" not in body or str(e.code) != "100":
 			raise
 		_graph(account, "POST", node, body={"prompts": prompts, "commands": commands})
-		return {"success": True, "warning": _("Saved, but Meta refused the welcome-message setting; it was left out.")}
+		warning = _("Saved, but Meta refused the welcome-message setting; it was left out.")
+	remember_commands(account, commands)
+	return {"success": True, "warning": warning}
+
+
+def command_names(account) -> set:
+	"""The number's commands as excom last saved or read them (lower case, without "/")."""
+	try:
+		names = json.loads(account.get("wa_command_names") or "[]")
+	except (TypeError, ValueError):
+		names = []
+	return {str(n).lower() for n in names if n} if isinstance(names, list) else set()
+
+
+def remember_commands(account, commands: list) -> bool:
+	"""Keep the command names on the channel account, for inbound dispatch. True when they changed."""
+	names = sorted({str(c.get("command_name") or "").strip().lstrip("/").lower() for c in commands or [] if isinstance(c, dict)} - {""})
+	if set(names) == command_names(account):
+		return False
+	value = json.dumps(names) if names else ""
+	frappe.db.set_value("Excom Channel Account", account.name, "wa_command_names", value, update_modified=False)
+	account.wa_command_names = value
+	return True
 
 
 def parse_command(text: str) -> dict | None:
@@ -565,6 +673,19 @@ def parse_command(text: str) -> dict | None:
 	if not m:
 		return None
 	return {"command": m.group(1).lower(), "args": (m.group(2) or "").strip()}
+
+
+def inbound_command(text: str, account) -> tuple[str, dict | None]:
+	"""(dispatch kind, payload) for an inbound text.
+
+	"command" only when the name is one of this number's commands (command_names); a text that
+	merely starts with "/name" stays "text", with the parse in the payload as a hint for handlers.
+	Commands changed in WhatsApp Manager count once Admin → WhatsApp number has read them.
+	"""
+	parsed = parse_command(text)
+	if not parsed:
+		return "text", None
+	return ("command" if parsed["command"] in command_names(account) else "text"), parsed
 
 
 # ─── B.5 Two-step PIN, register, deregister, verification codes ──────────────
@@ -649,24 +770,35 @@ def _registration_call(account, action: str, node: str, body) -> dict:
 			raise WhatsAppAPIError(_("Meta blocked register / deregister on this number for 72 hours (error 133016)."),
 				code=e.code, details=e.details, http_status=e.http_status) from e
 		raise
+	except MetaUnreachable:
+		# no answer, but Meta may still have counted the request: it uses up one of the 10 too
+		_record_registration(account.name, action, False, "no answer")
+		raise
 	_record_registration(account.name, action, True)
 	return out
 
 
-def register_number(account, pin: str = "", region: str = "") -> dict:
+def register_number(account, pin: str = "", region: str | None = None) -> dict:
 	"""POST /{phone}/register. Uses the stored PIN when none is given (Meta still wants one, even while
-	it phases out the PIN check from 2026-09-23)."""
+	it phases out the PIN check from 2026-09-23).
+
+	region: None uses the stored region; "" registers without one. The region is stored only once
+	Meta has accepted the registration.
+	"""
 	pin = pin or _stored_secret(account.name, "wa_two_step_pin")
 	if not pin:
 		_fail(_("Set the two-step verification PIN first: Meta needs it to register the number."))
 	pin = validate_pin(pin)
-	region = (region or account.get("wa_data_localization_region") or "").strip().upper()
+	stored = (account.get("wa_data_localization_region") or "").strip().upper()
+	region = stored if region is None else str(region).strip().upper()
 	if region and region not in LOCALIZATION_REGIONS:
 		_fail(_("{0} is not a WhatsApp data localisation region.").format(region))
 	body = {"messaging_product": "whatsapp", "pin": pin}
 	if region:
 		body["data_localization_region"] = region
 	out = _registration_call(account, "register", f"{_phone(account)}/register", body)
+	if region != stored:
+		frappe.db.set_value("Excom Channel Account", account.name, "wa_data_localization_region", region, update_modified=False)
 	if not _stored_secret(account.name, "wa_two_step_pin"):
 		_store_secret(account.name, "wa_two_step_pin", pin)
 	return out
@@ -700,10 +832,16 @@ def verify_code(account, code) -> dict:
 
 
 def get_number_status(account) -> dict:
-	"""Meta's registration-related fields for the number, plus our register / deregister budget."""
+	"""Meta's registration-related fields for the number (see local_registration for excom's own)."""
 	data = _graph(account, "GET", _phone(account), params={"fields": "status,code_verification_status,platform_type,name_status,verified_name,display_phone_number"})
 	data.pop("id", None)
-	return {**data, "budget": registration_budget(account.name), "has_pin": bool(_stored_secret(account.name, "wa_two_step_pin"))}
+	return data
+
+
+def local_registration(account) -> dict:
+	"""What excom keeps itself: the register / deregister budget, whether a PIN is stored, the region."""
+	return {"budget": registration_budget(account.name), "has_pin": bool(_stored_secret(account.name, "wa_two_step_pin")),
+		"data_localization_region": account.get("wa_data_localization_region") or "", "regions": list(LOCALIZATION_REGIONS)}
 
 
 # ─── B.6 Webhook overrides ───────────────────────────────────────────────────
@@ -721,6 +859,9 @@ def webhook_verify_token(account) -> str:
 	if not token:
 		token = frappe.generate_hash(length=32)
 		_store_secret(account.name, "wa_webhook_verify_token", token)
+		# Meta checks the URL with this token from another request before answering us: commit now,
+		# or that request cannot see the token and the override is refused
+		frappe.db.commit()
 	return token
 
 
@@ -745,7 +886,7 @@ def get_webhook_configuration(account) -> dict:
 	apps, waba_error = [], ""
 	if account.get("wa_business_id"):
 		try:
-			apps = _graph(account, "GET", f"{account.wa_business_id}/subscribed_apps").get("data") or []
+			apps = _graph(account, "GET", f"{_waba(account)}/subscribed_apps").get("data") or []
 		except ExcomProviderError as e:
 			waba_error = str(e)
 	return {
@@ -812,7 +953,7 @@ def link_catalog(account, catalog_id: str) -> dict:
 	"""Connect a Commerce Manager catalogue to the WhatsApp account (shared by all its numbers).
 	Unlinking is not possible through the API: use WhatsApp Manager or Commerce Manager."""
 	catalog_id = str(catalog_id or "").strip()
-	if not catalog_id.isdigit():
+	if not _GRAPH_ID.match(catalog_id):
 		_fail(_("A catalogue ID is a number, from Commerce Manager."))
 	waba = _waba(account)
 	out = _graph(account, "POST", f"{waba}/product_catalogs", data={"catalog_id": catalog_id})

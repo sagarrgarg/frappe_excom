@@ -15,7 +15,7 @@ Draft for HLD-005 §10 (to merge after review). Not tested yet: MariaDB was down
     - welcome-message setting
     - register / deregister log
     - the two webhook overrides set
-  - Omni Identity: `wa_blocked`, `wa_blocked_on`, `wa_blocked_account`.
+  - Omni Identity: `wa_blocked_numbers` (Channel Account → blocked on: a block is per number), summarised in `wa_blocked`, `wa_blocked_on`, `wa_blocked_account` (the latest).
 - **New doctype:** `Excom WhatsApp QR Code`.
 
 **Business profile**
@@ -35,7 +35,7 @@ Draft for HLD-005 §10 (to merge after review). Not tested yet: MariaDB was down
 - **What is sent:** the identity's user id (BSUID) when it belongs to this WhatsApp account, otherwise `+<number>`. Parent user ids are refused.
 - **24-hour rule:** checked before calling Meta, from `Excom Thread.last_inbound_at` for that person on that number. The refusal says when they last wrote.
 - **Partial failures** (`failed_users` beside a 139100 error) are logged per person with Meta's code and class. 131047 gives the "not in the last 24 hours" message.
-- **On success** the block is recorded on the Omni Identity; unblocking clears it.
+- **On success** the block is recorded on the Omni Identity for that number; unblocking clears that number only.
 
 **QR codes and short links**
 
@@ -54,7 +54,7 @@ Draft for HLD-005 §10 (to merge after review). Not tested yet: MariaDB was down
   - no emoji in either
 - **`enable_welcome_message`** is sent only when the account's setting is On or Off. If Meta refuses the call, it is sent again without the setting, and the admin is told.
 - **Inbound:**
-  - A text that starts with `/name` is still stored as text. It is dispatched to `excom_inbound_handlers` as kind `command` with `{"command", "args"}`.
+  - A text that starts with `/name` is still stored as text. It is dispatched to `excom_inbound_handlers` as kind `command` with `{"command", "args"}` only when `name` is one of the number's commands, kept on the Channel Account (`wa_command_names`) each time they are saved or read here. Any other `/word` text is kind `text`, with the same payload as a hint.
   - A `request_welcome` message is stored in the thread ("👋 Opened the chat"), logged as an `Excom WhatsApp Event`, and dispatched as kind `welcome`.
   - A welcome request does **not** open the 24-hour window: `ingest_inbound_message(opens_window=False)` leaves `last_inbound_at` alone.
 
@@ -62,7 +62,7 @@ Draft for HLD-005 §10 (to merge after review). Not tested yet: MariaDB was down
 
 - **Calls:** set PIN (`POST /{phone} {"pin"}`), register (`pin`, optional `data_localization_region`), deregister, request code (SMS/VOICE + language) and verify code (the code goes in the form body, never the URL).
 - **PIN:** stored encrypted only after Meta accepts it. Register uses the stored PIN by default.
-- **10 per 72 h:** every register / deregister call is logged on the account. The 11th within 72 h is refused locally, because it would get 133016 and a 72-hour block.
+- **10 per 72 h:** every register / deregister call is logged on the account. The 11th within 72 h is refused locally, because it would get 133016 and a 72-hour block. A call with no answer (timeout, connection error) is logged too, since Meta may have counted it. The region is stored only after Meta accepts the registration.
   - The log is committed at once, so a refused request still counts.
   - 133016 and 136024 (already verified) get their own messages.
 - **PIN deprecation:** the UI notes Meta's gradual PIN phase-out from 2026-09-23, and that a PIN is still sent until Meta changes the API.
@@ -72,7 +72,7 @@ Draft for HLD-005 §10 (to merge after review). Not tested yet: MariaDB was down
 - **Read:** `GET /{phone}?fields=webhook_configuration` gives the number, WABA and app URLs; `GET /{waba}/subscribed_apps` gives the apps.
 - **Number:** set `webhook_configuration.override_callback_uri` + `verify_token`; clear by sending an empty URL.
 - **WABA:** set by `POST /{waba}/subscribed_apps` with URL and token; clear by POSTing with no body. DELETE is never used, since it would unsubscribe the app.
-- **Default URL:** this site's `/api/method/excom.excom.utils.webhook.webhook`, with the account's verify token (generated on first use).
+- **Default URL:** this site's `/api/method/excom.excom.utils.webhook.webhook`, with the account's verify token (generated on first use and committed at once, so Meta's verification request can see it).
   - Another URL needs its own token. Only https URLs of ≤ 200 characters are accepted.
 - **Fix:** `utils.webhook.get` now also compares the account's decrypted verify token. The column of a Password field holds only asterisks, so a token set on a Channel Account never matched before. Meta's check of an override URL depends on this.
 

@@ -29,9 +29,13 @@ def _run(fn, *args, **kwargs):
 	except wa.AccountSettingError as e:
 		frappe.throw(str(e), title=_("Not sent to WhatsApp"))
 	except ExcomProviderError as e:
-		# e.message is Meta's text and code: never the token, the PIN or a verification code
-		frappe.log_error(title=f"Excom: WhatsApp number {fn.__name__} failed ({getattr(e, 'code', '') or ''})", message=e.message or str(e))
+		_log_provider_error(fn, e)
 		frappe.throw(e.message or str(e), title=_("WhatsApp refused"))
+
+
+def _log_provider_error(fn, e) -> None:
+	# e.message is Meta's text and code: never the token, the PIN or a verification code
+	frappe.log_error(title=f"Excom: WhatsApp number {fn.__name__} failed ({getattr(e, 'code', '') or ''})", message=e.message or str(e))
 
 
 # ─── the numbers ─────────────────────────────────────────────────────────────
@@ -116,12 +120,13 @@ def _thread_target(thread_id: str):
 
 @frappe.whitelist()
 def thread_block_status(thread_id: str) -> dict:
+	"""Whether the person is blocked on this conversation's WhatsApp number (a block is per number)."""
 	_check_thread_access(thread_id)
-	thread = frappe.db.get_value("Excom Thread", thread_id, ["channel", "omni_identity"], as_dict=True) or {}
-	if thread.get("channel") != "whatsapp" or not thread.get("omni_identity"):
+	thread = frappe.db.get_value("Excom Thread", thread_id, ["channel", "account", "omni_identity"], as_dict=True) or {}
+	if thread.get("channel") != "whatsapp" or not thread.get("omni_identity") or not thread.get("account"):
 		return {"whatsapp": False, "blocked": False}
-	row = frappe.db.get_value("Omni Identity", thread.omni_identity, ["wa_blocked", "wa_blocked_on"], as_dict=True) or {}
-	return {"whatsapp": True, "blocked": bool(row.get("wa_blocked")), "blocked_on": str(row.get("wa_blocked_on") or "")}
+	on = wa.blocked_numbers(thread.omni_identity).get(thread.account)
+	return {"whatsapp": True, "blocked": on is not None, "blocked_on": on or ""}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -232,10 +237,18 @@ def set_conversational(account: str, prompts=None, commands=None, welcome_messag
 
 @frappe.whitelist()
 def get_registration(account: str) -> dict:
+	"""Meta's view of the number plus excom's own budget; the budget is returned even when Meta cannot be read."""
 	_check_admin_access()
 	doc = _account(account)
-	return {**_run(wa.get_number_status, doc), "data_localization_region": doc.get("wa_data_localization_region") or "",
-		"regions": list(wa.LOCALIZATION_REGIONS)}
+	meta, meta_error = {}, ""
+	try:
+		meta = wa.get_number_status(doc)
+	except wa.AccountSettingError as e:
+		meta_error = str(e)
+	except ExcomProviderError as e:
+		_log_provider_error(wa.get_number_status, e)
+		meta_error = e.message or str(e)
+	return {**meta, **wa.local_registration(doc), "meta_error": meta_error}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -245,11 +258,10 @@ def set_pin(account: str, pin: str) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-def register(account: str, pin: str = "", region: str = "") -> dict:
+def register(account: str, pin: str = "", region: str | None = None) -> dict:
+	"""region: left out → the stored one; "" → none (clears the stored one once Meta accepts)."""
 	_check_admin_access()
 	doc = _account(account)
-	if region and region.upper() in wa.LOCALIZATION_REGIONS:
-		doc.db_set("wa_data_localization_region", region.upper())
 	result = _run(wa.register_number, doc, pin, region)
 	return {**(result or {}), "budget": wa.registration_budget(doc.name)}
 

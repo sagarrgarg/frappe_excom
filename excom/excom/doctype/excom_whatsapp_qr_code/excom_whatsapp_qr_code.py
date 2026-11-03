@@ -2,6 +2,9 @@
 
 Creating, editing the message or deleting one here does the same on Meta first. Rows written by
 the "sync from Meta" action set flags.from_meta and are not pushed back.
+
+A new code is made on Meta only after our own checks (validate), and is deleted there again if
+the insert or the request then fails (frappe.db.after_rollback), so no orphan code is left.
 """
 
 import frappe
@@ -37,6 +40,7 @@ class ExcomWhatsAppQRCode(Document):
 		self.code = made.get("code") or ""
 		if not self.code:
 			frappe.throw(_("Meta did not return a QR code."))
+		wa.delete_qr_code_on_rollback(account, self.code)
 		self.prefilled_message = made.get("prefilled_message") or self.prefilled_message
 		self.deep_link_url = made.get("deep_link_url") or ""
 		self.qr_image_url = made.get("qr_image_url") or ""
@@ -68,5 +72,6 @@ class ExcomWhatsAppQRCode(Document):
 			wa.delete_qr_code(self._account(), self.code)
 		except WhatsAppAPIError as e:
 			# already gone on Meta (deleted in WhatsApp Manager): let the local copy go too
-			if str(e.code) != "100" or "exist" not in str(e).lower():
+			text = str(e).lower()
+			if str(e.code) != "100" or not ("exist" in text or "not found" in text):
 				raise
