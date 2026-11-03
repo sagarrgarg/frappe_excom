@@ -534,6 +534,13 @@ def _handle_user_preferences(change: dict, entry: dict) -> None:
 			frappe.log_error(title="Excom webhook: user preference not applied", message=f"{json.dumps(_scrub(pref))}\n{frappe.get_traceback()}")
 
 
+def _handle_calls(change: dict, entry: dict) -> None:
+	"""WhatsApp Business Calling: connect / terminate and call statuses (channels/voice/whatsapp_calling.py)."""
+	from excom.excom.channels.voice.whatsapp_calling import handle_calls_change
+
+	handle_calls_change(change, entry)
+
+
 def _handle_info(change: dict, entry: dict) -> None:
 	value = change.get("value") or {}
 	event = value.get("event") or value.get("decision") or value.get("type") or change.get("field")
@@ -558,6 +565,7 @@ FIELD_HANDLERS = {
 	"business_username_update": _handle_info,
 	"payment_configuration_update": _handle_info,
 	"leadgen": _handle_leadgen,
+	"calls": _handle_calls,
 }
 
 
@@ -716,6 +724,17 @@ def _parse_inbound(message: dict, message_type: str, channel_account) -> tuple:
 			reply = data.get("list_reply") or {}
 			# the title only: broadcast metrics count the tap by its label (the description stays in content_json)
 			content_text, excom_msg_type, kind, payload = reply.get("title", ""), "Interactive", "list", reply.get("id", "")
+		elif itype == "call_permission_reply":
+			# WhatsApp calling: the person allowed or refused business-initiated calls (or WhatsApp
+			# withdrew it after unanswered calls); whatsapp_calling.on_inbound updates the permission
+			reply = data.get("call_permission_reply") or {}
+			if (reply.get("response") or "").lower() == "accept":
+				content_text = "📞 Allowed calls" + ("" if reply.get("is_permanent") else " for 7 days")
+			elif reply.get("response_source") == "automatic":
+				content_text = "📞 Call permission withdrawn (unanswered calls)"
+			else:
+				content_text = "📞 Declined calls"
+			excom_msg_type, kind, payload = "Interactive", "call_permission", reply
 		elif itype == "nfm_reply" or data.get("nfm_reply"):
 			nfm = data.get("nfm_reply") or {}
 			try:

@@ -67,6 +67,11 @@ export interface RingingEvent {
   display_name: string;
   direction: string;
   ring_seconds: number;
+  /** "whatsapp" for a WhatsApp Business call; then the offer and the Excom Call ride along. */
+  channel?: string;
+  call?: string;
+  thread?: string | null;
+  sdp?: string;
 }
 
 export interface AnsweredEvent {
@@ -75,6 +80,30 @@ export interface AnsweredEvent {
   answered_by: string | null;
   status: string;
   thread: string | null;
+  channel?: string;
+}
+
+/** A WhatsApp number this agent takes WhatsApp calls on (api.whatsapp_calling.lines). */
+export interface WhatsAppLine {
+  account: string;
+  account_name: string;
+  business_number?: string;
+  calling_status?: string;
+  sip?: boolean;
+  sdk: string;
+  options: Record<string, unknown>;
+  presence?: { available: boolean; registered: boolean; busy: boolean };
+}
+
+/** Server-relayed signalling for a WhatsApp call (`excom:wa_call_signal`). */
+interface WhatsAppSignalEvent {
+  type: "answer" | "status" | "cancel" | "terminate";
+  account: string;
+  provider_call_id: string;
+  call?: string;
+  sdp?: string;
+  status?: string;
+  reason?: string;
 }
 
 export interface EndedEvent {
@@ -139,9 +168,23 @@ export function useSoftphone() {
   const linesRef = useRef<SoftphoneLine[]>([]);
   linesRef.current = config?.lines ?? [];
 
+  // WhatsApp numbers the agent takes WhatsApp calls on. A WhatsApp-only site has no voice line, so
+  // these are fetched and booted on their own.
+  const { data: waData } = useFrappeGetCall<{ message: { lines: WhatsAppLine[]; heartbeat_seconds?: number } }>(
+    "excom.excom.api.whatsapp_calling.lines",
+    undefined,
+    "excom-wa-call-lines",
+    { revalidateOnFocus: false },
+  );
+  const whatsappLines = waData?.message?.lines ?? [];
+  const waKey = whatsappLines.map((l) => l.account).join("|");
+  const waAccounts = useRef<Set<string>>(new Set());
+  whatsappLines.forEach((l) => waAccounts.current.add(l.account));
+
   useEffect(() => {
-    if (config?.presence) setAvailable(config.presence.available);
-  }, [config?.presence?.available]);
+    const presence = config?.presence ?? whatsappLines[0]?.presence;
+    if (presence) setAvailable(presence.available);
+  }, [config?.presence?.available, waKey]);
 
   // ── boot ────────────────────────────────────────────────────────────────
   // Every line the agent works, together. Whether two can be live at once is each vendor's rule,
@@ -149,6 +192,87 @@ export function useSoftphone() {
   // the international one register side by side, and a caller on either reaches the agent.
 
   const bootedFor = useRef<Set<string>>(new Set());
+
+  // The coordinator keeps one set of hooks for every line, so they take the line as an argument and
+  // read the latest state through a ref, whichever line booted last.
+  const hookImpl = {
+    onIncoming: (_uuid: string, from: string, account: string) => {
+      // The SDK ringing and the server's screen pop race. Whichever lands first shows a card;
+      // the other fills in the detail. The SDK route is also the one that survives Frappe's
+      // realtime being down, so it looks the caller up itself rather than showing a bare
+      // number — a name is most of what a screen pop is for.
+      setIncoming((prev) =>
+        prev ?? {
+          provider_call_id: "",
+          from_number: from,
+          business_number: "",
+          account,
+          omni_identity: null,
+          display_name: from,
+          direction: "Inbound",
+          ring_seconds: 30,
+        },
+      );
+      // A WhatsApp pop already carries the contact the server resolved.
+      if (waAccounts.current.has(account) || !from) return;
+      identify({ number: from })
+        .then((res: any) => {
+          const who = res?.message;
+          if (!who?.found) return;
+          setIncoming((prev) =>
+            prev && !prev.omni_identity
+              ? { ...prev, display_name: who.display_name, omni_identity: who.omni_identity }
+              : prev,
+          );
+        })
+        .catch(() => {
+          /* a nameless pop still rings; this only adds the name */
+        });
+    },
+    onOutgoing: (uuid: string, _to: string, account: string) => {
+      // A WhatsApp call's record is written by start_call before the call id reaches the browser.
+      if (waAccounts.current.has(account)) return;
+      const { peerNumber, threadId } = softphone.getState().call;
+      postBrowserCall({
+        provider_call_id: uuid,
+        to_number: peerNumber,
+        account,
+        thread: threadId ?? "",
+      }).catch(() => {
+        /* the answer-URL webhook creates the record too; this only removes the gap */
+      });
+    },
+    onEnded: () => setIncoming(null),
+    onQuality: (_uuid: string | null, metrics: Record<string, unknown>) => {
+      const callName = softphone.getState().call.callName;
+      if (!callName) return;
+      // mediaMetrics fires continuously. One sample a minute is plenty to answer "was the line
+      // bad"; posting every one would be a request per second per agent on a call.
+      const now = Date.now();
+      if (now - lastQualityAt.current < QUALITY_INTERVAL_MS) return;
+      lastQualityAt.current = now;
+      postQuality({ call: callName, metrics: JSON.stringify(metrics) }).catch(() => {
+        /* a quality sample is never worth surfacing an error for */
+      });
+    },
+  };
+  const hookRef = useRef(hookImpl);
+  hookRef.current = hookImpl;
+  const lineHooks = useRef({
+    onIncoming: (uuid: string, from: string, account: string) => hookRef.current.onIncoming(uuid, from, account),
+    onOutgoing: (uuid: string, to: string, account: string) => hookRef.current.onOutgoing(uuid, to, account),
+    onEnded: () => hookRef.current.onEnded(),
+    onQuality: (uuid: string | null, metrics: Record<string, unknown>) => hookRef.current.onQuality(uuid, metrics),
+  }).current;
+
+  // WhatsApp numbers need no token: the browser's own WebRTC is the "SDK".
+  useEffect(() => {
+    for (const line of whatsappLines) {
+      if (bootedFor.current.has(line.account)) continue;
+      bootedFor.current.add(line.account);
+      void softphone.boot({ account: line.account, sdk: line.sdk, token: "", options: line.options ?? {}, ...lineHooks });
+    }
+  }, [waKey]);
 
   const start = useCallback(async (account: string) => {
     if (!account) return;
@@ -162,61 +286,7 @@ export function useSoftphone() {
         sdk: payload.sdk || "",
         token: payload.token,
         options: payload.options ?? {},
-        onIncoming: (_uuid, from) => {
-          // The SDK ringing and the server's screen pop race. Whichever lands first shows a card;
-          // the other fills in the detail. The SDK route is also the one that survives Frappe's
-          // realtime being down, so it looks the caller up itself rather than showing a bare
-          // number — a name is most of what a screen pop is for.
-          setIncoming((prev) =>
-            prev ?? {
-              provider_call_id: "",
-              from_number: from,
-              business_number: "",
-              account,
-              omni_identity: null,
-              display_name: from,
-              direction: "Inbound",
-              ring_seconds: 30,
-            },
-          );
-          identify({ number: from })
-            .then((res: any) => {
-              const who = res?.message;
-              if (!who?.found) return;
-              setIncoming((prev) =>
-                prev && !prev.omni_identity
-                  ? { ...prev, display_name: who.display_name, omni_identity: who.omni_identity }
-                  : prev,
-              );
-            })
-            .catch(() => {
-              /* a nameless pop still rings; this only adds the name */
-            });
-        },
-        onOutgoing: (uuid) => {
-          const { peerNumber, threadId } = softphone.getState().call;
-          postBrowserCall({
-            provider_call_id: uuid,
-            to_number: peerNumber,
-            account,
-            thread: threadId ?? "",
-          }).catch(() => {
-            /* the answer-URL webhook creates the record too; this only removes the gap */
-          });
-        },
-        onEnded: () => setIncoming(null),
-        onQuality: (_uuid, metrics) => {
-          const callName = softphone.getState().call.callName;
-          if (!callName) return;
-          // mediaMetrics fires continuously. One sample a minute is plenty to answer "was the line
-          // bad"; posting every one would be a request per second per agent on a call.
-          const now = Date.now();
-          if (now - lastQualityAt.current < QUALITY_INTERVAL_MS) return;
-          lastQualityAt.current = now;
-          postQuality({ call: callName, metrics: JSON.stringify(metrics) }).catch(() => {
-            /* a quality sample is never worth surfacing an error for */
-          });
-        },
+        ...lineHooks,
       });
 
       bootedFor.current.add(account);
@@ -316,7 +386,7 @@ export function useSoftphone() {
 
   // Signing off should be instant, not "within 150 seconds".
   useEffect(() => {
-    const accounts = (config?.lines ?? []).map((l) => l.account);
+    const accounts = [...(config?.lines ?? []), ...whatsappLines].map((l) => l.account);
     if (!accounts.length) return;
     const onLeave = () => {
       try {
@@ -331,7 +401,7 @@ export function useSoftphone() {
     };
     window.addEventListener("pagehide", onLeave);
     return () => window.removeEventListener("pagehide", onLeave);
-  }, [config?.account]);
+  }, [config?.account, waKey]);
 
   // ── server events ───────────────────────────────────────────────────────
   // The server is the authority on who answered: it computed the ring set, so it knows. The SDK
@@ -340,6 +410,28 @@ export function useSoftphone() {
   useFrappeEventListener("excom:call_ringing", (data: RingingEvent) => {
     setAnsweredElsewhere("");
     setIncoming(data);
+    // A WhatsApp call has no SDK to ring: the offer rides on the pop and goes to that number's driver.
+    if (data.channel === "whatsapp" && data.sdp && data.call) {
+      softphone.signal(data.account, {
+        type: "offer",
+        provider_call_id: data.provider_call_id,
+        call: data.call,
+        sdp: data.sdp,
+        from: data.from_number || data.display_name,
+      });
+      if (softphone.getState().call.callUUID === data.provider_call_id) {
+        softphone.attachRecord(data.call, data.thread ?? null);
+        softphone.setPeer(data.display_name || data.from_number);
+      }
+    }
+  });
+
+  useFrappeEventListener("excom:wa_call_signal", (data: WhatsAppSignalEvent) => {
+    if (!data?.account) return;
+    softphone.signal(data.account, data);
+    if (data.type === "cancel" || data.type === "terminate") {
+      setIncoming((prev) => (prev?.provider_call_id === data.provider_call_id ? null : prev));
+    }
   });
 
   useFrappeEventListener("excom:call_answered", (data: AnsweredEvent) => {
@@ -555,14 +647,32 @@ export function useSoftphone() {
   }, []);
 
   const hangup = useCallback(async () => {
-    const callName = softphone.getState().call.callName;
+    const { callName, channel } = softphone.getState().call;
     softphone.hangup();
-    if (callName) {
+    // The WhatsApp driver ends its own call at Meta (it knows the call id before Excom's record does).
+    if (callName && channel !== "whatsapp") {
       postEndCall({ call: callName }).catch(() => {
         /* the browser leg is already down; the provider will report the hangup either way */
       });
     }
   }, [postEndCall]);
+
+  /** Call a person on WhatsApp from their WhatsApp conversation (they must have allowed calls). */
+  const callWhatsApp = useCallback((thread: string, account: string, displayName: string) => {
+    if (!softphone.isRegisteredOn(account)) {
+      toast.error("WhatsApp calling is not ready in this browser", {
+        description: "Reload Excom and allow the microphone.",
+      });
+      return false;
+    }
+    try {
+      softphone.call(displayName, { thread }, { displayName, threadId: thread, account });
+      return true;
+    } catch (e: unknown) {
+      toastError(e, "The WhatsApp call could not start");
+      return false;
+    }
+  }, []);
 
   return {
     config,
@@ -593,6 +703,9 @@ export function useSoftphone() {
     // still call from the browser if their American desk has a softphone.
     canCallInBrowser: (config?.lines ?? []).some((l) => l.browser_calls && l.has_endpoint),
     canCallOnPhone: (config?.lines ?? []).some((l) => l.phone_calls),
+    /** WhatsApp numbers this agent takes WhatsApp calls on. */
+    whatsappLines,
+    callWhatsApp,
   };
 }
 

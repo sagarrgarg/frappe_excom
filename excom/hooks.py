@@ -448,7 +448,10 @@ after_request = ["excom.excom.middleware.add_webchat_cors_headers"]
 # deletion requests are never on this list.
 # Features that act on inbound WhatsApp messages (button taps, Flow answers, cart orders, …).
 # Each gets one event dict — see excom.excom.services.inbound_dispatch. Other apps add their own.
-excom_inbound_handlers = []
+excom_inbound_handlers = [
+	# WhatsApp calling: call_permission_reply updates the cached call permission
+	"excom.excom.channels.voice.whatsapp_calling.on_inbound",
+]
 
 default_log_clearing_doctypes = {
 	"Excom Notification Log": 90,

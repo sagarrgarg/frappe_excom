@@ -54,6 +54,7 @@ export function ActiveCallBar({ api }: { api: SoftphoneApi }) {
         <span className="max-w-[12rem] truncate text-sm text-ink-1">
           {call.displayName || call.peerNumber}
         </span>
+        {call.channel === "whatsapp" && <span className="text-2xs text-crayon-green-text">WhatsApp</span>}
         <span className="text-xs text-ink-3">
           {connecting ? <Loader2 className="size-3 animate-spin" /> : <span className="tabular-nums">{mmss(seconds)}</span>}
         </span>

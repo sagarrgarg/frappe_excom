@@ -11,7 +11,10 @@
  * an agent hold the Indian line on Plivo and the international line on Twilio at the same time.
  */
 
-import { makeDriver, type DriverEvent, type SoftphoneDriver } from "./voice/driver";
+import { makeDriver, type DriverEvent, type DriverSignal, type SoftphoneDriver } from "./voice/driver";
+
+/** The `sdk` a WhatsApp number's descriptor names (see providers/whatsapp.py). */
+export const WHATSAPP_SDK = "whatsapp-webrtc";
 
 export type RegistrationState =
   | "idle"          // nothing attempted yet
@@ -38,6 +41,8 @@ export interface CallState {
   transport?: "Browser" | "Phone";
   /** Which line is carrying this call. Every control has to reach that line's own driver. */
   account: string | null;
+  /** "whatsapp" for a WhatsApp Business call, carried in the browser over WebRTC. */
+  channel?: "voice" | "whatsapp";
 }
 
 /** One line's own registration, so the UI can name the desk that is down. */
@@ -197,6 +202,15 @@ class Softphone {
   private driverFor(account?: string | null): SoftphoneDriver | null {
     const name = account ?? this.state.call.account;
     return (name && this.runtimes.get(name)?.driver) || null;
+  }
+
+  private channelOf(account: string): "voice" | "whatsapp" {
+    return this.runtimes.get(account)?.sdk === WHATSAPP_SDK ? "whatsapp" : "voice";
+  }
+
+  /** Hand server-relayed signalling (WhatsApp SDP and call progress) to that line's driver. */
+  signal(account: string, message: DriverSignal) {
+    this.runtimes.get(account)?.driver.signal?.(message);
   }
 
   /** Is this particular line reachable right now? */
@@ -396,6 +410,8 @@ class Softphone {
         return;
 
       case "incoming":
+        // A WhatsApp offer while already on a call stays with the colleagues it also rang.
+        if (this.channelOf(account) === "whatsapp" && this.state.call.phase !== "none") return;
         this.setCall({
           phase: "ringing",
           callUUID: event.callId,
@@ -405,6 +421,7 @@ class Softphone {
           muted: false,
           startedAt: null,
           account,
+          channel: this.channelOf(account),
         });
         this.hooks.onIncoming?.(event.callId ?? "", event.from, account);
         return;
@@ -516,6 +533,7 @@ class Softphone {
       muted: false,
       startedAt: null,
       account: meta.account,
+      channel: this.channelOf(meta.account),
     });
     driver.call(destination, params);
   }

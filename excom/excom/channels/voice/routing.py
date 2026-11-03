@@ -88,8 +88,9 @@ def clear_caches(account: str = "") -> None:
 	if account:
 		frappe.cache.delete_value(f"{_LINE_AGENTS}:{account}")
 	else:
+		# WhatsApp numbers ring agents too (WhatsApp Business Calling), from the same team list.
 		for row in frappe.get_all(
-			"Excom Channel Account", filters={"channel": "voice"}, pluck="name"
+			"Excom Channel Account", filters={"channel": ["in", ["voice", "whatsapp"]]}, pluck="name"
 		):
 			frappe.cache.delete_value(f"{_LINE_AGENTS}:{row}")
 
@@ -105,7 +106,7 @@ def on_team_changed(doc, method=None) -> None:
 
 
 def on_account_changed(doc, method=None) -> None:
-	if getattr(doc, "channel", None) == "voice":
+	if getattr(doc, "channel", None) in ("voice", "whatsapp"):
 		clear_caches(doc.name)
 
 

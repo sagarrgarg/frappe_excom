@@ -4,6 +4,7 @@ import type { UnifiedContact } from "../../types";
 import type { RecordRef } from "../../hooks/useRecordLinks";
 import { deskUrl } from "../../hooks/useRecordLinks";
 import { CallButton } from "../voice/CallButton";
+import { WhatsAppCallButton } from "../voice/WhatsAppCallButton";
 import type { Accent } from "../primitives/Chip";
 
 /** Actions worth a visible icon once the pane is wide enough (≥ 720 px); the rest stay under ⋯. */
@@ -68,6 +69,8 @@ export function RecordHeader({ contact, record, onBack, showBack, menuGroups, on
         size={narrow ? "icon" : "md"}
         label={narrow ? "" : undefined}
       />
+      {/* Renders nothing unless the conversation is on a WhatsApp number with calling. */}
+      <WhatsAppCallButton threads={contact.threads} displayName={contact.contactName} size={narrow ? "icon" : "md"} label={narrow ? "" : undefined} />
       {detailsToggleVisible && (
         <Button variant="ghost" size="icon" aria-label="Toggle details (⌘.)" title="Details  ⌘." onClick={onToggleDetails}><PanelRight /></Button>
       )}

@@ -66,7 +66,7 @@ export function IncomingCallToast({ api }: { api: SoftphoneApi }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-2xs uppercase tracking-wide text-crayon-green-text">
             <Phone className="size-3 animate-pulse" />
-            Incoming call
+            {incoming.channel === "whatsapp" ? "WhatsApp call" : "Incoming call"}
             <span className="ml-auto tabular-nums text-ink-3">{remaining}s</span>
             <button
               type="button"
@@ -92,7 +92,7 @@ export function IncomingCallToast({ api }: { api: SoftphoneApi }) {
           {incoming.omni_identity && (
             <button
               type="button"
-              onClick={() => navigate(`/t/${incoming.omni_identity}`)}
+              onClick={() => navigate(`/t/${incoming.omni_identity}${incoming.thread ? `?via=${encodeURIComponent(incoming.thread)}` : ""}`)}
               className="mt-1 inline-flex items-center gap-1 text-xs text-crayon-blue-text hover:underline"
             >
               Open conversation <ExternalLink className="size-3" />

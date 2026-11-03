@@ -14,16 +14,19 @@ import { useSoftphoneContext } from "./SoftphoneProvider";
  */
 export function AvailabilityToggle({ compact = false }: { compact?: boolean }) {
   const api = useSoftphoneContext();
-  if (!api?.config?.enabled) return null;
+  // WhatsApp calls count as a line too: a WhatsApp-only site has no voice config at all.
+  const whatsappOnly = Boolean(api && !api.config?.enabled && api.whatsappLines.length);
+  if (!api || (!api.config?.enabled && !whatsappOnly)) return null;
 
-  const { state, available, toggleAvailability, config } = api;
+  const { state, available, toggleAvailability } = api;
+  const config = api.config ?? { enabled: false };
   const reg = state.registration;
 
   const busy = reg === "loading" || reg === "registering";
   const broken = reg === "failed" || reg === "unsupported";
   // Phone transport still works without a registration, so a line with the fallback on is never
   // truly unreachable — say "on your phone" rather than "unavailable".
-  const phoneOnly = !config.browser_calls || !config.has_endpoint || broken;
+  const phoneOnly = whatsappOnly ? broken : !config.browser_calls || !config.has_endpoint || broken;
 
   const label = !available
     ? "Not taking calls"

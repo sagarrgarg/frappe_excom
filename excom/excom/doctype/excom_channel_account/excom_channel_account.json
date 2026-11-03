@@ -38,6 +38,20 @@
   "wa_billing_currency",
   "wa_health_checked_on",
   "wa_last_platform_event",
+  "wa_calling_section",
+  "wa_calling_status",
+  "wa_call_icon_visibility",
+  "wa_call_icon_countries",
+  "wa_callback_permission_status",
+  "wa_call_rate_per_minute",
+  "column_break_wa_calling",
+  "wa_call_hours_status",
+  "wa_call_hours_timezone",
+  "wa_call_hours",
+  "wa_call_holidays",
+  "wa_calling_sip_status",
+  "wa_calling_restrictions",
+  "wa_calling_synced_on",
   "wa_commerce_section",
   "wa_catalog_id",
   "column_break_wa_commerce",
@@ -345,6 +359,108 @@
    "fieldname": "wa_last_platform_event",
    "fieldtype": "Small Text",
    "label": "Last Platform Event",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_calling_section",
+   "fieldtype": "Section Break",
+   "label": "WhatsApp Calling",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "collapsible": 1,
+   "description": "Edit in Admin → WhatsApp calling, which reads and writes Meta's settings. Calling needs a messaging limit of at least 2,000 unique users a day. If SIP is enabled on the number, the browser cannot take its calls."
+  },
+  {
+   "fieldname": "wa_calling_status",
+   "fieldtype": "Select",
+   "options": "\nENABLED\nDISABLED",
+   "label": "Calling",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_call_icon_visibility",
+   "fieldtype": "Select",
+   "options": "\nDEFAULT\nDISABLE_ALL",
+   "label": "Call Icon",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_call_icon_countries",
+   "fieldtype": "Data",
+   "label": "Call Icon Only In (countries)",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_callback_permission_status",
+   "fieldtype": "Select",
+   "options": "\nENABLED\nDISABLED",
+   "label": "Ask Callers for Call Permission",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_call_rate_per_minute",
+   "fieldtype": "Float",
+   "label": "Business-initiated Rate per Minute",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "description": "For the call cost estimate (6-second pulses). India list rate 2026-10: ₹0.3885 / $0.0053. Calls people make to you are free."
+  },
+  {
+   "fieldname": "column_break_wa_calling",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "wa_call_hours_status",
+   "fieldtype": "Select",
+   "options": "\nENABLED\nDISABLED",
+   "label": "Call Hours",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_call_hours_timezone",
+   "fieldtype": "Data",
+   "label": "Call Hours Time Zone",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_call_hours",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "Weekly Call Hours",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_call_holidays",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "Call Holidays",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_calling_sip_status",
+   "fieldtype": "Data",
+   "label": "SIP",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_calling_restrictions",
+   "fieldtype": "Small Text",
+   "label": "Calling Restrictions",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wa_calling_synced_on",
+   "fieldtype": "Datetime",
+   "label": "Calling Settings Read On",
+   "depends_on": "eval:doc.channel=='whatsapp'",
    "read_only": 1
   },
   {

@@ -28,6 +28,21 @@ export type DriverEvent =
 
 export type DriverEmit = (event: DriverEvent) => void;
 
+/**
+ * Signalling the server relays to a driver whose vendor has no socket of its own — WhatsApp calls,
+ * where the SDP travels over Graph API webhooks and Frappe realtime instead of a vendor SDK.
+ */
+export interface DriverSignal {
+  type: "offer" | "answer" | "status" | "cancel" | "terminate";
+  provider_call_id?: string;
+  /** Excom Call name. */
+  call?: string;
+  sdp?: string;
+  from?: string;
+  status?: string;
+  reason?: string;
+}
+
 export interface DriverInit {
   /** Vendor options minted server-side by `sdk_descriptor()`. Never a secret. */
   options: Record<string, unknown>;
@@ -65,10 +80,17 @@ export interface SoftphoneDriver {
   hangup(): void;
   setMuted(muted: boolean): void;
   sendDigit(tone: string): void;
+
+  /** Server-relayed signalling. Only drivers without their own socket implement it. */
+  signal?(message: DriverSignal): void;
 }
 
 /** Which driver serves a line, from the `sdk` name the backend's descriptor carries. */
 export async function makeDriver(sdk: string, init: DriverInit): Promise<SoftphoneDriver> {
+  if (sdk === "whatsapp-webrtc") {
+    const { WhatsAppDriver } = await import("./whatsapp-driver");
+    return new WhatsAppDriver(init);
+  }
   if (sdk === "@twilio/voice-sdk") {
     const { TwilioDriver } = await import("./twilio-driver");
     return new TwilioDriver(init);

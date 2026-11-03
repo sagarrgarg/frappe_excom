@@ -45,7 +45,11 @@
   "calling_recording_section",
   "recording_retention_days",
   "column_break_calling_recording",
-  "require_recording_consent"
+  "require_recording_consent",
+  "whatsapp_calling_section",
+  "whatsapp_ice_servers",
+  "column_break_whatsapp_calling",
+  "whatsapp_turn_credential"
  ],
  "fields": [
   {
@@ -302,12 +306,35 @@
    "fieldtype": "Check",
    "label": "Require a Consent Announcement",
    "description": "Warn when a voice line has no announcement configured."
+  },
+  {
+   "fieldname": "whatsapp_calling_section",
+   "fieldtype": "Section Break",
+   "label": "WhatsApp Calling"
+  },
+  {
+   "fieldname": "whatsapp_ice_servers",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "ICE Servers (STUN / TURN)",
+   "default": "[{\"urls\": [\"stun:stun.l.google.com:19302\"]}]",
+   "description": "Meta supplies no STUN or TURN for WhatsApp calls. A JSON list like [{\"urls\": [\"stun:stun.l.google.com:19302\"]}, {\"urls\": [\"turn:turn.example.com:3478\"], \"username\": \"excom\"}]. Put the TURN password in the field beside, not here."
+  },
+  {
+   "fieldname": "column_break_whatsapp_calling",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "whatsapp_turn_credential",
+   "fieldtype": "Password",
+   "label": "TURN Credential",
+   "description": "Used for every ICE server above that has a username and no credential. Stored encrypted; sent only to agents' browsers."
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-03-09 00:00:00.000000",
+ "modified": "2026-11-04 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Settings",

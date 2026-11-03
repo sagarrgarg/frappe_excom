@@ -1,0 +1,200 @@
+{
+ "actions": [],
+ "creation": "2026-11-04 12:00:00.000000",
+ "description": "Whether a person allows business-initiated WhatsApp calls from one number, cached from Meta (GET /call_permissions and the call_permission_reply webhook).",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "omni_identity",
+  "channel_account",
+  "status",
+  "expires_on",
+  "column_break_perm",
+  "last_response",
+  "response_source",
+  "responded_on",
+  "checked_on",
+  "limits_section",
+  "can_request",
+  "request_limits",
+  "requests_sent",
+  "last_request_message",
+  "column_break_limits",
+  "can_call",
+  "call_limits",
+  "call_limit_resets_on",
+  "consecutive_unanswered",
+  "last_error"
+ ],
+ "fields": [
+  {
+   "fieldname": "omni_identity",
+   "fieldtype": "Link",
+   "options": "Omni Identity",
+   "label": "Contact",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "channel_account",
+   "fieldtype": "Link",
+   "options": "Excom Channel Account",
+   "label": "WhatsApp Number",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "options": "unknown\nno_permission\ntemporary\npermanent",
+   "default": "unknown",
+   "label": "Permission",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "expires_on",
+   "fieldtype": "Datetime",
+   "label": "Expires On",
+   "read_only": 1,
+   "description": "Temporary permission lasts 7 days. Meta sends no webhook when it lapses."
+  },
+  {
+   "fieldname": "column_break_perm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_response",
+   "fieldtype": "Data",
+   "label": "Last Reply",
+   "read_only": 1,
+   "description": "accept or reject, from the call_permission_reply webhook"
+  },
+  {
+   "fieldname": "response_source",
+   "fieldtype": "Data",
+   "label": "Reply Source",
+   "read_only": 1,
+   "description": "user_action, or automatic (revoked after 4 unanswered calls)"
+  },
+  {
+   "fieldname": "responded_on",
+   "fieldtype": "Datetime",
+   "label": "Replied On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "checked_on",
+   "fieldtype": "Datetime",
+   "label": "Checked with Meta On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "limits_section",
+   "fieldtype": "Section Break",
+   "label": "Limits"
+  },
+  {
+   "fieldname": "can_request",
+   "fieldtype": "Check",
+   "default": "1",
+   "label": "Can Send a Permission Request",
+   "read_only": 1
+  },
+  {
+   "fieldname": "request_limits",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "Request Limits (Meta)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "requests_sent",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "Requests Sent",
+   "read_only": 1,
+   "description": "When excom sent a request (1 per 24 h and 2 per 7 days are allowed)."
+  },
+  {
+   "fieldname": "last_request_message",
+   "fieldtype": "Link",
+   "options": "Excom Message",
+   "label": "Last Request Message",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_limits",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "can_call",
+   "fieldtype": "Check",
+   "default": "1",
+   "label": "Can Start a Call",
+   "read_only": 1
+  },
+  {
+   "fieldname": "call_limits",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "Call Limits (Meta)",
+   "read_only": 1,
+   "description": "Up to 100 connected business-initiated calls per person per 24 h."
+  },
+  {
+   "fieldname": "call_limit_resets_on",
+   "fieldtype": "Datetime",
+   "label": "Call Limit Resets On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "consecutive_unanswered",
+   "fieldtype": "Int",
+   "default": "0",
+   "label": "Unanswered Calls in a Row",
+   "read_only": 1,
+   "description": "WhatsApp revokes the permission after 4 unanswered calls in a row."
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-04 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom",
+ "name": "Excom WhatsApp Call Permission",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Excom Admin"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "omni_identity",
+ "track_changes": 0
+}

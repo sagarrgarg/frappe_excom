@@ -8,6 +8,9 @@ Plivo and Twilio are implemented. Plivo carries India, where a Twilio account ma
 carries everywhere else, where Plivo would want an enterprise agreement. Exotel and Airtel IQ
 are declared so the Select field has somewhere to point and a misconfigured line fails with a
 sentence rather than a KeyError.
+
+A WhatsApp channel account is its own line: WhatsApp Business Calling, answered in the browser
+over WebRTC with Graph API signalling (`providers/whatsapp.py`).
 """
 
 import frappe
@@ -28,6 +31,7 @@ PLIVO = "Plivo"
 TWILIO = "Twilio"
 EXOTEL = "Exotel"
 AIRTEL = "Airtel IQ"
+WHATSAPP = "WhatsApp"
 
 IMPLEMENTED = (PLIVO, TWILIO)
 
@@ -37,6 +41,11 @@ def for_account(account_doc) -> VoiceProvider:
 	if isinstance(account_doc, str):
 		# Cached: this runs on the answer URL, which is on the critical path of a live call.
 		account_doc = frappe.get_cached_doc("Excom Channel Account", account_doc)
+
+	if account_doc.get("channel") == "whatsapp":
+		from excom.excom.channels.voice.providers.whatsapp import WhatsAppCallingAdapter
+
+		return WhatsAppCallingAdapter(account_doc)
 
 	provider = (account_doc.get("voice_provider") or "").strip()
 	if provider == PLIVO:

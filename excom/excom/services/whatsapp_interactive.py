@@ -14,6 +14,8 @@ Limits (developers.facebook.com/documentation/business-messaging/whatsapp/messag
   product list   header text required, ≤ 30 products, ≤ 10 sections (title ≤ 24)
   product carousel 2–10 product cards from one catalogue
   address        India only (+91 recipients)
+  voice_call     body ≤ 1024, display text ≤ 20, ttl_minutes 1–43200, payload ≤ 512
+  call permission request  body optional (≤ 1024), no header or footer
 """
 
 import json
@@ -191,6 +193,35 @@ def catalog_message(body: str, thumbnail_retailer_id: str = "", footer: str = ""
 	return _with_common({"type": "catalog_message", "action": {"name": "catalog_message", **({"parameters": params} if params else {})}}, body, footer)
 
 
+def voice_call(body: str, display_text: str = "", ttl_minutes: int = 0, payload: str = "") -> dict:
+	"""A "Call on WhatsApp" button (WhatsApp Business Calling). The person taps it to call us;
+	`payload` comes back as `cta_payload` on the call. ttl_minutes 1–43200 (Meta's default 7 days)."""
+	_check(body, _("A call button needs a body"))
+	params = {}
+	if display_text:
+		params["display_text"] = _len(display_text, 20, _("Call button text"))
+	if ttl_minutes:
+		try:
+			ttl = int(ttl_minutes)
+		except (TypeError, ValueError):
+			ttl = 0
+		_check(1 <= ttl <= 43200, _("The call button lasts 1 to 43200 minutes (30 days)"))
+		params["ttl_minutes"] = ttl
+	if payload:
+		params["payload"] = _len(payload, 512, _("Call button payload"))
+	action = {"name": "voice_call", **({"parameters": params} if params else {})}
+	return {"type": "voice_call", "body": {"text": _len(body, MAX_BODY, _("Body"))}, "action": action}
+
+
+def call_permission_request(body: str = "") -> dict:
+	"""Ask the person to allow business-initiated calls. No header or footer is allowed; the body is
+	optional. Limits: 1 request per 24 h and 2 per 7 days per person (counted with templates)."""
+	interactive = {"type": "call_permission_request", "action": {"name": "call_permission_request"}}
+	if body:
+		interactive["body"] = {"text": _len(body, MAX_BODY, _("Body"))}
+	return interactive
+
+
 def preview_text(interactive: dict) -> str:
 	"""A readable line for the inbox: body plus the choices offered."""
 	body = ((interactive.get("body") or {}).get("text") or "").strip()
@@ -216,6 +247,10 @@ def preview_text(interactive: dict) -> str:
 		extra = _("[Send address]")
 	elif kind == "location_request_message":
 		extra = _("[Send location]")
+	elif kind == "voice_call":
+		extra = f"[📞 {(action.get('parameters') or {}).get('display_text') or _('Call Now')}]"
+	elif kind == "call_permission_request":
+		extra = _("[Allow calls]")
 	return f"{body} {extra}".strip()
 
 
