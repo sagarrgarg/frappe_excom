@@ -10,6 +10,8 @@ Every phase of HLD-005 adds rows here. A row stays until it has a result.
 - **L** — live with a real WhatsApp Business Account (test number)
 - **D** — diagnostics screen (Admin → WhatsApp → Diagnose)
 
+**Regression found and fixed:** commit f4d2759 (Phase 0) accidentally deleted the media functions from `whatsapp_service.py` (`media_reference`, `upload_media`, `send_media_message`, `send_sticker_message`). Image, document and sticker sends, template media headers and the delivery-retry watchdog would all have failed. They were restored in the Phase 2 commit. Test 0.26 (full suite, including `test_whatsapp_media`) covers this.
+
 **Blocked right now:** MariaDB is stopped on the dev machine, so nothing below has run. Phase 0 was committed untested at the owner's request (2026-11-03).
 
 ---
@@ -209,3 +211,86 @@ Templates:
 - **Agent UI** to compose interactive messages: not built. Phase 2/3 features send them from code.
 - **Named URL-button parameters** (`parameter_name` on a dynamic URL button) are not added. This only matters if a URL contains a named placeholder.
 - **Flow endpoint:** POSTs are refused unless signed; encrypted requests are refused with "not supported yet".
+
+---
+
+## Phase 2 — rate broadcast (commit: "WhatsApp rate updates, catalogue sync and orders (HLD-005 Phase 2)")
+
+```bash
+bench --site frappe.localhost migrate   # Commerce Settings, Rate Update (+ items), Published Rate, Catalog Sync Log, new fields
+bench --site frappe.localhost execute excom.excom.tests.run.run --kwargs "{'module': 'excom.excom.tests.test_whatsapp_commerce'}"
+```
+
+### Setup before live tests
+
+1. **WhatsApp number:** set "Catalogue ID" and "Catalogue Price List" on the Excom Channel Account.
+2. **Subscriber list:** pick its "WhatsApp Number".
+3. **Excom Commerce Settings:**
+   - Enabled.
+   - Rate Update Template: MARKETING, IMAGE header, body like "Rates updated {{date}}: {{summary}}, {{more}}. Tap a button below." (must not end with a variable), and 3 quick replies in the order View & Order, Full Catalogue, Ask Best Price.
+   - Brand and Product page URL.
+4. **Customers** who order on WhatsApp need their Omni Identity linked to the Customer, and a default price list.
+
+### Automated tests (19)
+
+| # | Test | Result |
+|---|---|---|
+| 2.1 | first scan of a price list is a silent baseline (Published Rates, no message) | ⏳ |
+| 2.2 | a change is collected (old / new / change); changing back drops it | ⏳ |
+| 2.3 | customer-specific and not-yet-valid prices are ignored | ⏳ |
+| 2.4 | summary is one line, biggest change first, "and N more" count | ⏳ |
+| 2.5 | auto-publish waits for 30 quiet minutes and 4 h since the last broadcast | ⏳ |
+| 2.6 | publish: catalogue sync → rate card → broadcast with RU payloads and named variables → Published Rates move | ⏳ |
+| 2.7 | catalogue failure stops the publish (nothing sent, rates stay) | ⏳ |
+| 2.8 | catalogue item payload (price "30.00 INR", link, brand, compliance fields, no private image) | ⏳ |
+| 2.9 | items_batch call (PRODUCT_ITEM, UPDATE, allow_upsert) + per-item errors + sync log | ⏳ |
+| 2.10 | View & Order shape: 1 → product, 2–10 → carousel, more → product list | ⏳ |
+| 2.11 | View & Order tap → carousel quoted under the tap, in the thread | ⏳ |
+| 2.12 | cart order → draft Sales Order at ERPNext's price (not the cart's); unknown items listed in the reply | ⏳ |
+| 2.13 | order from a contact with no Customer → no Sales Order, comment on the thread | ⏳ |
+| 2.14 | messaging budget from the tier | ⏳ |
+| 2.14a | a scheduled price (valid_from = today, saved days ago) is announced on the day | ⏳ |
+| 2.14b | several valid rows: the latest valid_from wins (as ERPNext) | ⏳ |
+| 2.14c | a price changed back while publishing is caught (catalogue and told price stay right) | ⏳ |
+| 2.14d | publish runs once (Draft/Failed → Syncing is atomic) | ⏳ |
+| 2.14e | every `from excom… import` in the app resolves (`test_import_targets`, no database needed) | ⏳ |
+
+### Live with Meta
+
+Catalogue and rates:
+
+| # | Check | How | Expected | Result |
+|---|---|---|---|---|
+| 2.15 | Catalogue sync (Admin → "sync now", or nightly) | L | items appear in Commerce Manager with price, link, image; rejected ones listed in Catalog Sync Log | ⏳ |
+| 2.16 | Change 2 prices in ERPNext (also via Data Import) | L | one Draft Rate Update with both, within 5 minutes | ⏳ |
+| 2.17 | Wait 30 min (or "Publish now") | L | catalogue shows the new prices before the message; rate card image as header; the summary line reads well | ⏳ |
+| 2.18 | Change a price again within 4 h | L | it waits for the 4 h gap | ⏳ |
+
+The message and taps:
+
+| # | Check | How | Expected | Result |
+|---|---|---|---|---|
+| 2.19 | Dealer taps View & Order | L | product carousel (or list) with the new prices, quoted under the tap, typing indicator first | ⏳ |
+| 2.20 | Dealer taps Full Catalogue | L | catalogue message with the top changed item as thumbnail | ⏳ |
+| 2.21 | Dealer taps Ask Best Price | L | the interim text reply (Phase 3 replaces it with the request form) | ⏳ |
+| 2.22 | Dealer adds to cart and sends | L | draft Sales Order at the dealer's own price list; reply with the order number; address form if none on file | ⏳ |
+| 2.23 | Broadcast to more people than the tier allows | L | stops at the limit as "Paused"; queued again next day, nobody gets it twice | ⏳ |
+| 2.24 | Opted-out dealer on the list | L | skipped (consent gate), counted in the Skipped logs | ⏳ |
+
+### Review fixes to check live
+
+- **Two lists, one dealer:** a dealer on two lists gets the rate update **once**. The broadcasts of one update run one after another and skip whoever a sibling reached.
+- **Waves:** with a pause, each wave is a new job. A long list never hits the job timeout.
+- **Messaging limit:** a broadcast continues by itself 24 h after reaching the limit.
+- **Resume:** Paused (Meta paused the template, or the account) → a manager clicks **Resume** on the broadcast.
+- **Failed updates:** a Failed rate update can be published again ("Retry publish").
+- **Catalogue sync:** long syncs run on the long queue (nightly and Admin "sync now"), and the sync logs survive a failed publish.
+- **Order price list:** ERPNext's own choice (customer → customer group → selling settings). A failed Sales Order gives the dealer an acknowledgement and sales a comment.
+- **Address form:** the reply is saved as the customer's shipping address when they have none.
+
+### Known gaps (Phase 2)
+
+- **Deleted prices:** a deleted Item Price is not announced and does not mark the item out of stock (only the nightly sync, through `availability` from the Item, does).
+- **Media-card rate list:** the rate card is one image. A carousel of own images is not built.
+- **Many WABAs, one price list:** a price list shown by several WhatsApp numbers is synced and broadcast per number; the Rate Update records them all together.
+- **Item order in the cart** follows the cart. The customer's note on the order is added as a comment.

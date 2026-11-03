@@ -8,6 +8,9 @@
   "list_name",
   "column_break_basic",
   "description",
+  "channel_account",
+  "item_group",
+  "consent_purpose",
   "stats_section",
   "total_subscribers",
   "column_break_stats",
@@ -31,6 +34,27 @@
    "fieldname": "description",
    "fieldtype": "Small Text",
    "label": "Description"
+  },
+  {
+   "fieldname": "channel_account",
+   "fieldtype": "Link",
+   "label": "WhatsApp Number",
+   "options": "Excom Channel Account",
+   "description": "Rate updates for this number's Catalogue Price List go to this list."
+  },
+  {
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "label": "Only Item Group",
+   "options": "Item Group",
+   "description": "Optional: send this list a rate update only when at least one changed item is in this group (the message itself shows the whole update)."
+  },
+  {
+   "default": "marketing",
+   "fieldname": "consent_purpose",
+   "fieldtype": "Data",
+   "label": "Consent Purpose",
+   "description": "What subscribers agreed to (shown in their consent record), e.g. rate updates."
   },
   {
    "fieldname": "stats_section",
@@ -59,7 +83,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-03-09 10:00:00.000000",
+ "modified": "2026-11-03 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Subscriber List",

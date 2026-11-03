@@ -155,7 +155,7 @@ Dealer sees: [rate-card image] "Rates updated 3 Nov · Sugar M30 ₹4,210 (▼40
 | Talk to sales (later) | `voice_call` button; the user's call is free | Yes | Service |
 
 **Templates to get approved** (named parameters):
-- `rate_update` (marketing): header image; body `{{date}}`, `{{summary}}`, `{{more_count}}`; footer; 3 quick replies.
+- `rate_update` (marketing): header image; body `{{date}}`, `{{summary}}`, `{{more}}`, ending with fixed text (Meta rejects a body that ends with a variable); footer; 3 quick replies.
 - `rate_offer` (submitted as utility): body `{{request}}`, `{{item}}`, `{{qty}}`, `{{rate}}`, `{{list_rate}}`, `{{valid_till}}`; quick replies Accept / Decline / Talk to sales.
 - `order_ack` (utility): order reference and status.
 
@@ -389,3 +389,23 @@ Reviewed by three independent passes: Meta API conformance, security/compliance,
   - number quality
 
 **Still outside the code:** INR billing migration, business verification, accepting the Marketing Messages terms, and subscribing the webhook fields. Diagnostics flags all of these.
+
+## 19. Phase 2 — what was built (2026-11-03)
+
+- **Code layout:** doctypes live in the existing "Excom" module, and the code in `excom/excom/services/commerce/`:
+  - `rates.py`: scan, collect, auto-publish, publish.
+  - `catalog.py`: `items_batch` sync, check status, nightly full sync.
+  - `rate_card.py`: Pillow PNG.
+  - `handlers.py`: View & Order / Full Catalogue / Ask Best Price.
+  - `orders.py`: cart → draft Sales Order.
+
+  Using the existing module avoids a new module folder.
+- **Rate updates:**
+  - **First scan** of a price list records today's prices as the baseline and announces nothing.
+  - **Only applicable prices count:** customer-specific prices and prices not valid today are ignored.
+  - **The broadcast** is an Excom Broadcast linked to the Rate Update. It gets the consent gate, pause/resume, metrics, the three quick-reply payloads (`RU:<name>:view|catalog|ask`), waves (wave size and pause in settings), and a stop at the messaging limit (tier minus people messaged in the last 24 h).
+- **Ask Best Price** sends a configurable text reply until Phase 3 replaces it with the request form.
+- **Orders:**
+  - **Pricing:** re-priced by ERPNext (`set_missing_values`) from the customer's default price list, else the settings price list, else the catalogue price list.
+  - **Owner:** created as the settings' order owner, not the webhook's Guest session.
+  - **Address:** a missing address is asked for with WhatsApp's address form (+91 numbers only).

@@ -331,7 +331,12 @@ scheduler_events = {
 	],
 	"cron": {
 		# Ads alert escalation: Open alerts past their policy's threshold (cheap no-op without escalation policies).
-		"*/5 * * * *": ["excom.excom.tasks.intake.pull_due_sources", "excom.excom_ads.escalation.enqueue_escalations"],
+		"*/5 * * * *": [
+			"excom.excom.tasks.intake.pull_due_sources",
+			"excom.excom_ads.escalation.enqueue_escalations",
+			# HLD-005: rate changes → draft rate updates → publish when quiet (no-op unless enabled)
+			"excom.excom.services.commerce.rates.run_scheduler",
+		],
 		# Duration and cost land at the provider a minute or two after a call ends. Without this
 		# sweep, completed calls sit at duration = 0 forever.
 		"*/3 * * * *": ["excom.excom.channels.voice.reconcile.reconcile_pending_calls"],
@@ -340,6 +345,10 @@ scheduler_events = {
 		# Ads: scheduled reports that are due (enqueue only, once per period).
 		"*/15 * * * *": ["excom.excom_ads.report_schedule.enqueue_due"],
 	},
+	# HLD-005: full catalogue reconcile — Meta round trips take minutes, so the long queue
+	"daily_long": [
+		"excom.excom.services.commerce.catalog.nightly_sync",
+	],
 	"daily_maintenance": [
 		"excom.excom.scheduler.daily.sync_invalid_tokens",
 	],
@@ -441,7 +450,10 @@ after_request = ["excom.excom.middleware.add_webchat_cors_headers"]
 # deletion requests are never on this list.
 # Features that act on inbound WhatsApp messages (button taps, Flow answers, cart orders, …).
 # Each gets one event dict — see excom.excom.services.inbound_dispatch. Other apps add their own.
-excom_inbound_handlers = []
+excom_inbound_handlers = [
+	# HLD-005: rate-update buttons (View & Order / Full Catalogue / Ask Best Price) and cart orders
+	"excom.excom.services.commerce.handlers.on_inbound",
+]
 
 default_log_clearing_doctypes = {
 	"Excom Notification Log": 90,

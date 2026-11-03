@@ -261,6 +261,137 @@ def assert_template_allowed(to: str, category: str, identity: str = "") -> None:
                 raise ExcomConsentError(_("{0} stopped marketing messages on WhatsApp").format(row.name), identity=row.name)
 
 
+# ─── media upload (Meta error 131053: Meta cannot fetch private / non-public links) ─────────────
+
+def _is_local_file(file_url: str) -> bool:
+	return bool(file_url) and (file_url.startswith("/files/") or file_url.startswith("/private/files/"))
+
+
+def _local_file_bytes(file_url: str) -> tuple[bytes, str, str]:
+	"""(content, filename, mimetype) for a Frappe file URL, private or public."""
+	import mimetypes
+	import os
+	name = frappe.db.get_value("File", {"file_url": file_url}, "name")
+	if name:
+		f = frappe.get_doc("File", name)
+		content = f.get_content()
+		filename = f.file_name or os.path.basename(file_url)
+	else:
+		path = frappe.get_site_path(file_url.lstrip("/"))
+		with open(path, "rb") as fh:
+			content = fh.read()
+		filename = os.path.basename(file_url)
+	mimetype = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+	return content, filename, mimetype
+
+
+def upload_media(account, file_url: str) -> str:
+	"""Upload a local file to /{phone_id}/media and return Meta's media id (valid ~30 days)."""
+	creds = _resolve_credentials(account)
+	if isinstance(creds, dict):
+		token, base_url, version, phone_id = creds["token"], creds["base_url"], creds["version"], creds["phone_id"]
+	else:
+		token, base_url, version, phone_id = creds
+	content, filename, mimetype = _local_file_bytes(file_url)
+	url = f"{base_url}/{version}/{phone_id}/media"
+	try:
+		resp = http_requests.post(
+			url,
+			headers={"Authorization": f"Bearer {token}"},
+			data={"messaging_product": "whatsapp", "type": mimetype},
+			files={"file": (filename, content, mimetype)},
+			timeout=120,
+		)
+	except http_requests.exceptions.RequestException as e:
+		raise ExcomProviderError(f"WhatsApp media upload failed: {e}")
+	data = resp.json() if resp.content else {}
+	if resp.status_code != 200 or not data.get("id"):
+		err = (data.get("error") or {}).get("message") or resp.text[:300]
+		raise ExcomProviderError(f"WhatsApp media upload rejected ({resp.status_code}): {err}")
+	return data["id"]
+
+
+def media_reference(account, file_url: str) -> dict:
+	"""{"id": …} for local files (uploaded first), {"link": …} for external URLs Meta can fetch itself."""
+	if _is_local_file(file_url):
+		return {"id": upload_media(account, file_url)}
+	if file_url.startswith("http"):
+		return {"link": file_url}
+	from excom.excom.api.chat import _get_site_url
+	return {"id": upload_media(account, file_url)} if file_url.startswith("/") else {"link": _get_site_url() + "/" + file_url}
+
+
+def send_media_message(account, to: str, media_type: str, file_url: str,
+                       caption: str = "") -> dict:
+    """
+    Send a media WhatsApp message (image, video, audio, document).
+
+    Args:
+        account: Account doc
+        to: Recipient phone (E.164)
+        media_type: One of "image", "video", "audio", "document"
+        file_url: Public URL or Frappe file path
+        caption: Optional caption (not supported for audio)
+
+    Returns:
+        dict with keys: provider_message_id, status
+    """
+    media_key = media_type.lower()
+
+    # Local files are uploaded to Meta first (a /private/files link or a site behind login gives Meta a 403 →
+    # error 131053); only external http(s) URLs are sent as links.
+    media_obj = media_reference(account, file_url)
+    if caption and media_key != "audio":
+        media_obj["caption"] = caption
+
+    payload = {
+        "messaging_product": "whatsapp",
+        **_recipient(to),
+        "type": media_key,
+        media_key: media_obj,
+    }
+    return _call_api(account, payload)
+
+
+def send_sticker_message(account, to: str, sticker_name: str) -> dict:
+    """
+    Send a sticker WhatsApp message.
+
+    Prefers the pre-uploaded media_id; falls back to hosting the file URL
+    as a link (not recommended by Meta but functional).
+
+    Args:
+        account: Excom Channel Account doc
+        to: Recipient phone number (E.164)
+        sticker_name: Excom Sticker doctype name
+
+    Returns:
+        dict with keys: provider_message_id, status
+    """
+    import frappe as _frappe
+
+    sticker = _frappe.get_doc("Excom Sticker", sticker_name)
+
+    sticker_obj: dict = {}
+    if sticker.media_id:
+        sticker_obj["id"] = sticker.media_id
+    elif sticker.sticker_file:
+        sticker_obj.update(media_reference(account, sticker.sticker_file))  # uploaded, never a login-protected link
+    else:
+        raise ExcomProviderError(
+            f"Sticker {sticker_name} has no media_id or file URL",
+            provider="whatsapp",
+        )
+
+    payload = {
+        "messaging_product": "whatsapp",
+        **_recipient(to),
+        "type": "sticker",
+        "sticker": sticker_obj,
+    }
+    return _call_api(account, payload)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------

@@ -41,17 +41,45 @@ def execute_broadcast(broadcast_name: str):
 
     from excom.excom.services import whatsapp_errors as wae
 
-    # A paused broadcast that is queued again continues where it stopped: nobody gets it twice.
+    # A paused broadcast that is queued again continues where it stopped, and the broadcasts of one
+    # rate update (one per subscriber list) skip whoever a sibling already reached: nobody gets it twice.
+    siblings = _siblings(broadcast)
     already_sent = set(frappe.get_all(
         "Excom Broadcast Log",
-        filters={"broadcast": broadcast.name, "status": "Sent"},
+        filters={"broadcast": ["in", siblings], "status": "Sent"},
         pluck="omni_identity",
     ))
-    sent = len(already_sent)
+    sent = len(frappe.get_all("Excom Broadcast Log", filters={"broadcast": broadcast.name, "status": "Sent"}, pluck="name"))
+
+    # Meta's messaging limit counts people messaged outside a 24 h window per day (portfolio-wide).
+    # Sending past it only produces failures, so the broadcast stops there and is resumed later.
+    budget = _messaging_budget(broadcast)
+    wave_size = int(broadcast.get("wave_size") or 0)
+    wave_pause = int(broadcast.get("wave_pause_seconds") or 0)
+    in_wave = sent_now = 0
 
     for oi_name in subscribers:
         if oi_name in already_sent:
             continue
+        if budget is not None and sent_now >= budget:
+            # continue by itself in 24 h (the scheduled-broadcast sweep picks it up)
+            broadcast.db_set({"status": "Scheduled", "scheduled_at": frappe.utils.add_to_date(now_datetime(), hours=24),
+                "sent_count": sent, "failed_count": failed}, update_modified=True)
+            broadcast.add_comment("Comment", _("Reached the WhatsApp messaging limit ({0} people a day); continues in 24 hours. Nobody gets it twice.").format(budget))
+            frappe.db.commit()
+            return
+        if wave_size and in_wave >= wave_size:
+            if wave_pause > 0:
+                # the next wave is a new job (the sweep runs every minute), so a long list never
+                # outlives one job's timeout
+                broadcast.db_set({"status": "Scheduled", "scheduled_at": frappe.utils.add_to_date(now_datetime(), seconds=wave_pause),
+                    "sent_count": sent, "failed_count": failed}, update_modified=False)
+                frappe.db.commit()
+                return
+            frappe.db.commit()
+            in_wave = 0
+        in_wave += 1
+        sent_now += 1
         try:
             if broadcast.channel == "Email":
                 success = _send_email_to_subscriber(broadcast, oi_name)
@@ -109,6 +137,29 @@ def execute_broadcast(broadcast_name: str):
         update_modified=True,
     )
     frappe.db.commit()
+    _start_next_sibling(broadcast)
+
+
+def _siblings(broadcast) -> list[str]:
+    """This broadcast and the others sent for the same document (e.g. one Rate Update)."""
+    if not broadcast.get("reference_doctype") or not broadcast.get("reference_name"):
+        return [broadcast.name]
+    return frappe.get_all("Excom Broadcast", filters={"reference_doctype": broadcast.reference_doctype,
+        "reference_name": broadcast.reference_name, "docstatus": 1}, pluck="name") or [broadcast.name]
+
+
+def _start_next_sibling(broadcast) -> None:
+    """Broadcasts of one rate update run one after another (see ExcomBroadcast.on_submit)."""
+    if not broadcast.get("reference_doctype"):
+        return
+    nxt = frappe.get_all("Excom Broadcast", filters={"reference_doctype": broadcast.reference_doctype,
+        "reference_name": broadcast.reference_name, "docstatus": 1, "status": "Waiting"}, pluck="name", order_by="creation asc", limit=1)
+    if not nxt:
+        return
+    frappe.db.set_value("Excom Broadcast", nxt[0], "status", "Queued", update_modified=False)
+    frappe.db.commit()
+    frappe.enqueue("excom.excom.services.broadcast_service.execute_broadcast", broadcast_name=nxt[0],
+        queue="long", timeout=3600, is_async=True, now=frappe.flags.in_test)
 
 
 def render_email_body(body_template: str, omni_identity_name: str) -> str:
@@ -260,6 +311,33 @@ def _build_unsubscribe_footer(
 # ---------------------------------------------------------------------------
 
 
+_TIER_LIMITS = {"TIER_50": 50, "TIER_250": 250, "TIER_1K": 1000, "TIER_2K": 2000, "TIER_10K": 10000, "TIER_100K": 100000}
+
+
+def _messaging_budget(broadcast):
+    """People this WhatsApp account may still message today (None = unlimited / unknown).
+
+    The tier minus the people it already sent a template to in the last 24 hours. Approximate on
+    purpose (Meta counts only people outside an open window, across the whole portfolio) — the
+    point is to stop well before Meta starts refusing.
+    """
+    if broadcast.channel != "WhatsApp":
+        return None
+    account = broadcast.get("wa_channel_account")
+    limit = frappe.db.get_value("Excom Channel Account", account, "wa_messaging_limit") if account else ""
+    limit = (limit or "").strip().upper()
+    tier = _TIER_LIMITS.get(limit) or (int(limit) if limit.isdigit() else None)
+    if tier is None:
+        return None
+    used = frappe.db.sql(
+        """SELECT COUNT(DISTINCT omni_identity) FROM `tabExcom Message`
+        WHERE account = %s AND direction = 'Outbound' AND message_type = 'Template'
+        AND creation > %s""",
+        (account, frappe.utils.add_to_date(frappe.utils.now_datetime(), hours=-24)),
+    )[0][0] or 0
+    return max(tier - used, 0)
+
+
 def _send_with_retry(broadcast, omni_identity_name: str) -> bool:
     """One WhatsApp send, retried once after the wait Meta asks for on rate / transient errors."""
     from excom.excom.services import whatsapp_errors as wae
@@ -318,7 +396,8 @@ def _send_whatsapp_to_subscriber(broadcast, omni_identity_name: str) -> bool:
 
     from excom.excom.api.chat import _build_template_components
 
-    components = _build_template_components(template, variables, header_media, button_urls)
+    button_payloads = json.loads(broadcast.get("wa_button_payloads") or "[]")
+    components = _build_template_components(template, variables, header_media, button_urls, account=account, button_payloads=button_payloads)
 
     from excom.excom.services.whatsapp_service import send_template_message
 

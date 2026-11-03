@@ -23,6 +23,11 @@
   "wa_variable_mapping",
   "wa_header_media",
   "wa_button_urls",
+  "wa_button_payloads",
+  "reference_doctype",
+  "reference_name",
+  "wave_size",
+  "wave_pause_seconds",
   "email_section",
   "email_subject",
   "email_body",
@@ -87,7 +92,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Draft\nScheduled\nQueued\nSending\nPaused\nCompleted\nPartially Failed\nFailed",
+   "options": "Draft\nScheduled\nWaiting\nQueued\nSending\nPaused\nCompleted\nPartially Failed\nFailed",
    "default": "Draft",
    "read_only": 1,
    "in_list_view": 1,
@@ -172,6 +177,37 @@
    "label": "Button URLs",
    "depends_on": "eval:doc.channel=='WhatsApp' && doc.wa_template",
    "description": "JSON array of dynamic URL button suffixes"
+  },
+  {
+   "fieldname": "wa_button_payloads",
+   "fieldtype": "Small Text",
+   "label": "Quick Reply Payloads",
+   "description": "JSON list, one per Quick Reply button in order — returned to excom when the button is tapped."
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference Type",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Reference",
+   "options": "reference_doctype",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wave_size",
+   "fieldtype": "Int",
+   "label": "Wave Size",
+   "description": "Send in waves of this many (0 = no waves). Meta paces new templates and smaller accounts."
+  },
+  {
+   "fieldname": "wave_pause_seconds",
+   "fieldtype": "Int",
+   "label": "Pause Between Waves (s)"
   },
   {
    "fieldname": "email_section",
@@ -313,7 +349,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-03 12:00:00.000000",
+ "modified": "2026-11-03 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Broadcast",

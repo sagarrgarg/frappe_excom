@@ -38,6 +38,10 @@
   "wa_billing_currency",
   "wa_health_checked_on",
   "wa_last_platform_event",
+  "wa_commerce_section",
+  "wa_catalog_id",
+  "column_break_wa_commerce",
+  "catalog_price_list",
   "email_section",
   "email_address",
   "email_connected_app",
@@ -329,6 +333,32 @@
    "fieldtype": "Small Text",
    "label": "Last Platform Event",
    "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_commerce_section",
+   "fieldtype": "Section Break",
+   "label": "WhatsApp Catalogue",
+   "collapsible": 1
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "wa_catalog_id",
+   "fieldtype": "Data",
+   "label": "Catalogue ID",
+   "description": "Meta Commerce Manager catalogue connected to this WhatsApp number (one catalogue per WhatsApp account)."
+  },
+  {
+   "fieldname": "column_break_wa_commerce",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "fieldname": "catalog_price_list",
+   "fieldtype": "Link",
+   "label": "Catalogue Price List",
+   "options": "Price List",
+   "description": "The one price the catalogue shows. Subscriber lists on this number get rate updates for this price list; each customer's own price is applied on the Sales Order."
   },
   {
    "depends_on": "eval:doc.channel=='email'",
@@ -739,7 +769,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-03 12:00:00.000000",
+ "modified": "2026-11-03 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Channel Account",

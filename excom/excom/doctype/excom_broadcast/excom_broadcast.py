@@ -116,7 +116,12 @@ class ExcomBroadcast(Document):
                 vals = json.loads(self.get("wa_template_variables") or "[]")
             except json.JSONDecodeError:
                 frappe.throw(_("Template Variables must be valid JSON"))
-            if not isinstance(vals, list) or len(vals) != n:
+            if isinstance(vals, dict):
+                # NAMED template ({{date}}, {{summary}}): every placeholder needs a value
+                from excom.excom.api.chat import template_values
+
+                template_values(frappe.get_doc("WhatsApp Templates", self.wa_template), vals)
+            elif not isinstance(vals, list) or len(vals) != n:
                 frappe.throw(
                     _("Template Variables must be a JSON array of {0} strings").format(n)
                 )
@@ -146,6 +151,12 @@ class ExcomBroadcast(Document):
             self.db_set("status", "Scheduled", update_modified=False)
             return
 
+        if self.flags.excom_wait:
+            # one of several broadcasts of the same rate update: it starts when the previous one
+            # finishes, so a person on two lists gets the message once (see broadcast_service)
+            self.db_set("status", "Waiting", update_modified=False)
+            return
+
         self.db_set("status", "Queued", update_modified=False)
 
         frappe.enqueue(
@@ -154,6 +165,21 @@ class ExcomBroadcast(Document):
             queue="long",
             timeout=3600,
             is_async=True,
+            enqueue_after_commit=True,  # the job must see this broadcast committed
+        )
+
+    @frappe.whitelist()
+    def resume(self):
+        """Continue a Paused broadcast (e.g. after Meta un-paused the template). Nobody gets it twice."""
+        from excom.excom.api.chat import _check_manager_access
+
+        _check_manager_access()
+        if self.docstatus != 1 or self.status not in ("Paused", "Waiting"):
+            frappe.throw(_("Only a Paused or Waiting broadcast can be resumed (this one is {0}).").format(self.status))
+        self.db_set("status", "Queued", update_modified=False)
+        frappe.enqueue(
+            "excom.excom.services.broadcast_service.execute_broadcast",
+            broadcast_name=self.name, queue="long", timeout=3600, is_async=True, enqueue_after_commit=True,
         )
 
     def on_cancel(self):
