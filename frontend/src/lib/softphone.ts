@@ -103,6 +103,19 @@ const REGISTRATION_TIMEOUT_MS = 20_000;
 
 type Listener = (state: SoftphoneState) => void;
 
+const SECRET_KEYS = /credential|password|token|secret/i;
+
+/** A copy safe to print: credentials (the TURN one rides in the WhatsApp options) are blanked. */
+export function redact(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redact);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, SECRET_KEYS.test(k) ? "…" : redact(v)]),
+    );
+  }
+  return value;
+}
+
 /**
  * Lifecycle tracing. On by default: a softphone that silently fails to register is the single
  * hardest thing to diagnose in this feature, and the agent reporting it cannot see server logs.
@@ -311,7 +324,7 @@ class Softphone {
     this.runtimes.set(account, { driver, sdk });
 
     try {
-      if (DEBUG) console.info(`[excom softphone] starting ${account} on ${driver.vendor}`, options);
+      if (DEBUG) console.info(`[excom softphone] starting ${account} on ${driver.vendor}`, redact(options));
       this.setLine(account, { registration: "registering" });
       await driver.start(token);
       // A registration that never completes leaves the agent thinking they are on the queue.
@@ -410,8 +423,12 @@ class Softphone {
         return;
 
       case "incoming":
-        // A WhatsApp offer while already on a call stays with the colleagues it also rang.
-        if (this.channelOf(account) === "whatsapp" && this.state.call.phase !== "none") return;
+        // A WhatsApp offer while already on a call (any line) stays with the colleagues it also
+        // rang. The driver is told to forget it, so its later cancel cannot touch the live call.
+        if (this.channelOf(account) === "whatsapp" && this.state.call.phase !== "none") {
+          this.runtimes.get(account)?.driver.dismiss?.(event.callId);
+          return;
+        }
         this.setCall({
           phase: "ringing",
           callUUID: event.callId,
@@ -426,9 +443,15 @@ class Softphone {
         this.hooks.onIncoming?.(event.callId ?? "", event.from, account);
         return;
 
-      case "incomingCancelled":
+      case "incomingCancelled": {
+        // Only the call that is ringing, on the line that rang it. Anything else — a WhatsApp offer
+        // that was never shown, or a cancel landing after the agent answered — leaves the call be.
+        const call = this.state.call;
+        if (call.phase !== "ringing" || call.account !== account) return;
+        if (event.callId && call.callUUID && event.callId !== call.callUUID) return;
         this.endLocally();
         return;
+      }
 
       case "outgoing": {
         const uuid = event.callId ?? this.state.call.callUUID;
@@ -455,6 +478,8 @@ class Softphone {
         return;
 
       case "ended":
+        // A line that does not hold the call has nothing to end.
+        if (this.state.call.account && this.state.call.account !== account) return;
         if (event.reason) this.set({ error: event.reason });
         this.endLocally();
         return;
@@ -483,8 +508,9 @@ class Softphone {
     this.setCall({ phase: "connected" });
   }
 
-  reject() {
-    this.driverFor()?.reject(this.state.call.callUUID);
+  /** `timeout`: the pop ran out rather than the agent pressing Decline. */
+  reject(opts?: { timeout?: boolean }) {
+    this.driverFor()?.reject(this.state.call.callUUID, opts);
     this.endLocally();
   }
 

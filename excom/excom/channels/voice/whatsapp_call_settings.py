@@ -3,12 +3,13 @@
 Rules from Meta (calling/call-settings, 2026-11):
   status / callback_permission_status   ENABLED | DISABLED
   call_icon_visibility                   DEFAULT | DISABLE_ALL (buttons in messages still work)
-  call_icons.restrict_to_user_countries  ISO codes; [] = no restriction
+  call_icons.restrict_to_user_countries  ISO codes; [] = no restriction. Sent only when edited.
   call_hours                             status, timezone_id and weekly_operating_hours are required,
                                          the week cannot be empty; ≤ 2 ranges a day, "HHMM", open <
                                          close, no overlap; holiday_schedule ≤ 20, no past dates.
   Every POST replaces the whole call_hours: leaving holiday_schedule out deletes the holidays, so
-  the stored holidays are always sent back.
+  the stored holidays are always sent back. Turning call hours off still sends the whole object
+  (status DISABLED with the stored week and time zone).
   sip.status ENABLED means the number signals over SIP and Graph /calls answers 131055. Excom does
   not build SIP; it reads the status and says so.
 """
@@ -113,9 +114,14 @@ def _json_list(value) -> list:
 	return data if isinstance(data, list) else []
 
 
-def build_payload(values: dict, stored_holidays=None, on_date=None) -> dict:
-	"""The POST body. `values` holds only what the admin set; anything missing is left as Meta has it,
-	except the holidays, which are always resent (from `values`, else what we stored)."""
+def build_payload(values: dict, stored_holidays=None, on_date=None, stored_hours=None, stored_timezone="") -> dict:
+	"""The POST body. `values` holds only what the admin set; anything missing is left as Meta has it.
+
+	Call hours go as one whole object (Meta replaces it on every POST, and refuses one without a
+	time zone and a week, even to turn them off): the week and time zone come from `values`, else
+	from what Excom stored; the holidays likewise. The call icon countries are sent only when the
+	admin edited them (`call_icons_edited`), so a save never wipes a restriction set in WhatsApp
+	Manager."""
 	values = values or {}
 	calling = {}
 	status = _choice(values.get("status"), ON_OFF, _("Calling"))
@@ -124,7 +130,7 @@ def build_payload(values: dict, stored_holidays=None, on_date=None) -> dict:
 	icon = _choice(values.get("call_icon_visibility"), ICON, _("Call icon"))
 	if icon:
 		calling["call_icon_visibility"] = icon
-	if "call_icon_countries" in values:
+	if values.get("call_icons_edited") and "call_icon_countries" in values:
 		raw = values.get("call_icon_countries") or []
 		codes = [c.strip().upper() for c in (raw.split(",") if isinstance(raw, str) else raw) if str(c).strip()]
 		bad = [c for c in codes if not _COUNTRY.match(c)]
@@ -138,16 +144,19 @@ def build_payload(values: dict, stored_holidays=None, on_date=None) -> dict:
 	hours_status = _choice(values.get("call_hours_status"), ON_OFF, _("Call hours"))
 	if hours_status:
 		weekly = validate_weekly_hours(_json_list(values.get("weekly_operating_hours")))
+		if not weekly and hours_status == "DISABLED":
+			weekly = validate_weekly_hours(_json_list(stored_hours))
 		holidays = validate_holidays(_json_list(values["holiday_schedule"]) if "holiday_schedule" in values else _json_list(stored_holidays), on_date)
-		timezone = str(values.get("timezone_id") or "").strip()
+		timezone = str(values.get("timezone_id") or stored_timezone or "").strip()
 		if hours_status == "ENABLED" and not timezone:
 			_fail(_("Call hours need a time zone (for example Asia/Kolkata)."))
 		if hours_status == "ENABLED" and not weekly:
 			_fail(_("Call hours need at least one opening time; WhatsApp refuses an empty week."))
-		if timezone and weekly:
-			calling["call_hours"] = {"status": hours_status, "timezone_id": timezone,
-				"weekly_operating_hours": weekly, "holiday_schedule": holidays}
-		# DISABLED with no week to send: leaving call_hours out keeps Meta's (24/7 when disabled).
+		if not (timezone and weekly):
+			_fail(_("To turn call hours off WhatsApp still needs their time zone and at least one opening "
+				"time. Read the settings from Meta first, or fill them in."))
+		calling["call_hours"] = {"status": hours_status, "timezone_id": timezone,
+			"weekly_operating_hours": weekly, "holiday_schedule": holidays}
 	if not calling:
 		_fail(_("Nothing to save."))
 	return {"calling": calling}
@@ -218,7 +227,7 @@ def low_tier(limit_label: str) -> bool | None:
 
 
 def warnings_for(account) -> list[dict]:
-	from excom.excom.channels.voice.providers.whatsapp import DEFAULT_ICE_SERVERS, ice_servers
+	from excom.excom.channels.voice.providers.whatsapp import DEFAULT_ICE_SERVERS, ice_servers, inline_credentials
 
 	out = []
 	tier = low_tier(account.get("wa_messaging_limit"))
@@ -232,6 +241,10 @@ def warnings_for(account) -> list[dict]:
 			"cannot place or answer them (Graph /calls answers 131055). Disable SIP in WhatsApp Manager to use Excom.")})
 	if account.get("wa_calling_restrictions"):
 		out.append({"level": "warning", "text": _("Meta has restricted calling: {0}").format(account.get("wa_calling_restrictions"))})
+	if inline_credentials(frappe.db.get_single_value("Excom Settings", "whatsapp_ice_servers") or ""):
+		out.append({"level": "warning", "text": _(
+			"A TURN password is written in the ICE servers list and is ignored. Save Excom Settings once to "
+			"move it into the encrypted TURN Credential field.")})
 	if ice_servers() == DEFAULT_ICE_SERVERS:
 		out.append({"level": "info", "text": _(
 			"Only a public STUN server is configured. Agents behind a strict firewall need a TURN server "
@@ -261,9 +274,20 @@ def fetch(name: str) -> dict:
 
 def apply_remote(name: str, data: dict) -> None:
 	"""Store a GET /settings response (or an `account_settings_update` webhook's settings)."""
+	before = frappe.db.get_value("Excom Channel Account", name, "wa_calling_status") or ""
 	fields = fields_from_remote(data)
 	fields["wa_calling_synced_on"] = now_datetime()
 	frappe.db.set_value("Excom Channel Account", name, fields, update_modified=False)
+	_status_changed(name, before, fields.get("wa_calling_status") or "")
+
+
+def _status_changed(name: str, before: str, after: str) -> None:
+	"""Agents' browsers pick a number up (or drop it) when its calling status changes."""
+	if (before or "").upper() != (after or "").upper():
+		from excom.excom.channels.voice.whatsapp_calling import notify_lines_changed
+
+		frappe.db.commit()
+		notify_lines_changed(name)
 
 
 def save(name: str, values: dict) -> dict:
@@ -273,16 +297,17 @@ def save(name: str, values: dict) -> dict:
 	account = _account(name)
 	values = dict(values or {})
 	rate = values.pop("rate_per_minute", None)
-	payload = build_payload(values, stored_holidays=account.get("wa_call_holidays"))
+	payload = build_payload(values, stored_holidays=account.get("wa_call_holidays"),
+		stored_hours=account.get("wa_call_hours"), stored_timezone=account.get("wa_call_hours_timezone") or "")
+	before = account.get("wa_calling_status") or ""
 	graph(account, "POST", "settings", payload)
 	sent = payload["calling"]
 	fields = {k: v for k, v in fields_from_remote({"calling": sent}).items()
 		if k not in ("wa_calling_sip_status", "wa_calling_restrictions")}
 	if "call_hours" not in sent:
+		# not sent, so not changed: keep what Excom last read
 		for key in ("wa_call_hours_status", "wa_call_hours_timezone", "wa_call_hours", "wa_call_holidays"):
 			fields.pop(key, None)
-		if values.get("call_hours_status"):
-			fields["wa_call_hours_status"] = values["call_hours_status"]
 	for key in ("wa_calling_status", "wa_call_icon_visibility", "wa_callback_permission_status"):
 		if not fields.get(key):
 			fields.pop(key, None)
@@ -290,5 +315,6 @@ def save(name: str, values: dict) -> dict:
 		fields["wa_call_rate_per_minute"] = float(rate or 0)
 	fields["wa_calling_synced_on"] = now_datetime()
 	frappe.db.set_value("Excom Channel Account", name, fields)
+	_status_changed(name, before, fields.get("wa_calling_status") or before)
 	account.reload()
 	return {"account": name, "settings": stored_values(account), "warnings": warnings_for(account), "sent": payload}

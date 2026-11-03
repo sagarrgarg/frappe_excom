@@ -35,21 +35,30 @@ def answer(call: str, sdp: str):
 	return calling.answer(call, sdp, frappe.session.user)
 
 
-@frappe.whitelist(methods=["POST"])
-def decline(call: str):
+@frappe.whitelist()
+def ringing():
+	"""WhatsApp calls ringing for this agent now, with the offer: for a browser that just reloaded."""
 	_check_excom_access()
-	return calling.decline(call, frappe.session.user)
+	return calling.ringing_for(frappe.session.user)
+
+
+@frappe.whitelist(methods=["POST"])
+def decline(call: str, timeout: int = 0):
+	"""This agent passes (or let the pop run out). When the whole ring set has, the call is rejected."""
+	_check_excom_access()
+	return calling.decline(call, frappe.session.user, timeout=bool(frappe.utils.cint(timeout)))
 
 
 @frappe.whitelist(methods=["POST"])
 def hangup(call: str = "", provider_call_id: str = ""):
-	"""End a WhatsApp call (Meta `terminate`). Named by either id, since an outbound call has only
-	Meta's id in the browser until it is answered."""
+	"""End a WhatsApp call: `reject` while ringing, `terminate` once connected. Named by either id,
+	since an outbound call has only Meta's id in the browser at first. Only the agent on the call
+	or a manager may (see whatsapp_calling.may_hang_up). Also sent as a beacon when the page closes,
+	with the CSRF token in the form."""
 	_check_excom_access()
 	name = call or (frappe.db.get_value("Excom Call", {"provider_call_id": provider_call_id}, "name") if provider_call_id else "")
 	if not name or not frappe.db.exists("Excom Call", name):
 		frappe.throw(_("That call does not exist."), frappe.DoesNotExistError)
-	_assert_on_call(name)
 	return calling.hangup(name, frappe.session.user)
 
 
@@ -57,10 +66,12 @@ def hangup(call: str = "", provider_call_id: str = ""):
 
 
 @frappe.whitelist()
+@user_rate_limit(limit=30, seconds=60)
 def permission(thread: str, refresh: int = 0):
-	"""May this business call this person now; can a permission request be sent; the daily cap."""
+	"""May this business call this person now; can a permission request be sent; the daily cap.
+	Meta is asked at most once a minute per number and contact, however often this is called."""
 	_check_thread_access(thread)
-	return calling.thread_permission(thread, refresh=bool(frappe.utils.cint(refresh)))
+	return calling.thread_permission(thread, refresh=bool(frappe.utils.cint(refresh)), throttle=True)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -125,18 +136,3 @@ def save_settings(account: str, values: str | dict = ""):
 		frappe.throw(_("The settings could not be read."))
 	return settings.save(account, values)
 
-
-def _assert_on_call(call: str) -> None:
-	from excom.excom.doctype.excom_call.excom_call import can_access
-	from excom.excom.services.access import deny
-
-	row = frappe.db.get_value("Excom Call", call, ["agent", "answered_by", "ring_set"], as_dict=True) or {}
-	user = frappe.session.user
-	try:
-		ring = json.loads(row.get("ring_set") or "[]")
-	except ValueError:
-		ring = []
-	if user in (row.get("agent"), row.get("answered_by")) or user in (ring if isinstance(ring, list) else []):
-		return
-	if not can_access(call):
-		deny(_("You cannot end this call."), detail=_("It belongs to a conversation on another desk."))

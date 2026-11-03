@@ -12,6 +12,9 @@ import { Button, EmptyState, Field, Input, Select } from "../primitives";
  * Meta replaces the whole call-hours block on every save, holidays included, so this screen always
  * sends the full set it shows. "Read from Meta" first is the safe order: the copy Excom holds may be
  * older than a change made in WhatsApp Manager.
+ *
+ * The call icon countries are sent only when edited here: sending the stored copy back would wipe a
+ * restriction set in WhatsApp Manager since the last read.
  */
 
 interface Hours { day_of_week: string; open_time: string; close_time: string }
@@ -43,6 +46,7 @@ export function WhatsAppCallingAdmin() {
   const active = numbers.find((n) => n.account === account) || numbers[0];
   const [form, setForm] = useState<Settings | null>(null);
   const [warnings, setWarnings] = useState<Warning[]>([]);
+  const [iconsEdited, setIconsEdited] = useState(false);
   const { call: read, loading: reading } = useFrappePostCall("excom.excom.api.whatsapp_calling.get_settings");
   const { call: save, loading: saving } = useFrappePostCall("excom.excom.api.whatsapp_calling.save_settings");
 
@@ -50,6 +54,7 @@ export function WhatsAppCallingAdmin() {
     if (active) {
       setForm({ ...active.settings });
       setWarnings(active.warnings);
+      setIconsEdited(false);
     }
   }, [active?.account, active?.settings?.synced_on]);
 
@@ -73,6 +78,7 @@ export function WhatsAppCallingAdmin() {
       const r = await read({ account: active.account });
       setForm({ ...r.message.settings });
       setWarnings(r.message.warnings);
+      setIconsEdited(false);
       toast.success("Read from Meta");
       void mutate();
     } catch (e) {
@@ -84,7 +90,8 @@ export function WhatsAppCallingAdmin() {
     const values: Record<string, unknown> = {
       status: form.status,
       call_icon_visibility: form.call_icon_visibility,
-      call_icon_countries: form.call_icon_countries,
+      // Only when edited, with the flag the server requires to send call_icons at all.
+      ...(iconsEdited ? { call_icon_countries: form.call_icon_countries, call_icons_edited: 1 } : {}),
       callback_permission_status: form.callback_permission_status,
       call_hours_status: form.call_hours_status,
       timezone_id: form.timezone_id,
@@ -96,6 +103,7 @@ export function WhatsAppCallingAdmin() {
       const r = await save({ account: active.account, values: JSON.stringify(values) });
       setForm({ ...r.message.settings });
       setWarnings(r.message.warnings);
+      setIconsEdited(false);
       toast.success("Saved to Meta", { description: "WhatsApp apps can take up to 7 days to show changes; Meta applies them at once." });
       void mutate();
     } catch (e) {
@@ -147,7 +155,14 @@ export function WhatsAppCallingAdmin() {
           </Select>
         </Field>
         <Field label="Show the call icon only in" hint="Two-letter country codes, comma separated; empty for everywhere.">
-          <Input value={form.call_icon_countries} onChange={(e) => set({ call_icon_countries: e.target.value })} placeholder="IN, AE" />
+          <Input
+            value={form.call_icon_countries}
+            onChange={(e) => {
+              setIconsEdited(true);
+              set({ call_icon_countries: e.target.value });
+            }}
+            placeholder="IN, AE"
+          />
         </Field>
         <Field label="Ask callers for call permission" hint="After a call, the person is asked to let you call back.">{onOff(form.callback_permission_status, (v) => set({ callback_permission_status: v }))}</Field>
         <Field label="Business-initiated rate per minute" hint="For the cost estimate only. India list rate ₹0.3885 ($0.0053); calls people make to you are free.">

@@ -15,21 +15,28 @@ import type { SoftphoneApi } from "@/hooks/useSoftphone";
  * pop waiting on a lookup.
  */
 export function IncomingCallToast({ api }: { api: SoftphoneApi }) {
-  const { incoming, answeredElsewhere, answer, reject, dismissIncoming } = api;
+  const { incoming, answeredElsewhere, answer, reject, dismissIncoming, timeoutIncoming } = api;
   const navigate = useNavigate();
-  const [elapsed, setElapsed] = useState(0);
+  // Seconds counted for one call (keyed by its id), so a new pop never inherits the last one's count.
+  const [tick, setTick] = useState<{ key: string; n: number }>({ key: "", n: 0 });
+  const callKey = incoming ? incoming.provider_call_id || incoming.from_number || "?" : "";
+  const elapsed = tick.key === callKey ? tick.n : 0;
   // Read once and kept here: the preference lives in localStorage, and this pop is the only place
   // it is ever worth changing — an open-plan desk decides it while the phone is actually ringing.
   const [ringMuted, setRingMuted] = useState(() => ringtone.muted);
 
   useEffect(() => {
-    if (!incoming) {
-      setElapsed(0);
-      return;
-    }
-    const id = window.setInterval(() => setElapsed((n) => n + 1), 1000);
+    if (!callKey) return;
+    setTick({ key: callKey, n: 0 });
+    const id = window.setInterval(() => setTick((t) => (t.key === callKey ? { key: callKey, n: t.n + 1 } : t)), 1000);
     return () => window.clearInterval(id);
-  }, [incoming?.provider_call_id, Boolean(incoming)]);
+  }, [callKey]);
+
+  // At 0 the pop goes by itself (a WhatsApp call is declined from here, well inside Meta's window).
+  const expired = Boolean(callKey) && tick.key === callKey && tick.n >= (incoming?.ring_seconds || 30);
+  useEffect(() => {
+    if (expired) timeoutIncoming();
+  }, [expired, timeoutIncoming]);
 
   // Identity context, fetched once the pop is already visible.
   const { data } = useFrappeGetCall<{ message: any }>(

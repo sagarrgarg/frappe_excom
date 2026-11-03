@@ -20,7 +20,8 @@ export type DriverEvent =
   | { type: "unsupported"; reason: string }
   | { type: "micDenied"; denied: boolean }
   | { type: "incoming"; callId: string | null; from: string }
-  | { type: "incomingCancelled" }
+  /** The ringing call went away. `callId` names it when the vendor knows (WhatsApp does). */
+  | { type: "incomingCancelled"; callId?: string | null }
   | { type: "outgoing"; callId: string | null }
   | { type: "connected"; callId: string | null }
   | { type: "ended"; reason?: string }
@@ -76,13 +77,20 @@ export interface SoftphoneDriver {
   call(destination: string, params: Record<string, string>): void;
 
   answer(callId: string | null): void;
-  reject(callId: string | null): void;
+  /** `timeout`: the pop ran out rather than the agent pressing Decline. */
+  reject(callId: string | null, opts?: { timeout?: boolean }): void;
   hangup(): void;
   setMuted(muted: boolean): void;
   sendDigit(tone: string): void;
 
   /** Server-relayed signalling. Only drivers without their own socket implement it. */
   signal?(message: DriverSignal): void;
+
+  /**
+   * Forget an incoming call the coordinator will not show (the agent is on another call), without
+   * telling the server anything. Only drivers that queue offers implement it.
+   */
+  dismiss?(callId: string | null): void;
 }
 
 /** Which driver serves a line, from the `sdk` name the backend's descriptor carries. */

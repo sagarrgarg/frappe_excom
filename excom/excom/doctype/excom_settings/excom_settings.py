@@ -17,6 +17,11 @@ class ExcomSettings(Document):
 				frappe.throw(_("Mobile public site URL must be a single URL"))
 			self.mobile_public_site_url = pub
 
+		# WhatsApp calling: a TURN password pasted into the ICE servers JSON goes to the encrypted field.
+		from excom.excom.channels.voice.providers.whatsapp import move_inline_credential
+
+		move_inline_credential(self)
+
 		if getattr(self, "push_notification_service", None) == "Excom Cloud":
 			if not self.push_notification_server_url:
 				frappe.throw(_("Please enter the Push Notification Server URL"))

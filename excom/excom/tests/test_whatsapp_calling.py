@@ -24,6 +24,7 @@ WABA = "QACALLWABA26"
 BUSINESS = "919800000000"
 AGENT_A = "qa-wa-call-a@example.com"
 AGENT_B = "qa-wa-call-b@example.com"
+AGENT_C = "qa-wa-call-c@example.com"  # not on the number's teams
 CALLER = "919800000101"
 CALLER_2 = "919800000102"
 CALLER_3 = "919800000103"
@@ -37,6 +38,11 @@ PERM_NONE = {"messaging_product": "whatsapp", "permission": {"status": "no_permi
 	{"action_name": "send_call_permission_request", "can_perform_action": True,
 	 "limits": [{"time_period": "PT24H", "max_allowed": 1, "current_usage": 0}, {"time_period": "P7D", "max_allowed": 2, "current_usage": 0}]},
 	{"action_name": "start_call", "can_perform_action": False, "limits": [{"time_period": "PT24H", "max_allowed": 100, "current_usage": 0}]}]}
+PERM_NONE_ASKED = {"messaging_product": "whatsapp", "permission": {"status": "no_permission"}, "actions": [
+	{"action_name": "send_call_permission_request", "can_perform_action": False,
+	 "limits": [{"time_period": "PT24H", "max_allowed": 1, "current_usage": 1, "limit_expiration_time": 1893456000},
+		{"time_period": "P7D", "max_allowed": 2, "current_usage": 1}]},
+	{"action_name": "start_call", "can_perform_action": False, "limits": []}]}
 PERM_TEMP = {"messaging_product": "whatsapp", "permission": {"status": "temporary", "expiration_time": 1893456000}, "actions": [
 	{"action_name": "send_call_permission_request", "can_perform_action": True, "limits": []},
 	{"action_name": "start_call", "can_perform_action": True, "limits": [{"time_period": "PT24H", "max_allowed": 100, "current_usage": 3}]}]}
@@ -84,7 +90,7 @@ def _terminate(call_id: str, direction: str = "USER_INITIATED", duration: int = 
 	return _calls(value)
 
 
-_CALL_IDS = ("wacid.QAIN1", "wacid.QAIN2", "wacid.QAIN3", "wacid.QAIN4", "wacid.QABS1", "wacid.QAOUT1", "wacid.QAOUT2")
+_CALL_IDS = ("wacid.QAIN1", "wacid.QAIN2", "wacid.QAIN3", "wacid.QAIN4", "wacid.QAIN5", "wacid.QABS1", "wacid.QAOUT1", "wacid.QAOUT2")
 
 
 class TestWhatsAppCalling(FrappeTestCase):
@@ -98,7 +104,7 @@ class TestWhatsAppCalling(FrappeTestCase):
 			"status": "Active", "wa_phone_id": PHONE_ID, "wa_business_id": WABA, "wa_display_phone": BUSINESS,
 			"wa_token": "qa-token-0000000000", "wa_calling_status": "ENABLED",
 		}).insert(ignore_permissions=True)
-		for email in (AGENT_A, AGENT_B):
+		for email in (AGENT_A, AGENT_B, AGENT_C):
 			if not frappe.db.exists("User", email):
 				frappe.get_doc({"doctype": "User", "email": email, "first_name": email.split("@")[0],
 					"send_welcome_email": 0}).insert(ignore_permissions=True)
@@ -108,7 +114,7 @@ class TestWhatsAppCalling(FrappeTestCase):
 	def tearDownClass(cls):
 		frappe.db.delete("Excom Channel Account", cls.acc.name)
 		frappe.db.sql("DELETE FROM `__Auth` WHERE doctype = 'Excom Channel Account' AND name = %s", cls.acc.name)
-		for email in (AGENT_A, AGENT_B):
+		for email in (AGENT_A, AGENT_B, AGENT_C):
 			if frappe.db.exists("User", email):
 				frappe.delete_doc("User", email, force=True, ignore_permissions=True)
 		frappe.db.commit()
@@ -146,8 +152,13 @@ class TestWhatsAppCalling(FrappeTestCase):
 		frappe.db.rollback()
 		for call_id in _CALL_IDS:
 			calling.release(call_id)
-		for user in (AGENT_A, AGENT_B, "Administrator"):
+			frappe.cache.delete_value(f"{calling._DECLINED}:{call_id}")
+			frappe.cache.delete_value(f"{calling._OFFER}:{call_id}")
+		frappe.cache.delete_keys("excom:wa_call:perm_refresh:")
+		for user in (AGENT_A, AGENT_B, AGENT_C, "Administrator"):
 			calling.presence.clear_busy(user)
+		if frappe.db.exists("DocType", "Excom WhatsApp Event"):
+			frappe.db.delete("Excom WhatsApp Event", {"field": "calls", "waba_id": WABA})
 		identities = frappe.db.sql(
 			"""SELECT name FROM `tabOmni Identity` WHERE normalized_phone LIKE '%%9198000001%%'
 			OR primary_whatsapp LIKE '9198000001%%' OR wa_bsuid LIKE 'IN.QACALL%%'""", pluck=True)
@@ -200,9 +211,16 @@ class TestWhatsAppCalling(FrappeTestCase):
 		body = settings.build_payload({"call_hours_status": "ENABLED", "timezone_id": "Asia/Kolkata", "weekly_operating_hours": week,
 			"holiday_schedule": [{"date": "2099-08-15"}, {"date": "2001-01-01"}]}, stored_holidays=stored)
 		self.assertEqual([h["date"] for h in body["calling"]["call_hours"]["holiday_schedule"]], ["2099-08-15"])
-		# disabled with no week: call_hours left out rather than sent incomplete
-		body = settings.build_payload({"status": "DISABLED", "call_hours_status": "DISABLED"})
-		self.assertNotIn("call_hours", body["calling"])
+		# turning call hours off still sends the whole object, with the stored week and time zone
+		body = settings.build_payload({"status": "DISABLED", "call_hours_status": "DISABLED"}, stored_holidays=stored,
+			stored_hours=json.dumps(week), stored_timezone="Asia/Kolkata")
+		self.assertEqual(body["calling"]["call_hours"]["status"], "DISABLED")
+		self.assertEqual(body["calling"]["call_hours"]["timezone_id"], "Asia/Kolkata")
+		self.assertEqual(len(body["calling"]["call_hours"]["weekly_operating_hours"]), 2)
+		self.assertEqual(body["calling"]["call_hours"]["holiday_schedule"][0]["date"], "2099-01-26")
+		# …and is refused, rather than half sent, when there is no week or time zone to send
+		with self.assertRaises(frappe.ValidationError):
+			settings.build_payload({"status": "DISABLED", "call_hours_status": "DISABLED"})
 
 	def test_settings_validation(self):
 		day = lambda o, c, d="TUESDAY": {"day_of_week": d, "open_time": o, "close_time": c}  # noqa: E731
@@ -224,9 +242,39 @@ class TestWhatsAppCalling(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			settings.build_payload({**base, "weekly_operating_hours": [day("0900", "1000")], "holiday_schedule": [{"date": "26/01/2099"}]})
 		with self.assertRaises(frappe.ValidationError):
-			settings.build_payload({"call_icon_countries": "India"})
-		self.assertEqual(settings.build_payload({"call_icon_countries": "in, ae"})["calling"]["call_icons"],
+			settings.build_payload({"call_icon_countries": "India", "call_icons_edited": 1})
+		self.assertEqual(settings.build_payload({"call_icon_countries": "in, ae", "call_icons_edited": 1})["calling"]["call_icons"],
 			{"restrict_to_user_countries": ["IN", "AE"]})
+
+	def test_call_icons_sent_only_when_edited(self):
+		# a save that did not touch the countries must not wipe WhatsApp Manager's restriction
+		body = settings.build_payload({"status": "ENABLED", "call_icon_countries": ""})
+		self.assertNotIn("call_icons", body["calling"])
+		body = settings.build_payload({"status": "ENABLED", "call_icon_countries": "", "call_icons_edited": 1})
+		self.assertEqual(body["calling"]["call_icons"], {"restrict_to_user_countries": []})
+		frappe.db.set_value("Excom Channel Account", self.acc.name, "wa_call_icon_countries", "IN")
+		settings.save(self.acc.name, {"status": "ENABLED", "call_icon_countries": ""})
+		self.assertNotIn("call_icons", self.posts[-1][1]["calling"])
+		self.assertEqual(frappe.db.get_value("Excom Channel Account", self.acc.name, "wa_call_icon_countries"), "IN")
+
+	def test_save_disabled_call_hours_sends_the_stored_week(self):
+		frappe.db.set_value("Excom Channel Account", self.acc.name, {"wa_call_hours_timezone": "Asia/Kolkata",
+			"wa_call_hours": json.dumps([{"day_of_week": "MONDAY", "open_time": "0900", "close_time": "1800"}]),
+			"wa_call_hours_status": "ENABLED"})
+		self.acc.reload()
+		settings.save(self.acc.name, {"call_hours_status": "DISABLED", "weekly_operating_hours": []})
+		hours = self.posts[-1][1]["calling"]["call_hours"]
+		self.assertEqual((hours["status"], hours["timezone_id"]), ("DISABLED", "Asia/Kolkata"))
+		self.assertEqual(hours["weekly_operating_hours"][0]["day_of_week"], "MONDAY")
+		self.assertEqual(frappe.db.get_value("Excom Channel Account", self.acc.name, "wa_call_hours_status"), "DISABLED")
+		# nothing stored and nothing given: refused before Meta, and nothing stored as DISABLED
+		frappe.db.set_value("Excom Channel Account", self.acc.name, {"wa_call_hours_timezone": "", "wa_call_hours": "[]",
+			"wa_call_hours_status": "ENABLED"})
+		sent = len(self.posts)
+		with self.assertRaises(frappe.ValidationError):
+			settings.save(self.acc.name, {"call_hours_status": "DISABLED"})
+		self.assertEqual(len(self.posts), sent)
+		self.assertEqual(frappe.db.get_value("Excom Channel Account", self.acc.name, "wa_call_hours_status"), "ENABLED")
 
 	def test_save_posts_the_whole_calling_object_and_keeps_holidays(self):
 		frappe.db.set_value("Excom Channel Account", self.acc.name, "wa_call_holidays",
@@ -307,7 +355,7 @@ class TestWhatsAppCalling(FrappeTestCase):
 		call.reload()
 		self.assertEqual((call.status, call.answered_by, call.agent), ("In Progress", AGENT_A, AGENT_A))
 		cancelled = [u for u, p in self._published(calling.EV_SIGNAL) if p.get("type") == "cancel"]
-		self.assertEqual(cancelled, [AGENT_B])
+		self.assertEqual(sorted(cancelled), [AGENT_A, AGENT_B])  # A's other tabs stop ringing too
 		self.assertTrue(any(p.get("answered_by") == AGENT_A for _, p in self._published("excom:call_answered")))
 		with self.assertRaises(frappe.ValidationError):
 			calling.answer(call.name, ANSWER, AGENT_B)
@@ -328,7 +376,7 @@ class TestWhatsAppCalling(FrappeTestCase):
 		self.replies.append(FakeResp(400, {"error": {"code": 138007, "message": "Connect timeout"}}))
 		with self.assertRaises(Exception):
 			calling.answer(call.name, ANSWER, AGENT_A)
-		self.assertEqual(frappe.db.get_value("Excom Call", call.name, "status"), "Ringing")
+		self.assertEqual(frappe.db.get_value("Excom Call", call.name, ["status", "agent"]), ("Ringing", None))
 		self.assertTrue(calling.claim("wacid.QAIN4", AGENT_B))
 
 	def test_terminate_records_duration_and_status(self):
@@ -348,6 +396,12 @@ class TestWhatsAppCalling(FrappeTestCase):
 			errors=[{"code": 138021, "message": "Media receive timeout"}]))
 		missed = self._call("wacid.QAIN2")
 		self.assertEqual((missed.status, missed.hangup_cause), ("Failed", "138021"))
+		# a call that talked and then failed on media is Completed, with the code noted
+		webhook._process_webhook_payload(_connect("wacid.QAIN5"))
+		webhook._process_webhook_payload(_terminate("wacid.QAIN5", duration=40, status="FAILED",
+			errors=[{"code": 138022, "message": "Media transmit timeout"}]))
+		talked = self._call("wacid.QAIN5")
+		self.assertEqual((talked.status, talked.duration, talked.hangup_cause), ("Completed", 40, "138022"))
 		webhook._process_webhook_payload(_connect("wacid.QAIN3"))
 		webhook._process_webhook_payload(_terminate("wacid.QAIN3"))
 		self.assertEqual(self._call("wacid.QAIN3").status, "Missed")
@@ -384,7 +438,8 @@ class TestWhatsAppCalling(FrappeTestCase):
 		self.assertTrue(calling.request_window([str(add_to_date(now, days=-8)), str(add_to_date(now, days=-2))], now)["allowed"])
 
 		thread = self._thread()
-		self.get_replies.extend([FakeResp(200, PERM_NONE), FakeResp(200, PERM_NONE), FakeResp(200, PERM_NONE)])
+		# Meta's counters after the first request say 1 of 1 today
+		self.get_replies.extend([FakeResp(200, PERM_NONE), FakeResp(200, PERM_NONE_ASKED), FakeResp(200, PERM_NONE_ASKED)])
 		out = calling.request_permission(thread, "May we call you about your order?")
 		url, body = self.posts[-1]
 		self.assertTrue(url.endswith(f"/{PHONE_ID}/messages"))
@@ -397,6 +452,31 @@ class TestWhatsAppCalling(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			calling.request_permission(thread, "Again?")  # 1 per 24 h
 		self.assertEqual(len(self.posts), sent)
+
+	def test_request_window_uses_metas_counters(self):
+		now = now_datetime()
+		checked = add_to_date(now, minutes=-10)
+		# Meta says 1 of 1 today, until a time it names
+		limits = [{"time_period": "PT24H", "max_allowed": 1, "current_usage": 1, "limit_expiration_time": 1893456000},
+			{"time_period": "P7D", "max_allowed": 2, "current_usage": 1}]
+		window = calling.request_window([], now, limits=limits, checked_on=checked)
+		self.assertEqual((window["allowed"], window["day"], window["week"], window["source"]), (False, 1, 1, "meta"))
+		self.assertEqual(window["next_at"], calling._epoch(1893456000))
+		# Meta says 0, but Excom sent one after that reading: it counts
+		limits = [{"time_period": "PT24H", "max_allowed": 1, "current_usage": 0}, {"time_period": "P7D", "max_allowed": 2, "current_usage": 0}]
+		window = calling.request_window([str(add_to_date(now, minutes=-5))], now, limits=limits, checked_on=checked)
+		self.assertFalse(window["allowed"])
+		# Excom's own sends before Meta's reading are already in Meta's count, so they are not added twice
+		window = calling.request_window([str(add_to_date(now, minutes=-20))], now, limits=limits, checked_on=checked)
+		self.assertTrue(window["allowed"])
+
+	def test_permission_check_again_is_throttled(self):
+		thread = self._thread()
+		calling.thread_permission(thread, refresh=True, throttle=True)
+		calling.thread_permission(thread, refresh=True, throttle=True)
+		self.assertEqual(len([u for u, _ in self.gets if u.endswith("/call_permissions")]), 1)
+		calling.thread_permission(thread, refresh=True)  # start_call / request_permission always ask
+		self.assertEqual(len([u for u, _ in self.gets if u.endswith("/call_permissions")]), 2)
 
 	def test_permission_request_needs_the_window(self):
 		thread = self._thread(window=False)
@@ -478,10 +558,14 @@ class TestWhatsAppCalling(FrappeTestCase):
 
 		webhook._process_webhook_payload(_calls({"statuses": [{"id": "wacid.QAOUT1", "type": "call", "status": "RINGING",
 			"recipient_id": CALLER_2, "biz_opaque_callback_data": out["call"]}]}))
+		frappe.db.set_value("Excom Thread", thread, "last_inbound_at", add_to_date(now_datetime(), hours=-30))
+		frappe.db.commit()
 		webhook._process_webhook_payload(_calls({"statuses": [{"id": "wacid.QAOUT1", "type": "call", "status": "ACCEPTED",
 			"recipient_id": CALLER_2}]}))
 		call.reload()
 		self.assertEqual((call.status, call.answered_by), ("In Progress", "Administrator"))
+		# the person accepting a business call reopens the 24-hour window
+		self.assertGreater(frappe.db.get_value("Excom Thread", thread, "last_inbound_at"), add_to_date(now_datetime(), minutes=-1))
 		webhook._process_webhook_payload(_terminate("wacid.QAOUT1", direction="BUSINESS_INITIATED", duration=30))
 		call.reload()
 		self.assertEqual((call.status, call.duration), ("Completed", 30))
@@ -494,8 +578,14 @@ class TestWhatsAppCalling(FrappeTestCase):
 		webhook._process_webhook_payload(_calls({"statuses": [{"id": "wacid.QAOUT2", "type": "call", "status": "REJECTED"}]}))
 		webhook._process_webhook_payload(_terminate("wacid.QAOUT2", direction="BUSINESS_INITIATED"))
 		self.assertEqual(frappe.db.get_value("Excom Call", out["call"], "status"), "Busy")
+		self.assertFalse(calling.presence.is_busy("Administrator"))
 		identity = frappe.db.get_value("Excom Thread", thread, "omni_identity")
 		self.assertEqual(frappe.db.get_value("Excom WhatsApp Call Permission", {"omni_identity": identity}, "consecutive_unanswered"), 1)
+		# Meta retries the terminate: counted once, ended once
+		ended = len(self._published("excom:call_ended"))
+		webhook._process_webhook_payload(_terminate("wacid.QAOUT2", direction="BUSINESS_INITIATED"))
+		self.assertEqual(frappe.db.get_value("Excom WhatsApp Call Permission", {"omni_identity": identity}, "consecutive_unanswered"), 1)
+		self.assertEqual(len(self._published("excom:call_ended")), ended)
 
 	def test_outbound_without_permission_is_refused_before_meta(self):
 		thread = self._thread()
@@ -515,6 +605,18 @@ class TestWhatsAppCalling(FrappeTestCase):
 		self.assertEqual(row.status, "no_permission")
 		self.assertTrue(row.last_error.startswith("138006"))
 		self.assertEqual(frappe.db.get_value("Excom Call", {"thread": thread}, "status"), "Failed")
+		self.assertFalse(calling.presence.is_busy("Administrator"))
+		# 138012: Meta's next allowed time is kept and said
+		frappe.db.set_value("Excom WhatsApp Call Permission", row.name, "status", "temporary")
+		frappe.db.set_value("Excom WhatsApp Call Permission", row.name, "expires_on", add_to_date(now_datetime(), days=3))
+		self.get_replies.append(FakeResp(200, PERM_TEMP))
+		self.replies.append(FakeResp(400, {"error": {"code": 138012, "message": "Business Initiated Calls Limit Hit",
+			"error_data": {"details": "Next call allowed at 1893456000"}}}))
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			calling.start_call(thread, OFFER, "Administrator")
+		self.assertIn(str(calling._epoch(1893456000))[:10], str(ctx.exception))
+		row.reload()
+		self.assertEqual(str(row.call_limit_resets_on)[:16], str(calling._epoch(1893456000))[:16])
 
 	# ── builders and pure helpers ────────────────────────────────────────────
 	def test_interactive_builders_and_limits(self):
@@ -560,7 +662,159 @@ class TestWhatsAppCalling(FrappeTestCase):
 
 	def test_provider_registry_routes_whatsapp_accounts(self):
 		from excom.excom.channels.voice import providers
+		from excom.excom.channels.voice.providers.plivo import PlivoAdapter
+		from excom.excom.channels.voice.providers.twilio import TwilioAdapter
 
 		adapter = providers.for_account(self.acc.name)
 		self.assertIsInstance(adapter, wa.WhatsAppCallingAdapter)
 		self.assertTrue(providers.is_softphone(adapter))
+		# a voice line keeps its own provider
+		self.assertIsInstance(providers.for_account(frappe._dict(name="qa-plivo", channel="voice", voice_provider="Plivo")), PlivoAdapter)
+		self.assertIsInstance(providers.for_account(frappe._dict(name="qa-twilio", channel="voice", voice_provider="Twilio")), TwilioAdapter)
+
+	# ── review fixes ─────────────────────────────────────────────────────────
+	def test_unsigned_calls_payload_is_ignored(self):
+		self.addCleanup(setattr, frappe.flags, "excom_webhook_signed", True)
+		webhook._process_webhook_payload(_connect("wacid.QAIN1"), signed=False)
+		self.assertIsNone(self._call("wacid.QAIN1"))
+		self.assertEqual(self._published("excom:call_ringing"), [])
+		self.assertEqual(self._calls_posted("reject"), [])
+		if frappe.db.exists("DocType", "Excom WhatsApp Event"):
+			self.assertTrue(frappe.db.exists("Excom WhatsApp Event", {"field": "calls", "event": "unsigned, ignored"}))
+			payload = frappe.db.get_value("Excom WhatsApp Event", {"field": "calls", "event": "unsigned, ignored"}, "payload")
+			self.assertNotIn(CALLER, payload)
+			self.assertNotIn("v=0", payload)
+
+	def test_unknown_phone_id_is_ignored_even_with_a_default_account(self):
+		frappe.db.set_value("Excom Channel Account", self.acc.name, "is_default_incoming", 1)
+		frappe.db.commit()
+		try:
+			body = json.loads(_connect("wacid.QAIN1"))
+			body["entry"][0]["changes"][0]["value"]["metadata"]["phone_number_id"] = "QAUNKNOWN"
+			webhook._process_webhook_payload(json.dumps(body))
+			self.assertIsNone(self._call("wacid.QAIN1"))
+			self.assertEqual(self._published("excom:call_ringing"), [])
+		finally:
+			frappe.db.set_value("Excom Channel Account", self.acc.name, "is_default_incoming", 0)
+			frappe.db.commit()
+
+	def test_only_the_ring_set_answers_and_only_the_agent_on_the_call_hangs_up(self):
+		webhook._process_webhook_payload(_connect("wacid.QAIN1"))
+		call = self._call("wacid.QAIN1")
+		with self.assertRaises(frappe.PermissionError):
+			calling.answer(call.name, ANSWER, AGENT_C)  # not in the ring set
+		with self.assertRaises(frappe.PermissionError):
+			calling.hangup(call.name, AGENT_C)
+		with self.assertRaises(frappe.PermissionError):
+			calling.hangup(call.name, AGENT_B)  # ringing for B: B may decline, not end it for everyone
+		self.assertEqual(self._calls_posted("reject") + self._calls_posted("terminate"), [])
+		calling.answer(call.name, ANSWER, AGENT_A)
+		with self.assertRaises(frappe.PermissionError):
+			calling.hangup(call.name, AGENT_B)  # A's live call
+		self.assertEqual(self._calls_posted("terminate"), [])
+		self.assertTrue(calling.presence.is_busy(AGENT_A))
+		calling.hangup(call.name, AGENT_A)
+		self.assertEqual(len(self._calls_posted("terminate")), 1)
+		self.assertEqual(self._calls_posted("reject"), [])
+		# A's own hang-up closes the row and frees A at once; the webhook adds the duration later
+		call.reload()
+		self.assertEqual((call.status, call.hangup_source), ("Completed", "agent"))
+		self.assertFalse(calling.presence.is_busy(AGENT_A))
+		webhook._process_webhook_payload(_terminate("wacid.QAIN1", duration=33))
+		call.reload()
+		self.assertEqual((call.status, call.duration), ("Completed", 33))
+
+	def test_hangup_while_ringing_rejects(self):
+		webhook._process_webhook_payload(_connect("wacid.QAIN2"))
+		call = self._call("wacid.QAIN2")
+		calling.hangup(call.name, "Administrator")  # a manager
+		self.assertEqual(len(self._calls_posted("reject")), 1)
+		self.assertEqual(self._calls_posted("terminate"), [])
+		self.assertEqual(frappe.db.get_value("Excom Call", call.name, "status"), "Missed")
+		ended = len(self._published("excom:call_ended"))
+		webhook._process_webhook_payload(_terminate("wacid.QAIN2"))
+		self.assertEqual(len(self._published("excom:call_ended")), ended)  # no second "missed call"
+
+	def test_decline_by_everyone_rejects(self):
+		webhook._process_webhook_payload(_connect("wacid.QAIN3"))
+		call = self._call("wacid.QAIN3")
+		self.assertEqual(calling.decline(call.name, AGENT_C)["status"], "ignored")
+		self.assertEqual(calling.decline(call.name, AGENT_A)["status"], "declined")
+		self.assertEqual(self._calls_posted("reject"), [])
+		self.assertEqual(calling.decline(call.name, AGENT_B, timeout=True)["status"], "rejected")
+		self.assertEqual(len(self._calls_posted("reject")), 1)
+		call.reload()
+		self.assertEqual((call.status, call.hangup_cause), ("Missed", "Nobody answered"))
+
+	def test_terminate_before_connect(self):
+		webhook._process_webhook_payload(_terminate("wacid.QAIN2"))
+		self.assertEqual(self._call("wacid.QAIN2").status, "Missed")
+		webhook._process_webhook_payload(_connect("wacid.QAIN2"))  # the late connect
+		self.assertEqual(frappe.db.count("Excom Call", {"provider_call_id": "wacid.QAIN2"}), 1)
+		self.assertEqual(self._call("wacid.QAIN2").status, "Missed")
+		self.assertEqual(self._published("excom:call_ringing"), [])
+		self.assertEqual(calling.ringing_for(AGENT_A), [])
+
+	def test_answer_after_terminate(self):
+		webhook._process_webhook_payload(_connect("wacid.QAIN3"))
+		call = self._call("wacid.QAIN3")
+		webhook._process_webhook_payload(_terminate("wacid.QAIN3"))
+		with self.assertRaises(frappe.ValidationError):
+			calling.answer(call.name, ANSWER, AGENT_A)
+		self.assertEqual(self._calls_posted("pre_accept"), [])
+
+	def test_terminate_while_meta_accepts(self):
+		webhook._process_webhook_payload(_connect("wacid.QAIN4"))
+		call = self._call("wacid.QAIN4")
+		real_accept = wa.WhatsAppCallingAdapter.accept
+
+		def accept_then_hang_up(adapter, call_id, sdp, opaque=""):
+			out = real_accept(adapter, call_id, sdp, opaque)
+			webhook._process_webhook_payload(_terminate("wacid.QAIN4"))  # the caller gave up meanwhile
+			return out
+
+		with patch.object(wa.WhatsAppCallingAdapter, "accept", accept_then_hang_up):
+			with self.assertRaises(frappe.ValidationError):
+				calling.answer(call.name, ANSWER, AGENT_A)
+		call.reload()
+		self.assertEqual(call.status, "Missed")
+		self.assertFalse(call.answered_by)
+		self.assertFalse(calling.presence.is_busy(AGENT_A))
+
+	def test_lines_only_for_line_agents_and_unknown_status_counts(self):
+		self.assertIn(self.acc.name, [x["account"] for x in calling.lines_for(AGENT_A)])
+		self.assertNotIn(self.acc.name, [x["account"] for x in calling.lines_for(AGENT_C)])
+		frappe.db.set_value("Excom Channel Account", self.acc.name, "wa_calling_status", "")
+		self.assertIn(self.acc.name, calling.agent_numbers(AGENT_A))  # not read from Meta yet
+		frappe.db.set_value("Excom Channel Account", self.acc.name, "wa_calling_status", "DISABLED")
+		self.assertNotIn(self.acc.name, calling.agent_numbers(AGENT_A))
+		# a call arriving marks it ENABLED and tells the agents' browsers to fetch their lines again
+		frappe.db.set_value("Excom Channel Account", self.acc.name, "wa_calling_status", "")
+		frappe.db.commit()
+		webhook._process_webhook_payload(_connect("wacid.QAIN1"))
+		self.assertEqual(frappe.db.get_value("Excom Channel Account", self.acc.name, "wa_calling_status"), "ENABLED")
+		self.assertEqual(sorted(u for u, _ in self._published(calling.EV_LINES)), [AGENT_A, AGENT_B])
+
+	def test_ringing_for_a_reloaded_browser(self):
+		webhook._process_webhook_payload(_connect("wacid.QAIN1"))
+		pops = calling.ringing_for(AGENT_A)
+		self.assertEqual(len(pops), 1)
+		self.assertEqual(pops[0]["sdp"], OFFER)
+		self.assertTrue(0 < pops[0]["ring_seconds"] <= calling.RING_SECONDS)
+		self.assertEqual(calling.ringing_for(AGENT_C), [])
+		calling.decline(self._call("wacid.QAIN1").name, AGENT_A)
+		self.assertEqual(calling.ringing_for(AGENT_A), [])
+		self.assertEqual(len(calling.ringing_for(AGENT_B)), 1)
+
+	def test_ice_credentials_only_from_the_password_field(self):
+		raw = json.dumps([{"urls": ["turn:t.example.com"], "username": "u", "credential": "pasted"}])
+		self.assertEqual(wa.parse_ice_servers(raw, credential=""), [{"urls": ["turn:t.example.com"], "username": "u"}])
+		self.assertEqual(wa.parse_ice_servers(raw, credential="kept")[0]["credential"], "kept")
+		self.assertEqual(wa.inline_credentials(raw), ["pasted"])
+		doc = frappe._dict(whatsapp_ice_servers=raw, whatsapp_turn_credential="")
+		wa.move_inline_credential(doc)
+		self.assertEqual(doc.whatsapp_turn_credential, "pasted")
+		self.assertNotIn("pasted", doc.whatsapp_ice_servers)
+		doc = frappe._dict(whatsapp_ice_servers=raw, whatsapp_turn_credential="different")
+		with self.assertRaises(frappe.ValidationError):
+			wa.move_inline_credential(doc)

@@ -139,6 +139,8 @@ function rememberedLine(): string {
 }
 
 const HEARTBEAT_FALLBACK = 60;
+/** WhatsApp lines are fetched again this often, and at once when a number's calling status changes. */
+const WA_LINES_REFRESH_MS = 5 * 60_000;
 const QUALITY_INTERVAL_MS = 60_000;
 /** The title alternates on this beat while the phone is ringing. */
 const TITLE_FLASH_MS = 900;
@@ -170,16 +172,22 @@ export function useSoftphone() {
 
   // WhatsApp numbers the agent takes WhatsApp calls on. A WhatsApp-only site has no voice line, so
   // these are fetched and booted on their own.
-  const { data: waData } = useFrappeGetCall<{ message: { lines: WhatsAppLine[]; heartbeat_seconds?: number } }>(
+  const { data: waData, mutate: refreshWhatsAppLines } = useFrappeGetCall<{ message: { lines: WhatsAppLine[]; heartbeat_seconds?: number } }>(
     "excom.excom.api.whatsapp_calling.lines",
     undefined,
     "excom-wa-call-lines",
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: false, refreshInterval: WA_LINES_REFRESH_MS },
   );
   const whatsappLines = waData?.message?.lines ?? [];
   const waKey = whatsappLines.map((l) => l.account).join("|");
   const waAccounts = useRef<Set<string>>(new Set());
   whatsappLines.forEach((l) => waAccounts.current.add(l.account));
+
+  // A number's calling status changed (turned on in Admin, or its first call arrived): fetch again,
+  // so the next call to it rings here without a reload.
+  useFrappeEventListener("excom:wa_call_lines_changed", () => {
+    void refreshWhatsAppLines();
+  });
 
   useEffect(() => {
     const presence = config?.presence ?? whatsappLines[0]?.presence;
@@ -266,13 +274,26 @@ export function useSoftphone() {
   }).current;
 
   // WhatsApp numbers need no token: the browser's own WebRTC is the "SDK".
+  const waBooted = useRef<Set<string>>(new Set());
   useEffect(() => {
+    if (!waData) return;
+    const wanted = new Set(whatsappLines.map((l) => l.account));
     for (const line of whatsappLines) {
       if (bootedFor.current.has(line.account)) continue;
       bootedFor.current.add(line.account);
+      waBooted.current.add(line.account);
       void softphone.boot({ account: line.account, sdk: line.sdk, token: "", options: line.options ?? {}, ...lineHooks });
     }
-  }, [waKey]);
+    // A number turned off (or taken from the agent's teams) stops ringing here, unless it carries
+    // the call in progress.
+    for (const account of [...waBooted.current]) {
+      if (wanted.has(account) || softphone.getState().call.account === account) continue;
+      waBooted.current.delete(account);
+      bootedFor.current.delete(account);
+      waAccounts.current.delete(account);
+      softphone.shutdown(account);
+    }
+  }, [waKey, Boolean(waData)]);
 
   const start = useCallback(async (account: string) => {
     if (!account) return;
@@ -391,9 +412,12 @@ export function useSoftphone() {
     const onLeave = () => {
       try {
         for (const account of accounts) {
-          navigator.sendBeacon?.(
-            `/api/method/excom.excom.api.voice.heartbeat?account=${encodeURIComponent(account)}&registered=0`,
-          );
+          // A beacon cannot set headers, so the CSRF token goes in the form (Frappe accepts it there).
+          const form = new FormData();
+          form.append("account", account);
+          form.append("registered", "0");
+          form.append("csrf_token", (window as any).csrf_token || "");
+          navigator.sendBeacon?.("/api/method/excom.excom.api.voice.heartbeat", form);
         }
       } catch {
         /* best effort — the TTL is the real guarantee */
@@ -407,11 +431,12 @@ export function useSoftphone() {
   // The server is the authority on who answered: it computed the ring set, so it knows. The SDK
   // only knows about this browser's own leg.
 
-  useFrappeEventListener("excom:call_ringing", (data: RingingEvent) => {
-    setAnsweredElsewhere("");
-    setIncoming(data);
-    // A WhatsApp call has no SDK to ring: the offer rides on the pop and goes to that number's driver.
-    if (data.channel === "whatsapp" && data.sdp && data.call) {
+  const onRinging = (data: RingingEvent) => {
+    // A WhatsApp call has no SDK to ring: the offer rides on the pop and goes to that number's
+    // driver. The pop shows only if the softphone took it — not while the agent is on another call,
+    // and never over a call already ringing.
+    if (data.channel === "whatsapp") {
+      if (!data.sdp || !data.call) return;
       softphone.signal(data.account, {
         type: "offer",
         provider_call_id: data.provider_call_id,
@@ -419,12 +444,40 @@ export function useSoftphone() {
         sdp: data.sdp,
         from: data.from_number || data.display_name,
       });
-      if (softphone.getState().call.callUUID === data.provider_call_id) {
-        softphone.attachRecord(data.call, data.thread ?? null);
-        softphone.setPeer(data.display_name || data.from_number);
-      }
+      const call = softphone.getState().call;
+      if (call.phase !== "ringing" || call.callUUID !== data.provider_call_id) return;
+      softphone.attachRecord(data.call, data.thread ?? null);
+      softphone.setPeer(data.display_name || data.from_number);
     }
-  });
+    setAnsweredElsewhere("");
+    setIncoming(data);
+  };
+  useFrappeEventListener("excom:call_ringing", onRinging);
+  const onRingingRef = useRef(onRinging);
+  onRingingRef.current = onRinging;
+
+  // A reload while a WhatsApp call rings: once each WhatsApp line is up, ask what is ringing for us
+  // (the offer is kept on the server for a few minutes) and pop it again.
+  const { call: fetchRinging } = useFrappePostCall("excom.excom.api.whatsapp_calling.ringing");
+  const replayed = useRef<Set<string>>(new Set());
+  const waLive = whatsappLines
+    .filter((l) => state.lines[l.account]?.registration === "registered")
+    .map((l) => l.account)
+    .join("|");
+  useEffect(() => {
+    const fresh = waLive ? waLive.split("|").filter((a) => !replayed.current.has(a)) : [];
+    if (!fresh.length) return;
+    fresh.forEach((a) => replayed.current.add(a));
+    fetchRinging({})
+      .then((res: any) => {
+        for (const pop of (res?.message ?? []) as RingingEvent[]) {
+          if (fresh.includes(pop.account)) onRingingRef.current(pop);
+        }
+      })
+      .catch(() => {
+        /* nothing ringing, or the server is busy: the next call rings as usual */
+      });
+  }, [waLive, fetchRinging]);
 
   useFrappeEventListener("excom:wa_call_signal", (data: WhatsAppSignalEvent) => {
     if (!data?.account) return;
@@ -646,6 +699,15 @@ export function useSoftphone() {
     setIncoming(null);
   }, []);
 
+  /** The pop's countdown reached 0. A WhatsApp call is declined here (Meta would ring on for up to a
+   * minute); a phone line's provider times out on its own, so its pop just closes. */
+  const timeoutIncoming = useCallback(() => {
+    ringtone.stop();
+    const call = softphone.getState().call;
+    if (call.phase === "ringing" && call.channel === "whatsapp") softphone.reject({ timeout: true });
+    setIncoming(null);
+  }, []);
+
   const hangup = useCallback(async () => {
     const { callName, channel } = softphone.getState().call;
     softphone.hangup();
@@ -685,6 +747,7 @@ export function useSoftphone() {
       ringtone.stop();
       setIncoming(null);
     },
+    timeoutIncoming,
     toggleAvailability,
     dial,
     answer,

@@ -535,9 +535,18 @@ def _handle_user_preferences(change: dict, entry: dict) -> None:
 
 
 def _handle_calls(change: dict, entry: dict) -> None:
-	"""WhatsApp Business Calling: connect / terminate and call statuses (channels/voice/whatsapp_calling.py)."""
-	from excom.excom.channels.voice.whatsapp_calling import handle_calls_change
+	"""WhatsApp Business Calling: connect / terminate and call statuses (channels/voice/whatsapp_calling.py).
 
+	Signed payloads only: an unsigned one could ring agents with a forged offer or end a live call.
+	"""
+	from excom.excom.channels.voice.whatsapp_calling import account_for_phone_id, handle_calls_change, summary_of
+
+	if not _signed():
+		value = change.get("value") or {}
+		account = account_for_phone_id((value.get("metadata") or {}).get("phone_number_id"))
+		_record_event("calls", "unsigned, ignored", "Warning", summary_of(value), channel_account=account,
+			waba_id=str(entry.get("id") or ""))
+		return
 	handle_calls_change(change, entry)
 
 

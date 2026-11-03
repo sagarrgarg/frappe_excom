@@ -25,6 +25,7 @@ interface CallPermission {
   call_limit_resets_on?: string;
   unanswered_warning?: boolean;
   consecutive_unanswered?: number;
+  unanswered_limit?: number;
 }
 
 const DEFAULT_BUTTON_BODY = "Tap below to call us on WhatsApp. Calls to us are free.";
@@ -58,7 +59,8 @@ export function WhatsAppCallButton({
     thread ? "excom.excom.api.whatsapp_calling.permission" : null,
     thread ? { thread: thread.name } : undefined,
     thread ? `wa-call-permission:${thread.name}` : null,
-    { revalidateOnFocus: true },
+    // Not on every focus: each read may ask Meta. "Check permission again" is the explicit refresh.
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
   );
   const { call: askPermission, loading: asking } = useFrappePostCall("excom.excom.api.whatsapp_calling.request_permission");
   const { call: sendButton } = useFrappePostCall("excom.excom.api.whatsapp_calling.send_call_button");
@@ -145,7 +147,9 @@ export function WhatsAppCallButton({
         disabled: true,
         hint: [
           daily ? `${daily.current_usage}/${daily.max_allowed} calls today` : "",
-          perm?.unanswered_warning ? `${perm.consecutive_unanswered} unanswered in a row (4 revoke it)` : "",
+          perm?.unanswered_warning
+            ? `${perm.consecutive_unanswered} unanswered in a row (${perm.unanswered_limit ?? 4} revoke it)`
+            : "",
         ].filter(Boolean).join(" · ") || undefined,
       },
       {

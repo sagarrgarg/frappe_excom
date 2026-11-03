@@ -62,8 +62,8 @@ ERROR_TEXT = {
 	138018: "Calling prerequisites are not met: subscribe the app to the 'calls' webhook field.",
 	138019: "The call could not be set up.",
 	138020: "The call's media relay failed.",
-	138021: "No audio was received from the browser.",
-	138022: "The browser's audio could not be sent.",
+	138021: "The person's WhatsApp ended the call: it received no audio from Excom (check the agent's microphone and network).",
+	138022: "The person's WhatsApp ended the call: it could not send its audio (their network).",
 	138023: "The call was accepted but no audio flowed.",
 	131055: "This number uses SIP for calls, so calls cannot be placed from the browser.",
 	131026: "This person's WhatsApp is too old for calls or call permission requests.",
@@ -119,8 +119,9 @@ def terminate_status(item: dict) -> str:
 
 
 def call_status_after_terminate(item: dict, answered: bool) -> str:
-	"""Excom's status for a terminated call."""
-	if terminate_status(item) == "FAILED":
+	"""Excom's status for a terminated call. A call that talked (duration > 0) and then failed on
+	media is Completed; the error code still goes into hangup_cause."""
+	if terminate_status(item) == "FAILED" and cint_(item.get("duration")) <= 0:
 		return "Failed"
 	if cint_(item.get("duration")) > 0 or answered:
 		return "Completed"
@@ -175,9 +176,11 @@ def ice_servers() -> list[dict]:
 	"""STUN/TURN servers for the browser, from Excom Settings. Never logged.
 
 	`whatsapp_ice_servers` is a JSON list of {"urls": ..., "username": ...}; the TURN credential is
-	kept encrypted in `whatsapp_turn_credential` and added to every entry with a username and no
-	credential of its own.
+	kept encrypted in `whatsapp_turn_credential` and added to every entry with a username. It is one
+	static credential shared by every agent (time-limited TURN credentials are not built).
 	"""
+	log = getattr(frappe.local, "message_log", None)
+	seen = len(log) if isinstance(log, list) else 0
 	try:
 		settings = frappe.get_cached_doc("Excom Settings")
 		raw = settings.get("whatsapp_ice_servers") or ""
@@ -185,13 +188,51 @@ def ice_servers() -> list[dict]:
 	except Exception:
 		return DEFAULT_ICE_SERVERS
 	finally:
-		frappe.local.message_log = []
+		# Only what reading the password may have queued; the request's own messages stay.
+		log = getattr(frappe.local, "message_log", None)
+		if isinstance(log, list) and len(log) > seen:
+			del log[seen:]
 	servers = parse_ice_servers(raw, credential)
 	return servers or DEFAULT_ICE_SERVERS
 
 
+def inline_credentials(raw) -> list[str]:
+	"""Credentials pasted into the ICE servers JSON (they belong in the Password field)."""
+	try:
+		data = json.loads(raw) if isinstance(raw, str) else raw
+	except ValueError:
+		return []
+	data = [data] if isinstance(data, dict) else data
+	return [str(e["credential"]) for e in data if isinstance(e, dict) and e.get("credential")] if isinstance(data, list) else []
+
+
+def move_inline_credential(settings) -> None:
+	"""Excom Settings validate: a credential pasted into the ICE servers JSON moves into the
+	encrypted TURN Credential field, or the save is refused if that cannot be done cleanly."""
+	raw = settings.get("whatsapp_ice_servers") or ""
+	found = inline_credentials(raw)
+	if not found:
+		return
+	stored = settings.get("whatsapp_turn_credential") or ""
+	if stored and set(stored) == {"*"}:
+		# unchanged on this save: the field shows a mask, the value is in the encrypted store
+		stored = settings.get_password("whatsapp_turn_credential", raise_exception=False) or ""
+	if len(set(found)) > 1 or (stored and stored != found[0]):
+		frappe.throw(_("Put the TURN password in the TURN Credential field, not in the ICE servers list. "
+			"Excom uses one credential for every TURN server."))
+	data = json.loads(raw) if isinstance(raw, str) else raw
+	data = [data] if isinstance(data, dict) else data
+	for entry in data:
+		if isinstance(entry, dict):
+			entry.pop("credential", None)
+	settings.whatsapp_ice_servers = json.dumps(data, indent=1)
+	settings.whatsapp_turn_credential = found[0]
+
+
 def parse_ice_servers(raw, credential: str = "") -> list[dict]:
-	"""Keep only well-formed stun:/turn:/turns: entries. Bad JSON gives an empty list."""
+	"""Keep only well-formed stun:/turn:/turns: entries. Bad JSON gives an empty list.
+
+	A credential inside the JSON is ignored: only the encrypted TURN Credential field is used."""
 	if not raw:
 		return []
 	try:
@@ -212,9 +253,8 @@ def parse_ice_servers(raw, credential: str = "") -> list[dict]:
 		server = {"urls": urls}
 		if entry.get("username"):
 			server["username"] = str(entry["username"])
-			cred = entry.get("credential") or credential
-			if cred:
-				server["credential"] = str(cred)
+			if credential:
+				server["credential"] = str(credential)
 		out.append(server)
 	return out
 
