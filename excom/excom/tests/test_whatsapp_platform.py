@@ -95,6 +95,7 @@ class TestWhatsAppPlatform(FrappeTestCase):
 		for name in cls.templates.values():
 			frappe.db.delete("WhatsApp Templates", name)
 		frappe.db.delete("Excom Channel Account", cls.acc.name)
+		frappe.db.sql("DELETE FROM `__Auth` WHERE doctype = 'Excom Channel Account' AND name = %s", cls.acc.name)
 		frappe.db.commit()
 		super().tearDownClass()
 

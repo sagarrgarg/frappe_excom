@@ -1918,6 +1918,7 @@ def check_24h_window(thread_id: str) -> dict:
 def _build_template_components(
     template_doc, body_variables: list, header_media_url: str = "",
     button_urls: list = None, location_data: dict = None, account=None,
+    button_payloads: list = None, flow_actions: list = None,
 ) -> list:
     """Build Meta Cloud API ``components`` for template sends.
 
@@ -1930,6 +1931,12 @@ def _build_template_components(
     - Dynamic URL buttons must each include a ``button`` component with a text parameter.
     - Typical component order: header, body, then buttons.
     - VIDEO headers use ``video.link``; LOCATION headers use ``location`` object.
+    - NAMED templates ({{rate}}) need ``parameter_name`` on every text parameter.
+
+    button_payloads: one payload per Quick Reply button, in button order — sent back to us as
+        ``button.payload`` when tapped (e.g. "RU:RU-0001:view"), so a reply is routed by its
+        payload, never by the button text. Missing entries keep Meta's default (the button text).
+    flow_actions: one dict per Flow button, in button order: {"flow_token": ..., "flow_action_data": {...}}.
     """
     from excom.excom.whatsapp_template_utils import (
         body_variable_slot_count,
@@ -1937,8 +1944,21 @@ def _build_template_components(
         is_text_header,
     )
 
-    values = list(body_variables or [])
+    from excom.excom.whatsapp_template_utils import ordered_placeholder_names
+
+    header_names = ordered_placeholder_names(getattr(template_doc, "header", "") or "") if is_text_header(getattr(template_doc, "header_type", None)) else []
+    body_names = ordered_placeholder_names(getattr(template_doc, "template", "") or "")
+    named = bool(header_names + body_names) and not all(n.isdigit() for n in header_names + body_names)
+    values = template_values(template_doc, body_variables)
     button_urls = list(button_urls or [])
+    button_payloads = list(button_payloads or [])
+    flow_actions = list(flow_actions or [])
+
+    def _text(v, name=None):
+        param = {"type": "text", "text": str(v)}
+        if named and name:
+            param["parameter_name"] = name
+        return param
 
     h_n = header_variable_slot_count(template_doc)
     b_n = body_variable_slot_count(template_doc)
@@ -1961,7 +1981,7 @@ def _build_template_components(
     if is_text_header(ht) and h_n:
         components.append({
             "type": "header",
-            "parameters": [{"type": "text", "text": str(v)} for v in header_vals],
+            "parameters": [_text(v, header_names[i] if i < len(header_names) else None) for i, v in enumerate(header_vals)],
         })
     elif ht == "IMAGE" and header_media_url:
         components.append({
@@ -2008,8 +2028,29 @@ def _build_template_components(
     if b_n:
         components.append({
             "type": "body",
-            "parameters": [{"type": "text", "text": str(v)} for v in body_vals],
+            "parameters": [_text(v, body_names[i] if i < len(body_names) else None) for i, v in enumerate(body_vals)],
         })
+
+    qr_idx = flow_idx = 0
+    for i, btn in enumerate(template_doc.get("buttons") or []):
+        if btn.button_type == "Quick Reply":
+            payload = button_payloads[qr_idx] if qr_idx < len(button_payloads) else ""
+            qr_idx += 1
+            if payload:
+                if len(str(payload)) > 256:
+                    frappe.throw(_("Quick-reply payload is longer than 256 characters: {0}").format(str(payload)[:60]), title=_("WhatsApp template"))
+                components.append({
+                    "type": "button", "sub_type": "quick_reply", "index": str(i),
+                    "parameters": [{"type": "payload", "payload": str(payload)}],
+                })
+        elif btn.button_type == "Flow":
+            action = flow_actions[flow_idx] if flow_idx < len(flow_actions) else {}
+            flow_idx += 1
+            if action:
+                components.append({
+                    "type": "button", "sub_type": "flow", "index": str(i),
+                    "parameters": [{"type": "action", "action": {k: v for k, v in action.items() if k in ("flow_token", "flow_action_data") and v}}],
+                })
 
     url_idx = 0
     for i, btn in enumerate(template_doc.get("buttons") or []):
@@ -2100,13 +2141,33 @@ def _replace_placeholders(text: str, values: list) -> str:
     return text
 
 
+def template_values(template_doc, variables) -> list:
+    """Header values then body values, as a list, from a list or a {name: value} dict.
+
+    A dict is for NAMED templates ({{date}}, {{summary}}): it is ordered by the placeholders, and a
+    missing name is refused here rather than by Meta (131008).
+    """
+    if not isinstance(variables, dict):
+        return list(variables or [])
+    from excom.excom.whatsapp_template_utils import is_text_header, ordered_placeholder_names
+
+    names = (ordered_placeholder_names(getattr(template_doc, "header", "") or "") if is_text_header(getattr(template_doc, "header_type", None)) else []) \
+        + ordered_placeholder_names(getattr(template_doc, "template", "") or "")
+    missing = [n for n in dict.fromkeys(names) if variables.get(n) in (None, "")]
+    if missing:
+        frappe.throw(_("Template {0} needs a value for: {1}").format(getattr(template_doc, "template_name", "") or getattr(template_doc, "name", ""), ", ".join(missing)), title=_("WhatsApp template"))
+    return [variables[n] for n in names]
+
+
 def _build_template_preview(template_doc, body_variables: list, location_data: dict = None) -> str:
     """Build a human-readable preview of the template with variables filled in.
 
-    *body_variables* follows the inbox convention: header values first, then body values.
+    *body_variables* follows the inbox convention: header values first, then body values
+    (or a {name: value} dict for named templates).
     """
     from excom.excom.whatsapp_template_utils import header_variable_slot_count, is_text_header
 
+    body_variables = template_values(template_doc, body_variables)
     h_n = header_variable_slot_count(template_doc)
     header_vals = body_variables[:h_n]
     body_vals = body_variables[h_n:]

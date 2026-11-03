@@ -30,6 +30,7 @@ export const MESSAGE_TYPES: Record<string, MessageTypeKey> = {
   Contact: "contact",
   Button: "button",
   Call: "call",
+  Order: "order",
 };
 
 export const DELIVERY_STATUSES: Record<string, Message["status"]> = {

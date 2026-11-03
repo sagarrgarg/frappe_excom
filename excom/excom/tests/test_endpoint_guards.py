@@ -86,7 +86,6 @@ BYPASS_ALLOWED = {
 	"meta.delete_platform_user_data": "called by the signed deletion callback above",
 	"webchat.create_session": "a website visitor is Guest and owns nothing yet",
 	"webchat.send_visitor_message": "same visitor, still Guest",
-	"flow_endpoint.save_flow_data": "runs after the HMAC signature is verified",
 	"email.send_scheduled_emails": "the scheduler, sending as the user who scheduled it",
 	"email.schedule_email": "internal helper; the whitelisted caller checks thread access",
 	"chat._to_absolute_url": "internal helper that republishes a file for Meta to fetch",

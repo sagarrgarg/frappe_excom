@@ -439,6 +439,10 @@ after_request = ["excom.excom.middleware.add_webchat_cors_headers"]
 # starting retention, editable there (broadcast history is kept two years).
 # Messages, calls, threads and data
 # deletion requests are never on this list.
+# Features that act on inbound WhatsApp messages (button taps, Flow answers, cart orders, …).
+# Each gets one event dict — see excom.excom.services.inbound_dispatch. Other apps add their own.
+excom_inbound_handlers = []
+
 default_log_clearing_doctypes = {
 	"Excom Notification Log": 90,
 	"Excom Source Log": 60,

@@ -374,6 +374,68 @@ _STATUS_RANK = {"Queued": 0, "Scheduled": 0, "Sent": 1, "Delivered": 2, "Read": 
 _STATUS_MAP = {"sent": "Sent", "delivered": "Delivered", "read": "Read", "played": "Read", "failed": "Failed"}
 
 
+def record_outbound_message(
+    thread,
+    content_text: str,
+    message_type: str,
+    content_json: dict = None,
+    provider_message_id: str = "",
+    delivery_status: str = "Sent",
+    reply_to: str = "",
+    reference: tuple = None,
+    template: str = "",
+) -> str:
+    """Store a message excom already sent (interactive, Flow…) on its thread and bump the thread.
+
+    `thread` is an Excom Thread doc or name. The send itself is the caller's job; this keeps the
+    inbox, counters and realtime events the same as for a typed reply (it does not claim the
+    thread for anyone: automated sends are not an agent's reply).
+    """
+    if isinstance(thread, str):
+        thread = frappe.get_doc("Excom Thread", thread)
+    now = frappe.utils.now_datetime()
+    preview = _make_preview(content_text)
+    doc = {
+        "doctype": "Excom Message",
+        "thread": thread.name,
+        "omni_identity": thread.omni_identity,
+        "channel": thread.channel,
+        "account_doctype": thread.account_doctype,
+        "account": thread.account,
+        "direction": "Outbound",
+        "message_type": message_type,
+        "provider_message_id": provider_message_id or None,
+        "provider_timestamp": now,
+        "content_text": content_text,
+        "content_json": json.dumps(content_json) if content_json else "{}",
+        "delivery_status": delivery_status,
+        "created_by_user": frappe.session.user,
+        "reply_to": reply_to or None,
+        "template": template or None,
+    }
+    if reference:
+        doc["reference_doctype"], doc["reference_name"] = reference
+    msg = frappe.get_doc(doc).insert(ignore_permissions=True)
+    frappe.db.sql(
+        """
+        UPDATE `tabExcom Thread`
+        SET last_message_at = %(now)s,
+            last_outbound_at = %(now)s,
+            last_message_preview = %(preview)s,
+            last_message_direction = 'Outbound',
+            modified = %(now)s
+        WHERE name = %(thread)s
+        """,
+        {"now": now, "preview": preview, "thread": thread.name},
+    )
+    frappe.publish_realtime("excom:message_sent", {
+        "thread": thread.name, "message": msg.name, "omni_identity": thread.omni_identity,
+        "direction": "Outbound", "preview": preview, "delivery_status": delivery_status,
+    }, after_commit=True)
+    frappe.publish_realtime("excom:thread_updated", {"thread": thread.name, "event": "new_outbound"}, after_commit=True)
+    return msg.name
+
+
 def update_delivery_status(
     provider_message_id: str,
     status: str,

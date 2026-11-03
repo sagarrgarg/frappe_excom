@@ -24,6 +24,7 @@ const BACKEND_TYPES = [
   "Button",
   "Email",
   "Call",
+  "Order",
 ];
 
 describe("message type mapping", () => {

@@ -504,40 +504,50 @@ class WhatsAppFlow(Document):
             frappe.throw(_("Flow must be created on WhatsApp first"))
 
         from excom.excom.doctype.omni_identity.omni_identity import resolve_identity_internal
-        from excom.excom.services.thread_service import upsert_thread
-        from excom.excom.services.whatsapp_service import send_text_message
+        from excom.excom.services import whatsapp_interactive as wi
+        from excom.excom.services.thread_service import record_outbound_message, upsert_thread
 
         account_doc = frappe.get_doc("Excom Channel Account", self.whatsapp_account)
-        body = message or f"Test: {self.flow_name}"
-
-        result = send_text_message(account=account_doc, to=phone_number, content=body)
+        first_screen = self.screens[0].screen_id if self.screens else ""
+        if not first_screen and self.flow_json:
+            try:
+                first_screen = ((json.loads(self.flow_json) or {}).get("screens") or [{}])[0].get("id", "")
+            except Exception:
+                first_screen = ""
+        try:
+            interactive = wi.flow(
+                flow_id=self.flow_id,
+                cta=self.flow_cta or _("Open"),
+                body=message or _("Test: {0}").format(self.flow_name),
+                flow_token=f"test:{self.name}:{frappe.generate_hash(length=8)}",
+                screen=first_screen,
+                draft=self.status != "Published",  # a draft Flow only opens for test numbers
+            )
+            # Sent as a real Flow message (it used to send plain text and then return an undefined name).
+            result = wi.send(account_doc, phone_number, interactive)
+        except wi.InteractiveLimitError as e:
+            frappe.throw(e.message, title=_("Flow test"))
 
         identity_name = resolve_identity_internal(
             phone=phone_number, channel="whatsapp",
             channel_user_id=phone_number, display_name=phone_number,
         )
         thread_name = upsert_thread(identity_name, "whatsapp", self.whatsapp_account)
-        frappe.get_doc({
-            "doctype": "Excom Message",
-            "thread": thread_name,
-            "omni_identity": identity_name,
-            "channel": "whatsapp",
-            "account_doctype": "Excom Channel Account",
-            "account": self.whatsapp_account,
-            "direction": "Outbound",
-            "message_type": "Interactive",
-            "provider_message_id": result.get("provider_message_id", ""),
-            "provider_timestamp": frappe.utils.now_datetime(),
-            "content_text": body[:500],
-            "delivery_status": result.get("status", "Sent"),
-        }).insert(ignore_permissions=True)
+        message_name = record_outbound_message(
+            thread=thread_name,
+            content_text=wi.preview_text(interactive)[:500],
+            message_type="Flow",
+            content_json={"interactive": interactive},
+            provider_message_id=result.get("provider_message_id", ""),
+            reference=("WhatsApp Flow", self.name),
+        )
         frappe.db.commit()
 
         frappe.msgprint(
             _("Test flow sent to {0}").format(phone_number),
             indicator="green"
         )
-        return msg.name
+        return message_name
 
     @frappe.whitelist()
     def get_flow_status(self):

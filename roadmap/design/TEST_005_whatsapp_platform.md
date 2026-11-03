@@ -138,3 +138,74 @@ Diagnostics:
 | 0.41 | Business verification (messaging limit 250 → 2,000) | before the dealer list passes 250 | ⏳ |
 | 0.42 | Marketing on /messages retired — every account switched to the Marketing Messages API | 2027-10-13 (2027-04-13 for new accounts) | ⏳ |
 | 0.43 | DPDP consent: consent rows imported for existing dealers before the first broadcast | ~2027-05-13 | ⏳ |
+
+---
+
+## Phase 1 — messaging basics (commit: "WhatsApp messaging basics (HLD-005 Phase 1)")
+
+```bash
+bench --site frappe.localhost migrate   # WhatsApp Button flow fields, Excom Message type "Order"
+bench --site frappe.localhost execute excom.excom.tests.run.run --kwargs "{'module': 'excom.excom.tests.test_whatsapp_messaging'}"
+```
+
+### Automated tests (22)
+
+| # | Test | Result |
+|---|---|---|
+| 1.1 | reply buttons: 1–3, titles ≤ 20 and unique | ⏳ |
+| 1.2 | list: at most 10 rows in total across sections | ⏳ |
+| 1.3 | product list / product carousel (2–10) / Flow with first-screen data and draft mode / CTA URL must be http(s) | ⏳ |
+| 1.4 | send: interactive payload, quoted reply (`context`), recipient | ⏳ |
+| 1.5 | address form refused outside India | ⏳ |
+| 1.6 | send to thread: refused when the 24 h window is closed; recorded in the inbox when open | ⏳ |
+| 1.7 | STOP blocks interactive messages too | ⏳ |
+| 1.8 | typing indicator + read receipt payload | ⏳ |
+| 1.9 | named template: `parameter_name` on every parameter; quick-reply payloads per button | ⏳ |
+| 1.10 | positional templates are sent exactly as before | ⏳ |
+| 1.11 | template creation: `parameter_format: NAMED`, named examples, real FLOW button (flow_id, action, screen) | ⏳ |
+| 1.12 | quick replies split by another button are rejected | ⏳ |
+| 1.13 | cart order: stored as "Order" with items and total; dispatched with the order; a failing handler does not stop the next | ⏳ |
+| 1.14 | button / list / template quick-reply taps are dispatched by id or payload, never by title | ⏳ |
+| 1.15 | Flow answer (flow_token kept out of the inbox text), address form, location | ⏳ |
+| 1.16 | Flow endpoint keeps partial answers in cache, logs nothing personal | ⏳ |
+| 1.16a | Meta button limits (2 links + 1 call + up to 10 quick replies; 2 call buttons refused) | ⏳ |
+| 1.16b | `{name: value}` variables: preview works; a missing name is refused locally | ⏳ |
+| 1.16c | a single list section still gets a title (Meta requires it) | ⏳ |
+| 1.16d | product tap (`interactive.type: product`, price ÷ 1000) and the second address-reply shape | ⏳ |
+| 1.16e | unsigned events reach only handlers that opt in (`accepts_unsigned`) | ⏳ |
+| 1.16f | a handler that commits and then fails does not stop the others | ⏳ |
+| 1.16g | Flow template button: lowercase `navigate`, first screen required, Flow must be Published | ⏳ |
+| 1.16h | `test_endpoint_guards` still passes (stale `save_flow_data` entry removed) | ⏳ |
+
+### Live with Meta
+
+Sending interactive messages:
+
+| # | Check | How | Expected | Result |
+|---|---|---|---|---|
+| 1.17 | Reply buttons, list, CTA link to the test phone (window open) | L | each shows correctly; the taps come back with our ids | ⏳ |
+| 1.18 | Product, product list, **product carousel**, catalogue message (catalogue linked) | L | prices and images from the catalogue. The carousel payload shape is from Meta's docs and has not been seen live yet. | ⏳ |
+| 1.19 | Add to cart → send order | L | Excom Message type Order with items and total | ⏳ |
+| 1.20 | Flow (draft, test number) with prefilled dropdown data | L | the dropdown shows the per-message items; the answer arrives with our flow_token. **Check:** Meta's doc now says `flow_action_payload.data` is a JSON *string*; excom sends an object, which has worked historically. If Meta rejects it, switch to `json.dumps(data)` in `whatsapp_interactive.flow`. | ⏳ |
+| 1.21 | Address form to a +91 test number | L | form opens; the reply is parsed into a 📍 address | ⏳ |
+| 1.22 | Location request | L | the shared pin is parsed | ⏳ |
+| 1.23 | Typing indicator | L | "typing…" shows until the reply | ⏳ |
+
+Templates:
+
+| # | Check | How | Expected | Result |
+|---|---|---|---|---|
+| 1.24 | Create a NAMED template (e.g. `{{date}}`, `{{summary}}`) with 3 quick replies | L | Meta approves; a send with payloads delivers; a tap returns the payload | ⏳ |
+| 1.25 | Template with a Flow button (published Flow) | L | approved; a tap opens the Flow with our flow_token | ⏳ |
+| 1.26 | WhatsApp Flow → "Send test" | L | a real Flow message arrives (it used to send plain text and error) | ⏳ |
+
+| 1.27 | Frontend shows an "Order" message | L | after `cd frontend && yarn build` (the type was added to `messages.ts`), an order renders as its item list | ⏳ |
+| 1.28 | Run code before `bench migrate` | M | an order is still stored (as Interactive), not lost | ⏳ |
+
+### Known gaps (not in Phase 1)
+
+- **Endpoint (data_exchange) Flows:** not supported. Meta encrypts those requests (RSA/AES) and excom does not decrypt them. HLD D11 uses static Flows only.
+- **Media-card carousel (our own images):** not built. The product carousel covers HLD-005.
+- **Agent UI** to compose interactive messages: not built. Phase 2/3 features send them from code.
+- **Named URL-button parameters** (`parameter_name` on a dynamic URL button) are not added. This only matters if a URL contains a named placeholder.
+- **Flow endpoint:** POSTs are refused unless signed; encrypted requests are refused with "not supported yet".

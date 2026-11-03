@@ -13,7 +13,10 @@
   "phone_number",
   "website_url",
   "example_url",
-  "url_type"
+  "url_type",
+  "flow",
+  "flow_action",
+  "navigate_screen"
  ],
  "fields": [
   {
@@ -55,12 +58,34 @@
    "fieldname": "example_url",
    "fieldtype": "Data",
    "label": "Example URL"
+  },
+  {
+   "depends_on": "eval:doc.button_type=='Flow'",
+   "fieldname": "flow",
+   "fieldtype": "Link",
+   "label": "Flow",
+   "options": "WhatsApp Flow"
+  },
+  {
+   "default": "NAVIGATE",
+   "depends_on": "eval:doc.button_type=='Flow'",
+   "fieldname": "flow_action",
+   "fieldtype": "Select",
+   "label": "Flow Action",
+   "options": "NAVIGATE\nDATA_EXCHANGE"
+  },
+  {
+   "depends_on": "eval:doc.button_type=='Flow' && doc.flow_action=='NAVIGATE'",
+   "fieldname": "navigate_screen",
+   "fieldtype": "Data",
+   "label": "First Screen",
+   "description": "Screen id the Flow opens on (NAVIGATE flows)"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2025-09-09 02:32:30.359644",
+ "modified": "2026-11-03 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "WhatsApp Button",

@@ -192,6 +192,8 @@ def _handle_messages(change: dict, entry: dict) -> None:
 		contact = _contact_for(message, contacts)
 		if message.get("type") == "system":
 			_handle_system_message(message, contact, channel_account)
+			if _signed():
+				_dispatch_system(message, channel_account)
 			continue
 		_process_inbound_message(message, (contact.get("profile") or {}).get("name"), channel_account, account_name, contact=contact)
 	if value.get("statuses"):
@@ -604,63 +606,9 @@ def _process_inbound_message(message, sender_profile_name, channel_account, acco
 	is_reply = bool(message.get("context") and "forwarded" not in message.get("context", {}))
 	reply_to_id = message["context"]["id"] if is_reply else ""
 
-	content_text = ""
-	content_json = message
-	media_file = ""
-	excom_msg_type = "Text"
-
-	type_map = {
-		"text": "Text",
-		"image": "Image",
-		"video": "Video",
-		"audio": "Audio",
-		"document": "Document",
-		"sticker": "Sticker",
-		"location": "Location",
-		"reaction": "Reaction",
-		"button": "Button",
-		"interactive": "Interactive",
-		"contacts": "Contact",
-	}
-	excom_msg_type = type_map.get(message_type, "Text")
-
-	if message_type == "text":
-		content_text = message.get("text", {}).get("body", "")
-
-	elif message_type == "reaction":
-		content_text = message.get("reaction", {}).get("emoji", "")
-		reply_to_id = message.get("reaction", {}).get("message_id", "")
-
-	elif message_type == "interactive":
-		interactive_data = message.get("interactive", {})
-		interactive_type = interactive_data.get("type")
-
-		if interactive_type == "button_reply":
-			content_text = interactive_data.get("button_reply", {}).get("title", "")
-			excom_msg_type = "Button"
-		elif interactive_type == "list_reply":
-			content_text = interactive_data.get("list_reply", {}).get("title", "")
-			excom_msg_type = "Interactive"
-		elif interactive_type == "nfm_reply":
-			nfm_reply = interactive_data.get("nfm_reply", {})
-			try:
-				flow_response = json.loads(nfm_reply.get("response_json", "{}"))
-			except json.JSONDecodeError:
-				flow_response = {}
-			parts = [f"{k}: {v}" for k, v in flow_response.items() if v]
-			content_text = ", ".join(parts) if parts else "Flow completed"
-			content_json = {"interactive": interactive_data, "flow_response": flow_response}
-			excom_msg_type = "Flow"
-
-	elif message_type in ("image", "audio", "video", "document", "sticker"):
-		content_text = message.get(message_type, {}).get("caption", "")
-		media_file = _download_media(message, message_type, channel_account)
-
-	elif message_type == "button":
-		content_text = message.get("button", {}).get("text", "")
-
-	else:
-		content_text = str(message.get(message_type, {}).get(message_type, ""))
+	content_text, content_json, media_file, excom_msg_type, kind, payload = _parse_inbound(message, message_type, channel_account)
+	if message_type == "reaction":
+		reply_to_id = (message.get("reaction") or {}).get("message_id", "")
 
 	message_name = ingest_inbound_message(
 		phone=phone,
@@ -688,6 +636,152 @@ def _process_inbound_message(message, sender_profile_name, channel_account, acco
 	# message itself is stored, so the inbox still shows what they wrote.
 	if message_name and excom_msg_type in ("Text", "Button") and content_text:
 		_apply_consent_keyword(frappe.db.get_value("Excom Message", message_name, "omni_identity"), content_text, message, channel_account)
+
+	# Every newly stored message goes to the features registered in excom_inbound_handlers.
+	if message_name:
+		_dispatch_inbound(message_name, kind, content_text, payload, provider_msg_id, channel_account)
+
+
+def _parse_inbound(message: dict, message_type: str, channel_account) -> tuple:
+	"""(content_text, content_json, media_file, Excom message_type, dispatch kind, payload) for one message.
+
+	The text is what the inbox shows; the payload is what code acts on — the id of the button or
+	row tapped (never its title), the template quick-reply payload, the parsed Flow answer, the
+	address, the location or the cart order.
+	"""
+	type_map = {
+		"text": "Text", "image": "Image", "video": "Video", "audio": "Audio", "document": "Document",
+		"sticker": "Sticker", "location": "Location", "reaction": "Reaction", "button": "Button",
+		"interactive": "Interactive", "contacts": "Contact", "order": "Order",
+	}
+	excom_msg_type = type_map.get(message_type, "Text")
+	if excom_msg_type == "Order" and "Order" not in (frappe.get_meta("Excom Message").get_field("message_type").options or "").split("\n"):
+		excom_msg_type = "Interactive"  # code deployed before `bench migrate`: keep the order, not the label
+	content_text, content_json, media_file, kind, payload = "", message, "", "text" if message_type == "text" else "other", None
+
+	if message_type == "text":
+		content_text = (message.get("text") or {}).get("body", "")
+
+	elif message_type == "reaction":
+		content_text = (message.get("reaction") or {}).get("emoji", "")
+		kind = "reaction"
+
+	elif message_type == "interactive":
+		data = message.get("interactive") or {}
+		itype = data.get("type")
+		if itype == "product":
+			# the person asked about one product from a catalogue message (prices are ×1000)
+			prod = data.get("product") or {}
+			price = _num(prod.get("price_amount")) / 1000 if prod.get("price_amount") is not None else None
+			content_text = "🛍 " + " · ".join(str(p) for p in (prod.get("title") or prod.get("retailer_id"), f"{prod.get('currency_code') or ''} {price:,.2f}".strip() if price is not None else "") if p)
+			excom_msg_type, kind, payload = "Interactive", "product", prod
+		elif itype == "button_reply":
+			reply = data.get("button_reply") or {}
+			content_text, excom_msg_type, kind, payload = reply.get("title", ""), "Button", "button", reply.get("id", "")
+		elif itype == "list_reply":
+			reply = data.get("list_reply") or {}
+			# the title only: broadcast metrics count the tap by its label (the description stays in content_json)
+			content_text, excom_msg_type, kind, payload = reply.get("title", ""), "Interactive", "list", reply.get("id", "")
+		elif itype == "nfm_reply" or data.get("nfm_reply"):
+			nfm = data.get("nfm_reply") or {}
+			try:
+				response = json.loads(nfm.get("response_json") or "{}")
+			except (json.JSONDecodeError, TypeError):
+				response = {}
+			if not isinstance(response, dict):
+				response = {"value": response}
+			content_json = {"interactive": data, "flow_response": response}
+			payload = response
+			# Meta documents two address-reply shapes; both carry `values` and no flow_token
+			is_address = nfm.get("name") == "address_message" or data.get("action") == "address_message" or (
+				isinstance(response.get("values"), dict) and "flow_token" not in response)
+			if is_address:
+				values = response.get("values") if isinstance(response.get("values"), dict) else response
+				content_text = "📍 " + ", ".join(str(values.get(k)) for k in ("name", "house_number", "floor_number", "tower_number", "building_name", "address", "landmark_area", "city", "state", "in_pin_code") if values.get(k))
+				excom_msg_type, kind = "Location", "address"
+			else:
+				shown = {k: v for k, v in response.items() if v and k != "flow_token"}
+				content_text = ", ".join(f"{k}: {v}" for k, v in shown.items()) or "Flow completed"
+				excom_msg_type, kind = "Flow", "flow"
+
+	elif message_type in ("image", "audio", "video", "document", "sticker"):
+		content_text = (message.get(message_type) or {}).get("caption", "")
+		media_file = _download_media(message, message_type, channel_account)
+		kind = "media"
+
+	elif message_type == "button":
+		# a template quick-reply tap: `payload` is what excom set at send time
+		button = message.get("button") or {}
+		content_text, kind, payload = button.get("text", ""), "button", button.get("payload") or button.get("text", "")
+
+	elif message_type == "order":
+		order = message.get("order") or {}
+		items = order.get("product_items") or []
+		total = sum(_num(i.get("item_price")) * _num(i.get("quantity")) for i in items)
+		currency = (items[0].get("currency") if items else "") or ""
+		lines = [f"{i.get('quantity')} × {i.get('product_retailer_id')}" for i in items]
+		content_text = f"🛒 Order: {len(items)} item(s){f' · {currency} {total:,.2f}' if items else ''}" + (f"\n{chr(10).join(lines)}" if lines else "") + (f"\n{order.get('text')}" if order.get("text") else "")
+		kind, payload = "order", order
+
+	elif message_type == "location":
+		loc = message.get("location") or {}
+		label = loc.get("name") or loc.get("address") or ""
+		content_text = f"📍 {label} ({loc.get('latitude')}, {loc.get('longitude')})".replace("📍  (", "📍 (")
+		kind, payload = "location", loc
+
+	elif message_type == "contacts":
+		people = message.get("contacts") or []
+		content_text = ", ".join(((c.get("name") or {}).get("formatted_name") or "") for c in people) or "Contact card"
+		kind = "contact"
+
+	else:
+		content_text = str((message.get(message_type) or {}).get(message_type, "") if isinstance(message.get(message_type), dict) else message.get(message_type) or "")
+
+	return content_text, content_json, media_file, excom_msg_type, kind, payload
+
+
+def _num(value) -> float:
+	try:
+		return float(value or 0)
+	except (TypeError, ValueError):
+		return 0.0
+
+
+def _dispatch_system(message: dict, channel_account) -> None:
+	"""System messages (number / user id changes) have no Excom Message; handlers get the change."""
+	try:
+		from excom.excom.services.inbound_dispatch import dispatch
+
+		dispatch({
+			"kind": "system", "message": "", "identity": "", "thread": "", "reply_to": "",
+			"account": channel_account.name, "waba": channel_account.get("wa_business_id") or "",
+			"provider_message_id": message.get("id") or "", "text": "", "payload": message.get("system") or {},
+			"signed": True,
+		})
+	except Exception:
+		frappe.log_error(title="Excom: system message dispatch failed", message=frappe.get_traceback())
+
+
+def _dispatch_inbound(message_name: str, kind: str, text: str, payload, provider_msg_id: str, channel_account) -> None:
+	try:
+		msg = frappe.db.get_value("Excom Message", message_name, ["omni_identity", "thread", "reply_to"], as_dict=True) or {}
+		from excom.excom.services.inbound_dispatch import dispatch
+
+		dispatch({
+			"kind": kind,
+			"message": message_name,
+			"identity": msg.get("omni_identity"),
+			"thread": msg.get("thread"),
+			"reply_to": msg.get("reply_to") or "",
+			"account": channel_account.name,
+			"waba": channel_account.get("wa_business_id") or "",
+			"provider_message_id": provider_msg_id,
+			"text": text,
+			"payload": payload,
+			"signed": _signed(),
+		})
+	except Exception:
+		frappe.log_error(title="Excom: inbound dispatch failed", message=frappe.get_traceback())
 
 
 def _attribute_referral(message_name, message, channel_account, display_name) -> None:

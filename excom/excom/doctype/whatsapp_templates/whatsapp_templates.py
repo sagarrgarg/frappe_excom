@@ -47,19 +47,28 @@ class WhatsAppTemplates(Document):
             self.update_template()
 
     def validate_button_count(self):
-        """Enforce Meta's button limits: max 3 Quick Reply, max 2 CTA."""
+        """Meta's button rules: ≤ 10 buttons, ≤ 10 Quick Reply, ≤ 2 Visit Website, ≤ 1 Call Phone,
+        ≤ 1 Flow, quick replies next to each other."""
         if not self.buttons:
             return
-        quick_reply = sum(1 for b in self.buttons if b.button_type == "Quick Reply")
-        cta = sum(1 for b in self.buttons if b.button_type in ("Visit Website", "Call Phone"))
-        if quick_reply > 3:
-            frappe.throw(
-                _("Quick Reply buttons cannot exceed 3 (found {0})").format(quick_reply)
-            )
-        if cta > 2:
-            frappe.throw(
-                _("CTA buttons (Visit Website / Call Phone) cannot exceed 2 (found {0})").format(cta)
-            )
+        count = lambda kind: sum(1 for b in self.buttons if b.button_type == kind)
+        limits = ((None, 10, _("buttons")), ("Quick Reply", 10, _("Quick Reply buttons")),
+                  ("Visit Website", 2, _("Visit Website buttons")), ("Call Phone", 1, _("Call Phone buttons")),
+                  ("Flow", 1, _("Flow buttons")))
+        for kind, limit, label in limits:
+            n = len(self.buttons) if kind is None else count(kind)
+            if n > limit:
+                frappe.throw(_("A template can have at most {0} {1} (found {2})").format(limit, label, n))
+        for b in self.buttons:
+            if len(b.button_label or "") > 25:
+                frappe.throw(_("Button label '{0}' is longer than 25 characters").format(b.button_label))
+        # Meta: quick replies must sit together (QR, QR, URL is valid; QR, URL, QR is not)
+        kinds = [b.button_type == "Quick Reply" for b in self.buttons]
+        first, last = (kinds.index(True), len(kinds) - 1 - kinds[::-1].index(True)) if any(kinds) else (0, -1)
+        if any(kinds) and not all(kinds[first:last + 1]):
+            frappe.throw(_("Quick Reply buttons must be next to each other (Meta rejects a template that splits them)."))
+        if len(self.buttons) > 3:
+            frappe.msgprint(_("More than 3 buttons: WhatsApp shows 2 plus 'See all options', and WhatsApp desktop does not show the template."), indicator="orange", alert=True)
 
     def _validate_body_variable_samples_json(self) -> None:
         """Ensure ``body_variable_samples`` is a JSON array of scalars when set."""
@@ -165,7 +174,7 @@ class WhatsAppTemplates(Document):
             "WhatsApp Button",
             filters={"parent": self.name, "parenttype": self.doctype},
             fields=["button_type", "button_label", "website_url", "example_url",
-                     "url_type", "phone_number"],
+                     "url_type", "phone_number", "flow", "flow_action", "navigate_screen"],
             order_by="idx asc",
         )
         new_buttons = [
@@ -173,6 +182,7 @@ class WhatsAppTemplates(Document):
                 "button_type": b.button_type, "button_label": b.button_label,
                 "website_url": b.get("website_url"), "example_url": b.get("example_url"),
                 "url_type": b.get("url_type"), "phone_number": b.get("phone_number"),
+                "flow": b.get("flow"), "flow_action": b.get("flow_action"), "navigate_screen": b.get("navigate_screen"),
             }
             for b in (self.buttons or [])
         ]
@@ -235,42 +245,10 @@ class WhatsAppTemplates(Document):
             "name": self.actual_name,
             "language": self.language_code,
             "category": self.category,
-            "components": [],
+            "components": self.meta_components(),
         }
-
-        body = {
-            "type": "BODY",
-            "text": self.template,
-        }
-        samples = get_body_variable_samples(self)
-        if samples:
-            body["example"] = {"body_text": [samples]}
-
-        data["components"].append(body)
-        if self.header_type:
-            data["components"].append(self.get_header())
-
-        if self.footer:
-            data["components"].append({"type": "FOOTER", "text": self.footer})
-
-        if self.buttons:
-            button_block = {"type": "BUTTONS", "buttons": []}
-            for btn in self.buttons:
-                b = {"type": btn.button_type, "text": btn.button_label}
-
-                if btn.button_type == "Visit Website":
-                    b["type"] = "URL"
-                    b["url"] = btn.website_url
-                    if btn.url_type == "Dynamic" and btn.example_url:
-                        b["example"] = [v.strip() for v in btn.example_url.split(",")]
-                elif btn.button_type == "Call Phone":
-                    b["type"] = "PHONE_NUMBER"
-                    b["phone_number"] = btn.phone_number
-                elif btn.button_type == "Quick Reply":
-                    b["type"] = "QUICK_REPLY"
-
-                button_block["buttons"].append(b)
-            data["components"].append(button_block)
+        if self.uses_named_parameters():
+            data["parameter_format"] = "NAMED"
 
         try:
             response = make_post_request(
@@ -298,41 +276,9 @@ class WhatsAppTemplates(Document):
             return
 
         creds = self._get_creds()
-        data = {"components": []}
-
-        body = {
-            "type": "BODY",
-            "text": self.template,
-        }
-        samples = get_body_variable_samples(self)
-        if samples:
-            body["example"] = {"body_text": [samples]}
-        data["components"].append(body)
-
-        if self.header_type:
-            data["components"].append(self.get_header())
-
-        if self.footer:
-            data["components"].append({"type": "FOOTER", "text": self.footer})
-
-        if self.buttons:
-            button_block = {"type": "BUTTONS", "buttons": []}
-            for btn in self.buttons:
-                b = {"type": btn.button_type, "text": btn.button_label}
-
-                if btn.button_type == "Visit Website":
-                    b["type"] = "URL"
-                    b["url"] = btn.website_url
-                    if btn.url_type == "Dynamic" and btn.example_url:
-                        b["example"] = [v.strip() for v in btn.example_url.split(",")]
-                elif btn.button_type == "Call Phone":
-                    b["type"] = "PHONE_NUMBER"
-                    b["phone_number"] = btn.phone_number
-                elif btn.button_type == "Quick Reply":
-                    b["type"] = "QUICK_REPLY"
-
-                button_block["buttons"].append(b)
-            data["components"].append(button_block)
+        data = {"components": self.meta_components()}
+        if self.uses_named_parameters():
+            data["parameter_format"] = "NAMED"
 
         try:
             make_post_request(
@@ -374,6 +320,65 @@ class WhatsAppTemplates(Document):
                     title=_("Template Delete Failed"),
                 )
 
+    def uses_named_parameters(self) -> bool:
+        """Meta NAMED parameters ({{rate}}) vs POSITIONAL ({{1}}): decided by the body and header text."""
+        from excom.excom.whatsapp_template_utils import ordered_placeholder_names
+
+        names = ordered_placeholder_names(self.template or "")
+        if is_text_header(self.header_type):
+            names += ordered_placeholder_names(self.header or "")
+        return bool(names) and not all(n.isdigit() for n in names)
+
+    def meta_components(self) -> list:
+        """BODY / HEADER / FOOTER / BUTTONS for creating or updating the template on Meta."""
+        from excom.excom.whatsapp_template_utils import ordered_placeholder_names
+
+        named = self.uses_named_parameters()
+        body = {"type": "BODY", "text": self.template}
+        samples = get_body_variable_samples(self)
+        if samples:
+            if named:
+                names = ordered_placeholder_names(self.template or "")
+                body["example"] = {"body_text_named_params": [
+                    {"param_name": n, "example": str(samples[i]) if i < len(samples) else n} for i, n in enumerate(names)
+                ]}
+            else:
+                body["example"] = {"body_text": [samples]}
+        components = [body]
+        if self.header_type:
+            components.append(self.get_header())
+        if self.footer:
+            components.append({"type": "FOOTER", "text": self.footer})
+        if self.buttons:
+            components.append({"type": "BUTTONS", "buttons": [self._meta_button(btn) for btn in self.buttons]})
+        return components
+
+    def _meta_button(self, btn) -> dict:
+        b = {"type": btn.button_type, "text": btn.button_label}
+        if btn.button_type == "Visit Website":
+            b["type"] = "URL"
+            b["url"] = btn.website_url
+            if btn.url_type == "Dynamic" and btn.example_url:
+                b["example"] = [v.strip() for v in btn.example_url.split(",")]
+        elif btn.button_type == "Call Phone":
+            b["type"] = "PHONE_NUMBER"
+            b["phone_number"] = btn.phone_number
+        elif btn.button_type == "Quick Reply":
+            b["type"] = "QUICK_REPLY"
+        elif btn.button_type == "Flow":
+            flow = frappe.db.get_value("WhatsApp Flow", btn.get("flow"), ["flow_id", "status"], as_dict=True) if btn.get("flow") else None
+            if not flow or not flow.flow_id:
+                frappe.throw(_("Flow button '{0}': pick a WhatsApp Flow that exists on WhatsApp").format(btn.button_label))
+            if flow.status != "Published":
+                frappe.throw(_("Flow button '{0}': publish the Flow first (it is {1})").format(btn.button_label, flow.status or "Draft"))
+            action = (btn.get("flow_action") or "NAVIGATE").lower()
+            b = {"type": "FLOW", "text": btn.button_label, "flow_id": flow.flow_id, "flow_action": action}
+            if action == "navigate":
+                if not btn.get("navigate_screen"):
+                    frappe.throw(_("Flow button '{0}': set the First Screen (Meta requires it for navigate)").format(btn.button_label))
+                b["navigate_screen"] = btn.navigate_screen
+        return b
+
     def get_header(self):
         """Build Meta API header component for template create/update.
 
@@ -388,7 +393,15 @@ class WhatsAppTemplates(Document):
             header["text"] = self.header
             h_samples = get_header_variable_samples(self)
             if h_samples:
-                header["example"] = {"header_text": h_samples}
+                from excom.excom.whatsapp_template_utils import ordered_placeholder_names
+
+                names = ordered_placeholder_names(self.header or "")
+                if names and not all(n.isdigit() for n in names):
+                    header["example"] = {"header_text_named_params": [
+                        {"param_name": n, "example": str(h_samples[i]) if i < len(h_samples) else n} for i, n in enumerate(names)
+                    ]}
+                else:
+                    header["example"] = {"header_text": h_samples}
         elif fmt == "LOCATION":
             pass
         elif hasattr(self, "_media_id") and self._media_id:
@@ -594,7 +607,10 @@ def _store_templates(response: dict, acct_names: list, errors: list = None, repr
                     elif button["type"] == "PHONE_NUMBER":
                         btn["phone_number"] = button.get("phone_number")
                     elif button["type"] == "FLOW":
-                        btn["flow"] = button.get("flow")
+                        # Meta returns flow_id; link the local Flow so later edits keep the button
+                        btn["flow"] = frappe.db.get_value("WhatsApp Flow", {"flow_id": str(button.get("flow_id") or "")}, "name") if button.get("flow_id") else None
+                        btn["flow_action"] = (button.get("flow_action") or "navigate").upper()
+                        btn["navigate_screen"] = button.get("navigate_screen") or ""
 
                     doc.append("buttons", btn)
 
