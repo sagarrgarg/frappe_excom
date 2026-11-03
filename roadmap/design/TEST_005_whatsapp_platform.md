@@ -12,7 +12,10 @@ Every phase of HLD-005 (the WhatsApp platform) adds rows here. A row stays until
 
 **Regression found and fixed:** commit f4d2759 (Phase 0) accidentally deleted the media functions from `whatsapp_service.py` (`media_reference`, `upload_media`, `send_media_message`, `send_sticker_message`). Image, document and sticker sends, template media headers and the delivery-retry watchdog would all have failed. They were restored in the Phase 2 commit. Test 0.26 (full suite, including `test_whatsapp_media`) covers this.
 
-**Blocked right now:** MariaDB is stopped on the dev machine, so nothing below has run (except the rows marked ✅: static checks and the frontend unit tests). Phase 0 was committed untested at the owner's request (2026-11-03).
+**Test run 2026-11-04 (frappe.localhost, MariaDB, after `bench migrate`):**
+- Every automated row below passes: 190 tests across the WhatsApp modules (platform, messaging, media, catalogue, template sync, template types, account, calling), patches, endpoint guards, inbound-as-guest and import targets.
+- Full excom suite: 471 tests. The 48 that fail (ads bills, ads lead dashboard, core flows, identity naming and a few others) fail identically on the code from before HLD-005 (2c268d0). The causes are this site's setup: no WhatsApp account or conversation on the site, a mandatory Location on Purchase Invoice and HSN codes from other apps. They are not caused by this work.
+- Live rows (L) with Meta are still open: they need a test WABA and number.
 
 ---
 
@@ -54,53 +57,53 @@ Version, errors and routing:
 
 | # | Test | Result |
 |---|---|---|
-| 0.5 | graph version floor; calls use v26 even with v21 stored | ⏳ |
-| 0.6 | error classes; rate-limit error is still an ExcomRateLimitError and keeps retry_after; 135000 never pauses a campaign | ⏳ |
-| 0.7 | marketing goes to /marketing_messages when enabled (product policy; activity sharing only when chosen); utility always on /messages | ⏳ |
-| 0.8 | 131063 retries once on /marketing_messages and remembers the category | ⏳ |
-| 0.9 | held_for_quality_assessment is recorded on the message | ⏳ |
+| 0.5 | graph version floor; calls use v26 even with v21 stored | ✅ 2026-11-04 |
+| 0.6 | error classes; rate-limit error is still an ExcomRateLimitError and keeps retry_after; 135000 never pauses a campaign | ✅ 2026-11-04 |
+| 0.7 | marketing goes to /marketing_messages when enabled (product policy; activity sharing only when chosen); utility always on /messages | ✅ 2026-11-04 |
+| 0.8 | 131063 retries once on /marketing_messages and remembers the category | ✅ 2026-11-04 |
+| 0.9 | held_for_quality_assessment is recorded on the message | ✅ 2026-11-04 |
 
 Consent gate:
 
 | # | Test | Result |
 |---|---|---|
-| 0.10 | marketing opt-out blocks marketing only; STOP blocks every template; unknown category is gated as marketing | ⏳ |
-| 0.11 | the gate sees an opt-out on a duplicate record; a merge keeps the opt-out and writes a ledger row | ⏳ |
-| 0.12 | a business-scoped user id is sent as `recipient` | ⏳ |
+| 0.10 | marketing opt-out blocks marketing only; STOP blocks every template; unknown category is gated as marketing | ✅ 2026-11-04 |
+| 0.11 | the gate sees an opt-out on a duplicate record; a merge keeps the opt-out and writes a ledger row | ✅ 2026-11-04 |
+| 0.12 | a business-scoped user id is sent as `recipient` | ✅ 2026-11-04 |
 
 Statuses and consent webhooks:
 
 | # | Test | Result |
 |---|---|---|
-| 0.13 | status batch: every entry applied; never goes backwards; pricing stored | ⏳ |
-| 0.14 | 131050 failure → marketing opt-out + ledger row | ⏳ |
-| 0.15 | user_preferences stop → resume (scoped to the account) | ⏳ |
-| 0.16 | unsigned payload cannot change consent | ⏳ |
-| 0.17 | "Stop promotions" button stops marketing only; START only undoes the person's own STOP | ⏳ |
+| 0.13 | status batch: every entry applied; never goes backwards; pricing stored | ✅ 2026-11-04 |
+| 0.14 | 131050 failure → marketing opt-out + ledger row | ✅ 2026-11-04 |
+| 0.15 | user_preferences stop → resume (scoped to the account) | ✅ 2026-11-04 |
+| 0.16 | unsigned payload cannot change consent | ✅ 2026-11-04 |
+| 0.17 | "Stop promotions" button stops marketing only; START only undoes the person's own STOP | ✅ 2026-11-04 |
 
 Identity:
 
 | # | Test | Result |
 |---|---|---|
-| 0.18 | username-only sender gets an identity; the same user id with a number joins it | ⏳ |
-| 0.19 | user_changed_number relinks; the old number is history only | ⏳ |
-| 0.20 | recycled number → new identity, old record releases the number, both flagged | ⏳ |
+| 0.18 | username-only sender gets an identity; the same user id with a number joins it | ✅ 2026-11-04 |
+| 0.19 | user_changed_number relinks; the old number is history only | ✅ 2026-11-04 |
+| 0.20 | recycled number → new identity, old record releases the number, both flagged | ✅ 2026-11-04 |
 
 Account and template events:
 
 | # | Test | Result |
 |---|---|---|
-| 0.21 | template_category_update (done) changes routing; advance notice does not | ⏳ |
-| 0.22 | number quality / capability / MM_LITE_TERMS_SIGNED update the account; account_alerts reads `alert_info` | ⏳ |
+| 0.21 | template_category_update (done) changes routing; advance notice does not | ✅ 2026-11-04 |
+| 0.22 | number quality / capability / MM_LITE_TERMS_SIGNED update the account; account_alerts reads `alert_info` | ✅ 2026-11-04 |
 
 Ledger, broadcasts and analytics:
 
 | # | Test | Result |
 |---|---|---|
-| 0.23 | consent ledger is append-only | ⏳ |
-| 0.24 | broadcast: opted-out person skipped, campaign pauses on 132015, resume sends nobody twice | ⏳ |
-| 0.25 | analytics overview no longer asks for conversation_analytics | ⏳ |
-| 0.26 | **full excom suite still passes** (send_transactional, auto-ack, watchdog, subscribers, identity naming…) | ⏳ |
+| 0.23 | consent ledger is append-only | ✅ 2026-11-04 |
+| 0.24 | broadcast: opted-out person skipped, campaign pauses on 132015, resume sends nobody twice | ✅ 2026-11-04 |
+| 0.25 | analytics overview no longer asks for conversation_analytics | ✅ 2026-11-04 |
+| 0.26 | **full excom suite still passes** (send_transactional, auto-ack, watchdog, subscribers, identity naming…) | ✅ 2026-11-04 |
 
 ### Live with Meta (test WABA + test number)
 
@@ -154,30 +157,30 @@ bench --site frappe.localhost execute excom.excom.tests.run.run --kwargs "{'modu
 
 | # | Test | Result |
 |---|---|---|
-| 1.1 | reply buttons: 1–3, titles ≤ 20 and unique | ⏳ |
-| 1.2 | list: at most 10 rows in total across sections | ⏳ |
-| 1.3 | product list / product carousel (2–10) / Flow with first-screen data and draft mode / CTA URL must be http(s) | ⏳ |
-| 1.4 | send: interactive payload, quoted reply (`context`), recipient | ⏳ |
-| 1.5 | address form refused outside India | ⏳ |
-| 1.6 | send to thread: refused when the 24 h window is closed; recorded in the inbox when open | ⏳ |
-| 1.7 | STOP blocks interactive messages too | ⏳ |
-| 1.8 | typing indicator + read receipt payload | ⏳ |
-| 1.9 | named template: `parameter_name` on every parameter; quick-reply payloads per button | ⏳ |
-| 1.10 | positional templates are sent exactly as before | ⏳ |
-| 1.11 | template creation: `parameter_format: NAMED`, named examples, real FLOW button (flow_id, action, screen) | ⏳ |
-| 1.12 | quick replies split by another button are rejected | ⏳ |
-| 1.13 | cart order: stored as "Order" with items and total; dispatched with the order; a failing handler does not stop the next | ⏳ |
-| 1.14 | button / list / template quick-reply taps are dispatched by id or payload, never by title | ⏳ |
-| 1.15 | Flow answer (flow_token kept out of the inbox text), address form, location | ⏳ |
-| 1.16 | Flow endpoint keeps partial answers in cache, logs nothing personal | ⏳ |
-| 1.16a | Meta button limits (2 links + 1 call + up to 10 quick replies; 2 call buttons refused) | ⏳ |
-| 1.16b | `{name: value}` variables: preview works; a missing name is refused locally | ⏳ |
-| 1.16c | a single list section still gets a title (Meta requires it) | ⏳ |
-| 1.16d | product tap (`interactive.type: product`, price ÷ 1000) and the second address-reply shape | ⏳ |
-| 1.16e | unsigned events reach only handlers that opt in (`accepts_unsigned`) | ⏳ |
-| 1.16f | a handler that commits and then fails does not stop the others | ⏳ |
-| 1.16g | Flow template button: lowercase `navigate`, first screen required, Flow must be Published | ⏳ |
-| 1.16h | `test_endpoint_guards` still passes (stale `save_flow_data` entry removed) | ⏳ |
+| 1.1 | reply buttons: 1–3, titles ≤ 20 and unique | ✅ 2026-11-04 |
+| 1.2 | list: at most 10 rows in total across sections | ✅ 2026-11-04 |
+| 1.3 | product list / product carousel (2–10) / Flow with first-screen data and draft mode / CTA URL must be http(s) | ✅ 2026-11-04 |
+| 1.4 | send: interactive payload, quoted reply (`context`), recipient | ✅ 2026-11-04 |
+| 1.5 | address form refused outside India | ✅ 2026-11-04 |
+| 1.6 | send to thread: refused when the 24 h window is closed; recorded in the inbox when open | ✅ 2026-11-04 |
+| 1.7 | STOP blocks interactive messages too | ✅ 2026-11-04 |
+| 1.8 | typing indicator + read receipt payload | ✅ 2026-11-04 |
+| 1.9 | named template: `parameter_name` on every parameter; quick-reply payloads per button | ✅ 2026-11-04 |
+| 1.10 | positional templates are sent exactly as before | ✅ 2026-11-04 |
+| 1.11 | template creation: `parameter_format: NAMED`, named examples, real FLOW button (flow_id, action, screen) | ✅ 2026-11-04 |
+| 1.12 | quick replies split by another button are rejected | ✅ 2026-11-04 |
+| 1.13 | cart order: stored as "Order" with items and total; dispatched with the order; a failing handler does not stop the next | ✅ 2026-11-04 |
+| 1.14 | button / list / template quick-reply taps are dispatched by id or payload, never by title | ✅ 2026-11-04 |
+| 1.15 | Flow answer (flow_token kept out of the inbox text), address form, location | ✅ 2026-11-04 |
+| 1.16 | Flow endpoint keeps partial answers in cache, logs nothing personal | ✅ 2026-11-04 |
+| 1.16a | Meta button limits (2 links + 1 call + up to 10 quick replies; 2 call buttons refused) | ✅ 2026-11-04 |
+| 1.16b | `{name: value}` variables: preview works; a missing name is refused locally | ✅ 2026-11-04 |
+| 1.16c | a single list section still gets a title (Meta requires it) | ✅ 2026-11-04 |
+| 1.16d | product tap (`interactive.type: product`, price ÷ 1000) and the second address-reply shape | ✅ 2026-11-04 |
+| 1.16e | unsigned events reach only handlers that opt in (`accepts_unsigned`) | ✅ 2026-11-04 |
+| 1.16f | a handler that commits and then fails does not stop the others | ✅ 2026-11-04 |
+| 1.16g | Flow template button: lowercase `navigate`, first screen required, Flow must be Published | ✅ 2026-11-04 |
+| 1.16h | `test_endpoint_guards` still passes (stale `save_flow_data` entry removed) | ✅ 2026-11-04 |
 
 ### Live with Meta
 
@@ -229,10 +232,10 @@ bench --site frappe.localhost execute excom.excom.tests.run.run --kwargs "{'modu
 
 | # | Test | Result |
 |---|---|---|
-| C.1 | item payload: price "30.00 INR", link, brand, compliance fields; private image or no product URL refused | ⏳ |
-| C.2 | `items_batch` call (form-encoded, upsert), validation errors + `ids_of_invalid_requests`, sync log "Partly Failed" | ⏳ |
-| C.3 | today's price like ERPNext: latest valid_from wins, future and customer-specific prices ignored | ⏳ |
-| C.4 | broadcast messaging budget from the number's tier | ⏳ |
+| C.1 | item payload: price "30.00 INR", link, brand, compliance fields; private image or no product URL refused | ✅ 2026-11-04 |
+| C.2 | `items_batch` call (form-encoded, upsert), validation errors + `ids_of_invalid_requests`, sync log "Partly Failed" | ✅ 2026-11-04 |
+| C.3 | today's price like ERPNext: latest valid_from wins, future and customer-specific prices ignored | ✅ 2026-11-04 |
+| C.4 | broadcast messaging budget from the number's tier | ✅ 2026-11-04 |
 | C.5 | (static) every excom import resolves after the removal | ✅ ran |
 
 ### Live with Meta
@@ -270,45 +273,45 @@ bench --site frappe.localhost execute excom.excom.tests.run.run --kwargs "{'modu
 
 | # | Test | Result |
 |---|---|---|
-| 4.4 | copy-code create payload; example ≤ 20 characters; one copy-code button | ⏳ |
-| 4.5 | LTO create payload (`LIMITED_TIME_OFFER`, no footer); offer text ≤ 16, Marketing only, image/video header, code ≤ 15 | ⏳ |
-| 4.6 | media carousel create payload (card header handle, card body example, card buttons); 2–10 cards, body on all or none, no top-level header, card body ≤ 160 | ⏳ |
-| 4.7 | card samples go through the resumable upload once; unchanged samples are not uploaded again | ⏳ |
-| 4.8 | product carousel (exactly 2 cards at create), catalogue, MPM (text header required), SPM (PRODUCT header), voice call (TTL 1440–43200), call-permission component | ⏳ |
-| 4.9 | Catalog / MPM / SPM buttons refused on other types; no quick replies on catalogue templates | ⏳ |
-| 4.10 | plain templates: type Standard, payload unchanged | ⏳ |
-| 4.11 | sync round-trip for every type; re-sync as plain clears the offer and the cards | ⏳ |
-| 4.12 | an unchanged synced carousel is not posted to Meta; a changed card is | ⏳ |
-| 4.13 | send components per type: LTO expiry + copy code + URL, media cards (media uploaded once per run), product cards (2 created → 4 sent, catalogue from the account), catalogue thumbnail, MPM sections, SPM product header with named body, voice-call override | ⏳ |
-| 4.14 | refused before Meta: no / long coupon, no / past offer end, wrong card count, missing card text or media, MPM over 10 sections / 30 products, missing product, missing catalogue | ⏳ |
-| 4.15 | send to thread with `extras`: copy-code component sent, code in the inbox preview; bad `extras` refused | ⏳ |
-| 4.16 | previews: carousel cards with filled text, MPM product count, call permission | ⏳ |
-| 4.17 | broadcast validation: missing coupon refused; a scheduled offer that ends before the start is refused | ⏳ |
-| 4.18 | library search: `/v26.0/message_template_library`, only the filters given, paging cursor, button inputs listed; unknown topic refused | ⏳ |
-| 4.19 | library create: one POST with `library_template_name` and the button inputs as a JSON array; stored APPROVED with hooks off (no second POST), linked to the account; a name already used is refused | ⏳ |
-| 4.20 | library refusals: non-Utility category, bad name, bad URL, URL variable without an example, bad phone, unknown button type; endpoints refuse non-admins | ⏳ |
-| 4.21 | `test_whatsapp_messaging`, `test_template_sync`, `test_endpoint_guards`, `test_import_targets` still pass | ⏳ |
+| 4.4 | copy-code create payload; example ≤ 20 characters; one copy-code button | ✅ 2026-11-04 |
+| 4.5 | LTO create payload (`LIMITED_TIME_OFFER`, no footer); offer text ≤ 16, Marketing only, image/video header, code ≤ 15 | ✅ 2026-11-04 |
+| 4.6 | media carousel create payload (card header handle, card body example, card buttons); 2–10 cards, body on all or none, no top-level header, card body ≤ 160 | ✅ 2026-11-04 |
+| 4.7 | card samples go through the resumable upload once; unchanged samples are not uploaded again | ✅ 2026-11-04 |
+| 4.8 | product carousel (exactly 2 cards at create), catalogue, MPM (text header required), SPM (PRODUCT header), voice call (TTL 1440–43200), call-permission component | ✅ 2026-11-04 |
+| 4.9 | Catalog / MPM / SPM buttons refused on other types; no quick replies on catalogue templates | ✅ 2026-11-04 |
+| 4.10 | plain templates: type Standard, payload unchanged | ✅ 2026-11-04 |
+| 4.11 | sync round-trip for every type; re-sync as plain clears the offer and the cards | ✅ 2026-11-04 |
+| 4.12 | an unchanged synced carousel is not posted to Meta; a changed card is | ✅ 2026-11-04 |
+| 4.13 | send components per type: LTO expiry + copy code + URL, media cards (media uploaded once per run), product cards (2 created → 4 sent, catalogue from the account), catalogue thumbnail, MPM sections, SPM product header with named body, voice-call override | ✅ 2026-11-04 |
+| 4.14 | refused before Meta: no / long coupon, no / past offer end, wrong card count, missing card text or media, MPM over 10 sections / 30 products, missing product, missing catalogue | ✅ 2026-11-04 |
+| 4.15 | send to thread with `extras`: copy-code component sent, code in the inbox preview; bad `extras` refused | ✅ 2026-11-04 |
+| 4.16 | previews: carousel cards with filled text, MPM product count, call permission | ✅ 2026-11-04 |
+| 4.17 | broadcast validation: missing coupon refused; a scheduled offer that ends before the start is refused | ✅ 2026-11-04 |
+| 4.18 | library search: `/v26.0/message_template_library`, only the filters given, paging cursor, button inputs listed; unknown topic refused | ✅ 2026-11-04 |
+| 4.19 | library create: one POST with `library_template_name` and the button inputs as a JSON array; stored APPROVED with hooks off (no second POST), linked to the account; a name already used is refused | ✅ 2026-11-04 |
+| 4.20 | library refusals: non-Utility category, bad name, bad URL, URL variable without an example, bad phone, unknown button type; endpoints refuse non-admins | ✅ 2026-11-04 |
+| 4.21 | `test_whatsapp_messaging`, `test_template_sync`, `test_endpoint_guards`, `test_import_targets` still pass | ✅ 2026-11-04 |
 | 4.22 | (static) py_compile, undefined-name check, import targets, frontend `tsc --noEmit` | ✅ ran |
-| 4.22a | `_check()` now runs the controller's `validate` and Frappe's own mandatory / select / length checks; handles and links in the fixtures are real length (≥ 190) | ⏳ |
-| 4.22b | real-length handle and 300-character card URL through `insert()`: stored, posted once after the local checks (C1) | ⏳ |
-| 4.22c | saving an existing Standard template unchanged posts nothing; a content field over 140 is refused locally with no Meta post; a real content change posts one update (C1) | ⏳ |
-| 4.22d | sync round-trip: Meta's sample link lands in `header_sample_url`, never in `header_handle` (C2) | ⏳ |
-| 4.22e | one unreadable template in a fetch is skipped and reported; the next one is stored (C2) | ⏳ |
-| 4.22f | synced carousel: unchanged save posts nothing; a content edit with only Meta's link is refused ("attach the sample image again"); with samples attached it posts the new handles; re-sync keeps unchanged cards' samples and drops a changed card's (M1) | ⏳ |
-| 4.22g | named card bodies: `body_text_named_params`, `parameter_format: NAMED`, `parameter_name` at send; mixed `{{1}}` / `{{name}}` refused; card body without samples refused (M2) | ⏳ |
-| 4.22h | re-sync as plain clears the header, footer and buttons (no stale Copy Code row) (L2) | ⏳ |
-| 4.22i | LTO with only a URL button (index 0); Copy Code as the third button (index 2) | ⏳ |
-| 4.22j | product carousel ignores the hidden card button 2; Voice Call text defaults to "Call Now"; other buttons still need text (L4) | ⏳ |
-| 4.22k | malformed extras (sections / cards not objects, `voice_call` text, `ttl_minutes: "abc"`, bad date, extras not an object) → `TemplateTypeError` (LOW) | ⏳ |
-| 4.22l | preview fills `{name: value}` card values in placeholder order (L1) | ⏳ |
-| 4.22m | `get_whatsapp_templates` returns the cards | ⏳ |
-| 4.22n | broadcast run to 3 people: each card image uploaded once (`media_cache`) | ⏳ |
-| 4.22o | offer ends after the first send: broadcast Paused with a comment, 1 sent, 0 failed, no Failed logs (M4) | ⏳ |
-| 4.22p | private file the agent cannot read refused (header and card media, inbox and broadcast owner); `..` paths refused by the check and by `_local_file_bytes`; inbox send refused before Meta (M5) | ⏳ |
-| 4.22q | notification / transactional paths refuse templates that need extras; the voice-call template passes (L3) | ⏳ |
-| 4.22r | library: FORMS button listed as FLOW with no input, skipped in the create payload (M3); a failed read-back returns success with a `note` and no error message (L5); after_insert never runs (replaces the old empty `meta_posts` check) | ⏳ |
-| 4.22s | patch: raw button types mapped, Catalog type set, default texts filled, idempotent; skipped without the tables / columns (`test_patches`) (H1) | ⏳ |
-| 4.22t | library endpoints refuse a signed-in Excom Agent (not just Guest) | ⏳ |
+| 4.22a | `_check()` now runs the controller's `validate` and Frappe's own mandatory / select / length checks; handles and links in the fixtures are real length (≥ 190) | ✅ 2026-11-04 |
+| 4.22b | real-length handle and 300-character card URL through `insert()`: stored, posted once after the local checks (C1) | ✅ 2026-11-04 |
+| 4.22c | saving an existing Standard template unchanged posts nothing; a content field over 140 is refused locally with no Meta post; a real content change posts one update (C1) | ✅ 2026-11-04 |
+| 4.22d | sync round-trip: Meta's sample link lands in `header_sample_url`, never in `header_handle` (C2) | ✅ 2026-11-04 |
+| 4.22e | one unreadable template in a fetch is skipped and reported; the next one is stored (C2) | ✅ 2026-11-04 |
+| 4.22f | synced carousel: unchanged save posts nothing; a content edit with only Meta's link is refused ("attach the sample image again"); with samples attached it posts the new handles; re-sync keeps unchanged cards' samples and drops a changed card's (M1) | ✅ 2026-11-04 |
+| 4.22g | named card bodies: `body_text_named_params`, `parameter_format: NAMED`, `parameter_name` at send; mixed `{{1}}` / `{{name}}` refused; card body without samples refused (M2) | ✅ 2026-11-04 |
+| 4.22h | re-sync as plain clears the header, footer and buttons (no stale Copy Code row) (L2) | ✅ 2026-11-04 |
+| 4.22i | LTO with only a URL button (index 0); Copy Code as the third button (index 2) | ✅ 2026-11-04 |
+| 4.22j | product carousel ignores the hidden card button 2; Voice Call text defaults to "Call Now"; other buttons still need text (L4) | ✅ 2026-11-04 |
+| 4.22k | malformed extras (sections / cards not objects, `voice_call` text, `ttl_minutes: "abc"`, bad date, extras not an object) → `TemplateTypeError` (LOW) | ✅ 2026-11-04 |
+| 4.22l | preview fills `{name: value}` card values in placeholder order (L1) | ✅ 2026-11-04 |
+| 4.22m | `get_whatsapp_templates` returns the cards | ✅ 2026-11-04 |
+| 4.22n | broadcast run to 3 people: each card image uploaded once (`media_cache`) | ✅ 2026-11-04 |
+| 4.22o | offer ends after the first send: broadcast Paused with a comment, 1 sent, 0 failed, no Failed logs (M4) | ✅ 2026-11-04 |
+| 4.22p | private file the agent cannot read refused (header and card media, inbox and broadcast owner); `..` paths refused by the check and by `_local_file_bytes`; inbox send refused before Meta (M5) | ✅ 2026-11-04 |
+| 4.22q | notification / transactional paths refuse templates that need extras; the voice-call template passes (L3) | ✅ 2026-11-04 |
+| 4.22r | library: FORMS button listed as FLOW with no input, skipped in the create payload (M3); a failed read-back returns success with a `note` and no error message (L5); after_insert never runs (replaces the old empty `meta_posts` check) | ✅ 2026-11-04 |
+| 4.22s | patch: raw button types mapped, Catalog type set, default texts filled, idempotent; skipped without the tables / columns (`test_patches`) (H1) | ✅ 2026-11-04 |
+| 4.22t | library endpoints refuse a signed-in Excom Agent (not just Guest) | ✅ 2026-11-04 |
 
 ### Live with Meta (test WABA + test number)
 
@@ -393,48 +396,48 @@ bench --site frappe.localhost execute excom.excom.tests.run.run --kwargs "{'modu
 
 | # | Test | Result |
 |---|---|---|
-| 5.1 | profile limits (about 1–139, address 256, description 512, email ≤ 128 (129 refused), ≤ 2 websites with http(s), vertical enum) refused before Meta | ⏳ |
-| 5.2 | profile read (fields list) and update (only the changed fields + `messaging_product`) | ⏳ |
-| 5.3 | profile photo: `/{app}/uploads` with file_name/length/type → `/upload:<id>` with `OAuth` + `file_offset: 0` + raw bytes → `profile_picture_handle` | ⏳ |
-| 5.4 | photo refused without an App ID or without an uploaded File | ⏳ |
-| 5.5 | block entry: `+<digits>` for numbers, `user_id` for BSUIDs, parent ids refused | ⏳ |
-| 5.6 | block refused when the last message is older than 24 h or there is none (no call); allowed within 24 h; identity flagged | ⏳ |
-| 5.7 | block uses the BSUID of this WhatsApp account | ⏳ |
-| 5.8 | partial failure (`failed_users` + 139100): "24 hours" message, identity not flagged, Error Log per person | ⏳ |
-| 5.9 | unblock: DELETE with the same body, no 24 h rule, flag cleared | ⏳ |
-| 5.10 | block from a conversation (thread API) + block-list paging and identity matching | ⏳ |
-| 5.11 | QR create / update / delete push to `message_qrdls` with the exact bodies; image copied to a File | ⏳ |
-| 5.12 | QR limits: message > 140, format other than PNG/SVG, the 2,000 cap (all refused before Meta) | ⏳ |
-| 5.13 | QR sync from Meta: two pages, new codes added, changed message updated, deleted code dropped, nothing pushed back | ⏳ |
-| 5.14 | ice breaker / command limits (4 × 80, 30 commands, name 32 without spaces, description 1–256, no emoji incl. ⭐ ☎️ ✨, no duplicates, "/" stripped); accents, Devanagari and arrows allowed | ⏳ |
-| 5.15 | conversational body shape; `enable_welcome_message` only when set; a code 100 refusal retried without it (with a warning); no retry without the setting or on another code (190); command names kept on the account | ⏳ |
-| 5.16 | conversational read-back (`?fields=conversational_automation`); the command names read are kept | ⏳ |
-| 5.17 | `parse_command` ("/name args", case, what is not a command) | ⏳ |
-| 5.18 | inbound `/tickets …` (a configured command) stored as Text, dispatched as kind `command`; `request_welcome` stored, dispatched as `welcome`, event logged, 24 h window not opened | ⏳ |
-| 5.19 | PIN must be 6 digits; set → `POST /{phone} {"pin"}`; stored encrypted, not in the column | ⏳ |
-| 5.20 | register needs a PIN; body with pin + region (upper-cased; unknown region refused; stored after success); deregister without a body; attempts logged | ⏳ |
-| 5.21 | 10 register / deregister calls per 72 h: older attempts expire; 133016 recorded and explained; the 11th refused with no call | ⏳ |
-| 5.22 | the PIN never appears in Error Log after a refused register | ⏳ |
-| 5.23 | request_code (query: code_method, language; bad values refused; 136024 explained) and verify_code (code in the body, not the URL) | ⏳ |
-| 5.24 | number webhook: default URL + account verify token, committed before the Meta call (one commit, token readable when Meta is called; reused without a new commit); `webhook.get` accepts that token with `hub.mode=subscribe` and refuses a wrong token, another or no mode, and all-asterisk tokens; clear sends `""`; http, > 200 chars, foreign URL without a token are refused | ⏳ |
-| 5.25 | WABA webhook: set with URL + token; clear = POST with no body | ⏳ |
-| 5.26 | webhook read-back (number, app, subscribed apps) | ⏳ |
-| 5.27 | commerce settings as query parameters, no body; read parsed | ⏳ |
-| 5.28 | link catalogue (form `catalog_id`, digits only; fills `wa_catalog_id`), list linked catalogues | ⏳ |
-| 5.29 | Guest cannot call the settings endpoints (no Meta call) | ⏳ |
-| 5.47 | profile photo: a real binary PNG (not valid UTF-8) is sent as the same `bytes` | ⏳ |
-| 5.48 | profile photo refused for a File the user may not read and that is not attached to this number (no call); allowed once attached to the number | ⏳ |
-| 5.49 | phone number id, WABA id and app id must be digits only (no call) | ⏳ |
-| 5.50 | a block is per number: blocked on another number does not show on this conversation; unblocking here keeps the other block; the summary fields follow the latest block | ⏳ |
-| 5.51 | Excom Agent: block status / block / unblock work on their own conversation; all three are refused (PermissionError, no call) on a conversation they cannot see; the admin `block` endpoint is refused | ⏳ |
-| 5.52 | QR: a code made on Meta is deleted there when the insert / request rolls back | ⏳ |
-| 5.53 | QR `refresh_qr_image`: fresh `qr_image_url.format(PNG)` read; the old File is deleted; one File attached; `qr_image` points at it | ⏳ |
-| 5.54 | QR delete when Meta says the code does not exist (100): the local record goes; any other refusal (190) keeps it | ⏳ |
-| 5.55 | inbound plain `hello` → kind `text`, payload None; `/help me` (not a configured command) → kind `text` with `{"command": "help", "args": "me"}` as a hint; no commands known → text | ⏳ |
-| 5.56 | `request_welcome` on a thread with an open window leaves `last_inbound_at` as it was | ⏳ |
-| 5.57 | register region: not stored when Meta refuses; stored on success; left out → stored one sent; `""` → none sent and the stored one cleared | ⏳ |
-| 5.58 | register / deregister timeout or connection error counts as an attempt ("no answer") in the 72 h budget | ⏳ |
-| 5.59 | Registration screen: Meta read fails (190) → `meta_error` set, budget and `has_pin` still returned | ⏳ |
+| 5.1 | profile limits (about 1–139, address 256, description 512, email ≤ 128 (129 refused), ≤ 2 websites with http(s), vertical enum) refused before Meta | ✅ 2026-11-04 |
+| 5.2 | profile read (fields list) and update (only the changed fields + `messaging_product`) | ✅ 2026-11-04 |
+| 5.3 | profile photo: `/{app}/uploads` with file_name/length/type → `/upload:<id>` with `OAuth` + `file_offset: 0` + raw bytes → `profile_picture_handle` | ✅ 2026-11-04 |
+| 5.4 | photo refused without an App ID or without an uploaded File | ✅ 2026-11-04 |
+| 5.5 | block entry: `+<digits>` for numbers, `user_id` for BSUIDs, parent ids refused | ✅ 2026-11-04 |
+| 5.6 | block refused when the last message is older than 24 h or there is none (no call); allowed within 24 h; identity flagged | ✅ 2026-11-04 |
+| 5.7 | block uses the BSUID of this WhatsApp account | ✅ 2026-11-04 |
+| 5.8 | partial failure (`failed_users` + 139100): "24 hours" message, identity not flagged, Error Log per person | ✅ 2026-11-04 |
+| 5.9 | unblock: DELETE with the same body, no 24 h rule, flag cleared | ✅ 2026-11-04 |
+| 5.10 | block from a conversation (thread API) + block-list paging and identity matching | ✅ 2026-11-04 |
+| 5.11 | QR create / update / delete push to `message_qrdls` with the exact bodies; image copied to a File | ✅ 2026-11-04 |
+| 5.12 | QR limits: message > 140, format other than PNG/SVG, the 2,000 cap (all refused before Meta) | ✅ 2026-11-04 |
+| 5.13 | QR sync from Meta: two pages, new codes added, changed message updated, deleted code dropped, nothing pushed back | ✅ 2026-11-04 |
+| 5.14 | ice breaker / command limits (4 × 80, 30 commands, name 32 without spaces, description 1–256, no emoji incl. ⭐ ☎️ ✨, no duplicates, "/" stripped); accents, Devanagari and arrows allowed | ✅ 2026-11-04 |
+| 5.15 | conversational body shape; `enable_welcome_message` only when set; a code 100 refusal retried without it (with a warning); no retry without the setting or on another code (190); command names kept on the account | ✅ 2026-11-04 |
+| 5.16 | conversational read-back (`?fields=conversational_automation`); the command names read are kept | ✅ 2026-11-04 |
+| 5.17 | `parse_command` ("/name args", case, what is not a command) | ✅ 2026-11-04 |
+| 5.18 | inbound `/tickets …` (a configured command) stored as Text, dispatched as kind `command`; `request_welcome` stored, dispatched as `welcome`, event logged, 24 h window not opened | ✅ 2026-11-04 |
+| 5.19 | PIN must be 6 digits; set → `POST /{phone} {"pin"}`; stored encrypted, not in the column | ✅ 2026-11-04 |
+| 5.20 | register needs a PIN; body with pin + region (upper-cased; unknown region refused; stored after success); deregister without a body; attempts logged | ✅ 2026-11-04 |
+| 5.21 | 10 register / deregister calls per 72 h: older attempts expire; 133016 recorded and explained; the 11th refused with no call | ✅ 2026-11-04 |
+| 5.22 | the PIN never appears in Error Log after a refused register | ✅ 2026-11-04 |
+| 5.23 | request_code (query: code_method, language; bad values refused; 136024 explained) and verify_code (code in the body, not the URL) | ✅ 2026-11-04 |
+| 5.24 | number webhook: default URL + account verify token, committed before the Meta call (one commit, token readable when Meta is called; reused without a new commit); `webhook.get` accepts that token with `hub.mode=subscribe` and refuses a wrong token, another or no mode, and all-asterisk tokens; clear sends `""`; http, > 200 chars, foreign URL without a token are refused | ✅ 2026-11-04 |
+| 5.25 | WABA webhook: set with URL + token; clear = POST with no body | ✅ 2026-11-04 |
+| 5.26 | webhook read-back (number, app, subscribed apps) | ✅ 2026-11-04 |
+| 5.27 | commerce settings as query parameters, no body; read parsed | ✅ 2026-11-04 |
+| 5.28 | link catalogue (form `catalog_id`, digits only; fills `wa_catalog_id`), list linked catalogues | ✅ 2026-11-04 |
+| 5.29 | Guest cannot call the settings endpoints (no Meta call) | ✅ 2026-11-04 |
+| 5.47 | profile photo: a real binary PNG (not valid UTF-8) is sent as the same `bytes` | ✅ 2026-11-04 |
+| 5.48 | profile photo refused for a File the user may not read and that is not attached to this number (no call); allowed once attached to the number | ✅ 2026-11-04 |
+| 5.49 | phone number id, WABA id and app id must be digits only (no call) | ✅ 2026-11-04 |
+| 5.50 | a block is per number: blocked on another number does not show on this conversation; unblocking here keeps the other block; the summary fields follow the latest block | ✅ 2026-11-04 |
+| 5.51 | Excom Agent: block status / block / unblock work on their own conversation; all three are refused (PermissionError, no call) on a conversation they cannot see; the admin `block` endpoint is refused | ✅ 2026-11-04 |
+| 5.52 | QR: a code made on Meta is deleted there when the insert / request rolls back | ✅ 2026-11-04 |
+| 5.53 | QR `refresh_qr_image`: fresh `qr_image_url.format(PNG)` read; the old File is deleted; one File attached; `qr_image` points at it | ✅ 2026-11-04 |
+| 5.54 | QR delete when Meta says the code does not exist (100): the local record goes; any other refusal (190) keeps it | ✅ 2026-11-04 |
+| 5.55 | inbound plain `hello` → kind `text`, payload None; `/help me` (not a configured command) → kind `text` with `{"command": "help", "args": "me"}` as a hint; no commands known → text | ✅ 2026-11-04 |
+| 5.56 | `request_welcome` on a thread with an open window leaves `last_inbound_at` as it was | ✅ 2026-11-04 |
+| 5.57 | register region: not stored when Meta refuses; stored on success; left out → stored one sent; `""` → none sent and the stored one cleared | ✅ 2026-11-04 |
+| 5.58 | register / deregister timeout or connection error counts as an attempt ("no answer") in the 72 h budget | ✅ 2026-11-04 |
+| 5.59 | Registration screen: Meta read fails (190) → `meta_error` set, budget and `has_pin` still returned | ✅ 2026-11-04 |
 | 5.30 | (static) py_compile, undefined names, import targets, endpoint guards on the new API, DB-free smoke run of the limits and request shapes, frontend `tsc --noEmit`; after the review fixes also DB-free runs of the emoji check, id check, command dispatch, per-number block map, register region / timeout budget, the welcome retry rule and `webhook.get` (mode, asterisks, same-length decrypt only) | ✅ ran |
 
 ### Live with Meta (test WABA + test number)
@@ -527,42 +530,42 @@ cd frontend && npx vitest run src/lib/__tests__/whatsapp-webrtc.test.ts src/lib/
 
 | # | Test | Result |
 |---|---|---|
-| 6.1 | settings payload: holidays kept from storage when not sent; explicit holidays replace them; past ones dropped; "09:30" → "0930"; DISABLED sends the whole call_hours with the stored week and time zone, and is refused with none | ⏳ |
-| 6.2 | settings validation: 3 ranges a day, overlap, open ≥ close, bad time or day, no time zone, empty week, 21 holidays, bad date, bad country code | ⏳ |
-| 6.3 | save POSTs `/{phone id}/settings` with the stored holidays and keeps the rate | ⏳ |
-| 6.4 | read back stores SIP status and restrictions; warns about SIP and a tier below 2,000 | ⏳ |
-| 6.5 | incoming connect → Excom Call (WhatsApp, Inbound, Ringing, ring set, cta payload), WhatsApp thread, window opened, timeline stub; ringing pushed to the ready agents only, with the offer; no number or SDP in `provider_events`; a retried webhook rings nobody again | ⏳ |
-| 6.6 | nobody ready → `reject` sent, call Missed, no ringing | ⏳ |
-| 6.7 | answer: `pre_accept` then `accept` with the same SDP and `biz_opaque_callback_data`; In Progress; the whole ring set gets `cancel` (the answering agent's other tabs too); a second answer is refused | ⏳ |
-| 6.8 | concurrent answer loses the Redis claim (no Meta call); the same agent may retry | ⏳ |
-| 6.9 | a failed accept releases the claim (Redis and the row's `agent`); the call stays Ringing | ⏳ |
-| 6.10 | terminate: Completed with duration, reconciled, busy cleared, terminate signal; FAILED keeps the error code; FAILED after talking (duration > 0) is Completed with the code; unanswered → Missed; reconcile finds closed calls only | ⏳ |
-| 6.11 | BSUID-only caller: identity by user id, no number on the call; calling back uses `recipient` for both the permission check and `connect` | ⏳ |
-| 6.12 | permission request: 1 per 24 h, 2 per 7 days; the interactive payload; inbox preview "[Allow calls]"; a second request the same day refused before Meta | ⏳ |
-| 6.13 | permission request refused when the 24 h window is closed | ⏳ |
-| 6.14 | `call_permission_reply` parsed (accept 7 days / permanent / declined / automatic withdrawal); the inbound hook sets temporary → no_permission → permanent | ⏳ |
-| 6.15 | GET /call_permissions parsed; a lapsed temporary permission counts as none; permanent cannot be requested again; 2 unanswered warn | ⏳ |
-| 6.16 | outbound: permission checked, `connect` with the offer, `to` and the call name; answer SDP signalled to the agent; ACCEPTED → In Progress; terminate → Completed with cost (6-second pulses) | ⏳ |
-| 6.16b | outbound ACCEPTED reopens the 24 h window (`last_inbound_at`) | ⏳ |
-| 6.17 | outbound REJECTED → Busy, kept after terminate; agent not busy; unanswered count 1; a retried terminate counts once and sends no second "call ended" | ⏳ |
-| 6.18 | no permission → refused before Meta, no call row | ⏳ |
-| 6.19 | Meta 138006 on connect → permission row no_permission with the error, call Failed, agent not busy; 138012 keeps Meta's next allowed time and says it | ⏳ |
-| 6.20 | `voice_call` / `call_permission_request` builders and limits | ⏳ |
-| 6.21 | `/calls` action payloads, terminate status forms (string or list), cost, scrubbing, ICE server parsing, descriptor; registry returns the WhatsApp adapter, and still Plivo / Twilio for voice lines | ⏳ |
-| 6.24 | unsigned `calls` payload: no call, no ring, no reject; recorded "unsigned, ignored" without number or SDP | ⏳ |
-| 6.25 | unknown `phone_number_id` is ignored even with a default incoming account (no fallback) | ⏳ |
-| 6.26 | answer by a non-ring-set agent → PermissionError; hang-up by a non-member or by a ringing member → PermissionError, nothing sent; a ringing member cannot hang up A's In Progress call; A's own hang-up sends one `terminate`, closes the row (Completed, agent) and frees A; the later terminate adds the duration | ⏳ |
-| 6.27 | a manager's hang-up on a ringing incoming call sends `reject` (not `terminate`), Missed; the terminate after it sends no second "call ended" | ⏳ |
-| 6.28 | decline: a non-member is ignored; the last decline (timeout) sends one `reject`, Missed "Nobody answered" | ⏳ |
-| 6.29 | terminate before connect → Missed row; the late connect rings nobody and `ringing_for` is empty | ⏳ |
-| 6.29b | answer after terminate → refused before Meta; terminate while Meta accepts → stays Missed, nobody answered, agent not busy | ⏳ |
-| 6.29c | lines only for line agents; a number with no calling status counts, DISABLED does not; the first call marks it ENABLED and sends `excom:wa_call_lines_changed` to its agents | ⏳ |
-| 6.29d | `ringing_for` (reload while ringing): the pop with the offer and the seconds left; not for a non-member or an agent who declined | ⏳ |
-| 6.29e | call_icons sent only when edited (`call_icons_edited`); a save leaves the stored countries alone | ⏳ |
-| 6.29f | DISABLED call hours via save: the stored week and time zone are sent; with none stored, refused before Meta and nothing stored | ⏳ |
-| 6.29g | request window from Meta's counters (current_usage, limit_expiration_time) plus Excom's sends after that reading; earlier sends not counted twice | ⏳ |
-| 6.29h | "Check permission again" asks Meta at most once a minute per number and contact; start_call / request_permission always ask | ⏳ |
-| 6.29i | ICE credential only from the Password field; a pasted one moves there on save, or the save is refused when it conflicts | ⏳ |
+| 6.1 | settings payload: holidays kept from storage when not sent; explicit holidays replace them; past ones dropped; "09:30" → "0930"; DISABLED sends the whole call_hours with the stored week and time zone, and is refused with none | ✅ 2026-11-04 |
+| 6.2 | settings validation: 3 ranges a day, overlap, open ≥ close, bad time or day, no time zone, empty week, 21 holidays, bad date, bad country code | ✅ 2026-11-04 |
+| 6.3 | save POSTs `/{phone id}/settings` with the stored holidays and keeps the rate | ✅ 2026-11-04 |
+| 6.4 | read back stores SIP status and restrictions; warns about SIP and a tier below 2,000 | ✅ 2026-11-04 |
+| 6.5 | incoming connect → Excom Call (WhatsApp, Inbound, Ringing, ring set, cta payload), WhatsApp thread, window opened, timeline stub; ringing pushed to the ready agents only, with the offer; no number or SDP in `provider_events`; a retried webhook rings nobody again | ✅ 2026-11-04 |
+| 6.6 | nobody ready → `reject` sent, call Missed, no ringing | ✅ 2026-11-04 |
+| 6.7 | answer: `pre_accept` then `accept` with the same SDP and `biz_opaque_callback_data`; In Progress; the whole ring set gets `cancel` (the answering agent's other tabs too); a second answer is refused | ✅ 2026-11-04 |
+| 6.8 | concurrent answer loses the Redis claim (no Meta call); the same agent may retry | ✅ 2026-11-04 |
+| 6.9 | a failed accept releases the claim (Redis and the row's `agent`); the call stays Ringing | ✅ 2026-11-04 |
+| 6.10 | terminate: Completed with duration, reconciled, busy cleared, terminate signal; FAILED keeps the error code; FAILED after talking (duration > 0) is Completed with the code; unanswered → Missed; reconcile finds closed calls only | ✅ 2026-11-04 |
+| 6.11 | BSUID-only caller: identity by user id, no number on the call; calling back uses `recipient` for both the permission check and `connect` | ✅ 2026-11-04 |
+| 6.12 | permission request: 1 per 24 h, 2 per 7 days; the interactive payload; inbox preview "[Allow calls]"; a second request the same day refused before Meta | ✅ 2026-11-04 |
+| 6.13 | permission request refused when the 24 h window is closed | ✅ 2026-11-04 |
+| 6.14 | `call_permission_reply` parsed (accept 7 days / permanent / declined / automatic withdrawal); the inbound hook sets temporary → no_permission → permanent | ✅ 2026-11-04 |
+| 6.15 | GET /call_permissions parsed; a lapsed temporary permission counts as none; permanent cannot be requested again; 2 unanswered warn | ✅ 2026-11-04 |
+| 6.16 | outbound: permission checked, `connect` with the offer, `to` and the call name; answer SDP signalled to the agent; ACCEPTED → In Progress; terminate → Completed with cost (6-second pulses) | ✅ 2026-11-04 |
+| 6.16b | outbound ACCEPTED reopens the 24 h window (`last_inbound_at`) | ✅ 2026-11-04 |
+| 6.17 | outbound REJECTED → Busy, kept after terminate; agent not busy; unanswered count 1; a retried terminate counts once and sends no second "call ended" | ✅ 2026-11-04 |
+| 6.18 | no permission → refused before Meta, no call row | ✅ 2026-11-04 |
+| 6.19 | Meta 138006 on connect → permission row no_permission with the error, call Failed, agent not busy; 138012 keeps Meta's next allowed time and says it | ✅ 2026-11-04 |
+| 6.20 | `voice_call` / `call_permission_request` builders and limits | ✅ 2026-11-04 |
+| 6.21 | `/calls` action payloads, terminate status forms (string or list), cost, scrubbing, ICE server parsing, descriptor; registry returns the WhatsApp adapter, and still Plivo / Twilio for voice lines | ✅ 2026-11-04 |
+| 6.24 | unsigned `calls` payload: no call, no ring, no reject; recorded "unsigned, ignored" without number or SDP | ✅ 2026-11-04 |
+| 6.25 | unknown `phone_number_id` is ignored even with a default incoming account (no fallback) | ✅ 2026-11-04 |
+| 6.26 | answer by a non-ring-set agent → PermissionError; hang-up by a non-member or by a ringing member → PermissionError, nothing sent; a ringing member cannot hang up A's In Progress call; A's own hang-up sends one `terminate`, closes the row (Completed, agent) and frees A; the later terminate adds the duration | ✅ 2026-11-04 |
+| 6.27 | a manager's hang-up on a ringing incoming call sends `reject` (not `terminate`), Missed; the terminate after it sends no second "call ended" | ✅ 2026-11-04 |
+| 6.28 | decline: a non-member is ignored; the last decline (timeout) sends one `reject`, Missed "Nobody answered" | ✅ 2026-11-04 |
+| 6.29 | terminate before connect → Missed row; the late connect rings nobody and `ringing_for` is empty | ✅ 2026-11-04 |
+| 6.29b | answer after terminate → refused before Meta; terminate while Meta accepts → stays Missed, nobody answered, agent not busy | ✅ 2026-11-04 |
+| 6.29c | lines only for line agents; a number with no calling status counts, DISABLED does not; the first call marks it ENABLED and sends `excom:wa_call_lines_changed` to its agents | ✅ 2026-11-04 |
+| 6.29d | `ringing_for` (reload while ringing): the pop with the offer and the seconds left; not for a non-member or an agent who declined | ✅ 2026-11-04 |
+| 6.29e | call_icons sent only when edited (`call_icons_edited`); a save leaves the stored countries alone | ✅ 2026-11-04 |
+| 6.29f | DISABLED call hours via save: the stored week and time zone are sent; with none stored, refused before Meta and nothing stored | ✅ 2026-11-04 |
+| 6.29g | request window from Meta's counters (current_usage, limit_expiration_time) plus Excom's sends after that reading; earlier sends not counted twice | ✅ 2026-11-04 |
+| 6.29h | "Check permission again" asks Meta at most once a minute per number and contact; start_call / request_permission always ask | ✅ 2026-11-04 |
+| 6.29i | ICE credential only from the Password field; a pasted one moves there on save, or the save is refused when it conflicts | ✅ 2026-11-04 |
 | 6.22 | (static) pure functions above, import targets, endpoint guards and permission bypasses, run against the worktree without a database | ✅ ran |
 | 6.23 | (frontend) ICE gathering wait (complete / timeout), CRLF, single audio, no-candidate refusal, ICE server normalising | ✅ ran |
 | 6.23b | (frontend, fake RTCPeerConnection / getUserMedia / fetch) hang-up during the mic prompt or the ICE wait while answering: no `answer` posted, `decline` posted, tracks stopped, peer closed; hang-up while the answer is in flight → `hangup` after it returns; the same for placing a call (no `start_call`; `hangup` once start_call returns); connection failure posts `hangup`; `pagehide` beacon with the CSRF token | ✅ ran |

@@ -41,8 +41,11 @@ class TestWhatsAppCatalog(FrappeTestCase):
 		uom = frappe.db.get_value("UOM", "Nos") or frappe.db.get_value("UOM", {}, "name")
 		for code in ITEMS:
 			if not frappe.db.exists("Item", code):
-				frappe.get_doc({"doctype": "Item", "item_code": code, "item_name": f"QA Product {code[-2:]}", "item_group": _leaf("Item Group"),
-					"stock_uom": uom, "is_stock_item": 0, "is_sales_item": 1}).insert(ignore_permissions=True)
+				item = {"doctype": "Item", "item_code": code, "item_name": f"QA Product {code[-2:]}", "item_group": _leaf("Item Group"),
+					"stock_uom": uom, "is_stock_item": 0, "is_sales_item": 1}
+				if frappe.get_meta("Item").has_field("gst_hsn_code"):  # India Compliance makes it mandatory
+					item["gst_hsn_code"] = frappe.db.get_value("GST HSN Code", {}, "name")
+				frappe.get_doc(item).insert(ignore_permissions=True)
 			frappe.db.set_value("Item", code, "image", f"/files/{code.lower()}.png")
 		cls.uom = frappe.db.get_value("Item", ITEMS[0], "stock_uom")
 		cls.acc = frappe.get_doc({"doctype": "Excom Channel Account", "account_name": "QA WA Catalogue", "channel": "whatsapp", "status": "Active",
@@ -101,8 +104,9 @@ class TestWhatsAppCatalog(FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("Excom Catalog Sync Log", {"channel_account": self.acc.name}, ["status", "items_failed"]), ("Partly Failed", 2))
 
 	def test_current_prices_like_erpnext(self):
-		self._price(ITEMS[0], 30)
-		self._price(ITEMS[0], 28, valid_from=nowdate())  # the latest valid_from wins
+		# ERPNext refuses overlapping prices, so: an expired one and today's
+		self._price(ITEMS[0], 30, valid_from=add_days(nowdate(), -10), valid_upto=add_days(nowdate(), -1))
+		self._price(ITEMS[0], 28, valid_from=nowdate())
 		self._price(ITEMS[1], 30, valid_from=add_days(nowdate(), 3))  # not valid yet
 		customer = frappe.db.get_value("Customer", {}, "name")
 		if customer:
