@@ -172,6 +172,9 @@ class TestWhatsAppTemplateTypes(FrappeTestCase):
 		"""The controller's validate, then Frappe's own mandatory / select / length checks, without a DB write."""
 		self._fake_uploads(doc)
 		doc.run_method("validate")
+		# insert() names the doc and its rows before Frappe's own checks; do the same here
+		doc.name = doc.name or f"qa-p4-check-{self._n}"
+		doc.set_parent_in_children()
 		doc._validate()
 
 	def _fake_uploads(self, doc):

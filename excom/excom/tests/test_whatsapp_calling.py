@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import add_to_date, now_datetime
+from frappe.utils import get_datetime, add_to_date, now_datetime
 
 from excom.excom.channels.voice import whatsapp_call_settings as settings
 from excom.excom.channels.voice import whatsapp_calling as calling
@@ -461,7 +461,7 @@ class TestWhatsAppCalling(FrappeTestCase):
 			{"time_period": "P7D", "max_allowed": 2, "current_usage": 1}]
 		window = calling.request_window([], now, limits=limits, checked_on=checked)
 		self.assertEqual((window["allowed"], window["day"], window["week"], window["source"]), (False, 1, 1, "meta"))
-		self.assertEqual(window["next_at"], calling._epoch(1893456000))
+		self.assertEqual(get_datetime(window["next_at"]), get_datetime(calling._epoch(1893456000)))
 		# Meta says 0, but Excom sent one after that reading: it counts
 		limits = [{"time_period": "PT24H", "max_allowed": 1, "current_usage": 0}, {"time_period": "P7D", "max_allowed": 2, "current_usage": 0}]
 		window = calling.request_window([str(add_to_date(now, minutes=-5))], now, limits=limits, checked_on=checked)
