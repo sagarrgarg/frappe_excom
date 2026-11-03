@@ -70,8 +70,12 @@ def customer_for(identity: str) -> str:
 	return ""
 
 
-def create_draft_sales_order(customer: str, order: dict, account_name: str = "") -> tuple[str, list]:
-	"""Returns (Sales Order name or '', [retailer ids that could not be ordered])."""
+def create_draft_sales_order(customer: str, order: dict, account_name: str = "", rates: dict = None, uom: str = "") -> tuple[str, list]:
+	"""Returns (Sales Order name or '', [retailer ids that could not be ordered]).
+
+	rates: {item_code: rate} agreed with the customer (an accepted offer) — the line keeps the price
+	list rate for reference and is billed at the agreed rate, with pricing rules off for this order.
+	"""
 	from excom.excom.services.commerce.rates import settings
 
 	s = settings()
@@ -86,7 +90,7 @@ def create_draft_sales_order(customer: str, order: dict, account_name: str = "")
 		if not ok or ok.disabled or not ok.is_sales_item:
 			skipped.append(code or "?")
 			continue
-		items.append({"item_code": code, "qty": qty, "delivery_date": delivery})
+		items.append({"item_code": code, "qty": qty, "delivery_date": delivery, **({"uom": uom} if uom else {})})
 	if not items:
 		return "", skipped
 
@@ -102,6 +106,8 @@ def create_draft_sales_order(customer: str, order: dict, account_name: str = "")
 			"delivery_date": delivery,
 			"order_type": "Sales",
 		})
+		if rates:
+			so.ignore_pricing_rule = 1  # the agreed rate is the rate
 		for it in items:
 			so.append("items", it)
 		# ERPNext picks the price list as the desk does (customer, then customer group, then selling
@@ -112,6 +118,10 @@ def create_draft_sales_order(customer: str, order: dict, account_name: str = "")
 			for row in so.items:
 				row.price_list_rate = row.rate = 0
 			so.set_missing_values()
+		for row in so.items:
+			if rates and row.item_code in rates:
+				row.discount_percentage = row.discount_amount = row.margin_rate_or_amount = 0
+				row.rate = flt(rates[row.item_code])
 		so.calculate_taxes_and_totals()
 		so.flags.ignore_permissions = True
 		so.insert()

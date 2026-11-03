@@ -17,6 +17,14 @@ def on_inbound(event: dict) -> None:
 	kind, payload = event.get("kind"), event.get("payload")
 	if kind == "button" and isinstance(payload, str) and payload.startswith("RU:"):
 		_rate_update_button(event, payload)
+	elif kind == "button" and isinstance(payload, str) and payload.startswith("RR:"):
+		from excom.excom.services.commerce.offers import on_offer_button
+
+		on_offer_button(event, payload)
+	elif kind == "flow" and isinstance(payload, dict) and str(payload.get("flow_token") or "").startswith("RR1:"):
+		from excom.excom.services.commerce.requests import on_flow_answer
+
+		on_flow_answer(event)
 	elif kind == "order":
 		from excom.excom.services.commerce.orders import on_order
 
@@ -55,8 +63,11 @@ def _rate_update_button(event: dict, payload: str) -> None:
 		wi.send_to_thread(thread, wi.catalog_message(s.catalogue_message or _("Our full catalogue"), top[0] if top else ""),
 			reply_to_message=reply_to, reference=reference)
 	elif action == "ask":
-		# Phase 3 replaces this with the "Ask Best Price" request form (Rate Request + Raven).
-		send_text(thread, s.ask_price_reply or _("Tell us the item and quantity you need."), reply_to_message=reply_to, reference=reference)
+		from excom.excom.services.commerce.requests import send_request_form
+
+		# the request form when it is set up (Rate Request → Raven), otherwise the text reply
+		if not send_request_form(thread, event.get("identity"), account, rate_update=name, reply_to_message=reply_to):
+			send_text(thread, s.ask_price_reply or _("Tell us the item and quantity you need."), reply_to_message=reply_to, reference=reference)
 
 
 def _changed_items(rate_update: str) -> list[str]:

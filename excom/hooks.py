@@ -216,6 +216,10 @@ doc_events = {
 		"on_cancel": "excom.excom.utils.run_server_script_for_doc_event",
 		"on_trash": "excom.excom.utils.run_server_script_for_doc_event",
 	},
+	# HLD-005: a reply in a rate-request thread in Raven is an offer / chat / approve command
+	"Raven Message": {
+		"after_insert": "excom.excom.services.commerce.raven_bridge.on_raven_message",
+	},
 	"Customer": {
 		"after_insert": "excom.excom.services.identity_hooks.on_entity_created",
 		"on_update": "excom.excom.services.identity_hooks.on_customer_updated",
@@ -336,6 +340,8 @@ scheduler_events = {
 			"excom.excom_ads.escalation.enqueue_escalations",
 			# HLD-005: rate changes → draft rate updates → publish when quiet (no-op unless enabled)
 			"excom.excom.services.commerce.rates.run_scheduler",
+			# HLD-005: rate requests — remind sales, expire offers
+			"excom.excom.services.commerce.offers.run_scheduler",
 		],
 		# Duration and cost land at the provider a minute or two after a call ends. Without this
 		# sweep, completed calls sit at duration = 0 forever.

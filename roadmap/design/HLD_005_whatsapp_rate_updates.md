@@ -156,7 +156,7 @@ Dealer sees: [rate-card image] "Rates updated 3 Nov · Sugar M30 ₹4,210 (▼40
 
 **Templates to get approved** (named parameters):
 - `rate_update` (marketing): header image; body `{{date}}`, `{{summary}}`, `{{more}}`, ending with fixed text (Meta rejects a body that ends with a variable); footer; 3 quick replies.
-- `rate_offer` (submitted as utility): body `{{request}}`, `{{item}}`, `{{qty}}`, `{{rate}}`, `{{list_rate}}`, `{{valid_till}}`; quick replies Accept / Decline / Talk to sales.
+- `rate_offer` (submitted as utility): body uses any of `{{request}}`, `{{item}}`, `{{qty}}`, `{{rate}}`, `{{list_rate}}`, `{{offer}}` (all slabs as text), `{{valid_till}}`, ending with fixed text; quick replies Accept / Decline / Talk to sales. A positional template gets request, item, offer, valid till as `{{1}}`–`{{4}}`.
 - `order_ack` (utility): order reference and status.
 
 ## 6. "Ask Best Price" Flow
@@ -409,3 +409,25 @@ Reviewed by three independent passes: Meta API conformance, security/compliance,
   - **Pricing:** re-priced by ERPNext (`set_missing_values`) from the customer's default price list, else the settings price list, else the catalogue price list.
   - **Owner:** created as the settings' order owner, not the webhook's Guest session.
   - **Address:** a missing address is asked for with WhatsApp's address form (+91 numbers only).
+
+## 20. Phase 3 — what was built (2026-11-03)
+
+- **Request form:** `services/commerce/requests.py` sends the Ask Best Price form, a static Flow whose first screen gets `items` with today's rates, changed items first, up to 200.
+  - **Signed token:** `RR1:<identity>:<rate update>:<nonce>:<hmac>`. An answer is only accepted from the contact it was sent to, and only once.
+  - **Fallback:** without a form set up, Ask Best Price still sends the text reply.
+- **Raven:** `raven_bridge.py` posts the request card (linked to the Excom Rate Request) and opens a thread as the bot, with the channel's members added.
+  - A `Raven Message` `after_insert` hook passes human thread replies to `offers.on_command` in the background.
+  - Without Raven, or without a channel or bot set, everything except the Raven posts still works.
+  - **Trust:** a message linked to a request proves nothing (anyone can post one). A command counts only inside the request's own thread, opened on a card excom's bot posted in the configured channel. `offer` and `chat` need a sales role (Excom Agent/Admin, Sales User/Manager); `approve` / `reject` need the approver role.
+  - The thread holds the channel's members plus the customer's sales person. The card warns when the contact has no Customer.
+- **Offers:** `offers.py` handles parsing (`4,150` is 4150), claiming, the guardrail, approve/reject by the approver role, and sending.
+  - **Guardrail:** the deepest slab vs list rate. Above the limit → approval. No list rate, or a limit of 0 → always approval. More than 50 % below list → the command must end with `confirm` (a typo guard).
+  - **Staged, then live:** a new offer waits in `pending_offer` and becomes the live offer only once WhatsApp accepted the message. Each sent offer gets the next `offer_version`, and `valid_till` counts from the send. A failed send or a `reject` leaves the dealer's live offer as it was.
+  - **Window open:** reply buttons `RR:<request>:accept|decline|talk:<version>`.
+  - **Window closed:** the offer template with the same payloads.
+  - **Accept:** only the live version, once (atomic status change), even while a newer offer waits for approval. → a draft Sales Order with `ignore_pricing_rule`, at the best slab the requested qty reaches; the reply says when the qty was raised to a slab minimum.
+  - **Late taps:** an older version, an expired, declined or chat-handled offer each get a short reply instead of silence.
+  - **Trust:** an offer tap from any other contact is ignored.
+  - **`chat`:** uses the inbox access rule; a conversation held by someone else is refused and the holder named. The thread gets the user and their team.
+- **Price list for a request:** Customer → Customer Group → the account's catalogue price list. A UOM the item is not sold in falls back to the stock UOM.
+- **Scheduler** (every 5 min): expire offers past `valid_till` and tell the dealer when the window is open; one reminder for Open, Claimed or Pending Approval requests older than `reply_reminder_min`, mentioning whoever claimed it, the sales person, or the approvers.
