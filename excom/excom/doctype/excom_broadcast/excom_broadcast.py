@@ -152,7 +152,7 @@ class ExcomBroadcast(Document):
             return
 
         if self.flags.excom_wait:
-            # one of several broadcasts of the same rate update: it starts when the previous one
+            # one of several broadcasts of the same Reference document: it starts when the previous one
             # finishes, so a person on two lists gets the message once (see broadcast_service)
             self.db_set("status", "Waiting", update_modified=False)
             return

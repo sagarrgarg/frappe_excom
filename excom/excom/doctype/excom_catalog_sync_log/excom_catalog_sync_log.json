@@ -8,7 +8,6 @@
  "field_order": [
   "channel_account",
   "catalog_id",
-  "rate_update",
   "status",
   "column_break_1",
   "items_sent",
@@ -29,12 +28,6 @@
    "fieldname": "catalog_id",
    "fieldtype": "Data",
    "label": "Catalogue ID"
-  },
-  {
-   "fieldname": "rate_update",
-   "fieldtype": "Link",
-   "label": "Rate Update",
-   "options": "Excom Rate Update"
   },
   {
    "fieldname": "status",
@@ -81,7 +74,7 @@
  "istable": 0,
  "is_submittable": 0,
  "links": [],
- "modified": "2026-11-03 14:00:00.000000",
+ "modified": "2026-11-04 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Catalog Sync Log",

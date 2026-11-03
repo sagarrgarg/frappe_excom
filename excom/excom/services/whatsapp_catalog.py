@@ -1,7 +1,7 @@
-"""ERPNext items → the WhatsApp number's Meta catalogue (HLD-005 §7).
+"""ERPNext items → the WhatsApp number's Meta catalogue.
 
 One catalogue per WhatsApp account, one public price per item (the account's Catalogue Price
-List). Updates go through POST /{catalog_id}/items_batch (the old /batch endpoint is gone from
+List). Product page URL, brand and nightly sync are set on the Channel Account. Updates go through POST /{catalog_id}/items_batch (the old /batch endpoint is gone from
 v27): up to 3,000 requests per call, UPDATE with allow_upsert so a missing item is created.
 
 retailer_id = Item.item_code (stable, never reused). Meta requires a product page link on your
@@ -14,7 +14,7 @@ import time
 
 import frappe
 from frappe import _
-from frappe.utils import flt, get_url
+from frappe.utils import flt, get_url, getdate, nowdate
 
 BATCH = 3000
 
@@ -30,22 +30,21 @@ class NotListable(Exception):
 	"""The item lacks something Meta requires (page link, public image, brand)."""
 
 
-def item_payload(item_code: str, rate: float, currency: str) -> dict | None:
+def item_payload(item_code: str, rate: float, currency: str, account=None) -> dict | None:
 	"""Meta catalogue fields for one item (None when the item does not exist).
 
 	items_batch PRODUCT_ITEM requires id, title, description, availability, condition, price,
 	link, image_link and brand; an item missing one is refused here with NotListable instead of
 	being rejected by Meta. Title ≤ 100, description ≤ 5000 characters.
 	"""
-	from excom.excom.services.commerce.rates import settings
-
 	item = frappe.db.get_value("Item", item_code, ["item_name", "description", "image", "brand", "item_group", "disabled", "is_sales_item", "modified"], as_dict=True)
 	if not item:
 		return None
-	s = settings()
-	brand = (item.brand or s.brand or frappe.defaults.get_global_default("company") or "").strip()
-	if not s.product_url_template:
-		raise NotListable(_("set the Product page URL in Excom Commerce Settings"))
+	s = account or frappe._dict()
+	brand = (item.brand or s.get("catalog_brand") or s.get("company") or frappe.defaults.get_global_default("company") or "").strip()
+	url_template = s.get("catalog_product_url")
+	if not url_template:
+		raise NotListable(_("set the Product page URL on the WhatsApp Channel Account"))
 	image = _public_image(item)
 	if not image:
 		raise NotListable(_("needs a public image (Meta must be able to fetch it)"))
@@ -61,11 +60,11 @@ def item_payload(item_code: str, rate: float, currency: str) -> dict | None:
 		"condition": "new",
 		"price": f"{flt(rate):.2f} {currency}",
 		"brand": brand[:100],
-		"link": s.product_url_template.replace("{item_code}", quote(item_code, safe="")),
+		"link": url_template.replace("{item_code}", quote(item_code, safe="")),
 		"image_link": image,
 		"internal_label": [item.item_group] if item.item_group else [],
 		"wa_compliance_category": "DEFAULT",
-		"origin_country": (s.origin_country or "IN").upper(),
+		"origin_country": (s.get("catalog_origin_country") or "IN").upper(),
 	}
 	return data
 
@@ -81,7 +80,7 @@ def _public_image(item) -> str:
 	return f"{url}{'&' if '?' in url else '?'}v={stamp}"
 
 
-def sync_items(account, items: list, price_list: str, rate_update: str = "") -> dict:
+def sync_items(account, items: list, price_list: str) -> dict:
 	"""UPDATE these (item_code, rate) pairs in the account's catalogue and wait for Meta's verdict.
 
 	Returns {item_code: "ok" | "error: …", "_status": "Finished" | "Partly Failed" | "Failed"}.
@@ -92,7 +91,7 @@ def sync_items(account, items: list, price_list: str, rate_update: str = "") -> 
 	requests_, skipped = [], {}
 	for item_code, rate in items:
 		try:
-			data = item_payload(item_code, rate, currency)
+			data = item_payload(item_code, rate, currency, account)
 		except NotListable as e:
 			skipped[item_code] = f"error: {e}"
 			continue
@@ -104,20 +103,20 @@ def sync_items(account, items: list, price_list: str, rate_update: str = "") -> 
 	statuses = []
 	for start in range(0, len(requests_), BATCH):
 		chunk = requests_[start:start + BATCH]
-		out.update(_send_batch(account, chunk, rate_update, statuses))
+		out.update(_send_batch(account, chunk, statuses))
 	if not requests_:
 		statuses.append("Failed")
 	out["_status"] = "Failed" if statuses and all(s == "Failed" for s in statuses) else ("Partly Failed" if "Failed" in statuses or "Partly Failed" in statuses else "Finished")
 	return out
 
 
-def _send_batch(account, chunk: list, rate_update: str, statuses: list) -> dict:
+def _send_batch(account, chunk: list, statuses: list) -> dict:
 	import requests
 
 	token, base_url, version = _creds(account)
 	url = f"{base_url}/{version}/{account.wa_catalog_id}/items_batch"
 	log = frappe.get_doc({"doctype": "Excom Catalog Sync Log", "channel_account": account.name, "catalog_id": account.wa_catalog_id,
-		"rate_update": rate_update or None, "status": "Sent", "items_sent": len(chunk)})
+		"status": "Sent", "items_sent": len(chunk)})
 	result = {}
 	try:
 		# form-encoded with `requests` as a JSON string, as in every Meta example
@@ -140,7 +139,7 @@ def _send_batch(account, chunk: list, rate_update: str, statuses: list) -> dict:
 		for rid, err in finished.get("errors", {}).items():
 			result[rid] = "error: " + err
 		for item in chunk:
-			# not finished in time: unknown, so not "ok" — the publish waits for a clear answer
+			# not finished in time: unknown, so not "ok"
 			result.setdefault(item["data"]["id"], "ok" if finished.get("done") else "error: Meta is still processing the batch")
 		batch_error = result.pop("_batch", None)
 		if batch_error:
@@ -158,9 +157,45 @@ def _send_batch(account, chunk: list, rate_update: str, statuses: list) -> dict:
 		for item in chunk:
 			result[item["data"]["id"]] = f"error: {str(e)[:150]}"
 	log.insert(ignore_permissions=True)
-	frappe.db.commit()  # kept even if the publish that asked for it fails and rolls back
+	frappe.db.commit()  # kept even if the caller fails and rolls back
 	statuses.append(log.status)
 	return result
+
+
+# ── today's prices ───────────────────────────────────────────────────────────
+
+def _applies(row) -> bool:
+	"""A general price (not for one customer, supplier or batch) that is valid today."""
+	today = getdate(nowdate())
+	if row.get("customer") or row.get("supplier") or row.get("batch_no"):
+		return False
+	if row.get("valid_from") and getdate(row.valid_from) > today:
+		return False
+	if row.get("valid_upto") and getdate(row.valid_upto) < today:
+		return False
+	return True
+
+
+def current_prices(price_list: str, items) -> dict:
+	"""{(item_code, uom): (rate, item_name)} — the price ERPNext would use today, per UOM.
+
+	Several rows can apply at once (no valid_from, and one from today): like ERPNext's
+	get_item_price, the one with the latest valid_from wins.
+	"""
+	items = list(items or [])
+	if not items:
+		return {}
+	rows = frappe.get_all("Item Price", filters={"price_list": price_list, "selling": 1, "item_code": ["in", items]},
+		fields=["item_code", "item_name", "uom", "price_list_rate", "customer", "supplier", "batch_no", "valid_from", "valid_upto"])
+	best = {}
+	for r in rows:
+		if not _applies(r):
+			continue
+		key = (r.item_code, r.get("uom") or frappe.db.get_value("Item", r.item_code, "stock_uom") or "")
+		vf = getdate(r.valid_from) if r.valid_from else getdate("1900-01-01")
+		if key not in best or vf > best[key][0]:
+			best[key] = (vf, flt(r.price_list_rate), r.item_name)
+	return {k: (v[1], v[2]) for k, v in best.items()}
 
 
 _TERMINAL = {"finished", "error", "canceled", "cancelled"}
@@ -214,8 +249,6 @@ def _wait(account, handles: list, token: str, base_url: str, version: str, tries
 
 def sync_all(account) -> dict:
 	"""Every general, currently valid price on the account's Catalogue Price List."""
-	from excom.excom.services.commerce.rates import current_prices
-
 	pl = account.get("catalog_price_list")
 	if not pl or not account.get("wa_catalog_id"):
 		return {}
@@ -229,10 +262,9 @@ def sync_all(account) -> dict:
 
 
 def nightly_sync():
-	"""daily: full catalogue reconcile for every WhatsApp number with a catalogue."""
-	if not frappe.db.exists("DocType", "Excom Commerce Settings") or not frappe.db.get_single_value("Excom Commerce Settings", "enabled"):
-		return
-	for name in frappe.get_all("Excom Channel Account", filters={"channel": "whatsapp", "status": "Active", "wa_catalog_id": ["is", "set"], "catalog_price_list": ["is", "set"]}, pluck="name"):
+	"""daily: full catalogue reconcile for every WhatsApp number that asks for it."""
+	for name in frappe.get_all("Excom Channel Account", filters={"channel": "whatsapp", "status": "Active", "catalog_nightly_sync": 1,
+			"wa_catalog_id": ["is", "set"], "catalog_price_list": ["is", "set"]}, pluck="name"):
 		try:
 			sync_all(frappe.get_doc("Excom Channel Account", name))
 			frappe.db.commit()
@@ -247,7 +279,7 @@ def sync_now(account: str) -> dict:
 
 	_check_admin_access()
 	# minutes of Meta round trips: a background job, not a web request
-	frappe.enqueue("excom.excom.services.commerce.catalog._sync_account", account=account, queue="long", timeout=3600, enqueue_after_commit=True)
+	frappe.enqueue("excom.excom.services.whatsapp_catalog._sync_account", account=account, queue="long", timeout=3600, enqueue_after_commit=True)
 	return {"queued": account}
 
 

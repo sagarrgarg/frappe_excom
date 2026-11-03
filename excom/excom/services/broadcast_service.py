@@ -42,7 +42,7 @@ def execute_broadcast(broadcast_name: str):
     from excom.excom.services import whatsapp_errors as wae
 
     # A paused broadcast that is queued again continues where it stopped, and the broadcasts of one
-    # rate update (one per subscriber list) skip whoever a sibling already reached: nobody gets it twice.
+    # document (Reference, one per subscriber list) skip whoever a sibling already reached: nobody gets it twice.
     siblings = _siblings(broadcast)
     already_sent = set(frappe.get_all(
         "Excom Broadcast Log",
@@ -141,7 +141,7 @@ def execute_broadcast(broadcast_name: str):
 
 
 def _siblings(broadcast) -> list[str]:
-    """This broadcast and the others sent for the same document (e.g. one Rate Update)."""
+    """This broadcast and the others sent for the same document (their Reference)."""
     if not broadcast.get("reference_doctype") or not broadcast.get("reference_name"):
         return [broadcast.name]
     return frappe.get_all("Excom Broadcast", filters={"reference_doctype": broadcast.reference_doctype,
@@ -149,7 +149,7 @@ def _siblings(broadcast) -> list[str]:
 
 
 def _start_next_sibling(broadcast) -> None:
-    """Broadcasts of one rate update run one after another (see ExcomBroadcast.on_submit)."""
+    """Broadcasts of one Reference document run one after another (see ExcomBroadcast.on_submit)."""
     if not broadcast.get("reference_doctype"):
         return
     nxt = frappe.get_all("Excom Broadcast", filters={"reference_doctype": broadcast.reference_doctype,

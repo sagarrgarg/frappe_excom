@@ -42,6 +42,10 @@
   "wa_catalog_id",
   "column_break_wa_commerce",
   "catalog_price_list",
+  "catalog_product_url",
+  "catalog_brand",
+  "catalog_origin_country",
+  "catalog_nightly_sync",
   "email_section",
   "email_address",
   "email_connected_app",
@@ -358,7 +362,36 @@
    "fieldtype": "Link",
    "label": "Catalogue Price List",
    "options": "Price List",
-   "description": "The one price the catalogue shows. Subscriber lists on this number get rate updates for this price list; each customer's own price is applied on the Sales Order."
+   "description": "The one price the WhatsApp catalogue shows (today's general price per item)."
+  },
+  {
+   "fieldname": "catalog_product_url",
+   "fieldtype": "Data",
+   "label": "Product page URL",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "description": "On your own domain; {item_code} is replaced, e.g. https://shop.example.com/p/{item_code}. Meta requires a link per product."
+  },
+  {
+   "fieldname": "catalog_brand",
+   "fieldtype": "Data",
+   "label": "Default brand",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "description": "For items without a Brand (defaults to the company)."
+  },
+  {
+   "fieldname": "catalog_origin_country",
+   "fieldtype": "Data",
+   "label": "Origin country",
+   "default": "IN",
+   "depends_on": "eval:doc.channel=='whatsapp'"
+  },
+  {
+   "fieldname": "catalog_nightly_sync",
+   "fieldtype": "Check",
+   "label": "Sync catalogue nightly",
+   "default": "0",
+   "depends_on": "eval:doc.channel=='whatsapp'",
+   "description": "Every night, push all current prices of the Catalogue Price List to Meta."
   },
   {
    "depends_on": "eval:doc.channel=='email'",
@@ -769,7 +802,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-03 14:00:00.000000",
+ "modified": "2026-11-04 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Channel Account",

@@ -251,7 +251,7 @@ def send_to_thread(thread: str, interactive: dict, reply_to_message: str = "", r
 	"""Send an interactive message into an inbox thread and record it there.
 
 	reply_to_message: the Excom Message it answers (quoted on WhatsApp).
-	reference: (doctype, name) the message belongs to, e.g. ("Excom Rate Request", "RR-0001").
+	reference: (doctype, name) the message belongs to, e.g. ("Sales Order", "SO-0001").
 	Returns the Excom Message name. Raises InteractiveLimitError when the 24-hour window is closed.
 	"""
 	from excom.excom.services.thread_service import record_outbound_message
