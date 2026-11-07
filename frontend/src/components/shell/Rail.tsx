@@ -50,9 +50,8 @@ function applyRailWidth(pinned: boolean) {
   document.documentElement.style.setProperty("--ex-rail-w", pinned ? "200px" : "56px");
 }
 const RAIL_EXPLAIN: Record<string, string> = {
-  "/today": "Your day: overdue follow-ups, SLA breaches, unanswered chats.",
   "/inbox": "Every conversation across WhatsApp, email and web chat, one row per contact.",
-  "/intake": "Leads: new and unqualified, newest first — open one to classify, convert or start a conversation. Managers see their teams' sources; members see leads assigned to them.",
+  "/intake": "Leads: what needs you now (overdue follow-ups, SLA risks, unassigned enquiries), then every lead by stage. Managers see their teams' sources; members see leads assigned to them.",
   "/pipeline": "Open opportunities by stage, per customer type.",
   "/contacts": "Everyone you have talked to, with their ERP record.",
   "/broadcasts": "Template sends to subscriber lists, with delivery logs.",
@@ -83,7 +82,6 @@ export function Rail() {
   useEffect(() => () => applyRailWidth(false), []);
 
   const items: RailItem[] = [
-    { to: "/today", label: "Today", icon: <Sun /> },
     { to: "/inbox", label: "Inbox", icon: <Inbox />, badge: unreadThreads },
     { to: "/tasks", label: "Tasks", icon: <CheckSquare /> },
     { to: "/intake", label: "Leads", icon: <ListTodo /> },

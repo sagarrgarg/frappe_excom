@@ -61,7 +61,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         { id: "close", group: "Actions" as const, label: "Close conversation", icon: <Archive />, run: closeRecord },
       ] : []),
       { id: "g:inbox", group: "Go to", label: "Inbox", icon: <Inbox />, shortcut: "g i", run: go("/inbox") },
-      { id: "g:today", group: "Go to", label: "Today's actions", icon: <Sun />, shortcut: "g t", run: go("/inbox/today") },
+      { id: "g:today", group: "Go to", label: "Awaiting reply", icon: <Sun />, shortcut: "g t", run: go("/inbox/today") },
       { id: "g:unread", group: "Go to", label: "Unread", icon: <Eye />, run: go("/inbox/unread") },
       { id: "g:mine", group: "Go to", label: "Assigned to me", icon: <UserPlus />, run: go("/inbox/mine") },
       { id: "g:archived", group: "Go to", label: "Archived", icon: <Archive />, run: go("/inbox/archived") },

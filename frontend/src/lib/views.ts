@@ -140,19 +140,25 @@ export interface SavedView {
   filters: Partial<InboxFilters>;
   builtin?: boolean;
   hint?: string;
+  /** Listed first in the picker; the rest sit under "More views". */
+  primary?: boolean;
 }
 
 /** SLA proxy until P3 brings next_action_at/gate flags: unanswered inbound older than this. */
 export const SLA_RISK_MS = 60 * 60 * 1000;
 
+/**
+ * Five views people switch between all day, then the rest under "More views". Thirteen in one list
+ * read as a settings page; the ones used weekly (by kind, calls, archive) are a click further away.
+ */
 export const DEFAULT_VIEWS: SavedView[] = [
-  { id: "unread", label: "Unread", predicate: "unread", filters: {}, builtin: true },
-  { id: "mine", label: "Assigned to me", predicate: "mine", filters: {}, builtin: true },
-  { id: "unassigned", label: "Unassigned", predicate: "unassigned", filters: {}, builtin: true },
-  { id: "today", label: "Today's actions", predicate: "today", filters: {}, builtin: true, hint: "Awaiting your reply" },
+  { id: "all", label: "All", filters: {}, builtin: true, primary: true },
+  { id: "unread", label: "Unread", predicate: "unread", filters: {}, builtin: true, primary: true },
+  { id: "mine", label: "Assigned to me", predicate: "mine", filters: {}, builtin: true, primary: true },
+  { id: "unassigned", label: "Unassigned", predicate: "unassigned", filters: {}, builtin: true, primary: true },
+  { id: "other", label: "Other", filters: { lane: "other" }, builtin: true, primary: true, hint: "Newsletters, notifications and automated mail" },
+  { id: "today", label: "Awaiting reply", predicate: "today", filters: {}, builtin: true, hint: "Their message was the last one" },
   { id: "sla", label: "SLA risk", predicate: "sla", filters: {}, builtin: true, hint: "Unanswered for over an hour" },
-  { id: "all", label: "All", filters: {}, builtin: true },
-  { id: "other", label: "Other", filters: { lane: "other" }, builtin: true, hint: "Newsletters, notifications and automated mail — kept out of the inbox and its count" },
   { id: "calls", label: "Calls", filters: { channel: "calls" }, builtin: true },
   { id: "comments", label: "Comments", filters: { channel: "instagram" }, builtin: true, hint: "Instagram public comments" },
   { id: "archived", label: "Archived", filters: { archived: "1" }, builtin: true, hint: "Closed threads — reopen from the row menu" },

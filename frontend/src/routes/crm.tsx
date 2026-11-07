@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useFrappeGetCall } from "@/lib/api";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Sun, Inbox, KanbanSquare, Loader2, MessageSquare, ExternalLink, Filter, Clock, AlertTriangle, CheckSquare, X, ListTodo } from "lucide-react";
 import { currentUser } from "../lib/ui-flag";
 import { PageFrame } from "../components/shell/PageFrame";
@@ -64,25 +64,36 @@ function useOpenThread() {
   return (oi: string, thread?: string) => openRecord(oi, thread);
 }
 
-/** /today — overdue next actions, SLA-breaching intake, today's actions, unassigned for my teams. */
-export function TodayRoute() {
-  const { data, isLoading, mutate } = useFrappeGetCall<{ message: { overdue: any[]; sla: any[]; today: any[]; unassigned: any[] } }>(`${M}.get_today`, undefined, undefined, { refreshInterval: 60_000 });
+/**
+ * "Needs attention": what used to be the Today page — overdue next actions, SLA-breaching intake,
+ * today's actions, unassigned enquiries. It lived as a page of its own beside Leads and the inbox
+ * and listed largely the same people a third time, so it is now the first tab of Leads.
+ */
+function AttentionList({ onEmpty }: { onEmpty?: () => void }) {
+  const { data, isLoading } = useFrappeGetCall<{ message: { overdue: any[]; sla: any[]; today: any[]; unassigned: any[] } }>(`${M}.get_today`, undefined, undefined, { refreshInterval: 60_000 });
   const open = useOpenThread();
   const d = data?.message;
-  const sections: [string, any[], "opp" | "lead", React.ReactNode][] = d ? [["Overdue", d.overdue, "opp", <AlertTriangle />], ["SLA at risk", d.sla, "lead", <Clock />], ["Today", d.today, "opp", <Sun />], ["Unassigned", d.unassigned, "lead", <Inbox />]] : [];
+  const sections: [string, any[], "opp" | "lead", React.ReactNode, string][] = d ? [
+    ["Overdue follow-ups", d.overdue, "opp", <AlertTriangle />, "text-crayon-rose-text"],
+    ["SLA at risk", d.sla, "lead", <Clock />, "text-crayon-amber-text"],
+    ["Due today", d.today, "opp", <Sun />, ""],
+    ["Unassigned", d.unassigned, "lead", <Inbox />, ""],
+  ] : [];
+  if (isLoading && !d) return <div className="flex justify-center py-10 text-ink-3"><Loader2 className="size-5 animate-spin" /></div>;
+  if (sections.every(([, rows]) => !rows.length)) {
+    return <EmptyState icon={<CheckSquare />} title="Nothing needs you right now" hint="No overdue follow-ups, SLA risks or unassigned enquiries." action={onEmpty ? <Button size="sm" onClick={onEmpty}>See all leads</Button> : undefined} />;
+  }
   return (
-    <PageFrame title="Today" icon={<Sun />} className="!p-0" actions={<Button size="sm" variant="ghost" onClick={() => mutate()}>Refresh</Button>}>
-      <div className="-m-3">
-        {isLoading && !d ? <div className="flex justify-center py-10 text-ink-3"><Loader2 className="size-5 animate-spin" /></div> : sections.every(([, rows]) => !rows.length) ? <EmptyState icon={<CheckSquare />} title="Nothing due" hint="No overdue actions, SLA risks or unassigned enquiries right now." /> : (
-          sections.map(([label, rows, kind, icon]) => rows.length ? (
-            <section key={label}>
-              <h3 className="sticky top-0 z-10 flex items-center gap-2 px-3 h-8 text-xs text-ink-3 bg-surface-sunken border-b border-border [&_svg]:size-3.5">{icon}{label}<Badge accent={label === "Overdue" ? "rose" : label === "SLA at risk" ? "amber" : "neutral"} count={rows.length} /></h3>
-              {rows.map((r) => <CrmRow key={r.name} r={r} kind={kind} onOpenThread={open} />)}
-            </section>
-          ) : null)
-        )}
-      </div>
-    </PageFrame>
+    <>
+      {sections.map(([label, rows, kind, icon, tone]) => rows.length ? (
+        <section key={label}>
+          <h3 className={cn("sticky top-0 z-10 flex items-center gap-2 px-3 h-8 text-xs bg-surface-sunken border-b border-border [&_svg]:size-3.5", tone || "text-ink-3")}>
+            {icon}<span className="font-medium">{label}</span><span className="text-ink-3 tabular-nums">{rows.length}</span>
+          </h3>
+          {rows.map((r) => <CrmRow key={r.name} r={r} kind={kind} onOpenThread={open} />)}
+        </section>
+      ) : null)}
+    </>
   );
 }
 
@@ -144,6 +155,9 @@ function LeadFilterBar({ opts, value, onChange }: { opts: any; value: LeadFilter
 /** /intake — S1–S5 queue by intake_stage, SLA pip, bulk classify, one-click open conversation. */
 export function IntakeRoute() {
   const opts = useCrmOptions();
+  const [sp, setSp] = useSearchParams();
+  const show: "attention" | "all" = sp.get("show") === "all" ? "all" : "attention";
+  const setShow = (v: "attention" | "all") => { const n = new URLSearchParams(sp); if (v === "attention") n.delete("show"); else n.set("show", v); setSp(n, { replace: true }); };
   const [filters, setFilters] = useState<LeadFilters>({});
   const stage = filters.intake_stage ?? "";
   const setStage = (s: string) => setFilters((f) => ({ ...f, intake_stage: s }));
@@ -157,8 +171,11 @@ export function IntakeRoute() {
   const toggle = (n: string) => setSelected((s) => { const x = new Set(s); x.has(n) ? x.delete(n) : x.add(n); return x; });
   const [newLead, setNewLead] = useState(false);
   return (
-    <PageFrame title={<>Leads <span className="text-sm text-ink-3 tabular-nums">{rows.length}</span></>} icon={<ListTodo />} className="!p-0" actions={<><Button size="sm" variant="primary" onClick={() => setNewLead(true)}><Plus />New lead</Button><NewLeadDialog open={newLead} onClose={() => setNewLead(false)} onCreated={() => mutate()} /></>}>
+    <PageFrame title="Leads" icon={<ListTodo />} className="!p-0" actions={<><Button size="sm" variant="primary" onClick={() => setNewLead(true)}><Plus />New lead</Button><NewLeadDialog open={newLead} onClose={() => setNewLead(false)} onCreated={() => mutate()} /></>}>
       <div className="-m-3">
+        <SegmentedControl<"attention" | "all"> ariaLabel="Which leads" className="px-2 border-b border-border bg-surface" value={show} onChange={setShow}
+          segments={[{ value: "attention", label: "Needs attention", icon: <AlertTriangle /> }, { value: "all", label: "All leads", icon: <ListTodo />, count: rows.length }]} />
+        {show === "attention" ? <AttentionList onEmpty={() => setShow("all")} /> : <>
         <LeadFilterBar opts={opts} value={filters} onChange={setFilters} />
         <div className="sticky top-0 z-10 bg-surface-sunken border-b border-border px-2 py-1.5 flex items-center gap-2 min-w-0">
           <div className="chip-row flex-1 h-7">
@@ -181,6 +198,7 @@ export function IntakeRoute() {
             </div>
           ))
         )}
+        </>}
       </div>
     </PageFrame>
   );

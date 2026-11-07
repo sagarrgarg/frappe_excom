@@ -7,7 +7,6 @@ import { InboxRoute } from "./inbox";
 import { appBasename, isMarketingOnly } from "../lib/ui-flag";
 import { MarketingShell } from "../components/shell/MarketingShell";
 import { FlaggedRoute } from "./flagged";
-const TodayRoute = lazy(() => import("./crm").then((m) => ({ default: m.TodayRoute })));
 const IntakeRoute = lazy(() => import("./crm").then((m) => ({ default: m.IntakeRoute })));
 const PipelineRoute = lazy(() => import("./crm").then((m) => ({ default: m.PipelineRoute })));
 
@@ -60,7 +59,8 @@ export function NextRouter() {
           <Route index element={<Navigate to="/inbox" replace />} />
           <Route path="/inbox/:view?" element={<InboxRoute />} />
           <Route path="/t/:recordId" element={<InboxRoute />} />
-          <Route path="/today" element={L(<TodayRoute />)} />
+          {/* Today is the "Needs attention" tab of Leads now. */}
+          <Route path="/today" element={<Navigate to="/intake" replace />} />
           <Route path="/pipeline" element={L(<PipelineRoute />)} />
           <Route path="/intake" element={L(<IntakeRoute />)} />
           <Route path="/p3" element={<FlaggedRoute name="P3 placeholder" />} />
