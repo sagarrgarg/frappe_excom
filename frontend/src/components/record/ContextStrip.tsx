@@ -49,3 +49,39 @@ export function ContextStrip({ contact, record, amount, crm, onStage }: { contac
     </div>
   );
 }
+
+
+/**
+ * The same facts as one quiet line under the contact's name, instead of a bar of its own.
+ *
+ * The bar repeated what the header already said (the linked Lead appeared in the header chip, in
+ * the bar, and again in the details panel) and pushed the conversation down by another row. Here
+ * only what changes the next move is kept: an Opportunity's stage, next action and amount, an
+ * unclassified Lead, who owns the conversation, and its tags. The last-activity time is in the feed
+ * itself; the team is in the details panel.
+ */
+export function ContextLine({ contact, crm, onStage, reach }: { contact: UnifiedContact; crm?: CrmRecordSummary | null; onStage?: () => void; reach?: string }) {
+  const items: { text: string; title?: string; tone?: string; onClick?: () => void }[] = [];
+  if (reach) items.push({ text: reach });
+  if (crm?.doctype === "Opportunity") {
+    items.push({ text: `${crm.customer_type ? crm.customer_type + " · " : ""}${crm.pipeline_stage || "—"}`, title: "Pipeline stage", tone: "text-crayon-blue-text font-medium", onClick: onStage });
+    if (crm.next_action_at) items.push({ text: `Next ${crm.next_action_at.slice(0, 16)}`, title: "Next action", tone: new Date(crm.next_action_at) < new Date() ? "text-crayon-rose-text" : undefined });
+    if (crm.opportunity_amount) items.push({ text: `₹${Number(crm.opportunity_amount).toLocaleString("en-IN")}`, title: "Amount" });
+  } else if (crm?.doctype === "Lead" && !crm.customer_type) {
+    items.push({ text: "Lead not classified", title: "Classify it from ⋯ to choose its pipeline", tone: "text-crayon-amber-text" });
+  }
+  if (contact.assignedTo) items.push({ text: contact.assignedTo.name, title: "Assigned to" });
+  else items.push({ text: "Unassigned", title: "Nobody owns this conversation yet", tone: "text-crayon-amber-text" });
+  return (
+    <p className="flex items-center gap-1.5 min-w-0 text-xs text-ink-3 overflow-hidden whitespace-nowrap">
+      {items.map((it, i) => (
+        <span key={i} title={it.title} onClick={it.onClick} className={`truncate ${i === 0 ? "shrink-0 max-w-[60%]" : "min-w-0 shrink"} ${it.tone || ""} ${it.onClick ? "cursor-pointer hover:underline" : ""}`}>
+          {i > 0 && <span className="text-border-strong pr-1.5" aria-hidden>·</span>}{it.text}
+        </span>
+      ))}
+      {contact.tags?.slice(0, 4).map((t) => (
+        <span key={t.tag} className="size-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} title={t.tag_name} />
+      ))}
+    </p>
+  );
+}

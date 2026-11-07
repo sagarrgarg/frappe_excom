@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from "react";
-import { Check, CheckCheck, AlertCircle, Loader2, Lock, Pin, Paperclip, FileText, RotateCcw, Reply, SmilePlus, Copy, Bot, Clock } from "lucide-react";
+import { Check, CheckCheck, AlertCircle, Loader2, Lock, Pin, Paperclip, FileText, RotateCcw, Reply, SmilePlus, Copy, Bot, Clock, Globe } from "lucide-react";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { toast } from "sonner";
 import { cn } from "../ui/utils";
@@ -9,6 +9,7 @@ import type { FeedMessage } from "../../hooks/useIdentityMessages";
 import { formatServerTime } from "../../utils/datetime";
 import { toastError } from "../ErrorDialog";
 import { awaitsDeliveryReceipt } from "../../lib/messages";
+import { parseEnquiry } from "../../lib/enquiry";
 
 const DELIVERY_TIMEOUT_MS = 10 * 60 * 1000;
 /** Product rule: a failed message can be resent for 6 hours; after that it is flagged Unsent, no retry. */
@@ -69,6 +70,34 @@ export const MessageBubble = memo(function MessageBubble({ message: m, contactNa
   const togglePin = async () => {
     try { await (m.isPinned ? unpinCall : pinCall)({ message_name: m.id }); onRefresh(); toast.success(m.isPinned ? "Unpinned" : "Pinned"); } catch (err) { toastError(err, "Failed"); }
   };
+
+  const enquiry = isNote ? parseEnquiry(m.content) : null;
+  if (enquiry) {
+    const subject = enquiry.meta.find(([k]) => k === "Subject")?.[1];
+    const rest = enquiry.meta.filter(([k]) => k !== "Subject" && k !== "Language");
+    return (
+      <div className="flex justify-start t2-host" onContextMenu={(e) => onContextMenu(e, m)}>
+        <div className="flex flex-col items-start min-w-0 max-w-[min(85%,640px)]">
+          <div className="rounded-xl px-3 py-2 min-w-0 max-w-full bg-surface-sunken text-ink-1">
+            <p className="flex items-center gap-1.5 text-xs text-ink-3 min-w-0">
+              <Globe className="size-3.5 shrink-0" />
+              <span className="truncate">Enquiry · {enquiry.source}</span>
+              {enquiry.test && <span className="shrink-0 rounded-full bg-crayon-amber-tint text-crayon-amber-text px-1.5">Test lead</span>}
+            </p>
+            {subject && <p className="text-base font-semibold mt-1 break-words">{subject}</p>}
+            {enquiry.body && <p className="text-base whitespace-pre-wrap break-words mt-1">{enquiry.body}</p>}
+            {rest.length > 0 && (
+              <p className="text-xs text-ink-3 mt-1.5 break-words">{rest.map(([k, v]) => `${k}: ${v}`).join(" · ")}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 mt-0.5 text-xs text-ink-3 min-w-0 max-w-full">
+            <span className="tabular-nums shrink-0">{formatServerTime(m.timestamp)}</span>
+            {enquiry.page && !rest.some(([, v]) => v.includes(enquiry.page)) && <span className="truncate" title={enquiry.page}>· {enquiry.page}</span>}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isNote) {
     return (

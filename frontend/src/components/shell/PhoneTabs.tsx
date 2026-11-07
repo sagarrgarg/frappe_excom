@@ -1,18 +1,23 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { Sun, Inbox, KanbanSquare, MoreHorizontal, Plus } from "lucide-react";
+import { Sun, Inbox, CheckSquare, ListTodo, MoreHorizontal, Plus } from "lucide-react";
 import { cn } from "../ui/utils";
 import { Badge } from "../primitives";
 import { useInbox } from "./InboxProvider";
 
-/** Phone bottom tabs (Today · Inbox · Pipeline · More) + FAB. */
+/**
+ * Phone bottom tabs (Inbox · Today · Tasks · Leads · More) + FAB. Everything else — Pipeline,
+ * Contacts, Calls, Broadcasts, Analytics, Marketing, Admin, Settings — is on More.
+ * Only Inbox carries a number, as on the rail.
+ */
 export function PhoneTabs() {
   const { totalUnread, setNewOpen } = useInbox();
   const location = useLocation();
   const inboxActive = location.pathname.startsWith("/inbox") || location.pathname.startsWith("/t/");
   const tabs: { to: string; label: string; icon: React.ReactNode; badge?: number; flagged?: boolean }[] = [
-    { to: "/today", label: "Today", icon: <Sun /> },
     { to: "/inbox", label: "Inbox", icon: <Inbox />, badge: totalUnread },
-    { to: "/pipeline", label: "Pipeline", icon: <KanbanSquare /> },
+    { to: "/today", label: "Today", icon: <Sun /> },
+    { to: "/tasks", label: "Tasks", icon: <CheckSquare /> },
+    { to: "/intake", label: "Leads", icon: <ListTodo /> },
     { to: "/more", label: "More", icon: <MoreHorizontal /> },
   ];
   return (

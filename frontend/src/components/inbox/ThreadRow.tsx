@@ -7,6 +7,7 @@ import { SLA_RISK_MS } from "../../lib/views";
 import { cn } from "../ui/utils";
 import type { UnifiedContact } from "../../types";
 import { formatServerTime } from "../../utils/datetime";
+import { currentUser } from "../../lib/ui-flag";
 
 export interface RowActions {
   archive: (c: UnifiedContact) => void;
@@ -44,9 +45,17 @@ function relTime(d: Date): string {
 }
 
 /**
- * ThreadRow (UX-001 §3.4): avatar 32 · name (600, truncate) · channel dots · time
+ * ThreadRow (UX-001 §3.4): avatar 32 · name (600, truncate) · channel icons · time
  * second line = preview + tag dots + SLA pip. Unread = weight + 6px blue dot, never a row tint.
- * Row actions: hover (pointer) / visible `⋯` (touch) — T2.
+ *
+ * A row says only what is true and unusual. "Unknown", "Unassigned" and the team used to sit on
+ * almost every row, and a label on every row tells nobody anything; they stay in the tooltip and
+ * the details panel, and the Unassigned view lists the unowned ones. Shown when it matters: the
+ * CRM kind when there is one, the owner when it is somebody else, a disabled owner, SLA risk.
+ * No per-row unread count either: bold and the dot say unread, the number is in the thread.
+ *
+ * Row actions: hover or keyboard focus on a pointer device. On touch a long-press opens the same
+ * menu; a visible `⋯` there sat on top of the time.
  */
 export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions, coarse, isSystemManager }: { c: UnifiedContact; selected: boolean; onOpen: () => void; actions: RowActions; coarse: boolean; isSystemManager: boolean }) {
   const unread = c.totalUnreadCount > 0;
@@ -55,7 +64,10 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
   const ownerDisabled = Boolean(c.assignedToUser) && c.assignedToEnabled === false;
   const unassigned = !c.assignedToUser || ownerDisabled;
   const awaiting = c.lastMessageDirection === "Inbound";
-  const slaRisk = awaiting && Date.now() - c.timestamp.getTime() > SLA_RISK_MS;
+  // Unread as well as unanswered: a read newsletter is not a customer kept waiting, and a red pip
+  // on half the list is just colour.
+  const slaRisk = unread && awaiting && Date.now() - c.timestamp.getTime() > SLA_RISK_MS;
+  const someoneElse = !unassigned && c.assignedToUser !== currentUser() ? c.assignedTo?.name : "";
   const groups: MenuGroup[] = [
     [
       { id: "read", label: unread ? "Mark as read" : "Mark as unread", icon: unread ? <EyeOff /> : <Eye />, onSelect: () => actions.toggleRead(c) },
@@ -103,7 +115,7 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
         <div className="flex items-center gap-1.5 min-w-0">
           <span className={cn("truncate text-sm min-w-0", unread ? "font-semibold text-ink-1" : "font-medium text-ink-1")}>{c.contactName}</span>
           {c.closure && <Chip size="sm" accent={["Resolved", "Converted"].includes(c.closure.outcome) ? "green" : "rose"} label={c.closure.outcome} className="shrink-0" title={c.closure.reason} />}
-          {kind ? <Chip size="sm" accent={kind.accent} label={kind.label} className="shrink-0 max-w-[45%]" /> : <Chip size="sm" accent="neutral" label="Unknown" className="shrink-0 opacity-70" title="No ERP record — promote to Lead or link in Desk" />}
+          {kind && <Chip size="sm" accent={kind.accent} label={kind.label} className="shrink-0 max-w-[45%]" />}
           <span className="flex items-center gap-0.5 shrink-0" aria-label={c.channels.join(", ")}>
             {c.channels.slice(0, 4).map((ch) => {
               const m = channelMeta(ch);
@@ -113,29 +125,29 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
           <span className={cn("t2-hide ml-auto shrink-0 text-xs tabular-nums", unread ? "text-crayon-blue-text font-medium" : "text-ink-3")}>{relTime(c.timestamp)}</span>
         </div>
         <div className="flex items-center gap-1.5 min-w-0 mt-0.5">
-          {c.assignedTeamName && <span className="text-xs text-ink-3 truncate max-w-[30%] shrink-0 rounded bg-surface-sunken px-1" title={`Team: ${c.assignedTeamName}`}>{c.assignedTeamName}</span>}
-          {unassigned ? <span className="text-xs text-crayon-amber-text shrink-0" title={ownerDisabled ? `Assignee ${c.assignedTo?.name} is disabled` : "Nobody owns this chat"}>{ownerDisabled ? "Owner disabled" : "Unassigned"}</span> : c.assignedTo?.name && <span className="text-xs text-ink-3 truncate max-w-[40%] shrink-0">{c.assignedTo.name.split(" ")[0]}:</span>}
+          {ownerDisabled
+            ? <span className="text-xs text-crayon-amber-text shrink-0" title={`Assignee ${c.assignedTo?.name} is disabled`}>Owner disabled</span>
+            : someoneElse && <span className="text-xs text-ink-3 truncate max-w-[40%] shrink-0" title={`Assigned to ${someoneElse}`}>{someoneElse.split(" ")[0]}:</span>}
           <span className={cn("truncate text-xs min-w-0", unread ? "text-ink-1" : "text-ink-3")}>{c.lastMessage || "—"}</span>
           <span className="t2-hide ml-auto flex items-center gap-1 shrink-0">
             {c.tags?.slice(0, 4).map((t) => <span key={t.tag} className="size-2 rounded-full" style={{ backgroundColor: t.color }} title={t.tag_name} />)}
             {c.broadcastDeliveryStatus && <Badge accent={c.broadcastDeliveryStatus === "Failed" ? "rose" : c.broadcastDeliveryStatus === "Sent" ? "green" : "amber"}>{c.broadcastDeliveryStatus}</Badge>}
-            {slaRisk ? <span className="size-2 rounded-full bg-crayon-rose-base" title="SLA at risk — unanswered over 1h" /> : awaiting ? <span className="size-2 rounded-full bg-crayon-amber-base" title="Awaiting reply" /> : null}
-            {unread && <Badge solid count={c.totalUnreadCount} />}
+            {slaRisk && <span className="size-2 rounded-full bg-crayon-rose-base" title="SLA at risk — unanswered over 1h" />}
           </span>
         </div>
       </div>
 
-      {/* T2 row actions: hover on pointer; always on touch */}
+      {/* T2 row actions: hover or focus on pointer; long-press on touch (the ContextMenu above). */}
+      {!coarse && (
       <div className={cn("t2-reveal absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-surface-hover rounded-md pl-1", selected && "bg-surface-active")} onClick={(e) => e.stopPropagation()}>
-        {!coarse && (
           <>
             {/* Archive is deliberately not a hover button — it sat where people click to open the row. Use e, ⋯ or right-click. */}
             <button type="button" title="Assign to me (a)" aria-label="Assign to me" className="size-7 rounded flex items-center justify-center text-ink-3 hover:text-ink-1 hover:bg-surface" onClick={() => actions.assignToMe(c)}><UserPlus className="size-4" /></button>
             <button type="button" title={unread ? "Mark read" : "Mark unread"} aria-label="Toggle read" className="size-7 rounded flex items-center justify-center text-ink-3 hover:text-ink-1 hover:bg-surface" onClick={() => actions.toggleRead(c)}>{unread ? <Eye className="size-4" /> : <EyeOff className="size-4" />}</button>
           </>
-        )}
         <OverflowMenu groups={groups} size="icon-sm" />
       </div>
+      )}
     </Row>
     </ContextMenu>
   );

@@ -75,6 +75,8 @@ export default {
         tablet: "640px",
         laptop: "1024px",
         wide: "1440px",
+        // A mouse or trackpad, not a finger: hover-only affordances (row checkboxes) live here.
+        "pointer-fine": { raw: "(pointer: fine)" },
       },
       transitionDuration: { DEFAULT: "120ms" },
     },

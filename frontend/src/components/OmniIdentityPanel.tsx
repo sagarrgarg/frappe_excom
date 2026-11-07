@@ -130,7 +130,8 @@ export function OmniIdentityPanel({ conversation, onAccountSwitch, embedded }: O
               )}
             </Section>
 
-            <Section title="Summary">
+            {/* Nothing to summarise yet (a web-form lead, a new contact): no section of zeros. */}
+            {(statsLoading || stats.total_messages > 0) && <Section title="Summary">
               {statsLoading ? <Loading /> : (
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
                   <Stat label="Messages" value={String(stats.total_messages)} />
@@ -139,15 +140,11 @@ export function OmniIdentityPanel({ conversation, onAccountSwitch, embedded }: O
                   <Stat label="Avg response" value={formatResponseTime(stats.avg_response_time_seconds)} />
                 </dl>
               )}
-            </Section>
+            </Section>}
 
-            <Section title="Quick actions">
-              <div className="grid grid-cols-1 gap-1.5">
-                <Button size="sm" className="justify-start" onClick={() => { const e = linkedEntities[0]; window.open(e ? getFormUrl(e.linked_doctype, e.linked_name) : getFormUrl("Omni Identity", conversation.id), "_blank"); }}><FileText />View in ERPNext</Button>
-                <Button size="sm" className="justify-start" disabled={!contactInfo.email} onClick={() => window.open(`mailto:${contactInfo.email}`, "_blank")}><Mail />Send email</Button>
-                <Button size="sm" className="justify-start" onClick={() => { const c = linkedEntities.find((e) => e.linked_doctype === "Contact"); window.open(`${window.location.origin}/app/event/new${c ? `?party_type=Contact&party=${encodeURIComponent(c.linked_name)}` : ""}`, "_blank"); }}><CalendarPlus />Schedule meeting</Button>
-              </div>
-            </Section>
+            {/* "View in ERPNext" and "Send email" repeated the Linked ERP links above and the composer
+                (and mailto: sent mail Excom never saw). Only what is not reachable elsewhere stays. */}
+            <Button size="sm" variant="ghost" className="justify-start -ml-2" onClick={() => { const c = linkedEntities.find((e) => e.linked_doctype === "Contact"); window.open(`${window.location.origin}/app/event/new${c ? `?party_type=Contact&party=${encodeURIComponent(c.linked_name)}` : ""}`, "_blank"); }}><CalendarPlus />Schedule meeting</Button>
           </div>
         ) : (
           <div className="p-3 space-y-4">

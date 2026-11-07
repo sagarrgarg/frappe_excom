@@ -28,8 +28,10 @@ const ENTITY_ACCENT: Record<string, Accent> = { Lead: "amber", Opportunity: "vio
  * RecordHeader (48px) — T1: avatar · name · record chip. Everything else lives in `⋯` (T3).
  * Collapses the record chip below container width 480 (container, not viewport — §2.5 rule 3).
  */
-export function RecordHeader({ contact, record, onBack, showBack, menuGroups, onToggleDetails, detailsToggleVisible }: {
+export function RecordHeader({ contact, record, onBack, showBack, menuGroups, onToggleDetails, detailsToggleVisible, context }: {
   contact: UnifiedContact;
+  /** The second line: phone, CRM state, owner (ContextLine). Falls back to company · phone. */
+  context?: React.ReactNode;
   record: RecordRef | null;
   onBack?: () => void;
   showBack?: boolean;
@@ -54,11 +56,11 @@ export function RecordHeader({ contact, record, onBack, showBack, menuGroups, on
           <h2 className="text-md text-ink-1 truncate min-w-0">{contact.contactName}</h2>
           {record && record.doctype !== "Omni Identity" && !narrow && (
             <a href={deskUrl(record.doctype, record.name)} target="_blank" rel="noreferrer" className="shrink-0 min-w-0 max-w-[40%]">
-              <Chip size="sm" accent={ENTITY_ACCENT[record.doctype] || "neutral"} label={`${record.doctype} · ${record.name}`} icon={<ExternalLink />} title={record.title} />
+              <Chip size="sm" accent={ENTITY_ACCENT[record.doctype] || "neutral"} label={record.doctype} icon={<ExternalLink />} title={`Open ${record.doctype} ${record.name} in Desk`} />
             </a>
           )}
         </div>
-        {sub && <p className="text-xs text-ink-3 truncate">{sub}</p>}
+        {context ?? (sub && <p className="text-xs text-ink-3 truncate">{sub}</p>)}
       </div>
       {/* Renders nothing unless this site has a voice line and the contact has a number. */}
       <CallButton

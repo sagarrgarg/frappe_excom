@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useFrappeGetCall } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
-import { Sun, Inbox, KanbanSquare, Loader2, MessageSquare, ExternalLink, Filter, Clock, AlertTriangle, CheckSquare, X } from "lucide-react";
+import { Sun, Inbox, KanbanSquare, Loader2, MessageSquare, ExternalLink, Filter, Clock, AlertTriangle, CheckSquare, X, ListTodo } from "lucide-react";
+import { currentUser } from "../lib/ui-flag";
 import { PageFrame } from "../components/shell/PageFrame";
 import { NewLeadDialog } from "../components/crm/NewLeadDialog";
 import { Plus } from "lucide-react";
@@ -25,7 +26,13 @@ function age(from?: string): string {
   return `${Math.round(s / 86400)}d`;
 }
 
-/** Shared row for leads/opportunities: title · type · stage · thread age · open conversation. */
+/**
+ * Shared row for leads/opportunities: title · type · stage · thread age · open conversation.
+ *
+ * Same rule as the inbox row: only what is true and unusual. "Unclassified", "Unassigned" and an
+ * SLA chip used to be on nearly every lead; the stage tabs already say which leads are not
+ * classified, and an owner is shown when it is somebody else. SLA is a red pip, unread is bold.
+ */
 function CrmRow({ r, kind, extra, onOpenThread }: { r: any; kind: "lead" | "opp"; extra?: React.ReactNode; onOpenThread: (oi: string, thread?: string) => void }) {
   const title = kind === "lead" ? r.lead_name || r.company_name || r.name : r.customer_name || r.party_name || r.name;
   const ch = r._thread_channel ? channelMeta(r._thread_channel) : null;
@@ -34,17 +41,17 @@ function CrmRow({ r, kind, extra, onOpenThread }: { r: any; kind: "lead" | "opp"
       <Avatar name={title} size={32} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-sm font-medium text-ink-1 truncate">{title}</span>
-          {r.customer_type ? <Chip size="sm" accent="teal" label={r.customer_type} /> : kind === "lead" ? <Chip size="sm" accent="amber" label="Unclassified" /> : null}
+          <span className={cn("text-sm text-ink-1 truncate", r._thread_unread > 0 ? "font-semibold" : "font-medium")} title={r._thread_unread > 0 ? `${r._thread_unread} unread` : undefined}>{title}</span>
+          {r.customer_type && <Chip size="sm" accent="teal" label={r.customer_type} />}
           {ch && <ch.icon className={cn("size-3.5 shrink-0", `text-crayon-${ch.accent}-base`)} />}
-          {r._thread_unread > 0 && <Badge solid count={r._thread_unread} />}
+          {r._sla_breached && <span className="size-2 rounded-full bg-crayon-rose-base shrink-0" title="SLA breached — no reply in time" aria-label="SLA breached" />}
           <span className="ml-auto text-xs text-ink-3 tabular-nums shrink-0">{age(r.creation || r.stage_entered_at)}</span>
         </div>
         <div className="flex items-center gap-1.5 mt-0.5 min-w-0 text-xs text-ink-3">
           {kind === "opp" ? <span className="truncate">{r.pipeline_stage}{r.opportunity_amount ? ` · ${r.currency || ""} ${Number(r.opportunity_amount).toLocaleString("en-IN")}` : ""}</span> : <span className="truncate">{r.intake_stage || "Captured"}{r.intake_source ? ` · ${r.intake_source}` : r.first_touch_channel ? ` · ${r.first_touch_channel}` : ""}</span>}
-          {r._sla_breached && <Chip size="sm" accent="rose" icon={<AlertTriangle />} label="SLA" />}
+
           {r.next_action_at && <span className={cn("shrink-0 tabular-nums", parseFrappeDateTime(r.next_action_at) < new Date() ? "text-crayon-rose-text" : "")}><Clock className="inline size-3 mr-0.5" />{formatServerShortDateTime(parseFrappeDateTime(r.next_action_at))}</span>}
-          {r.lead_owner || r.opportunity_owner ? <span className="truncate ml-auto">{(r.lead_owner || r.opportunity_owner).split("@")[0]}</span> : <span className="ml-auto text-crayon-amber-text">Unassigned</span>}
+          {(r.lead_owner || r.opportunity_owner) && (r.lead_owner || r.opportunity_owner) !== currentUser() && <span className="truncate ml-auto shrink-0 max-w-[40%]" title={`Owner: ${r.lead_owner || r.opportunity_owner}`}>{(r.lead_owner || r.opportunity_owner).split("@")[0]}</span>}
         </div>
         {extra}
       </div>
@@ -150,7 +157,7 @@ export function IntakeRoute() {
   const toggle = (n: string) => setSelected((s) => { const x = new Set(s); x.has(n) ? x.delete(n) : x.add(n); return x; });
   const [newLead, setNewLead] = useState(false);
   return (
-    <PageFrame title="Leads" icon={<Inbox />} className="!p-0" actions={<><Badge count={rows.length} accent="neutral" /><Button size="sm" variant="primary" onClick={() => setNewLead(true)}><Plus />New lead</Button><NewLeadDialog open={newLead} onClose={() => setNewLead(false)} onCreated={() => mutate()} /></>}>
+    <PageFrame title={<>Leads <span className="text-sm text-ink-3 tabular-nums">{rows.length}</span></>} icon={<ListTodo />} className="!p-0" actions={<><Button size="sm" variant="primary" onClick={() => setNewLead(true)}><Plus />New lead</Button><NewLeadDialog open={newLead} onClose={() => setNewLead(false)} onCreated={() => mutate()} /></>}>
       <div className="-m-3">
         <LeadFilterBar opts={opts} value={filters} onChange={setFilters} />
         <div className="sticky top-0 z-10 bg-surface-sunken border-b border-border px-2 py-1.5 flex items-center gap-2 min-w-0">
@@ -167,8 +174,9 @@ export function IntakeRoute() {
         </div>
         {isLoading && !rows.length ? <div className="flex justify-center py-10 text-ink-3"><Loader2 className="size-5 animate-spin" /></div> : rows.length === 0 ? <EmptyState icon={<Inbox />} title={Object.keys(query).length ? "No leads match these filters" : "Intake queue is empty"} hint={Object.keys(query).length ? "Clear a filter to widen the search." : "New enquiries from IndiaMART, TradeIndia, Meta lead ads and websites land here."} /> : (
           rows.map((r) => (
-            <div key={r.name} className="flex items-stretch min-w-0">
-              <label className="flex items-center px-2 border-b border-border shrink-0"><input type="checkbox" className="size-4" checked={selected.has(r.name)} onChange={() => toggle(r.name)} /></label>
+            <div key={r.name} className="group flex items-stretch min-w-0">
+              {/* Selecting is for bulk classify: the box shows on hover or once something is picked, not on every row. */}
+              <label className={cn("hidden pointer-fine:flex items-center px-2 border-b border-border shrink-0", selected.size === 0 && "[&>input]:opacity-0 group-hover:[&>input]:opacity-100 focus-within:[&>input]:opacity-100")}><input type="checkbox" className="size-4" aria-label={`Select ${r.lead_name || r.name}`} checked={selected.has(r.name)} onChange={() => toggle(r.name)} /></label>
               <div className="flex-1 min-w-0"><CrmRow r={r} kind="lead" onOpenThread={open} /></div>
             </div>
           ))

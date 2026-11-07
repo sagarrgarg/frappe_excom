@@ -11,6 +11,10 @@ import { cn } from "../ui/utils";
 export function PageFrame({ title, icon, actions, children, className, wide }: { title: React.ReactNode; icon?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode; className?: string; wide?: boolean }) {
   const navigate = useNavigate();
   const { bp } = useInbox();
+  // On a phone the title and the page's own controls (tabs, filters, refresh) do not fit one 48px
+  // row: the controls pushed the title to nothing and ran off the right edge. They get a row of
+  // their own there, which scrolls sideways if it has to.
+  const stacked = bp === "phone" && Boolean(actions);
   return (
     <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-surface">
       <Toolbar>
@@ -19,8 +23,9 @@ export function PageFrame({ title, icon, actions, children, className, wide }: {
         )}
         {icon && <span className="text-ink-3 [&>svg]:size-5 shrink-0">{icon}</span>}
         <h1 className="text-md text-ink-1 truncate flex-1 min-w-0">{title}</h1>
-        <div className="flex items-center gap-1.5 shrink-0 min-w-0">{actions}</div>
+        {!stacked && <div className="flex items-center gap-1.5 shrink-0 min-w-0">{actions}</div>}
       </Toolbar>
+      {stacked && <div className="chip-row shrink-0 px-3 py-1.5 border-b border-border bg-surface gap-1.5">{actions}</div>}
       <div className={cn("flex-1 min-h-0 overflow-y-auto", className)}>
         <div className={cn("mx-auto w-full p-3", wide ? "max-w-[1400px]" : "max-w-[1200px]")}>{children}</div>
       </div>

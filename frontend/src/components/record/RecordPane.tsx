@@ -5,7 +5,7 @@ import { useFrappeGetCall } from "@/lib/api";
 import { toast } from "sonner";
 import { MessageSquare, ListTodo, StickyNote, History, Lock, ArrowRightLeft, Tag, Sparkles, ExternalLink, AlertOctagon, Archive, ArchiveRestore, Trash2, Copy, Eye, EyeOff, UserPlus, PanelRight, Loader2, Ban, ShieldCheck } from "lucide-react";
 import { RecordHeader } from "./RecordHeader";
-import { ContextStrip } from "./ContextStrip";
+import { ContextLine } from "./ContextStrip";
 import { MessageFeed } from "./MessageFeed";
 import { Composer, type EmailDraft } from "./Composer";
 import { ActiveCallCard } from "../voice/ActiveCallCard";
@@ -150,6 +150,7 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
       { id: "tags", label: "Tags…", icon: <Tag />, onSelect: () => setTagsOpen(true) },
       { id: "assign", label: "Assign to me", icon: <UserPlus />, shortcut: "a", onSelect: async () => { try { await all((id) => assignCall({ thread_id: id })); toast.success("Assigned to you"); refreshThreads(); } catch (err) { toastError(err, "Failed"); } } },
       { id: "ai", label: "AI assist", icon: <Sparkles />, onSelect: () => setTab("ai") },
+      { id: "activity", label: "Activity log", icon: <History />, onSelect: () => setTab("activity") },
       { id: "details", label: "Details", icon: <PanelRight />, shortcut: "⌘.", onSelect: () => setDetailsOpen(true) },
     ],
     [
@@ -177,20 +178,23 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
     ],
   ];
 
+  // Four tabs that are used every day. Activity (the audit trail) and AI assist are opened from ⋯
+  // and show up as a fifth tab only while open — six tabs did not fit a phone, and the last two
+  // were cut off on every conversation.
   const segments = [
     { value: "chat" as Tab, label: "Chat", icon: <MessageSquare /> },
     { value: "tasks" as Tab, label: "Tasks", icon: <ListTodo />, count: openTasks.length },
     { value: "notes" as Tab, label: "Notes", icon: <StickyNote /> },
-    { value: "activity" as Tab, label: "Activity", icon: <History /> },
-    { value: "ai" as Tab, label: "AI", icon: <Sparkles /> },
     { value: "details" as Tab, label: "Details", icon: crmPrimary ? <Tags /> : <Lock />, disabled: false, hint: crmPrimary ? `${crmPrimary.doctype} ${crmPrimary.name}` : "No CRM record yet — Promote to Lead from ⋯" },
+    ...(tab === "activity" ? [{ value: "activity" as Tab, label: "Activity", icon: <History /> }] : []),
+    ...(tab === "ai" ? [{ value: "ai" as Tab, label: "AI", icon: <Sparkles /> }] : []),
   ];
   const effectiveTab: Tab = tab;
 
   return (
     <section aria-label={`Conversation with ${contact.contactName}`} className="flex-1 min-w-0 min-h-0 flex flex-col bg-surface">
-      <RecordHeader contact={contact} record={record} showBack={drill} onBack={closeRecord} menuGroups={menuGroups} onToggleDetails={toggleDetails} detailsToggleVisible />
-      <ContextStrip contact={contact} record={record} crm={crmPrimary} onStage={crmPrimary?.doctype === "Opportunity" ? () => setTab("details") : undefined} />
+      <RecordHeader contact={contact} record={record} showBack={drill} onBack={closeRecord} menuGroups={menuGroups} onToggleDetails={toggleDetails} detailsToggleVisible
+        context={<ContextLine contact={contact} crm={crmPrimary} reach={contact.contactInfo.phone || contact.contactInfo.email || contact.contactInfo.company} onStage={crmPrimary?.doctype === "Opportunity" ? () => setTab("details") : undefined} />} />
       {contact.closure && <div className="shrink-0 flex items-center gap-2 px-3 h-8 text-xs bg-surface-sunken border-b border-border min-w-0"><span className="font-medium text-ink-1">Closed · {contact.closure.outcome}</span>{contact.closure.reason && <span className="text-ink-2 truncate">— {contact.closure.reason}</span>}<span className="text-ink-3 truncate ml-auto">{contact.closure.by}{contact.closure.at ? ` · ${contact.closure.at.slice(0, 16)}` : ""}</span></div>}
       <SegmentedControl<Tab> ariaLabel="Record sections" className="px-2 border-b border-border bg-surface" value={effectiveTab} onChange={setTab} segments={segments} />
 

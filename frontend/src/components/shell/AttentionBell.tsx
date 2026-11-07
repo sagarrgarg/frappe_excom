@@ -95,6 +95,11 @@ export function AttentionBell({ compact = false }: { compact?: boolean }) {
   const streams = streamsOf(worklist);
   const waiting = streams.filter((s) => s.count > 0);
   const total = worklist.needs_attention;
+  // The inbox already carries the unread number. Adding it in here made the bell a second, larger
+  // copy of it ("617 waiting"), so the bell only lights up for what nothing else shows: overdue
+  // tasks and missed calls. A dot, not a number — the menu says which and how many.
+  const elsewhere = worklist.tasks.count + worklist.calls.count;
+  const summary = waiting.map((s) => `${s.count} ${s.label.toLowerCase()}`).join(", ");
 
   // Say the kinds that grew, and say what they are. "3 tasks are overdue" is actionable in a way
   // that a bare number on a bell is not.
@@ -129,23 +134,18 @@ export function AttentionBell({ compact = false }: { compact?: boolean }) {
       <Menu.Trigger asChild>
         <button
           type="button"
-          title={total ? `${total} waiting` : "Nothing waiting"}
-          aria-label={total ? `${total} things waiting` : "Nothing waiting"}
+          title={summary || "Nothing waiting"}
+          aria-label={total ? `Waiting: ${summary}` : "Nothing waiting"}
           className="flex h-10 w-full min-w-0 items-center gap-3 rounded-md px-2.5 text-sm text-ink-2 hover:bg-surface-hover hover:text-ink-1"
         >
           <span className="relative inline-flex shrink-0">
             <Bell className="size-5" />
-            {total > 0 && (
-              <span
-                className="absolute -right-1 -top-1 min-w-[1rem] rounded-full bg-crayon-rose-base px-1 text-[0.6rem] font-semibold leading-4 text-white ring-2 ring-surface tabular-nums"
-                aria-hidden
-              >
-                {total > 99 ? "99+" : total}
-              </span>
+            {elsewhere > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-crayon-rose-base ring-2 ring-surface-sunken" aria-hidden />
             )}
           </span>
           <span className={cn("flex-1 truncate text-left", compact ? "w-0 opacity-0" : "opacity-100")}>
-            {total ? `${total} waiting` : "Nothing waiting"}
+            Waiting
           </span>
         </button>
       </Menu.Trigger>

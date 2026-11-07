@@ -12,13 +12,15 @@ interface Props {
   window: WindowInfo | null;
   optedOut?: boolean;
   onCall?: () => void;
+  /** Inside the composer row: channel icon only, and state only when it is out of the ordinary. */
+  compact?: boolean;
 }
 
 /**
  * `Reply via ▾` (UX-001 §6.2) — the one control that replaces the channel tabs, the account selector
  * and the "viewing & replying via" banner. Shows channel + sending account with state inline.
  */
-export function ReplyVia({ accounts, value, onChange, window: win, optedOut, onCall }: Props) {
+export function ReplyVia({ accounts, value, onChange, window: win, optedOut, onCall, compact = false }: Props) {
   const ch = value ? channelMeta(value.channel) : null;
   const grouped = CHANNEL_ORDER.concat(accounts.map((a) => a.channel).filter((c) => !CHANNEL_ORDER.includes(c)))
     .filter((c, i, arr) => arr.indexOf(c) === i)
@@ -29,6 +31,10 @@ export function ReplyVia({ accounts, value, onChange, window: win, optedOut, onC
     if (!value) return null;
     if (!value.hasAccess) return <Chip size="sm" accent="neutral" icon={<Lock />} label="No access" />;
     if (optedOut) return <Chip size="sm" accent="rose" label="Opted out" />;
+    // In the composer the placeholder and the Template button already say the session is closed, and
+    // an open window is the normal case; only one about to close is worth a word.
+    if (compact && win && win.window_open && win.hours_remaining >= 3) return null;
+    if (compact && value.channel === "whatsapp" && win && !win.window_open) return null;
     if (value.channel === "whatsapp" && win) {
       return win.window_open
         ? <span className="inline-flex items-center gap-1 text-xs text-ink-3 tabular-nums"><Clock className="size-3.5" />window {formatRemaining(win.hours_remaining)}</span>
@@ -50,13 +56,14 @@ export function ReplyVia({ accounts, value, onChange, window: win, optedOut, onC
         <Menu.Trigger asChild data-detail={value ? `${ch ? ch.label : "Reply via"} · ${value.name} | ${value.identifier || "no number / address on this account"} | Hold Ctrl and click the number in the menu to copy` : undefined}>
           <button
             type="button"
-            className={cn("inline-flex items-center gap-1.5 h-7 pl-1.5 pr-1 rounded-md text-sm font-medium text-ink-1 hover:bg-surface-hover min-w-0 max-w-full", ch && `border border-transparent`)}
-            title="Choose channel and sending account"
+            className={cn("inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-ink-1 hover:bg-surface-hover min-w-0 max-w-full", compact ? "h-9 px-1.5" : "h-7 pl-1.5 pr-1", ch && `border border-transparent`)}
+            title={value ? `Replying via ${ch ? ch.label : ""} · ${value.name}${value.identifier && value.identifier !== value.name ? ` (${value.identifier})` : ""} — click to change` : "Choose channel and sending account"}
+            aria-label={value ? `Reply via ${ch ? ch.label : ""} ${value.name}` : "Reply via"}
           >
-            {ch && <ch.icon className={cn("size-4 shrink-0", `text-crayon-${ch.accent}-base`)} />}
-            <span className="truncate">{ch ? ch.label : "Reply via"}</span>
-            {value && <span className="text-ink-3 truncate hidden tablet:inline">· {value.name}{value.identifier && value.identifier !== value.name ? ` (${value.identifier})` : ""}</span>}
-            <ChevronDown className="size-4 text-ink-3 shrink-0" />
+            {ch && <ch.icon className={cn(compact ? "size-5" : "size-4", "shrink-0", `text-crayon-${ch.accent}-base`)} />}
+            {!compact && <span className="truncate">{ch ? ch.label : "Reply via"}</span>}
+            {!compact && value && <span className="text-ink-3 truncate hidden tablet:inline">· {value.name}{value.identifier && value.identifier !== value.name ? ` (${value.identifier})` : ""}</span>}
+            <ChevronDown className={cn("text-ink-3 shrink-0", compact ? "size-3.5 -ml-1" : "size-4")} />
           </button>
         </Menu.Trigger>
         <Menu.Portal>
@@ -86,7 +93,7 @@ export function ReplyVia({ accounts, value, onChange, window: win, optedOut, onC
           </Menu.Content>
         </Menu.Portal>
       </Menu.Root>
-      <div className="min-w-0 truncate">{state}</div>
+      {state && <div className="min-w-0 truncate">{state}</div>}
     </div>
   );
 }

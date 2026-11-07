@@ -144,7 +144,7 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
   const busy = sending || sendingNote || sendingEmail;
   const placeholder = note ? "Write an internal note — only your team sees this"
     : blocked ? "No access to this account — pick another in Reply via"
-    : templateRequired ? "Session closed — send an approved template to reopen"
+    : templateRequired ? "Session closed — send a template"
     : dmWindowClosed ? "Reply window closed — the customer must message first (24h rule)"
     : isEmail ? "Write your email…"
     : `Message ${via?.identifier || contact.contactName}  ·  / for canned responses`;
@@ -193,21 +193,9 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
           </div>
         )}
 
-        {/* Reply via + state */}
-        <div className="flex items-center gap-2 mb-1.5 min-w-0">
-          {note ? (
-            <span className="inline-flex items-center gap-1.5 text-xs text-crayon-amber-text"><StickyNote className="size-4" />Internal note · not sent to the contact</span>
-          ) : (
-            <ReplyVia accounts={contact.allAccounts} value={via} onChange={setVia} window={win} onCall={contact.channels.includes("calls") ? () => toast.info("Calling arrives with Phase C") : undefined} />
-          )}
-          <div className="ml-auto flex items-center gap-1 shrink-0">
-            {/* Message ● Note mode */}
-            <div className="inline-flex rounded-md bg-surface-sunken p-0.5" role="radiogroup" aria-label="Compose mode">
-              <button type="button" role="radio" aria-checked={!note} onClick={() => { setNote(false); setCanned(false); }} className={cn("inline-flex items-center gap-1 h-6 px-2 rounded text-xs font-medium [&_svg]:size-3.5", !note ? "bg-surface text-ink-1 shadow-ex" : "text-ink-3 hover:text-ink-1")}><MessageCircle />Message</button>
-              <button type="button" role="radio" aria-checked={note} onClick={() => { setNote(true); setCanned(false); }} className={cn("inline-flex items-center gap-1 h-6 px-2 rounded text-xs font-medium [&_svg]:size-3.5", note ? "bg-surface text-crayon-amber-text shadow-ex" : "text-ink-3 hover:text-ink-1")}><StickyNote />Note</button>
-            </div>
-          </div>
-        </div>
+        {note && (
+          <p className="flex items-center gap-1.5 text-xs text-crayon-amber-text mb-1.5"><StickyNote className="size-3.5" />Internal note · only your team sees it</p>
+        )}
 
         {/* Email fields — grow in place */}
         {isEmail && !note && emailDraft && (
@@ -239,6 +227,9 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
         <div className="relative flex items-end gap-1.5 min-w-0">
           <CannedResponsePopover isOpen={canned} searchText={cannedSearch} channel={via?.channel} onSelect={(c) => { setText(c); setCanned(false); setCannedSearch(""); taRef.current?.focus(); }} onClose={() => { setCanned(false); setCannedSearch(""); }} />
           {!note && (
+            <ReplyVia compact accounts={contact.allAccounts} value={via} onChange={setVia} window={win} onCall={contact.channels.includes("calls") ? () => toast.info("Calling arrives with Phase C") : undefined} />
+          )}
+          {!note && (
             <Menu.Root modal={false}>
               <Menu.Trigger asChild>
                 <Button ref={stickerBtn} variant="ghost" size="icon" aria-label="Add" title="Attach, template, sticker, canned" disabled={fileUpload.uploading} className="shrink-0">{fileUpload.uploading ? <Loader2 className="animate-spin" /> : <Plus />}</Button>
@@ -268,15 +259,25 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
             )}
             {text.length > CHAR_LIMIT * 0.9 && <div className={cn("text-right text-xs px-3 pb-1 tabular-nums", text.length >= CHAR_LIMIT ? "text-crayon-rose-text" : "text-ink-3")}>{text.length}/{CHAR_LIMIT}</div>}
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-pressed={note}
+            aria-label={note ? "Back to message" : "Write an internal note"}
+            title={note ? "Back to message" : "Internal note — only your team sees it"}
+            onClick={() => { setNote(!note); setCanned(false); taRef.current?.focus(); }}
+            className={cn("shrink-0", note && "text-crayon-amber-text bg-surface")}
+          >
+            {note ? <X /> : <StickyNote />}
+          </Button>
           {templateRequired && !note ? (
-            <Button variant="primary" onClick={() => setTemplateOpen(true)} className="shrink-0"><FileText />Template</Button>
+            <Button variant="primary" onClick={() => setTemplateOpen(true)} className="shrink-0" aria-label="Send a template" title="The 24h session is closed: send an approved template to reopen it"><FileText /><span className="hidden tablet:inline">Template</span></Button>
           ) : (
             <Button variant={note ? "default" : "primary"} size="icon" onClick={send} disabled={busy || (!note && blocked) || (!text.trim() && !isEmail) || (isEmail && !note && !(emailDraft?.html || "").replace(/<[^>]+>/g, "").trim())} aria-label={note ? "Add note" : "Send"} title={`${note ? "Add note" : "Send"}  ${MOD}+⏎`} className={cn("shrink-0", note && "bg-crayon-amber-base text-white border-transparent hover:bg-crayon-amber-text")}>
               {busy ? <Loader2 className="animate-spin" /> : note ? <StickyNote /> : <Send />}
             </Button>
           )}
         </div>
-        <div className="hidden laptop:flex items-center gap-1 mt-1 text-xs text-ink-3"><Kbd>⏎</Kbd> send · <Kbd>⇧⏎</Kbd> newline · <Kbd>/</Kbd> canned</div>
       </div>
 
       <input ref={fileUpload.inputRef} type="file" accept={fileUpload.acceptedTypes} onChange={fileUpload.handleFileChange} className="hidden" />
