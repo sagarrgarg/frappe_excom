@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseEnquiry } from "../enquiry";
+import { parseEnquiry, previewOf } from "../enquiry";
 
 describe("parseEnquiry", () => {
   it("reads the comment intake writes for a web-form enquiry", () => {
@@ -40,5 +40,16 @@ describe("parseEnquiry", () => {
     const f = parseEnquiry("Enquiry from Website\nHello there: is this available?")!;
     expect(f.meta).toEqual([]);
     expect(f.body).toBe("Hello there: is this available?");
+  });
+});
+
+describe("previewOf", () => {
+  it("shows the subject and the message, not the form fields", () => {
+    expect(previewOf("Subject: Price Enquiry\nLanguage: en\nFrom: Website Contact Page (/contact-us)\n\nHello,\nI need 1,000 pieces."))
+      .toBe("Price Enquiry — Hello, I need 1,000 pieces.");
+  });
+  it("leaves every other preview as it is", () => {
+    expect(previewOf("Payment Advice::PINE LABS")).toBe("Payment Advice::PINE LABS");
+    expect(previewOf("")).toBe("");
   });
 });

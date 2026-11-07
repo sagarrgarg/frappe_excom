@@ -8,6 +8,7 @@ import { cn } from "../ui/utils";
 import type { UnifiedContact } from "../../types";
 import { formatServerTime } from "../../utils/datetime";
 import { currentUser } from "../../lib/ui-flag";
+import { previewOf } from "../../lib/enquiry";
 
 export interface RowActions {
   archive: (c: UnifiedContact) => void;
@@ -138,7 +139,7 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
           {ownerDisabled
             ? <span className="text-xs text-crayon-amber-text shrink-0" title={`Assignee ${c.assignedTo?.name} is disabled`}>Owner disabled</span>
             : someoneElse && <span className="text-xs text-ink-3 truncate max-w-[40%] shrink-0" title={`Assigned to ${someoneElse}`}>{someoneElse.split(" ")[0]}:</span>}
-          <span className={cn("truncate text-xs min-w-0", unread ? "text-ink-1" : "text-ink-3", !c.lastMessage && "italic")}>{c.lastMessage || "No messages yet"}</span>
+          <span className={cn("truncate text-xs min-w-0", unread ? "text-ink-1" : "text-ink-3", !c.lastMessage && "italic")}>{c.lastMessage ? previewOf(c.lastMessage) : "No messages yet"}</span>
           <span className="t2-hide ml-auto flex items-center gap-1 shrink-0">
             {c.tags?.slice(0, 4).map((t) => <span key={t.tag} className="size-2 rounded-full" style={{ backgroundColor: t.color }} title={t.tag_name} />)}
             {c.broadcastDeliveryStatus && <Badge accent={c.broadcastDeliveryStatus === "Failed" ? "rose" : c.broadcastDeliveryStatus === "Sent" ? "green" : "amber"}>{c.broadcastDeliveryStatus}</Badge>}

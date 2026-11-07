@@ -19,7 +19,9 @@ export default defineConfig(({ mode }) => {
         manifest: {
           name: "Excom",
           short_name: "Excom",
-          start_url: "/excom",
+          // Inside the scope: "/excom" is not under "/excom/", and Chrome then drops the scope, so the
+          // installed app treated the whole site (Desk too) as itself.
+          start_url: "/excom/inbox",
           scope: "/excom/",
           description: "Omnichannel External Communication Platform",
           display: "standalone",
