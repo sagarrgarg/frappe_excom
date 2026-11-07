@@ -1,24 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Excom">
-  <title>Excom</title>
-  <defs>
-    <linearGradient id="excom-tile" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#312E81"/>
-      <stop offset="1" stop-color="#0F172A"/>
-    </linearGradient>
-    <linearGradient id="excom-warm" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#FDBA74"/>
-      <stop offset="1" stop-color="#EA580C"/>
-    </linearGradient>
-    <linearGradient id="excom-cool" x1="1" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#5EEAD4"/>
-      <stop offset="1" stop-color="#0891B2"/>
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="116" fill="url(#excom-tile)"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Excom"><title>Excom</title><defs><linearGradient id="excom-tile" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#312E81"/><stop offset="1" stop-color="#0F172A"/></linearGradient><linearGradient id="excom-warm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FDBA74"/><stop offset="1" stop-color="#EA580C"/></linearGradient><linearGradient id="excom-cool" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5EEAD4"/><stop offset="1" stop-color="#0891B2"/></linearGradient></defs><rect width="512" height="512" rx="116" fill="url(#excom-tile)"/>
   <path d="M168 104h176a80 80 0 0 1 80 80v96a80 80 0 0 1-80 80H214l-82 62c-9 7-22 0-20-11l10-51a80 80 0 0 1-34-66v-110a80 80 0 0 1 80-80z" fill="#FFFFFF"/>
-  <g stroke-linecap="round" fill="none">
-    <path d="M188 164L324 300" stroke="url(#excom-warm)" stroke-width="50"/>
-    <path d="M324 164L188 300" stroke="#FFFFFF" stroke-width="78"/>
-    <path d="M324 164L188 300" stroke="url(#excom-cool)" stroke-width="50"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="34">
+    <path d="M176 194h150m-40-40l40 40-40 40" stroke="url(#excom-warm)"/>
+    <path d="M336 272h-150m40 40l-40-40 40-40" stroke="url(#excom-cool)"/>
   </g>
 </svg>
