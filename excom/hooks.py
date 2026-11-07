@@ -13,7 +13,10 @@ required_apps = ["erpnext"]
 add_to_apps_screen = [
 	{
 		"name": "excom",
-		"logo": "/assets/excom/excom/excom-logo.svg",
+		# Kept in public/images: public/excom is the frontend build output and is emptied on build.
+		# No `app_logo_url` hook on purpose: a third app logo makes Frappe's navbar fall back to its
+		# own logo instead of ERPNext's (navbar_settings.get_app_logo).
+		"logo": "/assets/excom/images/excom-logo.svg",
 		"title": "Excom",
 		"route": "/excom",
 	}
