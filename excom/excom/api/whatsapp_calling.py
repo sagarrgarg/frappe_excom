@@ -96,6 +96,9 @@ def send_call_button(thread: str, body: str, display_text: str = "", ttl_minutes
 	from excom.excom.services import whatsapp_interactive as wi
 
 	_check_thread_access(thread)
+	from excom.excom.api.chat import _check_send_access
+
+	_check_send_access(thread)
 	interactive = wi.voice_call(body, display_text=display_text, ttl_minutes=frappe.utils.cint(ttl_minutes), payload=payload)
 	return {"message": wi.send_to_thread(thread, interactive)}
 

@@ -70,7 +70,8 @@ export function useThreads(
           identifier: t.primary_phone || t.display_name,
           channel: t.channel,
           isActive: true,
-          hasAccess: true,
+          // From the server: may this person reply from this conversation's number / mailbox.
+          hasAccess: t.can_send !== 0,
         }));
 
         const allTags = sortedThreads.flatMap((t) => t.tags || []);

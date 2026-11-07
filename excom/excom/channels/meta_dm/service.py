@@ -204,6 +204,84 @@ def _fill_messages(c: dict, conv: dict, sizes: dict, cutoff, own: set) -> None:
 	box["data"] = msgs
 
 
+# ─── refill: conversations the list did not return ─────────────────────────────
+
+REFILL_DAYS = 30
+REFILL_PER_RUN = 50
+REFILL_RETRY_SECONDS = 24 * 3600
+
+
+def refill_empty_threads(account_name: str | None = None, days: int = REFILL_DAYS, limit: int = REFILL_PER_RUN) -> dict:
+	"""Fill Instagram / Messenger conversations that have a thread here but no messages.
+
+	Two ways they come about: the webhook created the thread and the message failed to store (the
+	140-character message-id limit did that to every Instagram message from 21 Oct 2026), and
+	the poll walks Graph's conversation list, which leaves some conversations out — on GGIL 23 of
+	69 never appeared in it. Graph does answer a lookup by the person's id, so each empty thread
+	is asked for directly. A conversation the customer deleted answers error 100; it is not asked
+	again for a day. Hourly (hooks.py) and once after the fix is deployed (patch).
+	"""
+	names = [account_name] if account_name else frappe.get_all(
+		"Excom Channel Account", filters={"channel": ["in", list(PLATFORMS)], "status": "Active"}, pluck="name"
+	)
+	out = {"threads": 0, "filled": 0, "messages": 0, "gone": 0}
+	for name in names:
+		account = frappe.get_doc("Excom Channel Account", name)
+		try:
+			c = _creds(account)
+		except Exception:
+			continue
+		own = _own_ids(account)
+		cutoff = add_to_date(now_datetime(), days=-int(days))
+		rows = frappe.db.sql(
+			"""
+			SELECT t.name, ic.channel_user_id AS uid
+			FROM `tabExcom Thread` t
+			JOIN `tabOmni Identity Channel` ic ON ic.parent = t.omni_identity AND ic.channel_type = t.channel
+			WHERE t.account = %(acc)s AND t.channel = %(ch)s AND t.creation >= %(cutoff)s
+			  AND IFNULL(ic.channel_user_id, '') != ''
+			  AND NOT EXISTS (SELECT 1 FROM `tabExcom Message` m WHERE m.thread = t.name)
+			ORDER BY t.creation DESC
+			LIMIT %(limit)s
+			""",
+			{"acc": account.name, "ch": account.channel, "cutoff": cutoff, "limit": int(limit)},
+			as_dict=True,
+		)
+		for r in rows:
+			key = f"excom:meta_dm_refill_tried:{r.name}"
+			if frappe.cache.get_value(key):
+				continue
+			out["threads"] += 1
+			sizes = {"conversations": 1, "messages": MESSAGES_PER_PAGE}
+			try:
+				data = _get_shrinking(
+					f"{GRAPH}/{c['version']}/{c['page_id']}/conversations",
+					lambda sz, uid=r.uid: {
+						"access_token": c["token"], "platform": PLATFORMS[account.channel], "user_id": uid,
+						"fields": f"id,updated_time,participants,messages.limit({sz['messages']}){{{MESSAGE_FIELDS}}}",
+					},
+					sizes,
+					("messages",),
+				)
+			except GraphError as e:
+				frappe.cache.set_value(key, 1, expires_in_sec=REFILL_RETRY_SECONDS)
+				if e.code == 100:
+					out["gone"] += 1  # deleted or archived by the customer: nothing to fetch
+					continue
+				_log_poll_failure(account.name)
+				continue
+			n = 0
+			for conv in data.get("data") or []:
+				_fill_messages(c, conv, sizes, cutoff, own)
+				n += ingest_conversation(account, conv)
+			frappe.cache.set_value(key, 1, expires_in_sec=REFILL_RETRY_SECONDS)
+			if n:
+				out["filled"] += 1
+				out["messages"] += n
+		frappe.db.commit()
+	return out
+
+
 def _own_ids(account) -> set[str]:
 	return {str(account.meta_page_id or ""), str(account.meta_ig_user_id or "")} - {""}
 

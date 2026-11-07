@@ -82,6 +82,9 @@ class TestWorklist(FrappeTestCase):
 				"account_doctype": ref.account_doctype, "account": ref.account,
 				"thread_key": f"qa-worklist-{key}", "status": "Open",
 				"assigned_team": team, "unread_count": unread,
+				# Owned: a colleague's conversation on another desk stays theirs. (Unowned, it would be
+				# open to anyone whose team is allowed on the account — excom_thread.can_access.)
+				"assigned_to": OTHER if key == "theirs" else None,
 				"last_message_at": frappe.utils.now_datetime(),
 			}).insert(ignore_permissions=True).name
 

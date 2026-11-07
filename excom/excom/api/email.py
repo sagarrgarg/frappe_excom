@@ -218,8 +218,9 @@ def send_email(
     Returns:
         {"success": True, "message_name": "..."}
     """
-    from excom.excom.api.chat import _check_thread_access, _claim_on_talk
+    from excom.excom.api.chat import _check_thread_access, _check_send_access, _claim_on_talk
     _check_thread_access(thread_id)  # before anything else: sending from a thread you cannot see is not allowed
+    _check_send_access(thread_id)
     _claim_on_talk(thread_id)
     if send_at:
         from frappe.utils import get_datetime, now_datetime

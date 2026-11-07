@@ -45,6 +45,9 @@ interface InboxCtx {
   /** Left list column folded to a thin strip (laptop/wide only). */
   listCollapsed: boolean;
   toggleList: () => void;
+  /** The inbox list (numbers, mailboxes, pages) beside the conversations, on laptop and wider. */
+  paneOpen: boolean;
+  setPaneOpen: (open: boolean) => void;
   setDetailsOpen: (v: boolean) => void;
   toggleDetails: () => void;
 
@@ -183,6 +186,8 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
     else if (next.get("panel") === "details") { navigate(-1); }
   }, [bp, sp, setSp, navigate]);
   const toggleDetails = useCallback(() => setDetailsOpen(!detailsOpen), [detailsOpen, setDetailsOpen]);
+  const [paneOpen, setPaneOpenState] = useState<boolean>(() => { try { return localStorage.getItem("excom_inbox_pane") !== "0"; } catch { return true; } });
+  const setPaneOpen = useCallback((open: boolean) => { setPaneOpenState(open); try { localStorage.setItem("excom_inbox_pane", open ? "1" : "0"); } catch { /* private window */ } }, []);
   const [listCollapsed, setListCollapsed] = useState<boolean>(() => { try { return localStorage.getItem("excom_list_collapsed") === "true"; } catch { return false; } });
   const toggleList = useCallback(() => setListCollapsed((v) => { try { localStorage.setItem("excom_list_collapsed", String(!v)); } catch { /* ignore */ } return !v; }), []);
 
@@ -202,7 +207,7 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
     contacts, allContacts: unifiedContacts, isLoading, refresh, totalUnread,
     listError: listErr ? (listErr.httpStatus === 429 ? "Too many requests — the list is paused for a moment." : (listErr.message || "Could not load conversations.")) : null,
     selectedId, selected, openRecord, closeRecord,
-    detailsOpen, setDetailsOpen, toggleDetails, listCollapsed, toggleList,
+    detailsOpen, setDetailsOpen, toggleDetails, listCollapsed, toggleList, paneOpen, setPaneOpen,
     newOpen, setNewOpen, newPrefill, setNewPrefill, paletteOpen, setPaletteOpen, pendingSelect,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

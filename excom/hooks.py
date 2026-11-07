@@ -302,6 +302,8 @@ scheduler_events = {
 		"excom.excom.api.email.send_scheduled_emails",
 	],
 	"hourly": [
+		# Instagram / Messenger conversations the poll's list left out (or whose messages failed to store).
+		"excom.excom.channels.meta_dm.service.refill_empty_threads",
 		"excom.excom.tasks.crm_sla.check_crm_sla",
 		"excom.excom.utils.trigger_whatsapp_notifications_hourly",
 		"excom.excom.utils.trigger_whatsapp_notifications_hourly_long",

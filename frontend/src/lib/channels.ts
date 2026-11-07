@@ -16,6 +16,8 @@ export const CHANNELS: Record<string, ChannelMeta> = {
   instagram: { key: "instagram", label: "Instagram", short: "IG", icon: Instagram, accent: "plum" },
   messenger: { key: "messenger", label: "Messenger", short: "FB", icon: MessageSquareMore, accent: "blue" },
   calls: { key: "calls", label: "Calls", short: "Calls", icon: Phone, accent: "teal" },
+  // Call threads are stored with channel "voice".
+  voice: { key: "voice", label: "Calls", short: "Calls", icon: Phone, accent: "teal" },
   webchat: { key: "webchat", label: "Web chat", short: "Web", icon: Globe, accent: "violet" },
 };
 

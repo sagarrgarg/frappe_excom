@@ -146,29 +146,25 @@ def _is_manager() -> bool:
 def visible_threads_clause(params: dict, alias: str = "t") -> str:
 	"""SQL for "conversations this person may see", or "" when they may see them all.
 
-	One rule, in one place. Counting conversations, listing them and opening one all have to agree
-	about which are yours — and a second copy of this is exactly how a badge comes to promise
-	something the list then refuses to show.
-
-	Adds what it needs to `params`, so the caller passes the same dict to `frappe.db.sql`.
+	The same rule as opening one (excom_thread.can_access) and as the Desk list: this used to be a
+	second copy that read teams and unowned chats differently, which is how a badge comes to promise
+	something the list then refuses to show. `params` is kept for callers; values are inlined.
 	"""
-	if _is_manager():
-		return ""
+	from excom.excom.doctype.excom_thread.excom_thread import visibility_sql
 
-	from excom.excom.doctype.excom_team.excom_team import get_user_teams
+	return visibility_sql(frappe.session.user, alias)
 
-	params["current_user"] = frappe.session.user
-	teams = get_user_teams()
-	if not teams:
-		return f"{alias}.assigned_to = %(current_user)s"
 
-	params["user_teams"] = teams
-	# General members may claim unassigned conversations, so they have to be able to see them.
-	unassigned = f" OR {alias}.assigned_team IS NULL" if "General" in teams else ""
-	return (
-		f"({alias}.assigned_team IN %(user_teams)s"
-		f" OR {alias}.assigned_to = %(current_user)s{unassigned})"
-	)
+def _check_send_access(thread_id: str) -> None:
+	"""Replying needs the number or mailbox, not only the conversation (excom_thread.can_send_from)."""
+	from excom.excom.doctype.excom_thread.excom_thread import can_send_from
+
+	if not can_send_from(thread_id, frappe.session.user):
+		account = frappe.db.get_value("Excom Thread", thread_id, "account")
+		deny(
+			_("You cannot reply from {0}.").format(account or _("this account")),
+			detail=_("Your teams are not allowed on that number or mailbox. Reply from one of your own, or ask an Excom Admin to add your team to it."),
+		)
 
 
 def _check_manager_access() -> None:
@@ -336,6 +332,11 @@ def get_threads(
         _enrich_company(threads)
         _enrich_tags(threads)
         _enrich_kinds(threads)
+        # Whether this person may reply from the conversation's number or mailbox; the composer
+        # says so up front instead of failing on send (excom_thread.can_send_from).
+        from excom.excom.doctype.excom_thread.excom_thread import can_send_from
+        for t in threads:
+            t["can_send"] = 1 if can_send_from(t, frappe.session.user) else 0
 
     return threads
 
@@ -552,6 +553,7 @@ def send_message(thread_id: str, message: str = "", message_type: str = "Text",
         sticker_name: Excom Sticker name (for Sticker type)
     """
     _check_thread_access(thread_id)
+    _check_send_access(thread_id)
     _claim_on_talk(thread_id)
     message = _sanitize_message(message, thread_id)
 
@@ -1141,6 +1143,7 @@ def send_internal_note(thread_id: str, content: str):
 def pin_message(message_name: str):
     """Pin a message. Sets is_pinned=1 and pinned_by to current user."""
     _check_thread_access(frappe.db.get_value("Excom Message", message_name, "thread"))
+    _check_send_access(frappe.db.get_value("Excom Message", message_name, "thread"))
     if not frappe.db.exists("Excom Message", message_name):
         frappe.throw(_("Message not found"))
     frappe.db.set_value("Excom Message", message_name, {
@@ -1158,6 +1161,7 @@ def pin_message(message_name: str):
 def unpin_message(message_name: str):
     """Unpin a message."""
     _check_thread_access(frappe.db.get_value("Excom Message", message_name, "thread"))
+    _check_send_access(frappe.db.get_value("Excom Message", message_name, "thread"))
     if not frappe.db.exists("Excom Message", message_name):
         frappe.throw(_("Message not found"))
     frappe.db.set_value("Excom Message", message_name, {
@@ -1197,6 +1201,7 @@ def toggle_reaction(message_name: str, emoji: str):
     Reactions stored as JSON: {"emoji": ["user1", "user2"]}.
     """
     _check_thread_access(frappe.db.get_value("Excom Message", message_name, "thread"))
+    _check_send_access(frappe.db.get_value("Excom Message", message_name, "thread"))
     if not frappe.db.exists("Excom Message", message_name):
         frappe.throw(_("Message not found"))
 
@@ -1436,6 +1441,61 @@ def get_navbar_config() -> dict:
 # ---------------------------------------------------------------------------
 # Initiate outbound conversation
 # ---------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+@user_rate_limit(limit=120, seconds=60)
+def get_inbox_accounts() -> list:
+    """The inbox's account list: every number, mailbox and page this person can see conversations
+    on, with what is open and unread on each — the folder pane of a mail client.
+
+    Listed: accounts their teams are allowed on (or open to everyone), plus any account where a
+    conversation of theirs happens to sit (a desk can be routed a chat on another team's number;
+    they can read it there, but `can_send` is false). Counts follow the inbox exactly: the same
+    visibility rule, open conversations only, the Other lane left out.
+    """
+    _check_excom_access()
+    from excom.excom.doctype.excom_thread.excom_thread import open_accounts
+    from excom.excom.services import inbox_lane
+
+    params: dict = {}
+    where = "t.status NOT IN ('Closed', 'Spam') AND " + inbox_lane.focused_clause("t")
+    clause = visible_threads_clause(params, alias="t")
+    if clause:
+        where += " AND " + clause
+    counts = {
+        r.account: r
+        for r in frappe.db.sql(
+            f"""SELECT t.account, COUNT(*) AS open_threads, SUM(t.unread_count > 0) AS unread_threads
+                FROM `tabExcom Thread` t WHERE {where} GROUP BY t.account""",
+            params,
+            as_dict=True,
+        )
+    }
+    manager = _is_manager()
+    mine = None if manager else open_accounts(frappe.session.user)
+    rows = frappe.get_all(
+        "Excom Channel Account",
+        fields=["name", "account_name", "channel", "status", "wa_display_phone", "email_address"],
+        order_by="account_name asc",
+    )
+    out = []
+    for a in rows:
+        c = counts.get(a.name)
+        listed = manager or a.name in mine or c
+        if not listed or (a.status != "Active" and not c):
+            continue
+        out.append({
+            "name": a.name,
+            "label": a.account_name or a.name,
+            "channel": a.channel,
+            "identifier": a.wa_display_phone or a.email_address or "",
+            "active": a.status == "Active",
+            "open_threads": int(c.open_threads) if c else 0,
+            "unread_threads": int(c.unread_threads or 0) if c else 0,
+            "can_send": 1 if manager or a.name in (mine or set()) else 0,
+        })
+    return out
 
 
 @frappe.whitelist()
@@ -1786,6 +1846,7 @@ def send_template_to_thread(
 
     _check_thread_access(thread_id)
     extras_dict = parse_extras(extras)
+    _check_send_access(thread_id)
     _claim_on_talk(thread_id)
 
     thread = frappe.db.get_value(
@@ -2315,6 +2376,7 @@ def retry_message(message_name: str = "") -> dict:
     instead of creating a duplicate.
     """
     _check_thread_access(frappe.db.get_value("Excom Message", message_name, "thread"))
+    _check_send_access(frappe.db.get_value("Excom Message", message_name, "thread"))
 
     if not message_name:
         frappe.throw(_("message_name is required"))

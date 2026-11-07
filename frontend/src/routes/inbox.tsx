@@ -1,5 +1,6 @@
 import { MessageSquare, PanelLeftOpen } from "lucide-react";
 import { ThreadList } from "../components/inbox/ThreadList";
+import { AccountPane } from "../components/inbox/AccountPane";
 import { RecordPane } from "../components/record/RecordPane";
 import { DetailsDrawer } from "../components/record/DetailsDrawer";
 import { EmptyState, Button } from "../components/primitives";
@@ -12,13 +13,14 @@ import { cn } from "../components/ui/utils";
  *  phone/tablet: list OR record (drill-in). laptop: list + record (+ push drawer). wide: + persistent details.
  */
 export function InboxRoute() {
-  const { bp, selectedId, selected, setNewOpen, detailsOpen, listCollapsed, toggleList, totalUnread } = useInbox();
+  const { bp, selectedId, selected, setNewOpen, detailsOpen, listCollapsed, toggleList, totalUnread, paneOpen, setPaneOpen } = useInbox();
   const drill = bp === "phone" || bp === "tablet";
   const showList = !drill || !selectedId;
   const showRecord = !drill || Boolean(selectedId);
 
   return (
     <>
+      {!drill && paneOpen && !listCollapsed && <AccountPane onHide={() => setPaneOpen(false)} />}
       {showList && (!drill && listCollapsed ? (
         <button type="button" onClick={toggleList} title="Show conversations" aria-label="Show conversations" className="w-10 shrink-0 border-r border-border bg-surface-sunken flex flex-col items-center pt-2 gap-2 text-ink-3 hover:text-ink-1">
           <PanelLeftOpen className="size-5" />

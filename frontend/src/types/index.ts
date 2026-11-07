@@ -27,6 +27,8 @@ export interface ExcomThread {
   broadcast_delivery_status?: string;
   /** "Other": newsletters, notifications, automated mail — out of the main inbox (services/inbox_lane.py). */
   inbox_lane?: string;
+  /** 0 when this person's teams are not allowed on the conversation's account (read-only for them). */
+  can_send?: number;
   assigned_to_enabled?: number;
   kinds?: ContactKind[];
   closure_outcome?: string;

@@ -1,7 +1,8 @@
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, PanelLeftOpen } from "lucide-react";
 import { Menu, menuItemClass } from "../primitives";
 import { useInbox } from "../shell/InboxProvider";
 import { viewPredicate, type SavedView } from "../../lib/views";
+import { InboxSwitcher } from "./AccountPane";
 import { cn } from "../ui/utils";
 
 /**
@@ -10,7 +11,8 @@ import { cn } from "../ui/utils";
  * "More views". Counts are plain grey numbers, not coloured badges: the list itself is the alarm.
  */
 export function ViewList() {
-  const { views, viewId, setView, allContacts, contacts, bp } = useInbox();
+  const { views, viewId, setView, allContacts, contacts, bp, paneOpen, setPaneOpen } = useInbox();
+  const drill = bp === "phone" || bp === "tablet";
   // A side-opening submenu has nowhere to go on a phone: there the rest are listed in place.
   const inline = bp === "phone";
   const current = views.find((v) => v.id === viewId) || views.find((v) => v.id === "all")!;
@@ -31,6 +33,12 @@ export function ViewList() {
   };
   return (
     <div className="shrink-0 flex items-center gap-1 px-2 h-8 border-b border-border bg-surface-sunken min-w-0">
+      {/* Which inbox, when the inbox list is not beside the conversations (phone, tablet, or hidden). */}
+      {!drill && !paneOpen && (
+        <button type="button" onClick={() => setPaneOpen(true)} className="size-7 rounded flex items-center justify-center text-ink-3 hover:text-ink-1 hover:bg-surface-hover shrink-0" title="Show the inbox list" aria-label="Show the inbox list"><PanelLeftOpen className="size-4" /></button>
+      )}
+      {(drill || !paneOpen) && <InboxSwitcher />}
+      {(drill || !paneOpen) && <span className="text-border-strong" aria-hidden>·</span>}
       <Menu.Root modal={false}>
         <Menu.Trigger asChild>
           <button type="button" className="flex items-center gap-1 h-7 px-1.5 rounded text-sm font-semibold text-ink-1 hover:bg-surface-hover min-w-0 max-w-full" aria-label="Change view">
