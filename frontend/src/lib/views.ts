@@ -23,10 +23,12 @@ export interface InboxFilters {
   archived: string;
   /** customer | supplier | employee | opportunity | lead | none — client-side, from Omni Identity links. */
   kind: string;
+  /** "other" → the Other lane (newsletters, notifications); otherwise the main inbox. */
+  lane: string;
 }
 
 export const EMPTY_FILTERS: InboxFilters = {
-  q: "", channel: "", account: "", team: "", tags: [], broadcast: "", bstatus: "", from: "", to: "", company: "", archived: "", kind: "",
+  q: "", channel: "", account: "", team: "", tags: [], broadcast: "", bstatus: "", from: "", to: "", company: "", archived: "", kind: "", lane: "",
 };
 
 export const CHIP_KEYS: (keyof InboxFilters)[] = ["channel", "account", "team", "tags", "broadcast", "bstatus", "from", "to", "company", "archived", "kind"];
@@ -59,6 +61,7 @@ export function filtersFromParams(sp: URLSearchParams): InboxFilters {
     company: sp.get("company") || "",
     archived: sp.get("archived") || "",
     kind: sp.get("kind") || "",
+    lane: sp.get("lane") || "",
   };
 }
 
@@ -76,6 +79,7 @@ export function paramsFromFilters(f: InboxFilters): URLSearchParams {
   if (f.company) sp.set("company", f.company);
   if (f.archived) sp.set("archived", "1");
   if (f.kind) sp.set("kind", f.kind);
+  if (f.lane) sp.set("lane", f.lane);
   return sp;
 }
 
@@ -148,6 +152,7 @@ export const DEFAULT_VIEWS: SavedView[] = [
   { id: "today", label: "Today's actions", predicate: "today", filters: {}, builtin: true, hint: "Awaiting your reply" },
   { id: "sla", label: "SLA risk", predicate: "sla", filters: {}, builtin: true, hint: "Unanswered for over an hour" },
   { id: "all", label: "All", filters: {}, builtin: true },
+  { id: "other", label: "Other", filters: { lane: "other" }, builtin: true, hint: "Newsletters, notifications and automated mail — kept out of the inbox and its count" },
   { id: "calls", label: "Calls", filters: { channel: "calls" }, builtin: true },
   { id: "comments", label: "Comments", filters: { channel: "instagram" }, builtin: true, hint: "Instagram public comments" },
   { id: "archived", label: "Archived", filters: { archived: "1" }, builtin: true, hint: "Closed threads — reopen from the row menu" },

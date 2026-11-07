@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { toast } from "sonner";
-import { Inbox as InboxIcon, Loader2, PanelLeftClose } from "lucide-react";
+import { Inbox as InboxIcon, Loader2, PanelLeftClose, MailMinus } from "lucide-react";
+import { useWorklist } from "../../hooks/useWorklist";
 import { SearchBar } from "./SearchBar";
 import { ViewList } from "./ViewList";
 import { ThreadRow, type RowActions } from "./ThreadRow";
@@ -19,7 +20,7 @@ import { toastError } from "../ErrorDialog";
  * Swipe-to-archive on touch (left swipe past 96px).
  */
 export function ThreadList({ className }: { className?: string }) {
-  const { contacts, isLoading, refresh, selectedId, openRecord, closeRecord, coarse, setNewOpen, listError, toggleList, bp } = useInbox();
+  const { contacts, isLoading, refresh, selectedId, openRecord, closeRecord, coarse, setNewOpen, listError, toggleList, bp, viewId, setView, filters } = useInbox();
   const { teams } = useInboxMeta();
   const noTeam = teams.length === 0 && !hasRole("Excom Admin") && !hasRole("System Manager");
   const listRef = useRef<HTMLDivElement>(null);
@@ -32,6 +33,8 @@ export function ThreadList({ className }: { className?: string }) {
   const { call: markReadCall } = useFrappePostCall("excom.excom.api.chat.mark_read");
   const { call: markUnreadCall } = useFrappePostCall("excom.excom.api.chat.mark_unread");
   const { call: assignCall } = useFrappePostCall("excom.excom.api.chat.assign_thread");
+  const { call: laneCall } = useFrappePostCall("excom.excom.api.chat.set_inbox_lane");
+  const { worklist, refresh: refreshWorklist } = useWorklist();
   const isSystemManager = hasRole("System Manager");
 
   const forEachThread = useCallback(async (c: UnifiedContact, fn: (id: string) => Promise<unknown>) => {
@@ -72,11 +75,23 @@ export function ThreadList({ className }: { className?: string }) {
       try { await forEachThread(c, (id) => deleteCall({ thread_id: id })); toast.success("Deleted"); if (selectedId === c.id) closeRecord(); refresh(); }
       catch (err) { toastError(err, "Failed to delete"); }
     },
+    lane: async (c, lane) => {
+      const ids = c.allAccounts.map((a) => a.id);
+      try {
+        await laneCall({ thread_ids: JSON.stringify(ids), lane });
+        if (selectedId === c.id) closeRecord();
+        refresh(); refreshWorklist();
+        toast.success(lane === "Other" ? `${c.contactName} moved to Other` : `${c.contactName} moved to the inbox`, {
+          duration: 6000,
+          action: { label: "Undo", onClick: async () => { try { await laneCall({ thread_ids: JSON.stringify(ids), lane: lane === "Other" ? "" : "Other" }); refresh(); refreshWorklist(); } catch (err) { toastError(err, "Could not undo"); } } },
+        });
+      } catch (err) { toastError(err, "Could not move it"); }
+    },
     copy: (c) => {
       const text = c.contactInfo.phone || c.contactInfo.email || c.contactName;
       navigator.clipboard?.writeText(text).then(() => toast.success("Copied")).catch(() => {});
     },
-  }), [archiveCall, unarchiveCall, assignCall, markReadCall, markUnreadCall, spamCall, deleteCall, forEachThread, refresh, selectedId, closeRecord]);
+  }), [archiveCall, unarchiveCall, assignCall, markReadCall, markUnreadCall, spamCall, deleteCall, laneCall, forEachThread, refresh, refreshWorklist, selectedId, closeRecord]);
 
   // Keep the keyboard cursor on the selected row.
   useEffect(() => {
@@ -113,6 +128,12 @@ export function ThreadList({ className }: { className?: string }) {
         {bp !== "phone" && bp !== "tablet" && <button type="button" onClick={toggleList} title="Hide conversations" aria-label="Hide conversations" className="w-7 shrink-0 border-b border-border text-ink-3 hover:text-ink-1 flex items-center justify-center"><PanelLeftClose className="size-4" /></button>}
       </div>
       <ViewList />
+      {/* Outlook's line: what went to Other is said once, quietly, never mixed into the list. */}
+      {filters.lane !== "other" && !filters.q && worklist.other_lane?.threads > 0 && viewId !== "archived" && (
+        <button type="button" onClick={() => setView("other")} className="shrink-0 flex items-center gap-1.5 px-3 h-8 text-xs text-ink-3 hover:text-ink-1 border-b border-border bg-surface min-w-0" title="Newsletters, notifications and automated mail">
+          <MailMinus className="size-3.5 shrink-0" /><span className="truncate">{worklist.other_lane.threads} unread in Other</span>
+        </button>
+      )}
       <div
         ref={listRef}
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-surface"

@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Archive, ArchiveRestore, UserPlus, Eye, EyeOff, AlertOctagon, Trash2, Copy, Clock } from "lucide-react";
+import { Archive, ArchiveRestore, UserPlus, Eye, EyeOff, AlertOctagon, Trash2, Copy, Clock, Inbox, MailMinus } from "lucide-react";
 import { Row, Avatar, Badge, Chip, OverflowMenu, ContextMenu, type MenuGroup } from "../primitives";
 import type { Accent } from "../primitives/Chip";
 import { channelMeta } from "../../lib/channels";
@@ -18,6 +18,8 @@ export interface RowActions {
   del?: (c: UnifiedContact) => void;
   copy: (c: UnifiedContact) => void;
   snooze: (c: UnifiedContact) => void;
+  /** Move to Other ("Other") or back to the inbox (""), for good. */
+  lane: (c: UnifiedContact, lane: string) => void;
 }
 
 const KIND_ACCENT: Record<string, Accent> = { Customer: "green", Supplier: "sand", Employee: "teal", Opportunity: "violet", Lead: "amber" };
@@ -30,6 +32,11 @@ export function kindLabel(c: UnifiedContact): { label: string; accent: Accent } 
   if (k.customer_type) parts.push(k.customer_type);
   if (k.stage) parts.push(k.stage);
   return { label: parts.join(" · "), accent: KIND_ACCENT[k.doctype] || "neutral" };
+}
+
+/** Every conversation on this row is in the Other lane. */
+export function inOther(c: UnifiedContact): boolean {
+  return (c.threads?.length ?? 0) > 0 && c.threads!.every((t) => t.inbox_lane === "Other");
 }
 
 function relTime(d: Date): string {
@@ -76,6 +83,9 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
         ? { id: "unarchive", label: "Unarchive", icon: <ArchiveRestore />, shortcut: "e", onSelect: () => actions.unarchive(c) }
         : { id: "archive", label: "Archive", icon: <Archive />, shortcut: "e", onSelect: () => actions.archive(c) },
       { id: "snooze", label: "Snooze (mark unread)", icon: <Clock />, onSelect: () => actions.snooze(c) },
+      inOther(c)
+        ? { id: "lane", label: "Move to inbox", icon: <Inbox />, hint: "New mail from them stays in the inbox", onSelect: () => actions.lane(c, "") }
+        : { id: "lane", label: "Move to Other", icon: <MailMinus />, hint: "New mail from them goes to Other too", onSelect: () => actions.lane(c, "Other") },
       { id: "copy", label: "Copy contact", icon: <Copy />, onSelect: () => actions.copy(c) },
     ],
     [
@@ -128,7 +138,7 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
           {ownerDisabled
             ? <span className="text-xs text-crayon-amber-text shrink-0" title={`Assignee ${c.assignedTo?.name} is disabled`}>Owner disabled</span>
             : someoneElse && <span className="text-xs text-ink-3 truncate max-w-[40%] shrink-0" title={`Assigned to ${someoneElse}`}>{someoneElse.split(" ")[0]}:</span>}
-          <span className={cn("truncate text-xs min-w-0", unread ? "text-ink-1" : "text-ink-3")}>{c.lastMessage || "—"}</span>
+          <span className={cn("truncate text-xs min-w-0", unread ? "text-ink-1" : "text-ink-3", !c.lastMessage && "italic")}>{c.lastMessage || "No messages yet"}</span>
           <span className="t2-hide ml-auto flex items-center gap-1 shrink-0">
             {c.tags?.slice(0, 4).map((t) => <span key={t.tag} className="size-2 rounded-full" style={{ backgroundColor: t.color }} title={t.tag_name} />)}
             {c.broadcastDeliveryStatus && <Badge accent={c.broadcastDeliveryStatus === "Failed" ? "rose" : c.broadcastDeliveryStatus === "Sent" ? "green" : "amber"}>{c.broadcastDeliveryStatus}</Badge>}

@@ -19,6 +19,8 @@
   "assigned_to",
   "assigned_team",
   "priority",
+  "inbox_lane",
+  "inbox_lane_pinned",
   "closure_outcome",
   "closure_reason",
   "closed_by",
@@ -145,6 +147,22 @@
    "fieldtype": "Select",
    "label": "Priority",
    "options": "Low\nNormal\nHigh"
+  },
+  {
+   "description": "Other: newsletters, notifications and automated mail, kept out of the main inbox and its unread count. Set from Gmail's own categories and the sender, unless pinned.",
+   "fieldname": "inbox_lane",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Inbox Lane",
+   "options": "\nOther"
+  },
+  {
+   "default": "0",
+   "depends_on": "inbox_lane",
+   "description": "Somebody moved this conversation themselves; new mail no longer changes its lane.",
+   "fieldname": "inbox_lane_pinned",
+   "fieldtype": "Check",
+   "label": "Lane Set by Hand"
   },
   {
    "fieldname": "closure_outcome",
@@ -309,7 +327,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-18 18:00:00.000000",
+ "modified": "2026-11-07 21:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Thread",

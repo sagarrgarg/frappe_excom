@@ -205,10 +205,13 @@ def get_threads(
     date_from: str = "",
     date_to: str = "",
     archived: int = 0,
+    lane: str = "",
 ):
     """
     Inbox query: returns threads ordered by last_message_at.
     archived=1 returns Closed (archived) threads instead of open ones.
+    lane="focused" leaves out Other (newsletters, notifications, automated mail); lane="other" is
+    only those; blank is both (search, deep links). See services/inbox_lane.py.
     Enriches each thread with contact data from Omni Identity and User.
 
     Channel/account filtering:
@@ -268,6 +271,13 @@ def get_threads(
         )
         params["broadcast"] = broadcast
 
+    from excom.excom.services import inbox_lane
+
+    if lane == "focused":
+        conditions += " AND " + inbox_lane.focused_clause("t")
+    elif lane == "other":
+        conditions += " AND " + inbox_lane.other_clause("t")
+
     is_manager = _is_manager()
 
     if team == "__general__":
@@ -302,7 +312,7 @@ def get_threads(
         SELECT t.name, t.display_name, t.primary_phone, t.last_message_at,
                t.last_message_preview, t.last_message_direction, t.unread_count,
                t.status, t.assigned_to, t.assigned_team, t.omni_identity,
-               t.channel, t.account,
+               t.channel, t.account, t.inbox_lane,
                oi.primary_email,
                u.full_name AS assigned_to_name, u.user_image AS assigned_to_avatar,
                COALESCE(u.enabled, 0) AS assigned_to_enabled,
@@ -2391,3 +2401,22 @@ def delete_thread(thread_id: str = "") -> dict:
 
     frappe.db.commit()
     return {"success": True}
+
+
+@frappe.whitelist(methods=["POST"])
+def set_inbox_lane(thread_ids, lane: str = ""):
+    """Move conversations to Other (lane="Other") or back to the main inbox (lane=""), for good:
+    new mail from the sender no longer changes it. Same access rule as replying."""
+    _check_excom_access()
+    from excom.excom.services import inbox_lane
+
+    ids = frappe.parse_json(thread_ids) if isinstance(thread_ids, str) else list(thread_ids or [])
+    if isinstance(ids, str):
+        ids = [ids]
+    for t in ids:
+        _check_thread_access(t)
+    inbox_lane.set_lane(ids, lane)
+    for t in ids:
+        frappe.publish_realtime("excom:thread_updated", {"thread": t, "event": "lane"}, after_commit=True)
+    return {"lane": inbox_lane.OTHER if lane == inbox_lane.OTHER else "", "threads": len(ids)}
+

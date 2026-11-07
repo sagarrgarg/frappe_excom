@@ -25,6 +25,8 @@ export interface ExcomThread {
   assigned_to_avatar?: string;
   tags?: ThreadTag[];
   broadcast_delivery_status?: string;
+  /** "Other": newsletters, notifications, automated mail — out of the main inbox (services/inbox_lane.py). */
+  inbox_lane?: string;
   assigned_to_enabled?: number;
   kinds?: ContactKind[];
   closure_outcome?: string;

@@ -19,6 +19,8 @@ export function useThreads(
   archived: boolean = false,
   /** false → no request at all (deep-link fallbacks that are not needed). */
   enabled: boolean = true,
+  /** "focused" (main inbox), "other" (newsletters, notifications), or "" for both. */
+  lane: string = "",
 ) {
   const params: Record<string, string | number> = { search, limit: 100, team };
   if (archived) params.archived = 1;
@@ -28,6 +30,7 @@ export function useThreads(
   if (account) params.account = account;
   if (dateFrom) params.date_from = dateFrom;
   if (dateTo) params.date_to = dateTo;
+  if (lane) params.lane = lane;
 
   const { data, error, isLoading, mutate } = useFrappeGetCall<{
     message: ExcomThread[];

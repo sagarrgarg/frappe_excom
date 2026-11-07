@@ -311,6 +311,8 @@ def get_message_metadata(account_name: str, message_id: str) -> dict:
             "metadataHeaders": [
                 "From", "To", "Cc", "Bcc", "Subject",
                 "Date", "Message-ID", "In-Reply-To",
+                # Bulk / automated mail markers, for the Other lane (services/inbox_lane.py).
+                "List-Unsubscribe", "List-Id", "Precedence", "Auto-Submitted",
             ],
         },
         timeout=15,

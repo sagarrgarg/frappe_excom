@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { useFrappeGetCall } from "@/lib/api";
 import { toast } from "sonner";
-import { MessageSquare, ListTodo, StickyNote, History, Lock, ArrowRightLeft, Tag, Sparkles, ExternalLink, AlertOctagon, Archive, ArchiveRestore, Trash2, Copy, Eye, EyeOff, UserPlus, PanelRight, Loader2, Ban, ShieldCheck } from "lucide-react";
+import { MessageSquare, ListTodo, StickyNote, History, Lock, ArrowRightLeft, Tag, Sparkles, ExternalLink, AlertOctagon, Archive, ArchiveRestore, Trash2, Copy, Eye, EyeOff, UserPlus, PanelRight, Loader2, Ban, ShieldCheck, Inbox, MailMinus } from "lucide-react";
 import { RecordHeader } from "./RecordHeader";
 import { ContextLine } from "./ContextStrip";
 import { MessageFeed } from "./MessageFeed";
@@ -112,6 +112,8 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
   const { call: markRead } = useFrappePostCall("excom.excom.api.chat.mark_read");
   const { call: markUnread } = useFrappePostCall("excom.excom.api.chat.mark_unread");
   const { call: assignCall } = useFrappePostCall("excom.excom.api.chat.assign_thread");
+  const { call: laneCall } = useFrappePostCall("excom.excom.api.chat.set_inbox_lane");
+  const laneOther = (contact.threads?.length ?? 0) > 0 && contact.threads.every((t: { inbox_lane?: string }) => t.inbox_lane === "Other");
   // Block on WhatsApp: per number, so it acts on the WhatsApp conversation being replied on (or the first one).
   const waThread: string | undefined = (via?.channel === "whatsapp" ? via.id : undefined) || contact.allAccounts.find((a: Account) => a.channel === "whatsapp")?.id;
   const { data: waBlock, mutate: mutateWaBlock } = useFrappeGetCall<{ message: { whatsapp: boolean; blocked: boolean } }>(
@@ -162,6 +164,7 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
     ],
     [
       { id: "read", label: unread ? "Mark as read" : "Mark as unread", icon: unread ? <EyeOff /> : <Eye />, onSelect: async () => { await all((id) => (unread ? markRead : markUnread)({ thread_id: id })); refreshThreads(); } },
+      { id: "lane", label: laneOther ? "Move to inbox" : "Move to Other", icon: laneOther ? <Inbox /> : <MailMinus />, hint: laneOther ? "New mail from them stays in the inbox" : "Newsletters and notifications: out of the inbox and its count", onSelect: async () => { try { await laneCall({ thread_ids: JSON.stringify(threadIds), lane: laneOther ? "" : "Other" }); toast.success(laneOther ? "Moved to the inbox" : "Moved to Other"); refreshThreads(); } catch (err) { toastError(err, "Could not move it"); } } },
       { id: "copy", label: "Copy contact", icon: <Copy />, onSelect: () => navigator.clipboard?.writeText(contact.contactInfo.phone || contact.contactInfo.email || contact.contactName).then(() => toast.success("Copied")) },
       { id: "desk", label: "Open in Desk", icon: <ExternalLink />, onSelect: () => window.open(record ? deskUrl(record.doctype, record.name) : deskUrl("Omni Identity", contact.id), "_blank") },
     ],

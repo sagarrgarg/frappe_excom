@@ -262,6 +262,12 @@ def _ingest_email_metadata(account_name: str, account, meta: dict):
         "label_ids": label_ids,
         "snippet": snippet,
     }
+    # Kept so the lane can be worked out again later (Other: bulk and automated mail).
+    from excom.excom.services.inbox_lane import LIST_HEADERS
+    by_lower = {k.lower(): v for k, v in headers.items()}
+    list_headers = {h: by_lower[h.lower()] for h in LIST_HEADERS if by_lower.get(h.lower())}
+    if list_headers:
+        content_json["list_headers"] = list_headers
 
     preview = f"{subject}: {snippet}"[:120]
 
@@ -284,6 +290,12 @@ def _ingest_email_metadata(account_name: str, account, meta: dict):
 
     update_ts = provider_ts  # use the actual email date, not the sync time
     now = now_datetime()
+    from excom.excom.services import inbox_lane
+    if direction == "Inbound":
+        inbox_lane.classify(thread_name, identity_name, label_ids, from_email, list_headers)
+    elif not frappe.db.get_value("Excom Thread", thread_name, "inbox_lane_pinned"):
+        # Somebody here wrote to them: it is a conversation now, not a mailing list.
+        frappe.db.set_value("Excom Thread", thread_name, "inbox_lane", "", update_modified=False)
     if direction == "Inbound":
         frappe.db.sql(
             """

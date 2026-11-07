@@ -36,6 +36,8 @@ export interface Worklist {
   other: UnreadStream;
   tasks: { count: number; items: TaskPreview[] };
   calls: { count: number; items: CallPreview[] };
+  /** Unread in the Other lane (newsletters, notifications): shown once above the list, never in the badge. */
+  other_lane: { threads: number };
   /** Conversations waiting, not messages — one person sending six lines is one person waiting. */
   unread_threads: number;
   needs_attention: number;
@@ -48,6 +50,7 @@ const EMPTY: Worklist = {
   other: { threads: 0, messages: 0 },
   tasks: { count: 0, items: [] },
   calls: { count: 0, items: [] },
+  other_lane: { threads: 0 },
   unread_threads: 0,
   needs_attention: 0,
   at: "",

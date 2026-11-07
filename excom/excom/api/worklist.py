@@ -21,11 +21,18 @@ from excom.excom.utils.ratelimit import user_rate_limit
 PREVIEW = 5
 
 
-def _unread_by_channel() -> dict:
-	"""Unread conversations per channel, under the rule the inbox itself obeys."""
+def _unread_by_channel(lane: str = "focused") -> dict:
+	"""Unread conversations per channel, under the rule the inbox itself obeys.
+
+	Only the main inbox counts towards the badge: newsletters and bank alerts in Other are not
+	somebody waiting for a reply (services/inbox_lane.py).
+	"""
+	from excom.excom.services import inbox_lane
+
 	params: dict = {}
 	clause = visible_threads_clause(params, alias="t")
 	where = "t.status NOT IN ('Closed', 'Spam') AND t.unread_count > 0"
+	where += " AND " + (inbox_lane.other_clause("t") if lane == "other" else inbox_lane.focused_clause("t"))
 	if clause:
 		where += " AND " + clause
 
@@ -129,12 +136,15 @@ def get_worklist() -> dict:
 	calls = _missed_calls()
 
 	unread_threads = whatsapp["threads"] + email["threads"] + other["threads"]
+	# Unread in the Other lane: said once, quietly, above the inbox — never added to the badge.
+	other_lane = sum(v["threads"] for v in _unread_by_channel("other").values())
 	return {
 		"whatsapp": whatsapp,
 		"email": email,
 		"other": other,
 		"tasks": {"count": len(overdue), "items": _strip(overdue[:PREVIEW])},
 		"calls": calls,
+		"other_lane": {"threads": other_lane},
 		# Conversations waiting, not messages: one person sending six lines is still one person
 		# waiting, and a tab title that says 6 when one customer wrote is just noise.
 		"unread_threads": unread_threads,

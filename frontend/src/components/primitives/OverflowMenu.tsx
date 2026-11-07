@@ -29,7 +29,7 @@ interface OverflowMenuProps {
 }
 
 const itemCls =
-  "flex items-center gap-2 rounded px-2 h-8 text-sm text-ink-1 outline-none cursor-default select-none min-w-0 data-[highlighted]:bg-surface-hover data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:text-ink-3 [&_svg]:shrink-0";
+  "flex items-center gap-2 rounded px-2 min-h-8 py-1 text-sm text-ink-1 outline-none cursor-default select-none min-w-0 data-[highlighted]:bg-surface-hover data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:text-ink-3 [&_svg]:shrink-0";
 
 /** T3 overflow `⋯` — grouped, with shortcut hints. */
 export function OverflowMenu({ groups, trigger, align = "end", label = "More", size = "icon", className }: OverflowMenuProps) {
@@ -60,8 +60,11 @@ export function OverflowMenu({ groups, trigger, align = "end", label = "More", s
                   className={cn(itemCls, it.danger && "text-crayon-rose-text [&_svg]:text-crayon-rose-text")}
                 >
                   {it.icon}
-                  <span className="truncate flex-1">{it.label}</span>
-                  {it.hint && <span className="text-xs text-ink-3 truncate">{it.hint}</span>}
+                  {/* The hint goes under the label: beside it, in a narrow menu, it squeezed the label to "Move…". */}
+                  <span className="flex-1 min-w-0">
+                    <span className="block truncate">{it.label}</span>
+                    {it.hint && <span className="block text-xs text-ink-3 truncate">{it.hint}</span>}
+                  </span>
                   {it.shortcut && <Kbd>{it.shortcut}</Kbd>}
                 </DM.Item>
               ))}
