@@ -28,6 +28,10 @@ def on_doctype_update():
 		if frappe.db.sql("SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='tabExcom Message' AND index_name='provider_message_id_index'"):
 			frappe.db.sql_ddl("ALTER TABLE `tabExcom Message` DROP INDEX `provider_message_id_index`")
 		frappe.db.add_unique("Excom Message", ["provider_message_id"], constraint_name="unique_provider_message_id")
+	# Frappe's schema sync drops any non-unique index on a field that does not declare one, so every
+	# change to this doctype (e.g. the 500-character provider id) removed the lookup index from
+	# patches/v1_0/add_performance_indexes.py. Put it back after each sync.
+	frappe.db.add_index("Excom Message", ["provider_message_id"], index_name="idx_excom_msg_provider_id")
 	frappe.db.add_index("Excom Message", ["thread", "creation"])
 	# the two per-minute schedulers scan these
 	frappe.db.add_index("Excom Message", ["delivery_status", "scheduled_at"])

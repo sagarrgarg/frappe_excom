@@ -26,6 +26,36 @@ WINDOW_HOURS = 24
 HUMAN_AGENT_DAYS = 7
 OVERLAP_MINUTES = 10
 
+# Graph refuses a request whose response would be too large ("Please reduce the amount of data
+# you're asking for", code 1). 50 conversations x 25 messages with attachments hit that on busy
+# Instagram accounts, so pages are small and attachments are fetched only for new messages.
+CONVERSATIONS_PER_PAGE = 10
+MESSAGES_PER_PAGE = 10
+MAX_CONVERSATION_PAGES = 100  # the old 20 pages x 50 conversations, at 10 per page
+MAX_MESSAGE_PAGES = 5  # per conversation, per poll
+STOP_SLACK_HOURS = 6  # conversations older than the window by this much end the poll
+POLL_ERROR_LOG_SECONDS = 3600  # one failure log per account per hour
+MESSAGE_FIELDS = "id,created_time,from,to,message"
+
+
+class GraphError(frappe.ValidationError):
+	"""A non-200 Graph reply, with Meta's error code when the body carries one."""
+
+	def __init__(self, status: int, body: str):
+		self.status = status
+		self.body = body or ""
+		try:
+			err = (json.loads(self.body) or {}).get("error") or {}
+		except Exception:
+			err = {}
+		self.code = err.get("code")
+		self.graph_message = err.get("message") or ""
+		super().__init__(f"Graph {status}: {self.body[:300]}")
+
+	@property
+	def too_much_data(self) -> bool:
+		return self.code == 1 and "reduce the amount of data" in self.graph_message.lower()
+
 
 # ─── credentials ──────────────────────────────────────────────────────────────
 
@@ -39,8 +69,21 @@ def _creds(account) -> dict:
 def _get(url: str, params: dict) -> dict:
 	resp = requests.get(url, params=params, timeout=30)
 	if resp.status_code != 200:
-		raise frappe.ValidationError(f"Graph {resp.status_code}: {resp.text[:300]}")
+		raise GraphError(resp.status_code, resp.text)
 	return resp.json()
+
+
+def _get_shrinking(url: str, params: dict, sizes: dict, keys: tuple) -> dict:
+	"""GET a page; if Graph says the reply is too large, retry the same page once with the page
+	sizes in `keys` halved. The smaller sizes stay in `sizes` for the rest of the poll."""
+	try:
+		return _get(url, params(sizes))
+	except GraphError as e:
+		if not e.too_much_data or all(sizes[k] <= 1 for k in keys):
+			raise
+	for k in keys:
+		sizes[k] = max(1, sizes[k] // 2)
+	return _get(url, params(sizes))
 
 
 def _post(url: str, params: dict, payload: dict) -> dict:
@@ -62,32 +105,103 @@ def poll_all() -> None:
 		try:
 			poll_account(a.name)
 		except Exception:
-			frappe.log_error(title=f"Excom Meta DM poll failed: {a.name}", message=frappe.get_traceback())
+			_log_poll_failure(a.name)
+
+
+def _log_poll_failure(account_name: str) -> None:
+	"""A failing account is retried every minute; log it once an hour, not 60 times."""
+	key = f"excom:meta_dm_poll_failed:{account_name}"
+	if frappe.cache.get_value(key):
+		return
+	frappe.cache.set_value(key, 1, expires_in_sec=POLL_ERROR_LOG_SECONDS)
+	frappe.log_error(title=f"Excom Meta DM poll failed: {account_name}", message=frappe.get_traceback())
+
+
+def _graph_time(value: str):
+	return get_datetime(value.replace("T", " ")[:19])
 
 
 def poll_account(account_name: str) -> dict:
 	account = frappe.get_doc("Excom Channel Account", account_name)
 	c = _creds(account)
 	since = add_to_date(get_datetime(account.meta_last_polled_at), minutes=-OVERLAP_MINUTES) if account.meta_last_polled_at else add_to_date(now_datetime(), days=-1)
+	cutoff = since.replace(tzinfo=None) - frappe.utils.datetime.timedelta(hours=STOP_SLACK_HOURS)
 	url = f"{GRAPH}/{c['version']}/{c['page_id']}/conversations"
-	params = {"access_token": c["token"], "platform": PLATFORMS[account.channel], "fields": "id,updated_time,participants,messages.limit(25){id,created_time,from,to,message,attachments}", "limit": 50}
+	sizes = {"conversations": CONVERSATIONS_PER_PAGE, "messages": MESSAGES_PER_PAGE}
+	after = None
+
+	def params(sz):
+		p = {
+			"access_token": c["token"],
+			"platform": PLATFORMS[account.channel],
+			"fields": f"id,updated_time,participants,messages.limit({sz['messages']}){{{MESSAGE_FIELDS}}}",
+			"limit": sz["conversations"],
+		}
+		if after:
+			p["after"] = after  # page by cursor, so a smaller retried page never skips conversations
+		return p
+
 	pages = n = 0
 	started = now_datetime()
-	while url and pages < 20:
-		data = _get(url, params)
-		convs = data.get("data") or []
+	while pages < MAX_CONVERSATION_PAGES:
+		data = _get_shrinking(url, params, sizes, ("conversations", "messages"))
+		pages += 1
 		stop = False
-		for conv in convs:
-			if conv.get("updated_time") and get_datetime(conv["updated_time"].replace("T", " ")[:19]) < since.replace(tzinfo=None) - frappe.utils.datetime.timedelta(hours=6):
+		for conv in data.get("data") or []:
+			if conv.get("updated_time") and _graph_time(conv["updated_time"]) < cutoff:
 				stop = True  # conversations come newest-first; older than the window → done
 				break
+			_fill_messages(c, conv, sizes, cutoff, _own_ids(account))
 			n += ingest_conversation(account, conv)
-		url = None if stop else (data.get("paging") or {}).get("next")
-		params = None
-		pages += 1
+		paging = data.get("paging") or {}
+		after = (paging.get("cursors") or {}).get("after")
+		if stop or not paging.get("next") or not after:
+			break
 	frappe.db.set_value("Excom Channel Account", account.name, "meta_last_polled_at", started, update_modified=False)
 	frappe.db.commit()
 	return {"account": account.name, "ingested": n, "pages": pages}
+
+
+def _fill_messages(c: dict, conv: dict, sizes: dict, cutoff, own: set) -> None:
+	"""Complete a conversation's messages in place: page further back while the oldest message
+	is still inside the window, and fetch attachments for customer messages not stored yet."""
+	box = conv.setdefault("messages", {})
+	msgs = list(box.get("data") or [])
+	paging = box.get("paging") or {}
+	extra_pages = 0
+	while (
+		conv.get("id")
+		and msgs
+		and paging.get("next")
+		and (paging.get("cursors") or {}).get("after")
+		and msgs[-1].get("created_time")
+		and _graph_time(msgs[-1]["created_time"]) >= cutoff
+		and extra_pages < MAX_MESSAGE_PAGES
+	):
+		cursor = paging["cursors"]["after"]
+		page = _get_shrinking(
+			f"{GRAPH}/{c['version']}/{conv['id']}/messages",
+			lambda sz: {"access_token": c["token"], "fields": MESSAGE_FIELDS, "limit": sz["messages"], "after": cursor},
+			sizes,
+			("messages",),
+		)
+		msgs.extend(page.get("data") or [])
+		paging = page.get("paging") or {}
+		extra_pages += 1
+
+	ids = [m["id"] for m in msgs if m.get("id")]
+	stored = set(frappe.get_all("Excom Message", {"provider_message_id": ["in", ids]}, pluck="provider_message_id")) if ids else set()
+	for m in msgs:
+		if (
+			m.get("id")
+			and m["id"] not in stored
+			and "attachments" not in m
+			and str((m.get("from") or {}).get("id")) not in own  # our own messages are never ingested
+		):
+			att = _get(f"{GRAPH}/{c['version']}/{m['id']}", {"access_token": c["token"], "fields": "attachments"})
+			if att.get("attachments"):
+				m["attachments"] = att["attachments"]
+	box["data"] = msgs
 
 
 def _own_ids(account) -> set[str]:
