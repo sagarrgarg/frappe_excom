@@ -16,7 +16,7 @@ import { cn } from "../components/ui/utils";
  */
 export function StressRoute() {
   const [w, setW] = useState<string>("auto");
-  const noop = useMemo(() => ({ archive: () => {}, unarchive: () => {}, assignToMe: () => {}, toggleRead: () => {}, spam: () => {}, del: () => {}, copy: () => {}, snooze: () => {}, lane: () => {} }), []);
+  const noop = useMemo(() => ({ archive: () => {}, unarchive: () => {}, assignToMe: () => {}, toggleRead: () => {}, spam: () => {}, del: () => {}, copy: () => {}, snooze: () => {}, lane: () => {}, trash: () => {}, restore: () => {}, notSpam: () => {} }), []);
   const style = w === "auto" ? undefined : { width: Number(w), maxWidth: "100%" };
   return (
     <PageFrame title="Stress harness" icon={<Bug />} wide>

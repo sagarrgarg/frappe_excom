@@ -6,7 +6,9 @@ from frappe.model.document import Document
 class ExcomChannelAccount(Document):
 	def on_update(self) -> None:
 		self.ensure_single_default()
-		if self.channel == "email":
+		if self.channel == "email" and self.is_jmap():
+			self._jmap_settings_changed()
+		elif self.channel == "email":
 			self._sync_email_authorized()
 		if self.channel == "whatsapp" and self.wa_phone_id and not self.wa_display_phone and self.get_password("wa_token", raise_exception=False):
 			# ask Meta for the real number once; never blocks the save
@@ -15,6 +17,24 @@ class ExcomChannelAccount(Document):
 				fetch_phone_profile(self)
 			except Exception:
 				frappe.log_error(title=f"Excom: phone profile fetch failed {self.name}", message=frappe.get_traceback())
+
+	def is_jmap(self) -> bool:
+		return (self.email_provider or "Gmail") == "JMAP"
+
+	def _jmap_settings_changed(self) -> None:
+		"""A new server, login or password: Excom has to sign in again (Connect) before it syncs,
+		and a different server means starting the sync over."""
+		before = self.get_doc_before_save()
+		if not before:
+			return
+		moved = (before.get("email_provider") or "Gmail") != "JMAP" or before.get("jmap_server_url") != self.jmap_server_url or before.get("jmap_username") != self.jmap_username
+		if moved or self.has_value_changed("jmap_password"):
+			values = {"email_authorized": 0}
+			if moved:
+				values.update({"jmap_session_url": "", "jmap_account_id": "", "jmap_email_state": "", "jmap_mailboxes": "",
+					"jmap_identity_id": "", "jmap_push_id": "", "jmap_push_verified": 0})
+			frappe.db.set_value(self.doctype, self.name, values, update_modified=False)
+			self.update(values)
 
 	def _has_own_refresh_token(self) -> bool:
 		"""True if this account holds its own (per-mailbox) refresh token."""
@@ -48,6 +68,8 @@ class ExcomChannelAccount(Document):
 		_check_manager_access()
 		if self.channel != "email":
 			return {"authorized": False}
+		if self.is_jmap():
+			return {"authorized": bool(self.email_authorized), "email": self.email_address, "jmap": True}
 
 		# Already has its own credentials -- just report status, no network call.
 		if self._has_own_refresh_token():

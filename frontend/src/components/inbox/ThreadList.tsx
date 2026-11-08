@@ -9,6 +9,7 @@ import { ThreadRow, type RowActions } from "./ThreadRow";
 import { EmptyState, Button } from "../primitives";
 import { useInbox } from "../shell/InboxProvider";
 import { useInboxMeta } from "../../hooks/useInboxMeta";
+import { folderMeta } from "../../lib/mailFolders";
 import { useHotkeys } from "../../lib/hotkeys";
 import { hasRole } from "../../lib/ui-flag";
 import type { UnifiedContact } from "../../types";
@@ -34,6 +35,10 @@ export function ThreadList({ className }: { className?: string }) {
   const { call: markUnreadCall } = useFrappePostCall("excom.excom.api.chat.mark_unread");
   const { call: assignCall } = useFrappePostCall("excom.excom.api.chat.assign_thread");
   const { call: laneCall } = useFrappePostCall("excom.excom.api.chat.set_inbox_lane");
+  const { call: trashCall } = useFrappePostCall("excom.excom.api.chat.trash_thread");
+  const { call: restoreCall } = useFrappePostCall("excom.excom.api.chat.restore_thread");
+  const { call: notSpamCall } = useFrappePostCall("excom.excom.api.chat.not_spam");
+  const folder = filters.folder && filters.folder !== "inbox" ? filters.folder : "";
   const { worklist, refresh: refreshWorklist } = useWorklist();
   const isSystemManager = hasRole("System Manager");
 
@@ -87,11 +92,28 @@ export function ThreadList({ className }: { className?: string }) {
         });
       } catch (err) { toastError(err, "Could not move it"); }
     },
+    trash: async (c) => {
+      const mail = c.allAccounts.filter((a) => a.channel === "email");
+      try {
+        await Promise.all(mail.map((a) => trashCall({ thread_id: a.id })));
+        if (selectedId === c.id) closeRecord();
+        refresh();
+        toast.success(`Moved ${c.contactName} to Trash`, { duration: 6000, action: { label: "Undo", onClick: async () => { try { await Promise.all(mail.map((a) => restoreCall({ thread_id: a.id }))); refresh(); } catch (err) { toastError(err, "Could not undo"); } } } });
+      } catch (err) { toastError(err, "Could not delete"); }
+    },
+    restore: async (c) => {
+      try { await Promise.all(c.allAccounts.filter((a) => a.channel === "email").map((a) => restoreCall({ thread_id: a.id }))); toast.success("Restored to the inbox"); if (selectedId === c.id) closeRecord(); refresh(); }
+      catch (err) { toastError(err, "Could not restore"); }
+    },
+    notSpam: async (c) => {
+      try { await forEachThread(c, (id) => notSpamCall({ thread_id: id })); toast.success("Not spam — back in the inbox"); if (selectedId === c.id) closeRecord(); refresh(); }
+      catch (err) { toastError(err, "Could not move it"); }
+    },
     copy: (c) => {
       const text = c.contactInfo.phone || c.contactInfo.email || c.contactName;
       navigator.clipboard?.writeText(text).then(() => toast.success("Copied")).catch(() => {});
     },
-  }), [archiveCall, unarchiveCall, assignCall, markReadCall, markUnreadCall, spamCall, deleteCall, laneCall, forEachThread, refresh, refreshWorklist, selectedId, closeRecord]);
+  }), [archiveCall, unarchiveCall, assignCall, markReadCall, markUnreadCall, spamCall, deleteCall, laneCall, trashCall, restoreCall, notSpamCall, forEachThread, refresh, refreshWorklist, selectedId, closeRecord]);
 
   // Keep the keyboard cursor on the selected row.
   useEffect(() => {
@@ -129,7 +151,7 @@ export function ThreadList({ className }: { className?: string }) {
       </div>
       <ViewList />
       {/* Outlook's line: what went to Other is said once, quietly, never mixed into the list. */}
-      {filters.lane !== "other" && !filters.q && worklist.other_lane?.threads > 0 && viewId !== "archived" && (
+      {filters.lane !== "other" && !filters.q && !folder && worklist.other_lane?.threads > 0 && viewId !== "archived" && (
         <button type="button" onClick={() => setView("other")} className="shrink-0 flex items-center gap-1.5 px-3 h-8 text-xs text-ink-3 hover:text-ink-1 border-b border-border bg-surface min-w-0" title="Newsletters, notifications and automated mail">
           <MailMinus className="size-3.5 shrink-0" /><span className="truncate">{worklist.other_lane.threads} unread in Other</span>
         </button>
@@ -143,7 +165,7 @@ export function ThreadList({ className }: { className?: string }) {
           const dx = e.changedTouches[0].clientX - touch.current.x;
           const c = contacts.find((x) => x.id === touch.current!.id);
           touch.current = null;
-          if (c && dx < -96) actions.archive(c);
+          if (c && dx < -96 && !folder) actions.archive(c);
           if (c && dx > 96) actions.toggleRead(c);
         }}
       >
@@ -153,12 +175,14 @@ export function ThreadList({ className }: { className?: string }) {
           <EmptyState icon={<InboxIcon />} title="You are not in a team yet" hint="Conversations are shared by team. Ask a manager to add you in Admin → Teams; members of General also see unassigned chats." />
         ) : contacts.length === 0 && listError ? (
           <EmptyState icon={<InboxIcon />} title="Couldn't load conversations" hint={listError} action={<Button size="sm" variant="primary" onClick={() => refresh()}>Retry</Button>} />
+        ) : contacts.length === 0 && folder ? (
+          <EmptyState icon={(() => { const F = folderMeta(folder).icon; return <F />; })()} title={folderMeta(folder).empty} hint={filters.q || viewId !== "all" ? "A view or search is narrowing this folder." : undefined} />
         ) : contacts.length === 0 ? (
           <EmptyState icon={<InboxIcon />} title="Nothing here" hint="Try another view, clear filters, or start a conversation." action={<Button size="sm" variant="primary" onClick={() => setNewOpen(true)}>New conversation</Button>} />
         ) : (
           contacts.map((c, i) => (
             <div key={c.id} className={cn(i === cursor && c.id !== selectedId && "ring-1 ring-inset ring-crayon-blue-base/50")}>
-              <ThreadRow c={c} selected={c.id === selectedId} onOpen={() => openRecord(c.id)} actions={actions} coarse={coarse} isSystemManager={isSystemManager} />
+              <ThreadRow c={c} selected={c.id === selectedId} onOpen={() => openRecord(c.id)} actions={actions} coarse={coarse} isSystemManager={isSystemManager} folder={folder} />
             </div>
           ))
         )}

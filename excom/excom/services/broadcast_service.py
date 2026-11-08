@@ -253,14 +253,9 @@ def _send_email_to_subscriber(broadcast, omni_identity_name: str) -> bool:
 
     account_name = broadcast.sender_email_account
     if account_name:
-        from excom.excom.services import gmail_service
+        from excom.excom.channels.email.outbound import send_plain
 
-        gmail_service.send_email(
-            account_name=account_name,
-            to=email,
-            subject=broadcast.email_subject,
-            body_html=full_body,
-        )
+        send_plain(account_name, email, broadcast.email_subject, full_body)
     else:
         frappe.sendmail(
             recipients=[email],

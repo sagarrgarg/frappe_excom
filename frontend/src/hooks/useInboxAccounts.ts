@@ -13,6 +13,10 @@ export interface InboxAccount {
   unread_threads: number;
   /** 0: visible through a desk, but this person's teams are not allowed to reply from it. */
   can_send: number;
+  /** Mailboxes: folders with something in them (drafts, scheduled, unread spam). */
+  folders?: Partial<Record<"drafts" | "scheduled" | "spam", number>>;
+  /** Mailboxes: "Gmail" or "JMAP" (Stalwart). */
+  server?: string;
 }
 
 export interface InboxAccountGroup {
@@ -41,7 +45,14 @@ export function useInboxAccounts() {
       .map(([channel, list]) => ({ channel, accounts: list, unread: list.reduce((s, a) => s + a.unread_threads, 0) }));
   }, [accounts]);
   const unread = accounts.reduce((s, a) => s + a.unread_threads, 0);
-  return { accounts, groups, unread, isLoading, refresh: mutate };
+  // Folder counts across every mailbox, for "All inboxes".
+  const folders = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const a of accounts) for (const [k, v] of Object.entries(a.folders || {})) out[k] = (out[k] || 0) + (v || 0);
+    return out;
+  }, [accounts]);
+  const hasMail = accounts.some((a) => a.channel === "email");
+  return { accounts, groups, unread, folders, hasMail, isLoading, refresh: mutate };
 }
 
 /** "WhatsApp · GGIL Sales" under the WhatsApp heading reads "GGIL Sales". */

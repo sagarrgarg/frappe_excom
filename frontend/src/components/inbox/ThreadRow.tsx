@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Archive, ArchiveRestore, UserPlus, Eye, EyeOff, AlertOctagon, Trash2, Copy, Clock, Inbox, MailMinus } from "lucide-react";
+import { Archive, ArchiveRestore, UserPlus, Eye, EyeOff, AlertOctagon, Trash2, Copy, Clock, Inbox, MailMinus, MailCheck, Undo2 } from "lucide-react";
 import { Row, Avatar, Badge, Chip, OverflowMenu, ContextMenu, type MenuGroup } from "../primitives";
 import type { Accent } from "../primitives/Chip";
 import { channelMeta } from "../../lib/channels";
@@ -21,6 +21,10 @@ export interface RowActions {
   snooze: (c: UnifiedContact) => void;
   /** Move to Other ("Other") or back to the inbox (""), for good. */
   lane: (c: UnifiedContact, lane: string) => void;
+  /** Email: to Trash (here and in the mailbox), back out of it, out of Spam. */
+  trash: (c: UnifiedContact) => void;
+  restore: (c: UnifiedContact) => void;
+  notSpam: (c: UnifiedContact) => void;
 }
 
 const KIND_ACCENT: Record<string, Accent> = { Customer: "green", Supplier: "sand", Employee: "teal", Opportunity: "violet", Lead: "amber" };
@@ -65,9 +69,13 @@ function relTime(d: Date): string {
  * Row actions: hover or keyboard focus on a pointer device. On touch a long-press opens the same
  * menu; a visible `⋯` there sat on top of the time.
  */
-export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions, coarse, isSystemManager }: { c: UnifiedContact; selected: boolean; onOpen: () => void; actions: RowActions; coarse: boolean; isSystemManager: boolean }) {
+export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions, coarse, isSystemManager, folder = "" }: { c: UnifiedContact; selected: boolean; onOpen: () => void; actions: RowActions; coarse: boolean; isSystemManager: boolean; folder?: string }) {
   const unread = c.totalUnreadCount > 0;
   const archived = c.threads?.[0]?.status === "Closed";
+  // Email rows act like a mail app: Delete sends to Trash (everywhere), Trash offers Restore, Spam offers Not spam.
+  const isMail = Boolean(c.threads?.some((t) => t.channel === "email"));
+  const inTrash = isMail && folder === "trash";
+  const isSpam = folder === "spam" || c.threads?.[0]?.status === "Spam";
   const kind = kindLabel(c);
   const ownerDisabled = Boolean(c.assignedToUser) && c.assignedToEnabled === false;
   const unassigned = !c.assignedToUser || ownerDisabled;
@@ -80,9 +88,11 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
     [
       { id: "read", label: unread ? "Mark as read" : "Mark as unread", icon: unread ? <EyeOff /> : <Eye />, onSelect: () => actions.toggleRead(c) },
       { id: "assign", label: "Assign to me", icon: <UserPlus />, shortcut: "a", onSelect: () => actions.assignToMe(c) },
-      archived
-        ? { id: "unarchive", label: "Unarchive", icon: <ArchiveRestore />, shortcut: "e", onSelect: () => actions.unarchive(c) }
-        : { id: "archive", label: "Archive", icon: <Archive />, shortcut: "e", onSelect: () => actions.archive(c) },
+      inTrash
+        ? { id: "restore", label: "Restore", icon: <Undo2 />, hint: "Back to the inbox, and out of the mailbox's Trash", onSelect: () => actions.restore(c) }
+        : archived
+          ? { id: "unarchive", label: "Unarchive", icon: <ArchiveRestore />, shortcut: "e", onSelect: () => actions.unarchive(c) }
+          : { id: "archive", label: "Archive", icon: <Archive />, shortcut: "e", onSelect: () => actions.archive(c) },
       { id: "snooze", label: "Snooze (mark unread)", icon: <Clock />, onSelect: () => actions.snooze(c) },
       inOther(c)
         ? { id: "lane", label: "Move to inbox", icon: <Inbox />, hint: "New mail from them stays in the inbox", onSelect: () => actions.lane(c, "") }
@@ -90,8 +100,11 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
       { id: "copy", label: "Copy contact", icon: <Copy />, onSelect: () => actions.copy(c) },
     ],
     [
-      { id: "spam", label: "Mark as spam", icon: <AlertOctagon />, danger: true, onSelect: () => actions.spam(c) },
-      ...(isSystemManager && actions.del ? [{ id: "delete", label: "Delete", icon: <Trash2 />, danger: true, onSelect: () => actions.del!(c) }] : []),
+      isSpam
+        ? { id: "notspam", label: "Not spam", icon: <MailCheck />, onSelect: () => actions.notSpam(c) }
+        : { id: "spam", label: "Mark as spam", icon: <AlertOctagon />, danger: true, onSelect: () => actions.spam(c) },
+      ...(isMail && !inTrash ? [{ id: "trash", label: "Delete", icon: <Trash2 />, hint: "To Trash, here and in the mailbox", danger: true, onSelect: () => actions.trash(c) }] : []),
+      ...(!isMail && isSystemManager && actions.del ? [{ id: "delete", label: "Delete", icon: <Trash2 />, danger: true, onSelect: () => actions.del!(c) }] : []),
     ],
   ];
 

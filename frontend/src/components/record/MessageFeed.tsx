@@ -195,6 +195,8 @@ export function MessageFeed({ contact, messages, isLoading, refresh, optimistic,
                       snippet={m.content}
                       timestamp={m.timestamp}
                       contentJson={m.contentJson || "{}"}
+                      mailFolder={m.mailFolder}
+                      mailFlagged={m.mailFlagged}
                       sentBy={m.sentBy}
                       bodyData={bodies[m.id]}
                       bodyLoading={bodyLoading[m.id]}

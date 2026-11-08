@@ -259,11 +259,9 @@ def _send_email(
     try:
         account = _resolve_account("email", account_name)
         if account:
-            from excom.excom.services import gmail_service
+            from excom.excom.channels.email.outbound import send_plain
 
-            gmail_service.send_email(
-                account_name=account.name, to=email, subject=subject, body_html=body_html
-            )
+            send_plain(account.name, email, subject, body_html)
             resolved_account = account.name
         else:
             # Same fallback the broadcast executor uses when no sender account is set.

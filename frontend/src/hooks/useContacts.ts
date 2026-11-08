@@ -21,8 +21,11 @@ export function useThreads(
   enabled: boolean = true,
   /** "focused" (main inbox), "other" (newsletters, notifications), or "" for both. */
   lane: string = "",
+  /** A mail folder (lib/mailFolders.ts); blank is the inbox. */
+  folder: string = "",
 ) {
   const params: Record<string, string | number> = { search, limit: 100, team };
+  if (folder && folder !== "inbox") params.folder = folder;
   if (archived) params.archived = 1;
   if (broadcast) params.broadcast = broadcast;
   if (broadcastStatus) params.broadcast_status = broadcastStatus;

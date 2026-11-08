@@ -202,9 +202,13 @@ def get_threads(
     date_to: str = "",
     archived: int = 0,
     lane: str = "",
+    folder: str = "",
 ):
     """
     Inbox query: returns threads ordered by last_message_at.
+    folder: a mail folder (drafts, scheduled, sent, archive, spam, trash; see
+    channels/email/mailbox.folder_where). Blank or "inbox" is the inbox. Sent is ordered by our
+    last message; Drafts rows carry the draft's subject as their preview.
     archived=1 returns Closed (archived) threads instead of open ones.
     lane="focused" leaves out Other (newsletters, notifications, automated mail); lane="other" is
     only those; blank is both (search, deep links). See services/inbox_lane.py.
@@ -231,7 +235,16 @@ def get_threads(
     limit = int(limit)
     offset = int(offset)
 
-    conditions = "t.status = 'Closed'" if int(archived or 0) else "t.status NOT IN ('Closed', 'Spam')"
+    from excom.excom.channels.email import mailbox
+
+    if folder and folder not in mailbox.MAIL_FOLDERS:
+        frappe.throw(_("Unknown folder {0}").format(folder))
+    in_folder = mailbox.folder_where(folder, "t")
+    if in_folder:
+        conditions = in_folder
+        lane = ""  # Focused / Other is the inbox's split only
+    else:
+        conditions = "t.status = 'Closed'" if int(archived or 0) else "t.status NOT IN ('Closed', 'Spam')"
     params: dict = {"limit": limit, "offset": offset, "current_user": frappe.session.user}
 
     if search:
@@ -321,12 +334,21 @@ def get_threads(
         LEFT JOIN `tabExcom Team` et ON et.name = t.assigned_team
         {broadcast_badge_join}
         WHERE {conditions}
-        ORDER BY t.last_message_at DESC
+        ORDER BY {"t.last_outbound_at DESC, t.last_message_at DESC" if folder == "sent" else "t.last_message_at DESC"}
         LIMIT %(limit)s OFFSET %(offset)s
         """,
         params,
         as_dict=True,
     )
+    if folder == "drafts" and threads:
+        for d in frappe.get_all(
+            "Excom Email Draft", filters={"thread": ["in", [t.name for t in threads]]},
+            fields=["thread", "subject", "snippet", "modified"], order_by="modified asc",
+        ):
+            for t in threads:
+                if t.name == d.thread:
+                    t["last_message_preview"] = ("Draft: " + (d.subject or d.snippet or ""))[:120]
+                    t["last_message_at"] = d.modified
 
     if threads:
         _enrich_company(threads)
@@ -491,7 +513,7 @@ def get_messages(thread_id: str, limit: int = 50, before: str = ""):
                m.provider_message_id, m.reply_to,
                m.created_by_user, m.is_internal, m.scheduled_at,
                m.is_pinned, m.pinned_by, m.reactions,
-               m.failure_reason,
+               m.failure_reason, m.mail_folder, m.mail_seen, m.mail_flagged,
                -- content_json is dropped for most types because it can be large and the feed
                -- never reads it. Email carries its Gmail pointers here; Call carries the id of the
                -- Excom Call row, without which the timeline cannot render a call as anything more
@@ -623,6 +645,8 @@ def mark_read(thread_id: str):
     """Reset unread count for a thread."""
     _check_thread_access(thread_id)
     frappe.db.set_value("Excom Thread", thread_id, "unread_count", 0)
+    from excom.excom.channels.email import mailbox
+    mailbox.set_thread_seen(thread_id, True)  # and read in the mailbox (email only)
     return {"success": True}
 
 
@@ -633,6 +657,8 @@ def mark_unread(thread_id: str):
     current = frappe.db.get_value("Excom Thread", thread_id, "unread_count") or 0
     if current == 0:
         frappe.db.set_value("Excom Thread", thread_id, "unread_count", 1)
+    from excom.excom.channels.email import mailbox
+    mailbox.set_thread_seen(thread_id, False)
     return {"success": True}
 
 
@@ -1472,11 +1498,14 @@ def get_inbox_accounts() -> list:
             as_dict=True,
         )
     }
+    from excom.excom.channels.email import mailbox
+
+    folders = mailbox.folder_counts(clause)
     manager = _is_manager()
     mine = None if manager else open_accounts(frappe.session.user)
     rows = frappe.get_all(
         "Excom Channel Account",
-        fields=["name", "account_name", "channel", "status", "wa_display_phone", "email_address"],
+        fields=["name", "account_name", "channel", "status", "wa_display_phone", "email_address", "email_provider"],
         order_by="account_name asc",
     )
     out = []
@@ -1494,6 +1523,9 @@ def get_inbox_accounts() -> list:
             "open_threads": int(c.open_threads) if c else 0,
             "unread_threads": int(c.unread_threads or 0) if c else 0,
             "can_send": 1 if manager or a.name in (mine or set()) else 0,
+            # Mail folders with something in them: drafts, scheduled, unread spam (mailboxes only).
+            "folders": {k: v for k, v in (folders.get(a.name) or {}).items() if v} if a.channel == "email" else {},
+            "server": (a.email_provider or "Gmail") if a.channel == "email" else "",
         })
     return out
 
@@ -2409,6 +2441,8 @@ def mark_spam(thread_id: str = "", omni_identity: str = "") -> dict:
     if identity:
         frappe.db.set_value("Omni Identity", identity, "is_spam", 1)
 
+    from excom.excom.channels.email import mailbox
+    mailbox.move_thread(thread_id, "spam")
     frappe.db.commit()
     return {"success": True, "status": "Spam"}
 
@@ -2426,6 +2460,8 @@ def archive_thread(thread_id: str = "") -> dict:
         "modified": frappe.utils.now_datetime(),
     })
 
+    from excom.excom.channels.email import mailbox
+    mailbox.move_thread(thread_id, "archive")
     frappe.db.commit()
     return {"success": True, "status": "Closed"}
 
@@ -2437,7 +2473,51 @@ def unarchive_thread(thread_id: str = "") -> dict:
     if not thread_id:
         frappe.throw(_("thread_id is required"))
     frappe.db.set_value("Excom Thread", thread_id, "status", "Open")
+    from excom.excom.channels.email import mailbox
+    mailbox.move_thread(thread_id, "inbox")
     frappe.db.commit()
+    return {"ok": True}
+
+
+@frappe.whitelist(methods=["POST"])
+def not_spam(thread_id: str = "") -> dict:
+    """Out of Spam, back to the inbox (and the mailbox's Inbox); the sender is trusted again."""
+    _check_thread_access(thread_id)
+    row = frappe.db.get_value("Excom Thread", thread_id, ["omni_identity"], as_dict=True)
+    frappe.db.set_value("Excom Thread", thread_id, "status", "Open")
+    if row and row.omni_identity:
+        frappe.db.set_value("Omni Identity", row.omni_identity, "is_spam", 0)
+    from excom.excom.channels.email import mailbox
+    mailbox.move_thread(thread_id, "not_spam")
+    frappe.db.commit()
+    frappe.publish_realtime("excom:thread_updated", {"thread": thread_id, "event": "not_spam"}, after_commit=True)
+    return {"ok": True, "status": "Open"}
+
+
+@frappe.whitelist(methods=["POST"])
+def trash_thread(thread_id: str = "") -> dict:
+    """Delete an email conversation the way a mail app does: its emails go to Trash (here and in
+    the mailbox) and the conversation leaves the inbox. Restore brings it back."""
+    _check_thread_access(thread_id)
+    if frappe.db.get_value("Excom Thread", thread_id, "channel") != "email":
+        frappe.throw(_("Only email conversations have a Trash"))
+    from excom.excom.channels.email import mailbox
+    frappe.db.set_value("Excom Thread", thread_id, {"status": "Closed", "closed_at": frappe.utils.now_datetime()})
+    mailbox.move_thread(thread_id, "trash")
+    frappe.db.commit()
+    frappe.publish_realtime("excom:thread_updated", {"thread": thread_id, "event": "trash"}, after_commit=True)
+    return {"ok": True}
+
+
+@frappe.whitelist(methods=["POST"])
+def restore_thread(thread_id: str = "") -> dict:
+    """Out of Trash: their emails back to Inbox, ours to Sent; the conversation opens again."""
+    _check_thread_access(thread_id)
+    from excom.excom.channels.email import mailbox
+    mailbox.move_thread(thread_id, "restore")
+    frappe.db.set_value("Excom Thread", thread_id, {"status": "Open", "closed_at": None})
+    frappe.db.commit()
+    frappe.publish_realtime("excom:thread_updated", {"thread": thread_id, "event": "restore"}, after_commit=True)
     return {"ok": True}
 
 

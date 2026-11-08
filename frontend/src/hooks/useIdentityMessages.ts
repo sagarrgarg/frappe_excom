@@ -31,6 +31,8 @@ function mapMessage(msg: ExcomMessage, threadId: string, account: { id: string; 
     noteOn: (msg as ExcomMessage & { note_on?: { doctype: string; name: string } }).note_on,
     scheduledAt: (msg as ExcomMessage & { scheduled_at?: string }).scheduled_at ? parseFrappeDateTime((msg as ExcomMessage & { scheduled_at?: string }).scheduled_at as string) : undefined,
     isEmail: msg.message_type === "Email",
+    mailFolder: msg.mail_folder || undefined,
+    mailFlagged: Boolean(msg.mail_flagged),
     contentJson: msg.content_json || undefined,
     rawDirection: msg.direction,
     sentBy: msg.sender_name ? { name: msg.sender_name, avatar: "" } : undefined,

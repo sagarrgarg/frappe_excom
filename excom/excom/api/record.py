@@ -247,6 +247,8 @@ def close_conversation(omni_identity: str, outcome: str = "Resolved", reason: st
     for t in threads:
         frappe.db.set_value("Excom Thread", t, {"status": "Closed", "closure_outcome": outcome, "closure_reason": reason[:140], "closed_by": user, "closed_at": now}, update_modified=True)
         frappe.get_doc("Excom Thread", t).add_comment("Comment", summary)
+        from excom.excom.channels.email import mailbox
+        mailbox.move_thread(t, "spam" if outcome == "Spam" else "archive")  # email: the same in the mailbox
     crm_status = None
     ref = None
     recs = gw.find_open_records_for_identity(omni_identity) if omni_identity else []
@@ -272,6 +274,8 @@ def reopen_conversation(omni_identity: str, note: str = "") -> dict:
     for t in threads:
         frappe.db.set_value("Excom Thread", t, {"status": "Open", "closure_outcome": None, "closure_reason": None, "closed_by": None, "closed_at": None}, update_modified=True)
         frappe.get_doc("Excom Thread", t).add_comment("Comment", text)
+        from excom.excom.channels.email import mailbox
+        mailbox.move_thread(t, "inbox")
     crm_status = None
     links = frappe.get_all("Omni Identity Link", filters={"parent": omni_identity, "parenttype": "Omni Identity", "linked_doctype": ["in", gw.crm_doctypes()]}, fields=["linked_doctype", "linked_name"])
     for ln in links:

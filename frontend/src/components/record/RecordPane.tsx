@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { useFrappeGetCall } from "@/lib/api";
 import { toast } from "sonner";
-import { MessageSquare, ListTodo, StickyNote, History, Lock, ArrowRightLeft, Tag, Sparkles, ExternalLink, AlertOctagon, Archive, ArchiveRestore, Trash2, Copy, Eye, EyeOff, UserPlus, PanelRight, Loader2, Ban, ShieldCheck, Inbox, MailMinus } from "lucide-react";
+import { MessageSquare, ListTodo, StickyNote, History, Lock, ArrowRightLeft, Tag, Sparkles, ExternalLink, AlertOctagon, Archive, ArchiveRestore, Trash2, Copy, Eye, EyeOff, UserPlus, PanelRight, Loader2, Ban, ShieldCheck, Inbox, MailMinus, MailCheck, Undo2 } from "lucide-react";
 import { RecordHeader } from "./RecordHeader";
 import { ContextLine } from "./ContextStrip";
 import { MessageFeed } from "./MessageFeed";
@@ -113,6 +113,14 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
   const { call: markUnread } = useFrappePostCall("excom.excom.api.chat.mark_unread");
   const { call: assignCall } = useFrappePostCall("excom.excom.api.chat.assign_thread");
   const { call: laneCall } = useFrappePostCall("excom.excom.api.chat.set_inbox_lane");
+  const { call: trashCall } = useFrappePostCall("excom.excom.api.chat.trash_thread");
+  const { call: notSpamCall } = useFrappePostCall("excom.excom.api.chat.not_spam");
+  // Email conversations get a mail app's Delete (to Trash, here and in the mailbox) and Not spam.
+  const mailThreads: string[] = contact.allAccounts.filter((a: Account) => a.channel === "email").map((a: Account) => a.id);
+  const spamNow = contact.threads?.[0]?.status === "Spam";
+  const { filters: inboxFilters } = useInbox();
+  const fromTrash = inboxFilters.folder === "trash";
+  const { call: restoreCall } = useFrappePostCall("excom.excom.api.chat.restore_thread");
   const laneOther = (contact.threads?.length ?? 0) > 0 && contact.threads.every((t: { inbox_lane?: string }) => t.inbox_lane === "Other");
   // Block on WhatsApp: per number, so it acts on the WhatsApp conversation being replied on (or the first one).
   const waThread: string | undefined = (via?.channel === "whatsapp" ? via.id : undefined) || contact.allAccounts.find((a: Account) => a.channel === "whatsapp")?.id;
@@ -176,8 +184,12 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
       ...(waThread && waBlock?.message?.whatsapp ? [waBlock.message.blocked
         ? { id: "wa-unblock", label: "Unblock on WhatsApp", icon: <ShieldCheck />, onSelect: async () => { try { await waUnblockCall({ thread_id: waThread }); toast.success("Unblocked on WhatsApp"); void mutateWaBlock(); } catch (err) { toastError(err, "Could not unblock"); } } }
         : { id: "wa-block", label: "Block on WhatsApp", icon: <Ban />, danger: true, hint: "Only someone who wrote in the last 24 hours", onSelect: async () => { if (!window.confirm("Block this person on WhatsApp? They will not be able to message or call this number, and you will not be able to message them.")) return; try { await waBlockCall({ thread_id: waThread }); toast.success("Blocked on WhatsApp"); void mutateWaBlock(); } catch (err) { toastError(err, "Could not block"); } } }] : []),
-      { id: "spam", label: "Mark as spam", icon: <AlertOctagon />, danger: true, onSelect: async () => { try { await all((id) => spamCall({ thread_id: id })); toast.success("Marked as spam"); closeRecord(); refreshThreads(); } catch (err) { toastError(err, "Failed"); } } },
-      ...(hasRole("System Manager") ? [{ id: "delete", label: "Delete", icon: <Trash2 />, danger: true, onSelect: async () => { if (!window.confirm("Delete this conversation and all its threads?")) return; try { await all((id) => deleteCall({ thread_id: id })); toast.success("Deleted"); closeRecord(); refreshThreads(); } catch (err) { toastError(err, "Failed"); } } }] : []),
+      spamNow
+        ? { id: "notspam", label: "Not spam", icon: <MailCheck />, onSelect: async () => { try { await all((id) => notSpamCall({ thread_id: id })); toast.success("Not spam — back in the inbox"); refreshThreads(); } catch (err) { toastError(err, "Failed"); } } }
+        : { id: "spam", label: "Mark as spam", icon: <AlertOctagon />, danger: true, onSelect: async () => { try { await all((id) => spamCall({ thread_id: id })); toast.success("Marked as spam"); closeRecord(); refreshThreads(); } catch (err) { toastError(err, "Failed"); } } },
+      ...(mailThreads.length && fromTrash ? [{ id: "restore", label: "Restore from Trash", icon: <Undo2 />, onSelect: async () => { try { await Promise.all(mailThreads.map((id) => restoreCall({ thread_id: id }))); toast.success("Restored to the inbox"); refreshThreads(); } catch (err) { toastError(err, "Could not restore"); } } }] : []),
+      ...(mailThreads.length && !fromTrash ? [{ id: "trash", label: "Delete email", icon: <Trash2 />, danger: true, hint: "To Trash, here and in the mailbox; Restore from Trash", onSelect: async () => { try { await Promise.all(mailThreads.map((id) => trashCall({ thread_id: id }))); toast.success("Moved to Trash"); closeRecord(); refreshThreads(); } catch (err) { toastError(err, "Could not delete"); } } }] : []),
+      ...(hasRole("System Manager") && !mailThreads.length ? [{ id: "delete", label: "Delete", icon: <Trash2 />, danger: true, onSelect: async () => { if (!window.confirm("Delete this conversation and all its threads?")) return; try { await all((id) => deleteCall({ thread_id: id })); toast.success("Deleted"); closeRecord(); refreshThreads(); } catch (err) { toastError(err, "Failed"); } } }] : []),
     ],
   ];
 

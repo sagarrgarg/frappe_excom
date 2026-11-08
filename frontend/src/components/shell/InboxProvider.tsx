@@ -134,9 +134,11 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
   // Server-side filters → useThreads; view predicate + tags + company → client-side.
   // The main inbox leaves out the Other lane (bank alerts, newsletters); a search or the archive
   // looks at both, as Outlook's does.
-  const lane = filters.lane === "other" ? "other" : filters.q || filters.archived === "1" ? "" : "focused";
+  // A mail folder other than the inbox has no Focused / Other split.
+  const inFolder = Boolean(filters.folder && filters.folder !== "inbox");
+  const lane = inFolder ? "" : filters.lane === "other" ? "other" : filters.q || filters.archived === "1" ? "" : "focused";
   const { unifiedContacts, isLoading, refresh, error: listErr } = useThreads(
-    filters.q, filters.team, filters.broadcast, filters.bstatus, filters.channel, filters.account, filters.from, filters.to, filters.archived === "1", true, lane
+    filters.q, filters.team, filters.broadcast, filters.bstatus, filters.channel, filters.account, filters.from, filters.to, filters.archived === "1" && !inFolder, true, lane, filters.folder
   );
   const contacts = useMemo(() => {
     const pred = viewPredicate(view);

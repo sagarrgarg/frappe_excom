@@ -25,7 +25,54 @@ frappe.ui.form.on("Excom Channel Account", {
 			});
 		}
 
-		if (frm.doc.channel === "email" && !frm.is_new()) {
+		if (frm.doc.channel === "email" && !frm.is_new() && frm.doc.email_provider === "JMAP") {
+			// A JMAP server (Stalwart): sign in with the login and password, find the folders.
+			if (!frm.doc.email_authorized) {
+				frm.dashboard.set_headline_alert(
+					__("Not connected yet. Save the server address, login and password, then click <b>Connect</b>."),
+					"orange"
+				);
+			}
+			frm.add_custom_button(frm.doc.email_authorized ? __("Reconnect") : __("Connect"), function () {
+				frappe.call({
+					method: "excom.excom.api.email.connect_mail_server",
+					args: { account_name: frm.doc.name },
+					freeze: true,
+					freeze_message: __("Signing in to the mail server..."),
+					callback(r) {
+						const m = r.message || {};
+						if (m.ok) {
+							frappe.msgprint({
+								title: __("Connected"),
+								message: __("Signed in as {0}.", [m.email || frm.doc.jmap_username]) + (m.push ? "<br>" + __("Live updates: {0}", [m.push]) : ""),
+								indicator: "green",
+							});
+							frm.reload_doc();
+						} else {
+							frappe.msgprint({ title: __("Could not connect"), message: m.error || __("Unknown error"), indicator: "red" });
+						}
+					},
+				});
+			}, __("Email"));
+			if (frm.doc.email_authorized) {
+				frm.add_custom_button(__("Sync Now"), function () {
+					frappe.call({
+						method: "excom.excom.api.email.manual_sync",
+						args: { account_name: frm.doc.name },
+						freeze: true,
+						freeze_message: __("Syncing with the mail server..."),
+						callback(r) {
+							if (r.message && r.message.success) {
+								frappe.show_alert({ message: __("Email sync completed"), indicator: "green" });
+								frm.reload_doc();
+							} else {
+								frappe.msgprint({ title: __("Sync Failed"), message: r.message ? r.message.error : __("Unknown error"), indicator: "red" });
+							}
+						},
+					});
+				}, __("Email"));
+			}
+		} else if (frm.doc.channel === "email" && !frm.is_new()) {
 			frm.call("check_email_authorization").then((r) => {
 				if (r && r.message) {
 					const wasAuthorized = frm.doc.email_authorized;

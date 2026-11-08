@@ -68,6 +68,9 @@ export interface ExcomMessage {
   reply_to_direction?: string;
   reply_to_sender?: string;
   failure_reason?: string;
+  /** Email: the mailbox folder it sits in, and its flag (channels/email/mailbox.py). */
+  mail_folder?: string;
+  mail_flagged?: number;
 }
 
 export interface Account {
@@ -93,6 +96,8 @@ export interface Message {
   /** Internal notes are Comments; this says which document holds it. */
   noteOn?: { doctype: string; name: string };
   isEmail?: boolean;
+  mailFolder?: string;
+  mailFlagged?: boolean;
   contentJson?: string;
   rawDirection?: "Inbound" | "Outbound";
   sentBy?: {

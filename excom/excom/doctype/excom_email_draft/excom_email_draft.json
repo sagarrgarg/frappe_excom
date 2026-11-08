@@ -1,0 +1,169 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-11-08 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "thread",
+  "account",
+  "author",
+  "origin",
+  "cb1",
+  "provider_draft_id",
+  "provider_message_id",
+  "provider_thread_id",
+  "synced_at",
+  "sync_error",
+  "mail_section",
+  "to_addr",
+  "cc",
+  "bcc",
+  "subject",
+  "in_reply_to_message",
+  "body_html",
+  "snippet"
+ ],
+ "fields": [
+  {
+   "fieldname": "thread",
+   "fieldtype": "Link",
+   "options": "Excom Thread",
+   "label": "Conversation",
+   "reqd": 1,
+   "in_list_view": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "options": "Excom Channel Account",
+   "label": "Mailbox",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "author",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Last edited by"
+  },
+  {
+   "default": "Excom",
+   "fieldname": "origin",
+   "fieldtype": "Select",
+   "options": "Excom\nMailbox",
+   "label": "Started in",
+   "description": "Mailbox: written in Gmail or another mail app; the text stays on the mail server until somebody opens it here."
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "provider_draft_id",
+   "fieldtype": "Data",
+   "length": 255,
+   "label": "Mailbox draft"
+  },
+  {
+   "fieldname": "provider_message_id",
+   "fieldtype": "Data",
+   "length": 500,
+   "label": "Mailbox message",
+   "search_index": 1
+  },
+  {
+   "fieldname": "provider_thread_id",
+   "fieldtype": "Data",
+   "length": 255,
+   "label": "Mailbox thread"
+  },
+  {
+   "fieldname": "synced_at",
+   "fieldtype": "Datetime",
+   "label": "Saved to mailbox"
+  },
+  {
+   "fieldname": "sync_error",
+   "fieldtype": "Small Text",
+   "label": "Last save problem"
+  },
+  {
+   "fieldname": "mail_section",
+   "fieldtype": "Section Break",
+   "label": "Mail"
+  },
+  {
+   "fieldname": "to_addr",
+   "fieldtype": "Small Text",
+   "label": "To",
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "cc",
+   "fieldtype": "Small Text",
+   "label": "Cc",
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "bcc",
+   "fieldtype": "Small Text",
+   "label": "Bcc",
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "length": 998,
+   "label": "Subject",
+   "in_list_view": 1,
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "in_reply_to_message",
+   "fieldtype": "Link",
+   "options": "Excom Message",
+   "label": "Replying to"
+  },
+  {
+   "fieldname": "body_html",
+   "fieldtype": "Long Text",
+   "label": "Body"
+  },
+  {
+   "fieldname": "snippet",
+   "fieldtype": "Small Text",
+   "label": "Preview",
+   "ignore_xss_filter": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-08 13:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom",
+ "name": "Excom Email Draft",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "export": 1,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "subject",
+ "track_changes": 0,
+ "description": "An unsent email on a conversation, kept in step with the mailbox's Drafts folder (Gmail or JMAP)."
+}

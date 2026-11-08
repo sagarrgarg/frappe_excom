@@ -14,6 +14,7 @@ import { StickerPicker } from "../StickerPicker";
 import { useFileUpload } from "../../hooks/useFileUpload";
 import { useWindowStatus } from "../../hooks/useWindowStatus";
 import { useAISuggestions } from "../../hooks/useAISuggestions";
+import { useEmailDraft } from "../../hooks/useEmailDraft";
 import { MOD } from "../../lib/hotkeys";
 import { cn } from "../ui/utils";
 import type { Account, UnifiedContact } from "../../types";
@@ -22,7 +23,7 @@ import { toastError } from "../ErrorDialog";
 
 const CHAR_LIMIT = 4096;
 
-export interface EmailDraft { to: string; subject: string; cc: string; bcc?: string; inReplyToGmailId: string; html?: string; sendAt?: string }
+export interface EmailDraft { to: string; subject: string; cc: string; bcc?: string; inReplyToGmailId: string; html?: string; sendAt?: string; /** the saved Excom Email Draft (and its mailbox copy) */ draftName?: string }
 
 interface Props {
   contact: UnifiedContact;
@@ -77,6 +78,7 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
   const signature = sigRaw?.message?.exists ? sigRaw.message.signature_html || "" : "";
   const { suggestions } = useAISuggestions(!suggestionsDismissed && threadId ? threadId : null);
   const replies = suggestions.suggested_replies.slice(0, 3);
+  const mailDraft = useEmailDraft(threadId, isEmail, emailDraft, setEmailDraft);
 
   useEffect(() => { setText(""); setNote(false); setCanned(false); setSuggestionsDismissed(false); }, [contact.id]);
   useEffect(() => { if (replyingTo) { setNote(false); taRef.current?.focus(); } }, [replyingTo]);
@@ -119,8 +121,9 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
       if (!emailDraft?.to.trim() || !html || html === "<br>") { toast.error("Recipient and body are required"); return; }
       const finalBody = signature ? `${html}<br><br><div class="excom-signature">${signature}</div>` : html;
       try {
-        const r = await sendEmail({ thread_id: threadId, to: emailDraft.to.trim(), subject: emailDraft.subject.trim() || "(No Subject)", body_html: finalBody, cc: (emailDraft.cc || "").trim(), bcc: (emailDraft.bcc || "").trim(), in_reply_to_gmail_id: emailDraft.inReplyToGmailId, send_at: emailDraft.sendAt || "" });
-        setText(""); setEmailDraft({ ...emailDraft, subject: "", inReplyToGmailId: "", html: "", sendAt: "" }); onSent(); toast.success(r?.message?.scheduled ? `Email scheduled for ${r.message.send_at.slice(0, 16)}` : "Email sent");
+        const r = await sendEmail({ thread_id: threadId, to: emailDraft.to.trim(), subject: emailDraft.subject.trim() || "(No Subject)", body_html: finalBody, cc: (emailDraft.cc || "").trim(), bcc: (emailDraft.bcc || "").trim(), in_reply_to_gmail_id: emailDraft.inReplyToGmailId, send_at: emailDraft.sendAt || "", draft_name: emailDraft.draftName || "" });
+        mailDraft.sent();
+        setText(""); setEmailDraft({ ...emailDraft, subject: "", inReplyToGmailId: "", html: "", sendAt: "", draftName: "" }); onSent(); toast.success(r?.message?.scheduled ? `Email scheduled for ${r.message.send_at.slice(0, 16)}` : "Email sent");
       } catch (err) { toastError(err, "Failed to send email"); }
       return;
     }
@@ -132,7 +135,7 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
     onOptimistic({ id: tempId, content: body, timestamp: new Date() });
     try { await sendMessage({ thread_id: threadId, message: body, reply_to: replyTo }); onOptimistic(null, tempId); onSent(); }
     catch (e: any) { onOptimistic(null, tempId); setText(body); toast.error(e?.message || "Failed to send"); }
-  }, [text, threadId, note, blocked, isEmail, emailDraft, signature, templateRequired, replyingTo, sending, sendingNote, sendingEmail, sendMessage, sendNote, sendEmail, onSent, onOptimistic, clearReply, setEmailDraft]);
+  }, [text, threadId, note, blocked, isEmail, emailDraft, signature, templateRequired, replyingTo, sending, sendingNote, sendingEmail, sendMessage, sendNote, sendEmail, onSent, onOptimistic, clearReply, setEmailDraft, mailDraft]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (canned) return;
@@ -221,6 +224,18 @@ export function Composer({ contact, via, setVia, replyingTo, clearReply, emailDr
               <span className="text-ink-3 shrink-0">{emailDraft.sendAt ? `⏱ ${emailDraft.sendAt.slice(0, 16)}` : "now"}</span>
             </button>
           )
+        )}
+
+        {isEmail && !note && emailDraft && (mailDraft.state || emailDraft.draftName) && (
+          <div className="flex items-center gap-2 h-5 mb-1 text-2xs text-ink-3 min-w-0" aria-live="polite">
+            <span className={cn("truncate", mailDraft.state === "local" && "text-crayon-amber-text")} title={mailDraft.problem || undefined}>
+              {mailDraft.state === "saving" ? "Saving draft…"
+                : mailDraft.state === "local" ? "Draft saved here only — the mailbox could not be reached"
+                : mailDraft.by ? `Draft by ${mailDraft.by} · also in the mailbox's Drafts`
+                : "Draft saved · also in the mailbox's Drafts"}
+            </span>
+            <button type="button" className="ml-auto shrink-0 hover:text-crayon-rose-text" onClick={() => { void mailDraft.discard(); }}>Discard</button>
+          </div>
         )}
 
         {/* Input row */}

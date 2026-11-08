@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useFrappePostCall } from "frappe-react-sdk";
 import {
   Mail,
   ChevronDown,
@@ -58,6 +59,9 @@ interface EmailMessageCardProps {
   onRetryFetch?: (messageId: string) => void;
   /** Sending/receiving account shown in the footer (merged feed). */
   accountName?: string;
+  /** Where the mailbox has it (Spam and Trash are said on the card) and its flag, kept in step both ways. */
+  mailFolder?: string;
+  mailFlagged?: boolean;
 }
 
 function formatBytes(bytes: number): string {
@@ -100,7 +104,10 @@ export function EmailMessageCard({
   onReplyEmail,
   onRetryFetch,
   accountName,
+  mailFolder,
+  mailFlagged,
 }: EmailMessageCardProps) {
+  const { call: flagCall } = useFrappePostCall("excom.excom.api.email.set_email_flag");
   const [expanded, setExpanded] = useState(false);
   const [showHeaders, setShowHeaders] = useState(false);
   const isOutbound = direction === "Outbound";
@@ -129,9 +136,14 @@ export function EmailMessageCard({
   const isStarredByGmail = emailMeta.label_ids?.includes("STARRED");
   const isImportant = emailMeta.label_ids?.includes("IMPORTANT");
   const isDraft = emailMeta.label_ids?.includes("DRAFT");
+  const where = mailFolder === "Spam" || mailFolder === "Trash" ? mailFolder : "";
 
-  // Initialise star state from Gmail label on first render
-  const [starred, setStarred] = useState(() => isStarredByGmail);
+  // The flag lives in the mailbox (Gmail's star, JMAP $flagged); toggling it here sets it there.
+  const [starred, setStarredState] = useState(() => mailFlagged ?? isStarredByGmail);
+  const setStarred = (v: boolean) => {
+    setStarredState(v);
+    flagCall({ message_name: messageId, flagged: v ? 1 : 0 }).catch(() => setStarredState(!v));
+  };
 
   const handleToggle = () => {
     if (!expanded && !bodyData) {
@@ -207,8 +219,13 @@ export function EmailMessageCard({
                   </p>
                 )}
                 {/* Gmail label badges */}
-                {!expanded && (isDraft || isImportant || starred) && (
+                {!expanded && (isDraft || isImportant || starred || where) && (
                   <div className="flex items-center gap-1 mt-1">
+                    {where && (
+                      <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-surface-sunken text-ink-2 border border-border-strong" title={`In the mailbox's ${where}`}>
+                        {where}
+                      </span>
+                    )}
                     {isDraft && (
                       <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-crayon-amber-tint text-crayon-amber-text border border-crayon-amber-base/40">
                         Draft

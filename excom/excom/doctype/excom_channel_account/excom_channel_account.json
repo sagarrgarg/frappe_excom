@@ -71,6 +71,7 @@
   "wa_waba_webhook_url",
   "email_section",
   "email_address",
+  "email_provider",
   "email_connected_app",
   "email_connected_user",
   "column_break_email",
@@ -86,6 +87,20 @@
   "column_break_email_sync",
   "email_label_filter",
   "email_poll_interval_minutes",
+  "jmap_section",
+  "jmap_server_url",
+  "jmap_username",
+  "jmap_password",
+  "jmap_push",
+  "jmap_cb",
+  "jmap_session_url",
+  "jmap_account_id",
+  "jmap_identity_id",
+  "jmap_email_state",
+  "jmap_mailboxes",
+  "jmap_push_id",
+  "jmap_push_verified",
+  "jmap_push_token",
   "meta_dm_section",
   "meta_page_id",
   "meta_ig_user_id",
@@ -601,7 +616,16 @@
    "mandatory_depends_on": "eval:doc.channel=='email'"
   },
   {
+   "default": "Gmail",
+   "fieldname": "email_provider",
+   "fieldtype": "Select",
+   "label": "Mail server",
+   "options": "Gmail\nJMAP",
    "depends_on": "eval:doc.channel=='email'",
+   "description": "Gmail (Google Workspace), or a JMAP mail server such as Stalwart. Folders, drafts, read state, spam and trash work the same on both."
+  },
+  {
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider!='JMAP'",
    "fieldname": "email_connected_app",
    "fieldtype": "Link",
    "label": "Connected App",
@@ -610,7 +634,7 @@
    "description": "Frappe Connected App configured for Gmail OAuth2"
   },
   {
-   "depends_on": "eval:doc.channel=='email'",
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider!='JMAP'",
    "fieldname": "email_connected_user",
    "fieldtype": "Link",
    "label": "Connected User",
@@ -632,7 +656,7 @@
    "description": "Whether OAuth2 token exists and is valid"
   },
   {
-   "depends_on": "eval:doc.channel=='email'",
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider!='JMAP'",
    "fieldname": "email_authorize_button",
    "fieldtype": "Button",
    "label": "Authorize Gmail Access"
@@ -682,7 +706,7 @@
    "label": "Sync Settings"
   },
   {
-   "depends_on": "eval:doc.channel=='email'",
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider!='JMAP'",
    "fieldname": "email_last_history_id",
    "fieldtype": "Data",
    "label": "Last History ID",
@@ -702,11 +726,12 @@
   },
   {
    "default": "INBOX",
-   "depends_on": "eval:doc.channel=='email'",
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider!='JMAP'",
    "fieldname": "email_label_filter",
    "fieldtype": "Data",
    "label": "Label Filter",
-   "description": "Comma-separated Gmail labels to watch (default: INBOX)"
+   "description": "No longer used: every folder syncs now (Inbox, Sent, Drafts, Spam, Trash, Archive).",
+   "hidden": 1
   },
   {
    "default": "2",
@@ -715,6 +740,104 @@
    "fieldtype": "Int",
    "label": "Poll Interval (minutes)",
    "description": "How often to check for new emails (minimum 1)"
+  },
+  {
+   "fieldname": "jmap_section",
+   "fieldtype": "Section Break",
+   "label": "Mail server (JMAP / Stalwart)",
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider=='JMAP'"
+  },
+  {
+   "fieldname": "jmap_server_url",
+   "fieldtype": "Data",
+   "label": "Server address",
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider=='JMAP'",
+   "mandatory_depends_on": "eval:doc.channel=='email' && doc.email_provider=='JMAP'",
+   "description": "For example https://mail.example.com. Excom finds the JMAP session at /.well-known/jmap."
+  },
+  {
+   "fieldname": "jmap_username",
+   "fieldtype": "Data",
+   "label": "Login",
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider=='JMAP'",
+   "mandatory_depends_on": "eval:doc.channel=='email' && doc.email_provider=='JMAP'",
+   "description": "Usually the mailbox address. The same login and password a mail app (Outlook, Thunderbird) uses."
+  },
+  {
+   "fieldname": "jmap_password",
+   "fieldtype": "Password",
+   "label": "Password",
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider=='JMAP'",
+   "description": "An app password if the server offers them, otherwise the mailbox password. Stored encrypted."
+  },
+  {
+   "default": "1",
+   "fieldname": "jmap_push",
+   "fieldtype": "Check",
+   "label": "Live updates",
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider=='JMAP'",
+   "description": "Ask the server to tell Excom about changes at once. Needs this site to be reachable from the mail server; Excom also checks every minute either way."
+  },
+  {
+   "fieldname": "jmap_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "jmap_session_url",
+   "fieldtype": "Data",
+   "label": "Session",
+   "read_only": 1,
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider=='JMAP'"
+  },
+  {
+   "fieldname": "jmap_account_id",
+   "fieldtype": "Data",
+   "label": "JMAP account",
+   "read_only": 1,
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider=='JMAP'"
+  },
+  {
+   "fieldname": "jmap_identity_id",
+   "fieldtype": "Data",
+   "label": "Sending identity",
+   "read_only": 1,
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider=='JMAP'"
+  },
+  {
+   "fieldname": "jmap_email_state",
+   "fieldtype": "Data",
+   "label": "Sync state",
+   "read_only": 1,
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider=='JMAP'"
+  },
+  {
+   "fieldname": "jmap_mailboxes",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "Folders",
+   "read_only": 1,
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider=='JMAP'"
+  },
+  {
+   "fieldname": "jmap_push_id",
+   "fieldtype": "Data",
+   "label": "Push subscription",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "jmap_push_verified",
+   "fieldtype": "Check",
+   "label": "Live updates confirmed",
+   "read_only": 1,
+   "depends_on": "eval:doc.channel=='email' && doc.email_provider=='JMAP'"
+  },
+  {
+   "fieldname": "jmap_push_token",
+   "fieldtype": "Password",
+   "label": "Push token",
+   "hidden": 1
   },
   {
    "fieldname": "meta_dm_section",
@@ -995,7 +1118,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-04 14:00:00.000000",
+ "modified": "2026-11-08 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Channel Account",

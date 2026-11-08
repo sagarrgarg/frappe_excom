@@ -35,3 +35,6 @@ def on_doctype_update():
 	frappe.db.add_index("Excom Message", ["thread", "creation"])
 	# the two per-minute schedulers scan these
 	frappe.db.add_index("Excom Message", ["delivery_status", "scheduled_at"])
+	# mail folders in the inbox list, and finding an email again after a move between servers
+	frappe.db.add_index("Excom Message", ["thread", "mail_folder"])
+	frappe.db.add_index("Excom Message", ["account", "internet_message_id"], index_name="idx_excom_msg_internet_id")

@@ -42,7 +42,14 @@
   "is_pinned",
   "pinned_by",
   "reactions_section",
-  "reactions"
+  "reactions",
+  "mail_section",
+  "mail_folder",
+  "mail_seen",
+  "mail_flagged",
+  "mail_cb",
+  "internet_message_id",
+  "provider_thread_id"
  ],
  "fields": [
   {
@@ -273,11 +280,60 @@
    "fieldname": "reactions",
    "fieldtype": "JSON",
    "label": "Reactions"
+  },
+  {
+   "fieldname": "mail_section",
+   "fieldtype": "Section Break",
+   "label": "Mailbox",
+   "depends_on": "eval:doc.channel=='email'",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "mail_folder",
+   "fieldtype": "Select",
+   "label": "Folder",
+   "options": "\nInbox\nArchive\nSent\nDrafts\nSpam\nTrash",
+   "read_only": 1,
+   "description": "Where the mailbox (Gmail or the mail server) has this message now. Kept in step both ways."
+  },
+  {
+   "default": "0",
+   "fieldname": "mail_seen",
+   "fieldtype": "Check",
+   "label": "Read",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "mail_flagged",
+   "fieldtype": "Check",
+   "label": "Flagged",
+   "read_only": 1
+  },
+  {
+   "fieldname": "mail_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "internet_message_id",
+   "fieldtype": "Data",
+   "length": 500,
+   "label": "Message-ID",
+   "read_only": 1,
+   "description": "The standard Message-ID header. The same on every server, so history survives a move from Gmail to Stalwart.",
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "provider_thread_id",
+   "fieldtype": "Data",
+   "length": 255,
+   "label": "Mailbox thread",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-07 12:00:00.000000",
+ "modified": "2026-11-08 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Message",

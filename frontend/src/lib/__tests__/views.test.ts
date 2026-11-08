@@ -31,4 +31,8 @@ describe("views", () => {
     const r = parseSearchInput("kind:customer channel:whatsapp hello", EMPTY_FILTERS);
     expect(r.kind).toBe("customer"); expect(r.channel).toBe("whatsapp"); expect(r.q.trim()).toBe("hello");
   });
+  it("a mail folder rides in the URL; the inbox is the default and not written", () => {
+    expect(filtersFromParams(paramsFromFilters({ ...EMPTY_FILTERS, account: "RBColour Info", folder: "sent" })).folder).toBe("sent");
+    expect(paramsFromFilters({ ...EMPTY_FILTERS, folder: "inbox" }).has("folder")).toBe(false);
+  });
 });

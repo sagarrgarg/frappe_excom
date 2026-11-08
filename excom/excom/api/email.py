@@ -11,7 +11,6 @@ import frappe
 from frappe import _
 
 from excom.excom.api.chat import _check_excom_access, _check_thread_access
-from excom.excom.services import gmail_service
 from excom.excom.channels.email.outbound import send_email_reply
 
 
@@ -55,7 +54,7 @@ def get_email_body(message_name: str):
 
     gmail_msg_id = msg.provider_message_id
     if not gmail_msg_id:
-        frappe.throw(_("Message {0} has no Gmail message ID").format(message_name))
+        frappe.throw(_("Message {0} has no mailbox message ID").format(message_name))
 
     account_name = msg.account
 
@@ -65,7 +64,7 @@ def get_email_body(message_name: str):
         content_json = {}
 
     try:
-        full = gmail_service.get_message_full(account_name, gmail_msg_id)
+        full = _server_for(msg).fetch_full(frappe.get_doc("Excom Channel Account", account_name), _raw(msg))
     except Exception as e:
         err_str = str(e)
         frappe.log_error(
@@ -77,9 +76,9 @@ def get_email_body(message_name: str):
             code in err_str for code in ("401", "403", "invalid_grant", "unauthorized", "Unauthorized", "No valid OAuth2")
         )
         error_msg = (
-            "Gmail access not authorized. Please re-authorize the email account."
+            "The mailbox refused the login. Please reconnect the email account."
             if is_auth_error
-            else "Failed to fetch from Gmail. The email may have been deleted or moved."
+            else "Could not fetch it from the mailbox. The email may have been deleted or moved."
         )
         return {
             "body_html": "",
@@ -108,7 +107,7 @@ def get_email_body(message_name: str):
             "date": content_json.get("date", ""),
             "attachments": [],
             "deleted": True,
-            "error": "This email is no longer available in Gmail.",
+            "error": "This email is no longer in the mailbox.",
         }
 
     return {
@@ -152,10 +151,7 @@ def get_email_attachment(
     if msg.message_type != "Email":
         frappe.throw(_("Message {0} is not an email").format(message_name))
 
-    gmail_msg_id = msg.provider_message_id
-    account_name = msg.account
-
-    file_bytes = gmail_service.get_attachment(account_name, gmail_msg_id, attachment_id)
+    file_bytes = _server_for(msg).fetch_attachment(frappe.get_doc("Excom Channel Account", msg.account), _raw(msg), attachment_id)
 
     safe_name = (filename or f"attachment_{attachment_id[:8]}").replace('"', "")
     frappe.local.response.filename = safe_name
@@ -188,8 +184,9 @@ def search_emails(account_name: str, query: str, max_results: int = 20):
     if account_name not in {a["name"] for a in get_channel_accounts()}:
         frappe.throw(_("You do not have access to that mailbox"), frappe.PermissionError)
     max_results = min(int(max_results), 50)
-    results = gmail_service.search_messages(account_name, query, max_results)
-    return results
+    from excom.excom.channels.email import providers
+    account = frappe.get_doc("Excom Channel Account", account_name)
+    return providers.get(account).search(account, query, max_results)
 
 
 @frappe.whitelist()
@@ -202,9 +199,11 @@ def send_email(
     bcc: str = "",
     in_reply_to_gmail_id: str = "",
     send_at: str = "",
+    draft_name: str = "",
 ):
     """
-    Send an email reply via Gmail API on an existing email thread.
+    Send an email on an existing email conversation, through the mailbox's server.
+    draft_name: the draft being sent; it leaves Drafts in the mailbox too.
 
     Args:
         thread_id: Excom Thread name
@@ -226,7 +225,11 @@ def send_email(
         from frappe.utils import get_datetime, now_datetime
         when = get_datetime(send_at)
         if when > now_datetime():
-            return schedule_email(thread_id, to, subject, body_html, cc, bcc, in_reply_to_gmail_id, when)
+            out = schedule_email(thread_id, to, subject, body_html, cc, bcc, in_reply_to_gmail_id, when)
+            if draft_name and frappe.db.get_value("Excom Email Draft", draft_name, "thread") == thread_id:
+                from excom.excom.channels.email import drafts
+                drafts.discard(draft_name)  # it waits in Scheduled now, not in Drafts
+            return out
     _check_excom_access()
     try:
         msg_name = send_email_reply(
@@ -237,6 +240,7 @@ def send_email(
             cc=cc,
             bcc=bcc,
             in_reply_to_gmail_id=in_reply_to_gmail_id,
+            draft_name=draft_name if draft_name and frappe.db.get_value("Excom Email Draft", draft_name, "thread") == thread_id else "",
         )
         frappe.db.commit()
         return {"success": True, "message_name": msg_name}
@@ -257,19 +261,10 @@ def check_gmail_connection(account_name: str):
         {"success": True, "email": "user@gmail.com", "historyId": "..."}
     """
     _check_excom_access()
-    try:
-        profile = gmail_service.get_profile(account_name)
-        return {
-            "success": True,
-            "email": profile.get("emailAddress", ""),
-            "historyId": profile.get("historyId", ""),
-            "messagesTotal": profile.get("messagesTotal", 0),
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-        }
+    from excom.excom.channels.email import providers
+    account = frappe.get_doc("Excom Channel Account", account_name)
+    r = providers.get(account).check(account)
+    return {"success": bool(r.get("ok")), "email": r.get("email", ""), "messagesTotal": r.get("total", 0), "error": r.get("error", "")}
 
 
 @frappe.whitelist()
@@ -416,3 +411,129 @@ def suggest_recipients(q: str = "", limit: int = 12) -> list:
     for r in frappe.get_all("User", filters=[["enabled", "=", 1], ["user_type", "=", "System User"], ["name", "!=", "Administrator"]] + ([["full_name", "like", like]] if q else []), fields=["name", "full_name"], limit=limit):
         add(r.name, r.full_name, "colleague")
     return out[:limit]
+
+
+# ─── which server holds an email ──────────────────────────────────────────────
+
+def _server_for(msg):
+    """The provider an email was synced from. Emails from before a mailbox moved to Stalwart keep
+    their Gmail ids and are read from Gmail while it still lets us."""
+    from excom.excom.channels.email import providers
+    if providers.provider_of_stored(msg.provider_message_id) == providers.JMAP:
+        from excom.excom.channels.email.providers import jmap
+        return jmap
+    from excom.excom.channels.email.providers import gmail
+    return gmail
+
+
+def _raw(msg) -> str:
+    from excom.excom.channels.email import providers
+    return providers.raw_id(frappe._dict(name=msg.account), msg.provider_message_id)
+
+
+# ─── drafts (kept in step with the mailbox's Drafts folder) ──────────────────
+
+@frappe.whitelist()
+def get_email_draft(thread_id: str):
+    """The conversation's draft, if any, with its text (fetched from the mailbox if written there)."""
+    from excom.excom.api.chat import _check_thread_access
+    from excom.excom.channels.email import drafts
+    _check_thread_access(thread_id)
+    return drafts.for_thread(thread_id)
+
+
+@frappe.whitelist(methods=["POST"])
+def save_email_draft(thread_id: str, to: str = "", cc: str = "", bcc: str = "", subject: str = "",
+                     body_html: str = "", in_reply_to_message: str = "", draft_name: str = ""):
+    """Save while typing: here and in the mailbox's Drafts. Same access as replying."""
+    from excom.excom.api.chat import _check_thread_access, _check_send_access
+    from excom.excom.channels.email import drafts
+    _check_thread_access(thread_id)
+    _check_send_access(thread_id)
+    out = drafts.save(thread_id, to, cc, bcc, subject, body_html, in_reply_to_message, draft_name)
+    frappe.db.commit()
+    return out
+
+
+@frappe.whitelist(methods=["POST"])
+def discard_email_draft(draft_name: str):
+    from excom.excom.api.chat import _check_thread_access
+    from excom.excom.channels.email import drafts
+    thread = frappe.db.get_value("Excom Email Draft", draft_name, "thread")
+    if not thread:
+        return {"ok": True}
+    _check_thread_access(thread)
+    drafts.discard(draft_name)
+    frappe.db.commit()
+    return {"ok": True}
+
+
+# ─── JMAP (Stalwart): connect, and live updates ──────────────────────────────
+
+@frappe.whitelist(methods=["POST"])
+def connect_mail_server(account_name: str):
+    """Sign in to the JMAP server, find the folders and the sending identity, and ask for live
+    updates. Admins only: it reads the stored password."""
+    from excom.excom.api.chat import _check_admin_access
+    from excom.excom.channels.email.providers import jmap
+    _check_admin_access()
+    account = frappe.get_doc("Excom Channel Account", account_name)
+    if account.channel != "email" or (account.email_provider or "Gmail") != "JMAP":
+        frappe.throw(_("{0} is not a JMAP mailbox").format(account_name))
+    r = jmap.check(account)
+    push = ""
+    if r.get("ok") and account.get("jmap_push"):
+        try:
+            jmap.ensure_push(account, push_url(account))
+            push = "requested"
+        except Exception as e:
+            push = f"not available: {str(e)[:200]}"
+            frappe.log_error(title=f"Excom JMAP push setup failed: {account_name}", message=frappe.get_traceback())
+    frappe.db.commit()
+    return {**r, "push": push}
+
+
+def push_url(account) -> str:
+    from excom.excom.channels.email.providers import jmap
+    token = jmap.push_token(account)
+    return frappe.utils.get_url(f"/api/method/excom.excom.api.email.jmap_push?account={frappe.utils.quote(account.name)}&token={token}")
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def jmap_push(account: str = "", token: str = ""):
+    """The mail server calls this when something changed (RFC 8620 push). The token in the URL is
+    the account's own secret; anything else is ignored. The actual work is a normal sync."""
+    from frappe.utils.password import get_decrypted_password
+    if not account or not token or not frappe.db.exists("Excom Channel Account", account):
+        frappe.local.response.http_status_code = 404
+        return
+    secret = get_decrypted_password("Excom Channel Account", account, "jmap_push_token", raise_exception=False)
+    import hmac
+    if not secret or not hmac.compare_digest(str(token), str(secret)):
+        frappe.local.response.http_status_code = 403
+        return
+    payload = frappe.request.get_json(silent=True) or {}
+    from excom.excom.channels.email.providers import jmap
+    frappe.set_user("Administrator")
+    acc = frappe.get_doc("Excom Channel Account", account)
+    if jmap.handle_push(acc, payload):
+        frappe.enqueue(
+            "excom.excom.channels.email.inbound.poll_single_account",
+            account_name=account, queue="short", deduplicate=True, job_id=f"email_poll:{account}",
+        )
+    frappe.db.commit()
+    return {"ok": True}
+
+
+@frappe.whitelist(methods=["POST"])
+def set_email_flag(message_name: str, flagged: int = 1):
+    """Star an email (Gmail) / flag it (Outlook, Stalwart): here and in the mailbox."""
+    from excom.excom.api.chat import _check_thread_access
+    from excom.excom.channels.email import mailbox
+    thread = frappe.db.get_value("Excom Message", message_name, "thread")
+    if not thread:
+        frappe.throw(_("No such message"), frappe.PermissionError)
+    _check_thread_access(thread)
+    mailbox.set_message_flag(message_name, bool(int(flagged)))
+    frappe.db.commit()
+    return {"flagged": bool(int(flagged))}

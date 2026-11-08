@@ -25,10 +25,12 @@ export interface InboxFilters {
   kind: string;
   /** "other" → the Other lane (newsletters, notifications); otherwise the main inbox. */
   lane: string;
+  /** A mail folder (drafts, scheduled, sent, archive, spam, trash; lib/mailFolders.ts); blank is the inbox. */
+  folder: string;
 }
 
 export const EMPTY_FILTERS: InboxFilters = {
-  q: "", channel: "", account: "", team: "", tags: [], broadcast: "", bstatus: "", from: "", to: "", company: "", archived: "", kind: "", lane: "",
+  q: "", channel: "", account: "", team: "", tags: [], broadcast: "", bstatus: "", from: "", to: "", company: "", archived: "", kind: "", lane: "", folder: "",
 };
 
 export const CHIP_KEYS: (keyof InboxFilters)[] = ["channel", "account", "team", "tags", "broadcast", "bstatus", "from", "to", "company", "archived", "kind"];
@@ -62,6 +64,7 @@ export function filtersFromParams(sp: URLSearchParams): InboxFilters {
     archived: sp.get("archived") || "",
     kind: sp.get("kind") || "",
     lane: sp.get("lane") || "",
+    folder: sp.get("folder") || "",
   };
 }
 
@@ -80,6 +83,7 @@ export function paramsFromFilters(f: InboxFilters): URLSearchParams {
   if (f.archived) sp.set("archived", "1");
   if (f.kind) sp.set("kind", f.kind);
   if (f.lane) sp.set("lane", f.lane);
+  if (f.folder && f.folder !== "inbox") sp.set("folder", f.folder);
   return sp;
 }
 
