@@ -86,7 +86,8 @@ def _custom(name: str) -> dict:
 
 
 def _recipe_enabled(key: str) -> bool:
-	enabled = frappe.db.get_value("Excom AI Recipe", {"recipe_key": f"sales.{key}"}, "enabled")
+	enabled = frappe.db.get_value("Excom AI Recipe", {"recipe_key": ["in", [f"{p}.{key}" for p in recipes.RECIPES[key]["packs"]]]},
+		"enabled")
 	return enabled is None or bool(enabled)
 
 

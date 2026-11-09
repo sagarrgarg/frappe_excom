@@ -349,9 +349,18 @@ def gap_to_todo(gap_name: str, user: str) -> str:
 	return todo.name
 
 
-def seed(agent_type: str = "Sales") -> None:
-	"""Create the Sales rules once; never overwrite edits."""
+def seed(agent_type: str = "Sales", rules: list | None = None) -> None:
+	"""Create a type's rules once (Sales by default; a pack passes its own list of
+	(key, title, severity, applies_when, fix_hint, fix_route), its checks registered with @check(key)
+	and handler path module.function). Never overwrites edits."""
 	if not frappe.db.exists("Excom AI Agent Type", agent_type):
+		return
+	if rules is not None:
+		for key, title, severity, when, hint, route, handler in rules:
+			if not frappe.db.exists("Excom AI Readiness Rule", {"rule_key": key}):
+				frappe.get_doc({"doctype": "Excom AI Readiness Rule", "rule_key": key, "agent_type": agent_type, "title": title,
+					"severity": severity, "applies_when": when, "fix_hint": hint, "fix_route": route, "handler": handler}
+					).insert(ignore_permissions=True)
 		return
 	for key, title, severity, when, hint, route in SALES_RULES:
 		if frappe.db.exists("Excom AI Readiness Rule", {"rule_key": key}):

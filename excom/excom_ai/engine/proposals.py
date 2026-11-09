@@ -41,9 +41,20 @@ ACTION_POLICY = {
 	"create_todo": "todo_note",
 	"note": "todo_note",
 	"update_playbook": "playbook_change",
+	# Accounts
+	"send_statement": "statement",
+	"record_promise": "create_record",
+	"suggest_match": "todo_note",
+	# Purchase
+	"send_rfq": "rfq",
+	"po_chase": "po_chase",
+	"create_rfq": "create_record",
+	"create_supplier_quotation": "create_record",
+	"create_supplier": "create_record",
 }
-SENDS = ("send_email", "send_whatsapp", "reply", "payment_reminder")
-SEND_POLICIES = ("first_email", "follow_up_email", "reply", "whatsapp_template", "payment_reminder", "prices_and_terms")
+SENDS = ("send_email", "send_whatsapp", "reply", "payment_reminder", "send_statement", "send_rfq", "po_chase")
+SEND_POLICIES = ("first_email", "follow_up_email", "reply", "whatsapp_template", "payment_reminder", "prices_and_terms",
+	"statement", "rfq", "po_chase")
 # Actions that change only our own records: a person may let them run while the agent is on hold.
 INTERNAL = ("note", "create_todo", "create_lead", "update_lead")
 RELEASED = ("Rejected", "Cancelled", "Failed", "Expired")

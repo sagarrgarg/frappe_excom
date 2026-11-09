@@ -30,6 +30,11 @@ MODULES = [
 	"excom.excom_ai.responder",
 	"excom.excom_ai.deals",
 	"excom.excom_ai.monitor",
+	# Phase 2 packs (each optional until written)
+	"excom.excom_ai.packs.accounts",
+	"excom.excom_ai.packs.purchase",
+	"excom.excom_ai.packs.compliance",
+	"excom.excom_ai.packs.custom",
 ]
 
 # Priorities (HLD-007 §10.1): 0 inbound replies and events · 1 approved actions and due sends ·
@@ -105,7 +110,11 @@ def load():
 	if _loaded:
 		return
 	for module in MODULES:
-		frappe.get_module(module)
+		try:
+			frappe.get_module(module)
+		except ModuleNotFoundError as e:
+			if not module.startswith("excom.excom_ai.packs.") or module.rsplit(".", 1)[1] not in str(e):
+				raise  # a pack not written yet is fine; a broken import inside one is not
 	_loaded = True
 
 

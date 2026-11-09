@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-10 04:00:00.000000",
+ "creation": "2026-11-10 05:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -67,7 +67,7 @@
    "fieldname": "action",
    "fieldtype": "Select",
    "label": "Action",
-   "options": "send_email\nsend_whatsapp\nreply\ncreate_lead\nupdate_lead\ncreate_opportunity\ncreate_quotation\npayment_reminder\ncreate_todo\nnote\nupdate_playbook",
+   "options": "send_email\nsend_whatsapp\nreply\ncreate_lead\nupdate_lead\ncreate_opportunity\ncreate_quotation\npayment_reminder\ncreate_todo\nnote\nupdate_playbook\nsend_statement\nrecord_promise\nsuggest_match\nsend_rfq\npo_chase\ncreate_rfq\ncreate_supplier_quotation\ncreate_supplier",
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1
@@ -76,7 +76,7 @@
    "fieldname": "policy_action",
    "fieldtype": "Select",
    "label": "Policy",
-   "options": "\ncreate_record\nwrite_draft\nfirst_email\nfollow_up_email\nreply\nwhatsapp_template\nprices_and_terms\ncreate_opportunity\nquotation\nsubmit_document\npayment_reminder\ntodo_note\nplaybook_change",
+   "options": "\ncreate_record\nwrite_draft\nfirst_email\nfollow_up_email\nreply\nwhatsapp_template\nprices_and_terms\ncreate_opportunity\nquotation\nsubmit_document\npayment_reminder\ntodo_note\nplaybook_change\nstatement\nrfq\npo_chase",
    "read_only": 1,
    "description": "The policy this action falls under (a follow-up email is follow_up_email): caps and sampling count by it."
   },
@@ -352,7 +352,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 04:00:00.000000",
+ "modified": "2026-11-10 05:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Proposal",

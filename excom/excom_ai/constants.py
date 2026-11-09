@@ -24,6 +24,26 @@ PACK_PERMISSIONS = {
 			"Contact", "Sales Order", "Sales Invoice", "Delivery Note"),
 		"write": ("Lead", "Prospect", "Opportunity", "Quotation", "Address", "ToDo"),
 	},
+	"accounts": {
+		"read": ("Sales Invoice", "Payment Entry", "Customer", "Customer Group", "Contact", "Address", "Bank Transaction",
+			"Bank Account", "Purchase Invoice", "Supplier", "Supplier Group", "Payment Terms Template", "Company", "Currency",
+			"Journal Entry", "Dunning", "Dunning Type"),
+		"write": ("ToDo",),
+	},
+	"purchase": {
+		"read": ("Item", "Item Group", "Brand", "UOM", "Supplier", "Supplier Group", "Purchase Order", "Purchase Receipt",
+			"Purchase Invoice", "Item Price", "Price List", "Material Request", "Company", "Currency", "Country"),
+		"write": ("Request for Quotation", "Supplier Quotation", "Supplier", "Address", "Contact", "ToDo"),
+	},
+	"compliance": {
+		"read": ("Sales Invoice", "Purchase Invoice", "Customer", "Supplier", "Company", "Address", "Delivery Note",
+			"Payment Entry", "Employee"),
+		"write": ("ToDo",),
+	},
+	"custom": {
+		"read": ("Item", "Item Group", "Customer", "Supplier", "Lead", "Opportunity", "Company"),
+		"write": ("ToDo",),
+	},
 }
 
 MODES = ("Off", "Shadow", "Review", "Auto")
@@ -44,6 +64,9 @@ CEILINGS = {
 	"payment_reminder": "Auto",
 	"todo_note": "Auto",
 	"playbook_change": "Review",  # the coach's suggestions: always a person's decision
+	"statement": "Review",  # Accounts: a customer's statement
+	"rfq": "Review",  # Purchase: a request for quotation to a supplier
+	"po_chase": "Auto",  # Purchase: asking a supplier about a late order
 }
 
 SAFE_REPLY_INTENTS = "ooo, thanks, scheduling, public catalogue"
@@ -113,6 +136,8 @@ DEFAULT_POLICIES = {
 	"purchase": [
 		("create_record", "Auto"),
 		("write_draft", "Auto"),
+		("rfq", "Review"),
+		("po_chase", "Review"),
 		("first_email", "Review"),
 		("follow_up_email", "Review"),
 		("reply", "Review"),
@@ -122,7 +147,9 @@ DEFAULT_POLICIES = {
 	],
 	"accounts": [
 		("write_draft", "Auto"),
+		("create_record", "Auto"),
 		("payment_reminder", "Review"),
+		("statement", "Review"),
 		("reply", "Review"),
 		("prices_and_terms", "Review"),
 		("submit_document", "Off"),

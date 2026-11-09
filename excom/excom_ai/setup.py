@@ -50,6 +50,14 @@ def _roles():
 def _types():
 	for name, pack, description, colour in constants.TYPES:
 		if frappe.db.exists("Excom AI Agent Type", name):
+			# a policy a later version added is appended; rows a person set are never changed
+			doc = frappe.get_doc("Excom AI Agent Type", name)
+			have = {r.action for r in doc.default_policies}
+			missing = [(a, m) for a, m in constants.DEFAULT_POLICIES[pack] if a not in have]
+			for action, mode in missing:
+				doc.append("default_policies", {"action": action, "mode": mode})
+			if missing:
+				doc.save(ignore_permissions=True)
 			continue
 		doc = frappe.get_doc({"doctype": "Excom AI Agent Type", "type_name": name, "pack": pack,
 			"description": description, "colour": colour})
@@ -100,8 +108,18 @@ def _builder():
 	from excom.excom_ai.builder import readiness, recipes
 
 	readiness.seed("Sales")
+	from excom.excom_ai.engine import registry
+
+	registry.load()  # pack modules register their recipes and readiness checks
+	for module in registry.MODULES:
+		try:
+			m = frappe.get_module(module)
+		except ModuleNotFoundError:
+			continue
+		if hasattr(m, "seed"):
+			m.seed()  # a pack's own readiness rules and records
 	for key, r in recipes.RECIPES.items():
-		rk = f"sales.{key}"
+		rk = f"{r['packs'][0]}.{key}"
 		if frappe.db.exists("Excom AI Recipe", {"recipe_key": rk}):
 			continue
 		frappe.get_doc({"doctype": "Excom AI Recipe", "recipe_key": rk, "label": r["title"], "kind": "Built-in",
