@@ -1,5 +1,6 @@
-"""Knowledge a person writes or approves. Only Approved playbooks reach prompts; editing an
-approved one sends it back to review with a new version number."""
+"""Knowledge a person writes or approves. Only approved text reaches prompts; editing an approved
+playbook sends it back to review with a new version number, and until that version is approved
+prompts keep using the last approved one (its sections are kept on the record)."""
 
 import json
 
@@ -25,6 +26,12 @@ class ExcomAIPlaybook(Document):
 				frappe.throw(_("Only an Excom Admin approves a playbook."), frappe.PermissionError)
 			self.approved_by = frappe.session.user
 			self.approved_on = now_datetime()
+		if self.status == "Approved":
+			self.approved_version = self.version
+			self.approved_sections = json.dumps([{"kind": s.kind, "title": s.title, "content": s.content}
+				for s in self.sections], ensure_ascii=False)
+		elif self.status == "Retired":
+			self.approved_sections = None  # a retired playbook reaches no prompt
 
 	@staticmethod
 	def _sections(doc):

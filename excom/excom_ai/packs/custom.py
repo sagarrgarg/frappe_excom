@@ -130,7 +130,8 @@ def custom_draft(task, agent) -> str:
 	"""A document or message drafted on request, from the playbook and the named record."""
 	params = frappe.parse_json(task.params or "{}") or {}
 	context = ""
-	if task.subject_doctype and task.subject_name and frappe.has_permission(task.subject_doctype, "read"):
+	if task.subject_doctype and task.subject_name and frappe.has_permission(task.subject_doctype, "read", task.subject_name,
+			user=agent.owner_user):  # this record, as its owner sees it
 		doc = frappe.get_doc(task.subject_doctype, task.subject_name)
 		context = untrusted(frappe.as_json({k: v for k, v in doc.as_dict().items() if isinstance(v, str | int | float)})[:4000],
 			f"{task.subject_doctype} {task.subject_name}")

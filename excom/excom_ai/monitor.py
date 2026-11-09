@@ -201,9 +201,13 @@ def week_stats(agent_name: str) -> dict:
 @registry.task_kind("coach", priority=registry.PRIORITY["refresh"], effort="reason")
 def coach(task, agent) -> str:
 	"""What worked this week and what people corrected, as playbook suggestions for the owner."""
+	from excom.excom_ai import learning
+
+	tests = learning.propose_winners(task, agent)
 	stats = week_stats(agent.name)
+	stats["subject_tests"] = learning.subject_results(agent.name)
 	if not (stats["rejected"] or stats["edits"] or stats["by_step"]):
-		return _("nothing to learn from this week")
+		return _("nothing to learn from this week") + (_("; {0} subject tests decided").format(tests) if tests else "")
 	r = runner.ai(task, agent, output_schema=COACH_SCHEMA,
 		pack_instructions=_("You coach an AI sales colleague. From this week's numbers and the corrections people made, "
 			"suggest at most 5 short additions to its playbook. Each is one plain sentence a person can accept or reject. "
@@ -215,7 +219,7 @@ def coach(task, agent) -> str:
 				risk="Low", payload={"kind": s["kind"], "text": s["text"], "why": s["why"]},
 				preview_html=f"<b>{frappe.utils.escape_html(s['kind'])}</b>: {frappe.utils.escape_html(s['text'])}"):
 			made += 1
-	return _("{0} playbook suggestions").format(made)
+	return _("{0} playbook suggestions").format(made) + (_("; {0} subject tests decided").format(tests) if tests else "")
 
 
 @registry.executor("update_playbook")

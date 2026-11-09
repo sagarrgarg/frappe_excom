@@ -261,6 +261,9 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 		"""
 		response = ET.Element("Response")
 
+		if decision.is_empty and decision.ai_stream:
+			return self.render_ai(decision.ai_stream, decision.ai_token)
+
 		if decision.is_empty:
 			message = decision.no_answer_message or _(
 				"Sorry, nobody is available to take your call right now. Please try again later."
@@ -306,6 +309,10 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 			"redirect": "false",
 			"hangupOnStar": "false",
 		}
+		if decision.ai_stream:
+			# The dial action's reply is then run as call control: the AI stream when nobody
+			# answered, a hangup otherwise (api.voice.dial_action).
+			dial_attrs["redirect"] = "true"
 		if decision.caller_id:
 			dial_attrs["callerId"] = decision.caller_id
 		dial = ET.SubElement(response, "Dial", dial_attrs)
@@ -319,6 +326,22 @@ class PlivoAdapter(VoiceProvider, SoftphoneProvider):
 				node = ET.SubElement(dial, "Number")
 				node.text = dest.ref
 
+		return self._serialise(response)
+
+	supports_ai_stream = True
+
+	def render_ai(self, url: str, token: str) -> str:
+		"""`<Stream bidirectional>`: the call's audio to the voice service and back, kept alive for
+		as long as the stream is open. The token rides in extraHeaders."""
+		response = ET.Element("Response")
+		stream = ET.SubElement(response, "Stream", {"bidirectional": "true", "keepCallAlive": "true",
+			"contentType": "audio/x-mulaw;rate=8000", "extraHeaders": f"token={token}"})
+		stream.text = url + ("&" if "?" in url else "?") + "provider=plivo"
+		return self._serialise(response)
+
+	def end_document(self) -> str:
+		response = ET.Element("Response")
+		ET.SubElement(response, "Hangup")
 		return self._serialise(response)
 
 	def _answered_destination(self, payload: dict) -> str:

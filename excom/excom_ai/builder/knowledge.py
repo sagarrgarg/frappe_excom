@@ -54,6 +54,9 @@ def context(rows: list[dict], pack: str = "sales", company: str | None = None, t
 
 
 def build(ctx) -> list[dict]:
+	from excom.excom_ai.engine import registry
+
+	registry.load()  # the packs register their recipes on import; a fresh worker has not loaded them yet
 	sections = []
 	for key in recipes.for_pack(ctx.pack):
 		if not _recipe_enabled(key):

@@ -18,7 +18,7 @@ from frappe.model.document import Document
 from frappe.utils import cint
 
 from excom.excom_ai import service_user
-from excom.excom_ai.constants import check_policy_rows
+from excom.excom_ai.constants import OUTREACH_PURPOSES, check_policy_rows
 
 ACTIVE = ("Shadow", "Live")
 STOPPED = ("On Hold", "Retired")
@@ -168,17 +168,23 @@ class ExcomAIAgent(Document):
 				frappe.throw(_("Unknown channel account {0}").format(row.channel_account))
 			if acc.status != "Active" and self.status in ACTIVE:
 				frappe.throw(_("{0} is not active.").format(row.channel_account))
-			if acc.channel not in ("email", "whatsapp", "instagram", "messenger"):
-				frappe.throw(_("{0}: agents work by email, WhatsApp, Instagram and Messenger for now.").format(row.channel_account))
+			if (acc.channel == "voice") != (row.purpose == "Calls"):
+				frappe.throw(_("{0}: a phone line is for calls, and calls need a phone line.").format(row.channel_account))
+			if acc.channel not in ("email", "whatsapp", "instagram", "messenger", "voice"):
+				frappe.throw(_("{0}: agents work by email, WhatsApp, Instagram, Messenger and phone for now.").format(
+					row.channel_account))
 			if row.purpose != "Replies" and self.status in ACTIVE:
+				# one agent sends outreach from an account, and one takes a line's calls
+				kind = ("Calls",) if row.purpose == "Calls" else OUTREACH_PURPOSES
 				other = frappe.db.sql(
 					"""SELECT a.name FROM `tabExcom AI Channel` c JOIN `tabExcom AI Agent` a ON a.name = c.parent
-					WHERE c.channel_account = %s AND IFNULL(c.purpose, '') != 'Replies' AND a.status IN ('Shadow', 'Live')
+					WHERE c.channel_account = %s AND IFNULL(c.purpose, '') IN %s AND a.status IN ('Shadow', 'Live')
 					AND a.name != %s LIMIT 1""",
-					(row.channel_account, self.name or ""),
+					(row.channel_account, kind, self.name or ""),
 				)
 				if other:
-					frappe.throw(_("{0} already does outreach for agent {1}.").format(row.channel_account, other[0][0]))
+					what = _("takes calls") if row.purpose == "Calls" else _("does outreach")
+					frappe.throw(_("{0} already {1} for agent {2}.").format(row.channel_account, what, other[0][0]))
 
 	def _check_status(self):
 		if self.status == "Live":

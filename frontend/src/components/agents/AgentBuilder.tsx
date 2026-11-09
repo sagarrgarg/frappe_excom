@@ -11,6 +11,7 @@ import { cn } from "../ui/utils";
 import { toastError } from "../ErrorDialog";
 import { parseError } from "../../lib/errors";
 import { currentUserFullName } from "../../lib/ui-flag";
+import { ABILITIES, DEFAULT_ABILITIES, abilitiesText, type Ability } from "../../lib/agents-logic";
 import type { BuilderPreview, Excluded, KeywordRow } from "../../types/agents";
 import { M, SectionPanel, TypeChip } from "./bits";
 import { useAgentTypes } from "./AgentsHome";
@@ -79,6 +80,11 @@ export function AgentBuilder() {
   const [team, setTeam] = useState("");
   const [backup, setBackup] = useState("");
   const [persona, setPersona] = useState("");
+  /* Custom agents only: what it should do (its playbook's process rules) and its abilities */
+  const [description, setDescription] = useState("");
+  const [abilities, setAbilities] = useState<Ability[]>(DEFAULT_ABILITIES);
+  const isCustom = types.find((t) => t.name === agentType)?.pack === "custom";
+  const toggleAbility = (a: Ability, on: boolean) => setAbilities((l) => (on ? [...l, a] : l.filter((x) => x !== a)));
 
   const go = (s: Step) => { const i = STEPS.findIndex((x) => x.value === s); setReached((r) => Math.max(r, i)); setStep(s); };
   const idx = STEPS.findIndex((x) => x.value === step);
@@ -134,7 +140,8 @@ export function AgentBuilder() {
   const { call: createCall, loading: creating } = useFrappePostCall<{ message: { name: string } }>(M.create);
   const create = async () => {
     try {
-      const r = await createCall({ agent_type: agentType, keywords: debounced, rows: rowsJson, excluded: excludedJson, persona: persona.trim(), backup: backup || undefined, team: team || undefined });
+      const custom = isCustom ? { description: description.trim(), abilities: abilitiesText(abilities) } : {};
+      const r = await createCall({ agent_type: agentType, keywords: debounced, rows: rowsJson, excluded: excludedJson, persona: persona.trim(), backup: backup || undefined, team: team || undefined, ...custom });
       toast.success("Draft agent created");
       navigate(`/agents/${encodeURIComponent(r.message.name)}`);
     } catch (e) { toastError(e, "Could not create the agent"); }
@@ -142,7 +149,7 @@ export function AgentBuilder() {
 
   const usable = rows.filter((r) => r.included && r.resolved_as !== "Unmatched" && r.resolved_as !== "AI proposal");
   const canNext: Record<Step, boolean> = {
-    type: Boolean(agentType),
+    type: Boolean(agentType) && (!isCustom || (Boolean(description.trim()) && abilities.length > 0)),
     keywords: usable.length > 0 && !resolving && debounced === text.trim(),
     erp: true,
     people: true,
@@ -174,13 +181,38 @@ export function AgentBuilder() {
               <div className="grid grid-cols-1 tablet:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
                 {types.map((t) => (
                   <button key={t.name} type="button" aria-pressed={agentType === t.name}
-                    onClick={() => { if (t.name !== agentType) { setOverrides({}); setExcluded({}); setPreview(null); } setAgentType(t.name); go("keywords"); }}
+                    onClick={() => { if (t.name !== agentType) { setOverrides({}); setExcluded({}); setPreview(null); } setAgentType(t.name); if (t.pack !== "custom") go("keywords"); }}
                     className={cn("text-left rounded-lg border p-3 min-w-0 hover:bg-surface-hover outline-none focus-visible:ring-2 focus-visible:ring-crayon-blue-base",
                       agentType === t.name ? "border-crayon-blue-base bg-surface-active" : "border-border")}>
                     <TypeChip type={t.name} colour={t.colour} size="md" />
                     <p className="text-sm text-ink-2 mt-1.5 break-words">{t.description}</p>
                   </button>
                 ))}
+              </div>
+            )}
+            {isCustom && (
+              <div className="mt-4 space-y-3">
+                <Field label="What should it do?" htmlFor="custom-description" required
+                  hint="A few plain sentences. They become the rules in its playbook, which you review before it starts.">
+                  <Textarea id="custom-description" rows={3} value={description} onChange={(e) => setDescription(e.target.value)}
+                    placeholder="For example: watch new purchase orders and draft a short note to the supplier when one is late." autoFocus />
+                </Field>
+                <fieldset className="min-w-0">
+                  <legend className="text-xs text-ink-3 mb-1">What it may do. It always asks you first.</legend>
+                  <ul className="rounded-lg border border-border divide-y divide-border">
+                    {ABILITIES.map((ab) => (
+                      <li key={ab.value} className="flex items-start gap-2 px-3 py-2 min-w-0">
+                        <input id={`ability-${ab.value}`} type="checkbox" className="size-4 shrink-0 mt-0.5" checked={abilities.includes(ab.value)}
+                          onChange={(e) => toggleAbility(ab.value, e.target.checked)} aria-describedby={`ability-${ab.value}-hint`} />
+                        <label htmlFor={`ability-${ab.value}`} className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-ink-1">{ab.label}</span>
+                          <span id={`ability-${ab.value}-hint`} className="block text-xs text-ink-2 break-words">{ab.hint}</span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                  {abilities.length === 0 && <p className="text-xs text-crayon-rose-text mt-1">Choose at least one.</p>}
+                </fieldset>
               </div>
             )}
           </section>
@@ -283,6 +315,10 @@ export function AgentBuilder() {
             <dl className="rounded-lg border border-border divide-y divide-border text-sm">
               {[
                 ["Type", agentType],
+                ...(isCustom ? [
+                  ["What it does", description.trim() || "—"],
+                  ["Abilities", ABILITIES.filter((ab) => abilities.includes(ab.value)).map((ab) => ab.label).join(", ") || "—"],
+                ] : []),
                 ["Keywords", usable.map((r) => r.keyword).join(", ") || "—"],
                 ["Left out", excludedCount ? `${excludedCount} records` : "Nothing"],
                 ["Team", team || "None"],
@@ -299,9 +335,9 @@ export function AgentBuilder() {
           </section>
         )}
 
-        {step !== "type" && (
+        {(step !== "type" || isCustom) && (
           <div className="sticky bottom-0 -mx-3 px-3 py-2 mt-4 bg-surface border-t border-border flex items-center gap-2">
-            <Button variant="ghost" onClick={() => go(STEPS[idx - 1].value)} disabled={creating}><ArrowLeft />Back</Button>
+            {idx > 0 && <Button variant="ghost" onClick={() => go(STEPS[idx - 1].value)} disabled={creating}><ArrowLeft />Back</Button>}
             <span className="flex-1" />
             {step !== "create" && <Button variant="primary" disabled={!canNext[step]} onClick={() => go(STEPS[idx + 1].value)}>Next<ArrowRight /></Button>}
           </div>

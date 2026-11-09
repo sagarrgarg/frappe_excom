@@ -175,7 +175,7 @@ def agent(name: str) -> dict:
 		"agent": {f: doc.get(f) for f in ("name", "agent_name", "title", "agent_type", "company", "status", "hold_reason",
 			"service_user", "avatar", "owner_user", "backup_user", "team", "escalation_user", "reviewers", "acting_owner",
 			"owner_last_seen", "keywords", "brief_version", "brief_approved_by", "brief_approved_on", "readiness_state",
-			"readiness_checked_on", "daily_ai_budget", "monthly_ai_budget", "office_hours", "model", *BRIEF)},
+			"readiness_checked_on", "daily_ai_budget", "monthly_ai_budget", "office_hours", "model", "abilities", *BRIEF)},
 		"pack": pack,
 		"people": {u: frappe.db.get_value("User", u, "full_name") or u for u in
 			{doc.owner_user, doc.backup_user, doc.acting_owner, doc.escalation_user, doc.brief_approved_by} if u},

@@ -20,6 +20,7 @@ import frappe
 from frappe import _
 
 from excom.excom_ai import checks, mail
+from excom.excom_ai.constants import OUTREACH_PURPOSES
 from excom.excom_ai.engine import proposals, registry, runner
 from excom.excom_ai.engine.prompts import untrusted
 
@@ -114,9 +115,26 @@ def compose(agent, body: str, step_row=None, identity: str | None = None, kind: 
 
 def _outreach_account(agent) -> str | None:
 	for r in agent.channels or []:
-		if r.purpose != "Replies" and not r.paused and frappe.db.get_value("Excom Channel Account", r.channel_account, "channel") == "email":
+		if r.purpose in OUTREACH_PURPOSES and not r.paused and frappe.db.get_value("Excom Channel Account", r.channel_account, "channel") == "email":
 			return r.channel_account
 	return None
+
+
+def subject_styles(step_row) -> list[str]:
+	return [ln.strip() for ln in (step_row.get("subject_test") or "").splitlines() if ln.strip()]
+
+
+def subject_variant(step_row, enrollment: str) -> str | None:
+	"""The subject-line style this buyer gets for a step under test: the same one every time for the
+	same enrollment, and an even split across buyers (Phase 4)."""
+	import hashlib
+
+	styles = subject_styles(step_row)
+	if not styles:
+		return None
+	if len(styles) == 1:
+		return styles[0]
+	return styles[int(hashlib.sha1(f"{enrollment}:{step_row.step}".encode()).hexdigest(), 16) % len(styles)]
 
 
 @registry.task_kind("write_sequence", priority=registry.PRIORITY["write"], effort="write")
@@ -142,7 +160,9 @@ def write_sequence(task, agent) -> str:
 	site = ""
 	if company and company.website_facts:
 		site = untrusted(frappe.as_json(frappe.parse_json(company.website_facts))[:4000], company.website or company.domain)
-	plan = "\n".join(f"Step {s.step}: {s.purpose} At most {s.word_limit or 90} words." for s in steps)
+	variants = {s.step: subject_variant(s, enrollment.name) for s in steps}
+	plan = "\n".join(f"Step {s.step}: {s.purpose} At most {s.word_limit or 90} words."
+		+ (f" Subject line style: {variants[s.step]}." if variants[s.step] else "") for s in steps)
 	prompt = (f"Write the whole sequence for this buyer, every email in language '{language}'.\n\n{plan}\n\n"
 		f"What we sell (from the ERP):\n{_facts(agent)}\n\nOwner feedback to follow:\n{_feedback(agent, enrollment) or '- none'}\n\n"
 		f"The buyer:\n{buyer}\n\n{site}")
@@ -166,7 +186,8 @@ def write_sequence(task, agent) -> str:
 		ok = results["ok"] and verdict != "Fail"
 		name = proposals.propose(
 			task, agent, "send_email", policy_action="first_email" if s.step == 1 else "follow_up_email",
-			payload={"subject": e["subject"], "body": e["body"], "language": language},
+			payload={"subject": e["subject"], "body": e["body"], "language": language,
+				**({"subject_variant": variants[s.step]} if variants[s.step] else {})},
 			preview_html=compose(agent, e["body"], s, identity, kind),
 			subject=("Lead", enrollment.lead) if enrollment.lead else (("Excom AI Person", person.name) if person else None),
 			thread=enrollment.thread, channel_account=account, risk="Low" if ok else "High", checks=results,

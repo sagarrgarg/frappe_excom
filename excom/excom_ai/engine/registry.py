@@ -30,6 +30,8 @@ MODULES = [
 	"excom.excom_ai.responder",
 	"excom.excom_ai.deals",
 	"excom.excom_ai.monitor",
+	"excom.excom_ai.voice",
+	"excom.excom_ai.learning",
 	# Phase 2 packs (each optional until written)
 	"excom.excom_ai.packs.accounts",
 	"excom.excom_ai.packs.purchase",
@@ -68,6 +70,7 @@ TASK_KINDS: dict[str, TaskKind] = {}
 PLANNERS: dict[str, list] = {}
 EXECUTORS: dict[str, callable] = {}
 RESPONDERS: dict[str, callable] = {}
+PREVIEWERS: dict[str, callable] = {}  # action -> fn(proposal, agent, payload) -> html, after a person edits
 _loaded = False
 
 
@@ -92,6 +95,16 @@ def planner(*packs: str):
 def executor(action: str):
 	def wrap(fn):
 		EXECUTORS[action] = fn
+		return fn
+
+	return wrap
+
+
+def previewer(*actions: str):
+	"""How a pack shows its message again after a person edits it (the default is an outreach email)."""
+	def wrap(fn):
+		for action in actions:
+			PREVIEWERS[action] = fn
 		return fn
 
 	return wrap

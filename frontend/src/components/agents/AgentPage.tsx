@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Archive, Bot, Check, Eye, ExternalLink, FlaskConical, Play, RefreshCw, Rocket, Square, Undo2, X } from "lucide-react";
+import { Archive, Bot, Check, Eye, ExternalLink, FlaskConical, PenLine, Play, RefreshCw, Rocket, Square, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { useFrappeGetCall } from "@/lib/api";
 import { AdminPage, DataTable } from "../shell/AdminPage";
-import { Avatar, Button, Chip, EmptyState, SegmentedControl, type Accent } from "../primitives";
+import { Avatar, Button, Chip, EmptyState, Field, SegmentedControl, Textarea, type Accent } from "../primitives";
+import { LinkField } from "../crm/LinkField";
 import { cn } from "../ui/utils";
 import { parseError } from "../../lib/errors";
 import { deskUrl } from "../../hooks/useRecordLinks";
 import { currentUser } from "../../lib/ui-flag";
+import { ABILITIES, parseAbilities } from "../../lib/agents-logic";
 import type { AgentDetail, AgentTask, NeedsYouQueue, Proposal, QueueProposal } from "../../types/agents";
 import { M, Meter, useAgentAction, Panel, PROPOSAL_LABEL, ReadinessChip, ReasonDialog, REJECT_REASONS, RISK_ACCENT, SectionPanel, Stat, StatusChip, STATUS_HINT, TypeChip, cost, when } from "./bits";
 import { LiveOverview } from "./LiveOverview";
@@ -163,6 +165,8 @@ function OverviewTab({ d, reload, go }: { d: AgentDetail; reload: () => void; go
         </dl>
       </Panel>
 
+      {d.pack === "custom" && <AbilitiesPanel d={d} reload={reload} />}
+
       <LiveOverview name={a.name} go={go} />
 
       <Panel title="Readiness" actions={<Button size="sm" variant="link" onClick={() => go("readiness")}>See what to fix</Button>}>
@@ -203,6 +207,58 @@ function OverviewTab({ d, reload, go }: { d: AgentDetail; reload: () => void; go
         intro="It stops at once: queued work is skipped and approved messages are held. Drafts are kept, and you can resume it later."
         onConfirm={async ({ note }) => { const r = await stop.run({ name: a.name, reason: note }, `${a.agent_name} is on hold`, "Could not stop the agent"); if (r) reload(); return Boolean(r); }} />
     </div>
+  );
+}
+
+/** A Custom agent: what it may do, and, when it can draft, a form to ask for one. */
+function AbilitiesPanel({ d, reload }: { d: AgentDetail; reload: () => void }) {
+  const a = d.agent;
+  const can = parseAbilities(a.abilities);
+  const canDraft = can.includes("draft") && d.can_change && a.status !== "Retired";
+  return (
+    <Panel title="What it can do">
+      <ul className="space-y-1.5">
+        {ABILITIES.filter((ab) => can.includes(ab.value)).map((ab) => (
+          <li key={ab.value} className="text-sm min-w-0 flex gap-2"><span className="w-16 shrink-0 font-medium text-ink-1">{ab.label}</span><span className="min-w-0 flex-1 break-words text-ink-2">{ab.hint}</span></li>
+        ))}
+      </ul>
+      <p className="text-xs text-ink-3 mt-2">It always asks you first: everything it does waits for your approval.</p>
+      {canDraft && <DraftRequest name={a.name} reload={reload} />}
+    </Panel>
+  );
+}
+
+function DraftRequest({ name, reload }: { name: string; reload: () => void }) {
+  const ask = useAgentAction(M.requestDraft);
+  const [instruction, setInstruction] = useState("");
+  const [doctype, setDoctype] = useState("");
+  const [record, setRecord] = useState("");
+  const [asked, setAsked] = useState(false);
+  const id = `draft-${name.replace(/\W+/g, "-")}`;
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const params = { name, instruction: instruction.trim(), subject_doctype: doctype && record ? doctype : undefined, subject_name: doctype && record ? record : undefined };
+    if (await ask.run(params, "Asked. The draft will appear in Needs you for review.", "Could not ask for the draft")) {
+      setInstruction(""); setDoctype(""); setRecord(""); setAsked(true); reload();
+    }
+  };
+  return (
+    <form onSubmit={submit} className="mt-3 pt-3 border-t border-border space-y-2" aria-labelledby={`${id}-title`}>
+      <h3 id={`${id}-title`} className="text-sm font-medium text-ink-1">Ask for a draft</h3>
+      <Field label="What should it write?" htmlFor={`${id}-instruction`}>
+        <Textarea id={`${id}-instruction`} rows={3} value={instruction} onChange={(e) => { setInstruction(e.target.value); setAsked(false); }} placeholder="For example: a short reminder to the supplier that the order is late." />
+      </Field>
+      <div className="grid grid-cols-1 tablet:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
+        <Field label="About a record (optional): type" hint="It reads this record while it writes.">
+          <LinkField doctype="DocType" value={doctype} onChange={(v) => { setDoctype(v); setRecord(""); }} placeholder="For example Purchase Order" filters={{ istable: 0, issingle: 0 }} />
+        </Field>
+        <Field label="Record">
+          <LinkField doctype={doctype} value={record} onChange={setRecord} placeholder={doctype ? `Choose a ${doctype}` : "Choose a type first"} disabled={!doctype} />
+        </Field>
+      </div>
+      <Button type="submit" variant="primary" size="sm" disabled={ask.loading || !instruction.trim() || (Boolean(doctype) && !record)}><PenLine />{ask.loading ? "Asking…" : "Ask for a draft"}</Button>
+      {asked && <p role="status" className="text-xs text-ink-2">Asked. The draft will appear in Needs you for review. Nothing is sent.</p>}
+    </form>
   );
 }
 
@@ -260,7 +316,7 @@ function ProposalCard({ p, priceList, reload }: { p: Proposal; priceList: string
 /* ─── Activity ─── */
 
 const TASK_ACCENT: Record<string, Accent> = { Queued: "neutral", Running: "blue", Done: "green", Failed: "rose", Skipped: "neutral", Held: "amber", Batched: "violet" };
-const TASK_KIND: Record<string, string> = { echo: "Self-test", inbound: "Message received" };
+const TASK_KIND: Record<string, string> = { echo: "Self-test", inbound: "Message received", custom_watch: "Watch", custom_chase: "Chase", custom_draft: "Draft on request" };
 const kindLabel = (k: string) => TASK_KIND[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, " ") : "—");
 
 function ActivityTab({ name, tasks }: { name: string; tasks: AgentTask[] }) {

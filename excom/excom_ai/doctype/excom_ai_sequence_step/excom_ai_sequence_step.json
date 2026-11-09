@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-10 06:00:00.000000",
+ "creation": "2026-11-10 08:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -11,7 +11,8 @@
   "purpose",
   "word_limit",
   "photo_cards",
-  "stop_on"
+  "stop_on",
+  "subject_test"
  ],
  "fields": [
   {
@@ -66,11 +67,17 @@
    "fieldtype": "Small Text",
    "label": "Stop On",
    "description": "Besides a reply, an opt-out and a bounce: for example 'payment received'."
+  },
+  {
+   "fieldname": "subject_test",
+   "fieldtype": "Small Text",
+   "label": "Subject Lines to Test",
+   "description": "Two or more subject-line styles, one per line (for example: a short question / the product and the buyer's city). Each buyer gets one, in turn; the weekly coach proposes keeping the one that gets more replies."
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 06:00:00.000000",
+ "modified": "2026-11-10 08:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Sequence Step",

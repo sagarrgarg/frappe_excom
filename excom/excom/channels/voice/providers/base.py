@@ -62,6 +62,10 @@ class CallDecision:
 	max_conversation_seconds: int = 3600
 	# Set when the decision is empty and the caller needs to hear something before we log a miss.
 	no_answer_message: str = ""
+	# Set when an AI agent takes this call if nobody answers (excom_ai.voice): the voice service's
+	# stream address and the one-call token. With no destinations, the agent answers at once.
+	ai_stream: str = ""
+	ai_token: str = ""
 
 	@property
 	def is_empty(self) -> bool:
@@ -209,6 +213,18 @@ class VoiceProvider(ABC):
 		None means "the response is ignored, send the normal one".
 		"""
 		return None
+
+	#: Whether this vendor can stream a call to the voice service (bidirectional media).
+	supports_ai_stream: bool = False
+
+	def render_ai(self, url: str, token: str) -> str:
+		"""The call-control document that connects the caller to the AI agent's voice service."""
+		raise NotImplementedError
+
+	def end_document(self) -> str:
+		"""A document that ends the call: the dial action's reply when the agent was offered a call
+		that people answered (the vendor then runs the reply as call control)."""
+		return self.action_response() or ""
 
 
 class SoftphoneProvider(ABC):

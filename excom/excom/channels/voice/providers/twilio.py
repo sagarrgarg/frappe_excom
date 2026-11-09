@@ -191,6 +191,9 @@ class TwilioAdapter(VoiceProvider, SoftphoneProvider):
 
 		response = VoiceResponse()
 
+		if decision.is_empty and decision.ai_stream:
+			return self.render_ai(decision.ai_stream, decision.ai_token)
+
 		if decision.is_empty:
 			response.say(
 				decision.no_answer_message
@@ -348,6 +351,21 @@ class TwilioAdapter(VoiceProvider, SoftphoneProvider):
 		return resp.iter_content(chunk_size=64 * 1024), resp.headers.get(
 			"Content-Type", "audio/mpeg"
 		)
+
+	supports_ai_stream = True
+
+	def render_ai(self, url: str, token: str) -> str:
+		"""`<Connect><Stream>`: a bidirectional media stream to the voice service, the token as a
+		custom parameter (it arrives in the stream's start event, not in the URL)."""
+		from twilio.twiml.voice_response import Connect, VoiceResponse
+
+		response = VoiceResponse()
+		connect = Connect()
+		stream = connect.stream(url=url)
+		stream.parameter(name="token", value=token)
+		stream.parameter(name="provider", value="twilio")
+		response.append(connect)
+		return str(response)
 
 	def action_response(self) -> str:
 		"""An empty document: the dial is over and there is nothing further to do.

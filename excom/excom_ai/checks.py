@@ -9,7 +9,9 @@ email that fails any check is never sent on Autopilot; it waits for a person.
     recipient      a real address, the subject's own, not opted out, not on do-not-contact, not an
                    existing customer or someone else's lead (cold mail), deliverable
     channel        one of the agent's mailboxes, not paused
-    prices         every price in the email is in one of the agent's price lists
+    prices         every price in the email is in one of the agent's price lists (not for kind
+                   "Statement": a reminder or statement quotes what a customer owes, written by
+                   code from the ledger, not prices; the Accounts pack checks those amounts itself)
     phrases        no spam triggers or AI tells, nothing the playbook bans, and the agent never
                    says it is a person or denies being an AI
     language       the email is in the language of the buyer's market
@@ -71,7 +73,7 @@ def check(agent, to_email: str, subject: str, body: str, *, kind: str = "Sequenc
 	results = {
 		"recipient": _recipient(agent, to_email, kind, person, lead),
 		"channel": _channel(agent, account),
-		"prices": _prices(agent, text),
+		"prices": (True, _("amounts owed, written by code from the ledger")) if kind == "Statement" else _prices(agent, text),
 		"phrases": _phrases(agent, text),
 		"language": _language(body, language),
 		"shape": _shape(subject, body, word_limit, to_email),

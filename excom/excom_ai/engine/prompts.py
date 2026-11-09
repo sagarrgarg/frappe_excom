@@ -46,11 +46,22 @@ def agent_context(agent) -> str:
 	if products:
 		lines.append("Products: " + "; ".join(products))
 	for link in agent.playbooks or []:
-		pb = frappe.db.get_value("Excom AI Playbook", link.playbook, ["title", "status", "version"], as_dict=True)
-		if not pb or pb.status != "Approved":
-			continue  # only approved playbooks reach prompts
-		lines.append(f"\n## Playbook: {pb.title} (v{pb.version})")
-		for s in frappe.get_all("Excom AI Playbook Section", {"parent": link.playbook}, ["kind", "title", "content"], order_by="idx"):
+		pb = frappe.db.get_value("Excom AI Playbook", link.playbook, ["title", "status", "version", "approved_version",
+			"approved_sections"], as_dict=True)
+		if not pb:
+			continue
+		if pb.status == "Approved":
+			version = pb.version
+			sections = frappe.get_all("Excom AI Playbook Section", {"parent": link.playbook}, ["kind", "title", "content"],
+				order_by="idx")
+		elif pb.status == "In Review" and pb.approved_sections:
+			# a newer version waits for review: the last approved one stays in use
+			version = pb.approved_version
+			sections = [frappe._dict(s) for s in json.loads(pb.approved_sections)]
+		else:
+			continue  # only approved text reaches prompts
+		lines.append(f"\n## Playbook: {pb.title} (v{version})")
+		for s in sections:
 			lines.append(f"### {s.kind}{': ' + s.title if s.title else ''}\n{frappe.utils.strip_html_tags(s.content or '')}")
 	return "\n".join(lines)
 

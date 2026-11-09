@@ -45,9 +45,22 @@ def add_note(proposal, agent):
 	if not (proposal.subject_doctype and proposal.subject_name):
 		frappe.throw(_("A note needs a record to go on."))
 	ref = frappe.get_doc(proposal.subject_doctype, proposal.subject_name)
-	comment = ref.add_comment("Comment", f"{frappe.utils.escape_html(payload.get('text') or '')}<br>"
-		f"<span class='text-muted'>{agent.agent_name} (AI)</span>")
+	title = f"<b>{frappe.utils.escape_html(payload['title'])}</b><br>" if payload.get("title") else ""
+	text = frappe.utils.escape_html(payload.get("text") or "").replace("\n", "<br>")
+	comment = ref.add_comment("Comment", f"{title}{text}<br><span class='text-muted'>{agent.agent_name} (AI)</span>")
 	return ("Comment", comment.name)
+
+
+# Packs may name more people a ToDo can go to, read from their own records (never from the payload):
+# Compliance adds the owners its approved obligations calendar names and the document's owner.
+ASSIGNEES: list = []
+
+
+def assignees(fn):
+	"""Register fn(proposal, agent) -> users a ToDo may also be allocated to."""
+	if fn not in ASSIGNEES:
+		ASSIGNEES.append(fn)
+	return fn
 
 
 @registry.executor("create_todo")
@@ -58,6 +71,8 @@ def create_todo(proposal, agent):
 	if proposal.subject_doctype == "Customer" and frappe.get_meta("Customer").has_field("account_manager"):
 		# a check-in suggestion goes to the customer's own account manager
 		people.add(frappe.db.get_value("Customer", proposal.subject_name, "account_manager"))
+	for fn in ASSIGNEES:
+		people |= set(fn(proposal, agent) or ())
 	allocated = payload.get("allocated_to") if payload.get("allocated_to") in people else None
 	todo = frappe.get_doc({
 		"doctype": "ToDo",

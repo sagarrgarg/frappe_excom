@@ -132,7 +132,7 @@ def _channels_for(ctx) -> list[str]:
 	"""Email and WhatsApp accounts the desk may use; an export desk prefers accounts named Export."""
 	taken = {r[0] for r in frappe.db.sql("""SELECT c.channel_account FROM `tabExcom AI Channel` c
 		JOIN `tabExcom AI Agent` a ON a.name = c.parent WHERE a.status IN ('Shadow', 'Live', 'On Hold')
-		AND IFNULL(c.purpose, '') != 'Replies'""")}  # another agent's outreach account is not offered
+		AND IFNULL(c.purpose, '') NOT IN ('Replies', 'Calls')""")}  # another agent's outreach account is not offered
 	rows = [r for r in frappe.get_all("Excom Channel Account", {"name": ["in", ctx.accounts or ["-"]],
 		"channel": ["in", ("email", "whatsapp")]}, ["name", "account_name"]) if r.name not in taken]
 	if "export" in ctx.scope.concepts:

@@ -32,6 +32,7 @@ from frappe.utils import add_days, cint, get_datetime, get_system_timezone, getd
 
 from excom.excom_ai import mail
 from excom.excom_ai.builder import geo
+from excom.excom_ai.constants import OUTREACH_PURPOSES
 from excom.excom_ai.engine import proposals, registry
 
 WINDOW = (time(8, 0), time(17, 0))
@@ -105,7 +106,7 @@ def recipient_zone(enrollment, agent) -> str:
 
 
 def outreach_accounts(agent) -> list[str]:
-	return [r.channel_account for r in agent.channels or [] if r.purpose != "Replies" and not r.paused
+	return [r.channel_account for r in agent.channels or [] if r.purpose in OUTREACH_PURPOSES and not r.paused
 		and frappe.db.get_value("Excom Channel Account", r.channel_account, "channel") == "email"]
 
 

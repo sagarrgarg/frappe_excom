@@ -41,6 +41,7 @@ ACTION_POLICY = {
 	"create_todo": "todo_note",
 	"note": "todo_note",
 	"update_playbook": "playbook_change",
+	"keep_subject": "playbook_change",
 	# Accounts
 	"send_statement": "statement",
 	"record_promise": "create_record",
@@ -229,6 +230,10 @@ def decide(name: str, decision: str, *, reason: str | None = None, note: str | N
 def _preview_after_edit(doc, agent, payload: dict) -> str:
 	"""What the buyer will now see (the sender composes from the payload the same way)."""
 	from excom.excom_ai.writer import compose
+
+	registry.load()
+	if doc.action in registry.PREVIEWERS:
+		return registry.PREVIEWERS[doc.action](doc, agent, payload)
 
 	step_row = None
 	if doc.enrollment:

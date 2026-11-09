@@ -38,6 +38,20 @@ def seed():
 	evals.seed()
 	schema.apply()
 	_sync_retention()
+	_snapshot_playbooks()
+
+
+def _snapshot_playbooks():
+	"""Approved playbooks from before the snapshot existed get one, so a later edit keeps them in use."""
+	import json
+
+	if not frappe.db.has_column("Excom AI Playbook", "approved_sections"):
+		return
+	for pb in frappe.get_all("Excom AI Playbook", {"status": "Approved", "approved_sections": ["is", "not set"]},
+			["name", "version"]):
+		rows = frappe.get_all("Excom AI Playbook Section", {"parent": pb.name}, ["kind", "title", "content"], order_by="idx")
+		frappe.db.set_value("Excom AI Playbook", pb.name, {"approved_version": pb.version,
+			"approved_sections": json.dumps(rows, ensure_ascii=False, default=str)}, update_modified=False)
 
 
 def _roles():
@@ -120,10 +134,14 @@ def _builder():
 			m.seed()  # a pack's own readiness rules and records
 	for key, r in recipes.RECIPES.items():
 		rk = f"{r['packs'][0]}.{key}"
-		if frappe.db.exists("Excom AI Recipe", {"recipe_key": rk}):
+		handler = f"{r['fn'].__module__}.{r['fn'].__name__}"
+		existing = frappe.db.get_value("Excom AI Recipe", {"recipe_key": rk}, ["name", "handler"], as_dict=True)
+		if existing:
+			if existing.handler != handler:  # recorded under the builder's module before packs had their own
+				frappe.db.set_value("Excom AI Recipe", existing.name, "handler", handler, update_modified=False)
 			continue
 		frappe.get_doc({"doctype": "Excom AI Recipe", "recipe_key": rk, "label": r["title"], "kind": "Built-in",
-			"agent_types": ", ".join(r["packs"]), "section": r["title"], "handler": f"excom.excom_ai.builder.recipes.{key}",
+			"agent_types": ", ".join(r["packs"]), "section": r["title"], "handler": handler,
 			"privacy": {"names": "Names allowed", "none": "Aggregates only"}.get(r["privacy"], "Aggregates only"),
 			"enabled": 1}).insert(ignore_permissions=True)
 

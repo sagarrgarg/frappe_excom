@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-10 06:00:00.000000",
+ "creation": "2026-11-10 08:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -25,6 +25,12 @@
   "handover_line",
   "dnc_domains",
   "quiet_dates",
+  "sb_voice",
+  "voice_service_url",
+  "voice_service_key",
+  "cb_voice",
+  "voice_max_seconds",
+  "voice_turn_limit",
   "sb_engine",
   "tasks_per_tick",
   "max_task_attempts",
@@ -159,6 +165,39 @@
    "description": "No outreach on these dates."
   },
   {
+   "fieldname": "sb_voice",
+   "fieldtype": "Section Break",
+   "label": "Voice (Phase 3)"
+  },
+  {
+   "fieldname": "voice_service_url",
+   "fieldtype": "Data",
+   "label": "Voice Service URL",
+   "description": "The voice service's stream address on the VM, for example wss://voice.example.com/stream. Blank: agents take no calls."
+  },
+  {
+   "fieldname": "voice_service_key",
+   "fieldtype": "Password",
+   "label": "Voice Service Key",
+   "description": "Shared with the voice service; it sends it on every request."
+  },
+  {
+   "fieldname": "cb_voice",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "voice_max_seconds",
+   "fieldtype": "Int",
+   "label": "Longest AI Call (seconds)",
+   "default": "600"
+  },
+  {
+   "fieldname": "voice_turn_limit",
+   "fieldtype": "Int",
+   "label": "Most Turns per AI Call",
+   "default": "30"
+  },
+  {
    "fieldname": "sb_engine",
    "fieldtype": "Section Break",
    "label": "Engine"
@@ -208,7 +247,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 06:00:00.000000",
+ "modified": "2026-11-10 08:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Settings",

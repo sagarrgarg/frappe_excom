@@ -38,3 +38,40 @@ export function bounceRate(bounced?: number | null, sent?: number | null): numbe
   const s = Number(sent || 0);
   return s ? Math.round((Number(bounced || 0) / s) * 1000) / 10 : null;
 }
+
+/* ─── Custom agents (packs/custom.py) ─── */
+
+export type Ability = "watch" | "answer" | "chase" | "draft";
+
+/** A Custom agent's four abilities, in the server's order, in plain words. */
+export const ABILITIES: { value: Ability; label: string; hint: string }[] = [
+  { value: "watch", label: "Watch", hint: "Tells you when new records match its keywords." },
+  { value: "answer", label: "Answer", hint: "Drafts replies to questions on its channel, from its playbook." },
+  { value: "chase", label: "Chase", hint: "Reminds you weekly about each record its keywords find." },
+  { value: "draft", label: "Draft", hint: "Writes documents or messages when you ask." },
+];
+
+/** What a Custom agent starts with, and what the server assumes when the field is empty. */
+export const DEFAULT_ABILITIES: Ability[] = ["watch", "draft"];
+
+const KNOWN = ABILITIES.map((a) => a.value);
+
+/** The abilities as create_agent takes them: "watch, draft", known ones only, once each, in order. */
+export function abilitiesText(chosen: string[]): string {
+  const set = new Set(chosen.map((a) => a.trim().toLowerCase()));
+  return KNOWN.filter((a) => set.has(a)).join(", ");
+}
+
+/** The abilities field read back, as packs/custom.py abilities() reads it: empty means watch and draft. */
+export function parseAbilities(value?: string | null): Ability[] {
+  const set = new Set((value || "").split(",").map((a) => a.trim().toLowerCase()).filter(Boolean));
+  return set.size ? KNOWN.filter((a) => set.has(a)) : [...DEFAULT_ABILITIES];
+}
+
+/** A note's title and text (a Custom draft carries both; other notes carry text only). */
+export function noteParts(payload: Payload | string | null | undefined): { title: string; text: string } | null {
+  const p = payloadOf(payload);
+  const title = typeof p.title === "string" ? p.title.trim() : "";
+  const text = typeof p.text === "string" ? p.text : "";
+  return title || text ? { title, text } : null;
+}

@@ -66,11 +66,20 @@ def create(agent_type: str, keywords: str, rows: list | None = None, excluded: d
 	agent.insert(ignore_permissions=True)
 	language = next((m["language"] for m in d["markets"] if m.get("language")), None)
 	pb = brief.playbook_skeleton(agent.agent_name, agent_type, language, sections)
+	prefill = {}
 	if pack == "custom" and description:
+		prefill["Process rules"] = description
+	if pack == "compliance":
+		from excom.excom_ai.packs import compliance
+
+		prefill["Compliance"] = compliance.template()  # the standard calendar; a person names the owners
+	if prefill:
 		pbd = frappe.get_doc("Excom AI Playbook", pb)
 		for sec in pbd.sections:
-			if sec.kind == "Process rules" and not sec.content:
-				sec.content, sec.source = description, "Manual"
+			if sec.kind in prefill and not sec.content:
+				sec.content, sec.source = prefill.pop(sec.kind), "Manual"
+		for kind, content in prefill.items():
+			pbd.append("sections", {"kind": kind, "content": content, "source": "Manual"})
 		pbd.save(ignore_permissions=True)
 	agent.reload()
 	agent.append("playbooks", {"playbook": pb})

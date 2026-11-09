@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bounceRate, inZone, pricedFrom } from "../agents-logic";
+import { abilitiesText, bounceRate, inZone, noteParts, parseAbilities, pricedFrom } from "../agents-logic";
 
 describe("pricedFrom", () => {
   const quote = { name: "P-1", action: "create_quotation", payload: { price_list: "Export USD" } };
@@ -33,4 +33,37 @@ describe("inZone", () => {
 describe("bounceRate", () => {
   it("is a percentage to one decimal", () => { expect(bounceRate(3, 200)).toBe(1.5); });
   it("is null when nothing was sent", () => { expect(bounceRate(0, 0)).toBeNull(); });
+});
+
+describe("abilitiesText", () => {
+  it("joins in the server's order, once each", () => {
+    expect(abilitiesText(["draft", "watch", "draft"])).toBe("watch, draft");
+    expect(abilitiesText(["chase", "answer", "watch", "draft"])).toBe("watch, answer, chase, draft");
+  });
+  it("drops anything that is not an ability", () => {
+    expect(abilitiesText([" Chase ", "send"])).toBe("chase");
+  });
+  it("is empty when nothing is chosen", () => { expect(abilitiesText([])).toBe(""); });
+});
+
+describe("parseAbilities", () => {
+  it("reads the saved field", () => { expect(parseAbilities("draft, Answer")).toEqual(["answer", "draft"]); });
+  it("is watch and draft when the field is empty, as the server assumes", () => {
+    expect(parseAbilities(null)).toEqual(["watch", "draft"]);
+    expect(parseAbilities(" , ")).toEqual(["watch", "draft"]);
+  });
+  it("round-trips with abilitiesText", () => {
+    expect(parseAbilities(abilitiesText(["chase", "watch"]))).toEqual(["watch", "chase"]);
+  });
+});
+
+describe("noteParts", () => {
+  it("reads a Custom draft's title and text, as JSON text too", () => {
+    expect(noteParts(JSON.stringify({ title: "Letter to ACME", text: "Dear ACME" }))).toEqual({ title: "Letter to ACME", text: "Dear ACME" });
+  });
+  it("reads a note without a title", () => { expect(noteParts({ text: "I am Lucía." })).toEqual({ title: "", text: "I am Lucía." }); });
+  it("is null when there is nothing to show", () => {
+    expect(noteParts({ body: "hi" })).toBeNull();
+    expect(noteParts("not json")).toBeNull();
+  });
 });

@@ -182,11 +182,30 @@ def apply_promotion(name: str, action: str):
 @frappe.whitelist(methods=["POST"])
 def request_draft(name: str, instruction: str, subject_doctype: str | None = None, subject_name: str | None = None):
 	"""Custom agents: ask for a document or message draft (it arrives as a note for review)."""
+	from excom.excom_ai.builder.api import _team_manager
 	from excom.excom_ai.packs import custom
 
-	agent = _agent_for(name)
+	agent = frappe.get_doc("Excom AI Agent", name)
+	frappe.has_permission("Excom AI Agent", "read", agent, throw=True)
+	# whoever may change the agent (as its page shows the form): the draft only lands for review
+	if not (proposals.may_decide(agent, frappe.session.user) or (agent.team and _team_manager(agent.team))):
+		frappe.throw(_("Only this agent's owner, backup, team manager or an Excom Admin can ask it."), frappe.PermissionError)
 	if "draft" not in custom.abilities(agent):
 		frappe.throw(_("This agent does not draft."))
+	if subject_name:
+		# the person asking must be able to read that record, not just that kind of record
+		frappe.has_permission(subject_doctype, "read", subject_name, throw=True)
 	task = custom.request_draft(agent.name, instruction, subject_doctype, subject_name)
 	frappe.db.commit()
 	return {"task": task}
+
+
+@frappe.whitelist(methods=["POST"])
+def cost_check(candidates):
+	"""Excom Admin: score cheaper model/effort pairs on the evaluation set (each costs one call per
+	case). Nothing is switched; the recommendation is applied through the usual settings change."""
+	from excom.excom_ai import learning
+
+	if not set(frappe.get_roles()) & MANAGERS:
+		frappe.throw(_("Only an Excom Admin runs a cost check."), frappe.PermissionError)
+	return learning.cost_check(frappe.parse_json(candidates) if isinstance(candidates, str) else candidates)

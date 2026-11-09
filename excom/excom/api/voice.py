@@ -148,6 +148,7 @@ def _route_inbound(provider, account: str, params: dict, call_uuid: str) -> str:
 
 	decision, context = routing.build_decision(account, caller)
 	context["display_name"] = _known_name(context.get("identity"), caller)
+	_offer_ai(provider, decision, account, call_uuid, caller, context.get("identity"))
 
 	# The pop fires before anything is written, so it is instant even when the queue is backed up.
 	handler.announce_ringing(decision, context, call_uuid)
@@ -170,6 +171,23 @@ def _route_inbound(provider, account: str, params: dict, call_uuid: str) -> str:
 		raw=params,
 	)
 	return provider.render_decision(decision)
+
+
+def _offer_ai(provider, decision, account: str, call_uuid: str, caller: str, identity: str | None) -> None:
+	"""If an AI agent takes this line's unanswered calls (excom_ai.voice), say so on the decision:
+	with nobody to ring it answers at once, otherwise when the dial ends unanswered. A failure here
+	never touches the call: people are rung as before."""
+	if not getattr(provider, "supports_ai_stream", False):
+		return
+	try:
+		from excom.excom_ai import voice as ai_voice
+
+		offer = ai_voice.offer(account, call_uuid, caller, identity)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "Excom Voice: AI offer failed")
+		return
+	if offer:
+		decision.ai_stream, decision.ai_token = offer
 
 
 def _route_outbound(provider, account: str, params: dict, call_uuid: str) -> str:
@@ -280,6 +298,19 @@ def dial_action():
 	account = _verified_account()
 	provider = providers.for_account(account)
 	document = provider.action_response()
+	ai_document = None
+	if getattr(provider, "supports_ai_stream", False):
+		try:
+			from excom.excom_ai import voice as ai_voice
+
+			event = provider.normalize_event("dial_action", _payload())
+			if ai_voice.offered(event.provider_call_id):
+				# Nobody answered: the agent takes the call. Answered: the call ends as usual (on a
+				# vendor told to run this reply, an explicit hangup).
+				ai_document = ai_voice.after_dial(provider, event) or provider.end_document()
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), "Excom Voice: AI handoff failed")
+			ai_document = None
 
 	try:
 		result = _handle_event("dial_action", account)
@@ -290,8 +321,12 @@ def dial_action():
 		# gets a well-formed answer and the reason goes to the log.
 		frappe.log_error(frappe.get_traceback(), "Excom Voice: dial action failed")
 		frappe.db.rollback()
+		if ai_document:
+			return _xml(ai_document)
 		return _xml(document) if document is not None else {"ok": False}
 
+	if ai_document:
+		return _xml(ai_document)
 	return _xml(document) if document is not None else result
 
 

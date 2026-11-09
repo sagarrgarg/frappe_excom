@@ -48,6 +48,9 @@ PACK_PERMISSIONS = {
 
 MODES = ("Off", "Shadow", "Review", "Auto")
 
+# An agent's channel rows that send outreach ("Replies" only answers; "Calls" is a voice line).
+OUTREACH_PURPOSES = ("Outreach and replies", "Outreach")
+
 # The most each action may ever be set to, whatever an owner chooses (HLD-007 §12.1).
 # Prices, terms and quotations stay with a person; submitting a document is never done by an agent.
 CEILINGS = {
@@ -67,6 +70,7 @@ CEILINGS = {
 	"statement": "Review",  # Accounts: a customer's statement
 	"rfq": "Review",  # Purchase: a request for quotation to a supplier
 	"po_chase": "Auto",  # Purchase: asking a supplier about a late order
+	"voice_call": "Auto",  # Phase 3: taking the calls nobody answers (Auto is the only mode that takes one)
 }
 
 SAFE_REPLY_INTENTS = "ooo, thanks, scheduling, public catalogue"
@@ -121,6 +125,7 @@ def capped(mode: str, action: str, pack: str | None = None, condition: str | Non
 
 DEFAULT_POLICIES = {
 	"sales": [
+		("voice_call", "Off"),
 		("create_record", "Auto"),
 		("write_draft", "Auto"),
 		("first_email", "Review"),
@@ -134,6 +139,7 @@ DEFAULT_POLICIES = {
 		("todo_note", "Auto"),
 	],
 	"purchase": [
+		("voice_call", "Off"),
 		("create_record", "Auto"),
 		("write_draft", "Auto"),
 		("rfq", "Review"),
@@ -146,6 +152,7 @@ DEFAULT_POLICIES = {
 		("todo_note", "Auto"),
 	],
 	"accounts": [
+		("voice_call", "Off"),
 		("write_draft", "Auto"),
 		("create_record", "Auto"),
 		("payment_reminder", "Review"),

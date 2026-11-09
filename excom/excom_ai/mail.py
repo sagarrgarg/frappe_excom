@@ -29,6 +29,8 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import add_days, cint, date_diff, get_datetime, get_url, getdate, now_datetime, nowdate
 
+from excom.excom_ai.constants import OUTREACH_PURPOSES
+
 DOH = "https://cloudflare-dns.com/dns-query"
 DKIM_SELECTORS = ("default", "stalwart", "mail", "dkim", "google", "selector1", "selector2", "s1", "k1")
 WARMUP_START, WARMUP_STEP, WARMUP_DAYS = 5, 3, 14
@@ -201,7 +203,7 @@ def sent_today(account: str) -> int:
 
 def room(agent, account: str) -> int:
 	"""Cold emails left today for this agent on this mailbox (0 if not its outreach mailbox)."""
-	row = next((r for r in agent.channels or [] if r.channel_account == account and r.purpose != "Replies"), None)
+	row = next((r for r in agent.channels or [] if r.channel_account == account and r.purpose in OUTREACH_PURPOSES), None)
 	if not row:
 		return 0
 	return max(0, allowance(row) - sent_today(account))

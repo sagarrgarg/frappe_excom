@@ -1,11 +1,12 @@
 import { Chip } from "../primitives";
 import type { LeadPayload, PlaybookPayload, ProposalPayload, QuotationPayload, TodoPayload } from "../../types/agents";
+import { noteParts } from "../../lib/agents-logic";
 import { HtmlPreview, parseJson } from "./bits";
 
 export { pricedFrom } from "../../lib/agents-logic";
 
 /** Proposal actions shown from their payload instead of the HTML preview. */
-const STRUCTURED = new Set(["create_quotation", "update_playbook", "update_lead", "create_todo"]);
+const STRUCTURED = new Set(["create_quotation", "update_playbook", "update_lead", "create_todo", "note"]);
 
 const num = (v: unknown, digits = 2) => Number(v || 0).toLocaleString("en-IN", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
@@ -16,7 +17,8 @@ export function PricedChip({ priceList }: { priceList: string | null }) {
 
 /**
  * What a proposal would do, in plain words: a quotation as a table, a playbook suggestion, a lead
- * classification or a ToDo from its payload; anything else as its preview.
+ * classification, a ToDo or a note (with its title, for a Custom agent's draft) from its payload;
+ * anything else as its preview.
  */
 export function ProposalDetails({ action, payload: raw, previewHtml, title }: { action: string; payload?: ProposalPayload | string | null; previewHtml?: string | null; title: string }) {
   const payload = parseJson<Record<string, unknown>>(raw);
@@ -25,9 +27,16 @@ export function ProposalDetails({ action, payload: raw, previewHtml, title }: { 
     if (action === "update_playbook") return <PlaybookSuggestion p={payload as PlaybookPayload} />;
     if (action === "update_lead") return <LeadClass p={payload as LeadPayload} />;
     if (action === "create_todo") return <Todo p={payload as TodoPayload} />;
+    const note = action === "note" ? noteParts(payload) : null;
+    if (note) return <Note title={note.title} text={note.text} />;
   }
   if (previewHtml) return <HtmlPreview html={previewHtml} title={title} />;
-  if (payload && typeof payload.body === "string") return <p className="text-sm text-ink-1 whitespace-pre-wrap break-words">{payload.body}</p>;
+  if (payload && typeof payload.body === "string") return (
+    <div className="min-w-0">
+      {typeof payload.title === "string" && payload.title && <p className="text-sm font-medium text-ink-1 break-words">{payload.title}</p>}
+      <p className="text-sm text-ink-1 whitespace-pre-wrap break-words">{payload.body}</p>
+    </div>
+  );
   return <p className="text-sm text-ink-3">No preview.</p>;
 }
 
@@ -110,8 +119,18 @@ function LeadClass({ p }: { p: LeadPayload }) {
 function Todo({ p }: { p: TodoPayload }) {
   return (
     <dl className="text-sm space-y-1 min-w-0">
+      {p.title && <Row label="Title">{p.title}</Row>}
       <Row label="For">{p.allocated_to || "The agent's owner"}</Row>
       <Row label="To do">{p.text || "—"}</Row>
     </dl>
+  );
+}
+
+function Note({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="space-y-1 min-w-0">
+      {title && <p className="text-sm font-medium text-ink-1 break-words">{title}</p>}
+      {text ? <p className="text-sm text-ink-1 whitespace-pre-wrap break-words">{text}</p> : <p className="text-sm text-ink-3">No text.</p>}
+    </div>
   );
 }

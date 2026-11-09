@@ -866,6 +866,17 @@ A second review of the engine (same day) hardened it:
 | 1H | Monitoring: live view, alerts, digest, sampling, evaluation sets, promotion and demotion, dead-man switch, hold, handover | The owner leaving and the owner going quiet are both tested; the evaluation set blocks a worse prompt | M |
 | 1I | Harvey import and cut-over (HLD-006 §11): companies, contacts, the 167 approved and 27 pending emails, conversations, opt-outs, do-not-contact; Harish becomes an agent | Counts match; Harvey stays off; follow-ups continue from ERPNext | M |
 
+**As built (2026-11-10, Phase 1):**
+- **1A, the builder** (`excom_ai/builder/`): keywords are checked as concepts, regions and languages before exact records, so "export" is a concept even where an item group has that name, and a record that covers nothing is skipped. Item names outweigh a small group that merely contains the words. A price list counts as a price basis only for the items it prices. The knowledge pack is built as the owner, so a section the owner cannot read is skipped and says so. Unknown keywords get an AI-proposed query recipe that a person accepts; the next agent reuses it. Nightly at 01:30 every working agent is rebuilt as its owner, and the owner hears what changed.
+- **1B, mail** (`excom_ai/mail.py`, `channels/email/bounces.py`, Excom Mail Bounce): bounces are caught at ingest and pause the address; List-Unsubscribe headers and a personal link; photo cards; per-mailbox caps and warm-up; the nightly mailbox-health check at 02:10. The Stalwart end-to-end test is still to run on a live mailbox.
+- **1C, research** (`excom_ai/research.py`, `tools/`): discovery and web adapters behind the tool tiers, Prospects and Leads with exclusions (a colleague's customer or lead is never touched; the agent's own promoted lead is), honest email statuses, and the Volza import.
+- **1D, writer and checks** (`writer.py`, `checks.py`, `needs_you.py`): the whole sequence is written in one call, checked by code (recipient, prices from the price list, word limits, footer), then by an AI checker; Needs you on desktop and phone with bulk approval and the Shadow comparison.
+- **1E, sequencer** (`sequencer.py`): enrollments, a company-level stop, the buyer's office hours, caps, follow-up order and a bounce pause; sends are paced by `send_due`.
+- **1F, responder** (`responder.py`): opt-outs and escalations by rule before any model; intents classified, interested buyers become Opportunities through `crm_flow`; the "Excom Sales reply intents" eval set guards it.
+- **1G, deals** (`deals.py`): quotation drafts from the price list, quote follow-ups, reactivation and order updates, all under Review.
+- **1H, monitoring** (`monitor.py`): the live view, alerts (hourly), the morning digest, sampling of Auto actions with demotion, promotion suggestions, the weekly coach, handover, and the eval gate on model or effort changes.
+- **1I, Harvey** (`harvey_import.py`, run only on request): companies, contacts, approved and pending emails, conversations, opt-outs and do-not-contact; an undo removes what it made. The test against the local Harvey database matches its counts.
+
 ### Phase 2: the generic builder and other types
 
 | Step | Builds | Done when |
@@ -875,13 +886,33 @@ A second review of the engine (same day) hardened it:
 | 2C | Purchase pack (§8.3) | An RFQ is drafted, sent and its replies parsed into Supplier Quotation drafts |
 | 2D | Compliance pack (§8.4) | The due-date calendar and document expiry raise ToDos for named owners |
 
+**As built (2026-11-10, Phase 2A):** every type gets a draft brief of its own (`builder/brief.generic_draft`). A Custom agent (`excom_ai/packs/custom.py`) is built from keywords and a description, which becomes its playbook's process rules, and has up to four abilities, every one ending in a proposal under Review:
+- **watch:** a record its keyword recipes newly find gets one ToDo for the owner;
+- **chase:** the records its first recipe finds get a follow-up ToDo, once a week each;
+- **answer:** questions on its channel from the playbook, or handed to a person;
+- **draft:** on request (`api.request_draft`), a note for review.
+Its policies never go past Review, and it takes no calls.
+
 ### Phase 3: voice
 
 The VM voice service (§11.4). Inbound calls first.
 
+**As built (2026-11-10):**
+- **When an agent answers:** an agent takes a line's calls when the line is one of its channels with the purpose **Calls**, it is Live, its `voice_call` policy is Auto (default Off; a Custom agent never), and the voice service is set up in Excom AI Settings. It answers only when nobody could be rung, or the people rung did not answer (no answer, busy, failed).
+- **Routing** (`api/voice.py`, `excom_ai/voice.py`): the answer URL offers the call with a one-call token kept in the cache. Twilio renders `<Connect><Stream>`, Plivo `<Stream bidirectional>`. When people are rung first, the dial action hands over (on Plivo the dial then uses `redirect="true"`, with an explicit hangup when someone answered). A failure in any of this only logs; people are rung as before.
+- **The voice service** (`apps/excom/voice_service/`, for the VM): it bridges the call's audio to speech-to-text and text-to-speech (Deepgram by default, pluggable), with barge-in. It calls Frappe's `voice.start`, `voice.turn` and `voice.end` with a shared key. The model runs in Frappe with the agent's brief and playbooks, in short spoken sentences.
+- **What it may say:** never prices, terms or dates (a colleague calls back). Asked whether it is a person, it does not answer and a colleague calls back (§12.6). Opt-outs and escalations are handled by rule.
+- **After the call:** the transcript goes on the Excom Call, a `call_summary` task fills `summary`, `sentiment` and `next_action`, and the owner gets a callback ToDo when one is needed.
+- **Not yet:** outbound calls, live transfer to a person, Hindi speech (Deepgram has no Hindi voice), and summaries of people's own recorded calls.
+
 ### Phase 4: learning loop
 
 Coach suggestions become playbook versions; subject-line tests; cost tuning against the evaluation sets.
+
+**As built (2026-11-10)** (`excom_ai/learning.py`):
+- **Playbook versions:** an accepted coach suggestion is a new playbook version in review. Prompts keep the last approved version (its sections are kept on the playbook) until the new one is approved, so a suggestion never takes the playbook out of use.
+- **Subject-line tests:** a sequence step lists two or more subject-line styles. Each buyer gets one, the same every time, split evenly. The weekly coach proposes keeping the winner once each style has at least 30 sends and the best beats the runner-up on replies (p ≤ 0.1); a person decides.
+- **Cost tuning:** `api.cost_check` (Excom Admin) scores cheaper model and effort pairs on the reply-intents eval set and recommends the cheapest that passes. Nothing switches on its own.
 
 ### In parallel: the readiness sprint for people
 

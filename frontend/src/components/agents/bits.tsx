@@ -47,6 +47,7 @@ export const M = {
   handover: `${P}handover`,
   dryRun: `${P}dry_run`,
   researchPeople: `${P}research_people`,
+  requestDraft: `${P}request_draft`,
   queue: `${N}queue`,
   decideMany: `${N}decide_many`,
   approveStep: `${N}approve_step`,

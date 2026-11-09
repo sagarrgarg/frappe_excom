@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-10 06:00:00.000000",
+ "creation": "2026-11-10 08:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -15,7 +15,10 @@
   "approved_on",
   "sb_sections",
   "sections",
-  "change_note"
+  "change_note",
+  "sb_approved",
+  "approved_version",
+  "approved_sections"
  ],
  "fields": [
   {
@@ -87,11 +90,30 @@
    "fieldname": "change_note",
    "fieldtype": "Small Text",
    "label": "What Changed"
+  },
+  {
+   "fieldname": "sb_approved",
+   "fieldtype": "Section Break",
+   "label": "Last Approved Version",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "approved_version",
+   "fieldtype": "Int",
+   "label": "Approved Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_sections",
+   "fieldtype": "Long Text",
+   "label": "Approved Sections",
+   "read_only": 1,
+   "description": "What prompts use while a newer version waits for review."
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 06:00:00.000000",
+ "modified": "2026-11-10 08:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Playbook",

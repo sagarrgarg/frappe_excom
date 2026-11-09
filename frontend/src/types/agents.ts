@@ -185,6 +185,8 @@ export interface AgentRecord extends Partial<Record<BriefField, string | null>> 
   monthly_ai_budget?: number | null;
   office_hours?: string | null;
   model?: string | null;
+  /** Custom agents: "watch, draft" and so on (packs/custom.py); empty means watch and draft. */
+  abilities?: string | null;
 }
 
 /** agent(name): everything the agent page shows, tab by tab. */
@@ -373,7 +375,7 @@ export interface PlaybookPayload { kind?: string; text?: string; why?: string }
 export interface LeadPayload { customer_type?: string; note?: string | null }
 
 /** create_todo */
-export interface TodoPayload { allocated_to?: string | null; text?: string }
+export interface TodoPayload { allocated_to?: string | null; text?: string; title?: string }
 
 /* ─── the live view (monitor.py live) ─── */
 
