@@ -10,16 +10,20 @@ import { parseError } from "../../lib/errors";
 import { deskUrl } from "../../hooks/useRecordLinks";
 import { currentUser } from "../../lib/ui-flag";
 import type { AgentDetail, AgentTask, Proposal } from "../../types/agents";
-import { HtmlPreview, M, useAgentAction, Panel, PROPOSAL_LABEL, ReadinessChip, ReasonDialog, RISK_ACCENT, SectionPanel, Stat, StatusChip, STATUS_HINT, TypeChip, cost, when } from "./bits";
+import { HtmlPreview, M, useAgentAction, Panel, PROPOSAL_LABEL, ReadinessChip, ReasonDialog, REJECT_REASONS, RISK_ACCENT, SectionPanel, Stat, StatusChip, STATUS_HINT, TypeChip, cost, when } from "./bits";
 import { BriefTab } from "./BriefTab";
 import { ReadinessTab } from "./ReadinessTab";
 import { ChannelsTab } from "./ChannelsTab";
 import { AutonomyTab } from "./AutonomyTab";
+import { ShadowTab } from "./ShadowTab";
+import { ResearchTab } from "./ResearchTab";
 
 const TABS = [
   { value: "overview", label: "Overview" },
   { value: "needs-you", label: "Needs you" },
   { value: "activity", label: "Activity" },
+  { value: "shadow", label: "Shadow" },
+  { value: "research", label: "Research" },
   { value: "brief", label: "Brief" },
   { value: "playbooks", label: "Playbooks" },
   { value: "knowledge", label: "Knowledge" },
@@ -67,6 +71,8 @@ export function AgentPage() {
       {tab === "overview" && <OverviewTab d={d} reload={reload} go={setTab} />}
       {tab === "needs-you" && <NeedsYouTab d={d} reload={reload} />}
       {tab === "activity" && <ActivityTab tasks={d.activity} />}
+      {tab === "shadow" && <ShadowTab d={d} />}
+      {tab === "research" && <ResearchTab d={d} />}
       {tab === "brief" && <BriefTab d={d} reload={reload} />}
       {tab === "playbooks" && <PlaybooksTab d={d} />}
       {tab === "knowledge" && <KnowledgeTab d={d} reload={reload} />}
@@ -201,11 +207,15 @@ function OverviewTab({ d, reload, go }: { d: AgentDetail; reload: () => void; go
 
 /* ─── Needs you ─── */
 
-const REJECT_REASONS = ["Wrong facts", "Wrong tone", "Wrong recipient", "Not needed", "Other"];
-
 function NeedsYouTab({ d, reload }: { d: AgentDetail; reload: () => void }) {
-  if (d.needs_you.length === 0) return <EmptyState icon={<Check />} title="Nothing waits for you" hint="Messages and actions this agent wants approved will appear here." />;
-  return <ul className="space-y-2 max-w-3xl">{d.needs_you.map((p) => <li key={p.name}><ProposalCard p={p} reload={reload} /></li>)}</ul>;
+  const all = <Link to="/agents/needs-you" className="text-sm text-crayon-blue-text hover:underline">Open Needs you for all agents, with checks, edits and bulk approval</Link>;
+  if (d.needs_you.length === 0) return <EmptyState icon={<Check />} title="Nothing waits for you" hint="Messages and actions this agent wants approved will appear here." action={all} />;
+  return (
+    <div className="space-y-2 max-w-3xl">
+      <p>{all}</p>
+      <ul className="space-y-2">{d.needs_you.map((p) => <li key={p.name}><ProposalCard p={p} reload={reload} /></li>)}</ul>
+    </div>
+  );
 }
 
 function ProposalCard({ p, reload }: { p: Proposal; reload: () => void }) {

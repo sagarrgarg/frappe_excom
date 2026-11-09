@@ -2,16 +2,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { toast } from "sonner";
 import { toastError } from "../ErrorDialog";
-import { AlertOctagon, AlertTriangle, ChevronRight, ExternalLink, Info } from "lucide-react";
-import { Button, Chip, Field, Modal, Select, Textarea, type Accent } from "../primitives";
+import { useNavigate } from "react-router-dom";
+import { AlertOctagon, AlertTriangle, ChevronRight, CircleCheck, CircleX, ExternalLink, Info, Sparkles } from "lucide-react";
+import { useFrappeGetCall } from "@/lib/api";
+import { Button, Chip, Field, Input, Modal, Select, Textarea, type Accent } from "../primitives";
 import { cn } from "../ui/utils";
 import { deskUrl } from "../../hooks/useRecordLinks";
 import { parseFrappeDateTime, formatServerShortDateTime } from "../../utils/datetime";
-import type { AgentStatus, Fact, FactLevel, Health, KnowledgeSection, ReadinessState } from "../../types/agents";
+import type { AgentCard, AgentStatus, CheckerVerdict, Checks, CheckResult, Fact, FactLevel, Health, KnowledgeSection, ProposalPayload, ReadinessState } from "../../types/agents";
 
 /** Whitelisted methods (HLD-007 §15). One list, so a renamed endpoint is one edit. */
 const B = "excom.excom_ai.builder.api.";
 const P = "excom.excom_ai.api.";
+const N = "excom.excom_ai.needs_you.";
 export const M = {
   types: `${B}types`,
   resolve: `${B}resolve_keywords`,
@@ -36,6 +39,17 @@ export const M = {
   decide: `${P}decide_proposal`,
   selfTest: `${P}run_self_test`,
   approveBrief: "excom.excom_ai.doctype.excom_ai_agent.excom_ai_agent.approve_brief",
+  promotePerson: `${P}promote_person`,
+  researchSummary: `${P}research_summary`,
+  importVolza: `${P}import_volza`,
+  queue: `${N}queue`,
+  decideMany: `${N}decide_many`,
+  approveStep: `${N}approve_step`,
+  takeOver: `${N}take_over`,
+  handBack: `${N}hand_back`,
+  threadProposals: `${N}thread_proposals`,
+  shadowComparison: `${N}shadow_comparison`,
+  rateShadow: `${N}rate_shadow`,
 } as const;
 
 /* ─── types, statuses, health ─── */
@@ -367,4 +381,113 @@ export function useAgentAction(method: string) {
     catch (e) { toastError(e, fail); return null; }
   };
   return { run, loading };
+}
+
+/* ─── proposals: checks, edits, reasons (Needs you, the agent page, the inbox) ─── */
+
+/** The reasons a reject may give (Excom AI Proposal.reject_reason): they teach the agent. */
+export const REJECT_REASONS = ["Wrong facts", "Wrong tone", "Wrong recipient", "Not needed", "Other"];
+
+/** The code checks (excom_ai/checks.py), in plain words. */
+export const CHECK_LABEL: Record<string, string> = {
+  recipient: "Recipient",
+  channel: "Mailbox",
+  prices: "Prices",
+  phrases: "Words it may not use",
+  language: "Language",
+  shape: "Length and layout",
+  footer: "Footer",
+  signature: "Signature",
+  leak: "Private information",
+};
+
+/** JSON fields arrive parsed from queue() and as text from thread_proposals(). */
+export function parseJson<T>(v: unknown): T | null {
+  if (v == null || v === "") return null;
+  if (typeof v !== "string") return v as T;
+  try { return JSON.parse(v) as T; } catch { return null; }
+}
+
+/** The code checks that failed, with why. */
+export function failingChecks(checks?: Checks | null): { key: string; label: string; why: string }[] {
+  if (!checks) return [];
+  return Object.entries(checks)
+    .filter(([k, v]) => k !== "ok" && typeof v === "object" && v && !(v as CheckResult).ok)
+    .map(([k, v]) => ({ key: k, label: CHECK_LABEL[k] || k, why: (v as CheckResult).why || "" }));
+}
+
+/** Passed: every code check and the AI checker did not fail (needs_you.py checks_ok). */
+export function checksPassed(checks?: Checks | null, verdict?: CheckerVerdict): boolean {
+  return Boolean(checks?.ok ?? true) && verdict !== "Fail";
+}
+
+const VERDICT: Record<string, { label: string; accent: Accent }> = {
+  Pass: { label: "AI check passed", accent: "green" },
+  Fixed: { label: "AI check fixed it", accent: "amber" },
+  Fail: { label: "AI check failed", accent: "rose" },
+};
+
+/** A green tick, or the failing checks with why; then the AI checker's verdict and notes. */
+export function ChecksSummary({ checks, verdict, notes, compact }: { checks?: Checks | null; verdict?: CheckerVerdict; notes?: string | null; compact?: boolean }) {
+  const failing = failingChecks(checks);
+  const v = verdict ? VERDICT[verdict] : null;
+  return (
+    <div className="space-y-1 min-w-0">
+      {!checks ? null : failing.length === 0 ? (
+        <p className="flex items-center gap-1.5 text-sm text-crayon-green-text"><CircleCheck className="size-4 shrink-0" aria-hidden />All checks passed</p>
+      ) : (
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 text-sm text-crayon-rose-text font-medium"><CircleX className="size-4 shrink-0" aria-hidden />{failing.length === 1 ? "1 check failed" : `${failing.length} checks failed`}</p>
+          <ul className="mt-0.5 pl-5 space-y-0.5">
+            {failing.map((f) => <li key={f.key} className="text-sm text-ink-1 break-words"><span className="font-medium">{f.label}:</span> {f.why || "failed"}</li>)}
+          </ul>
+        </div>
+      )}
+      {v && (
+        <div className="flex items-start gap-1.5 min-w-0 flex-wrap">
+          <Chip size="sm" accent={v.accent} icon={<Sparkles />} label={v.label} />
+          {notes && !compact && <span className="text-sm text-ink-2 min-w-0 break-words flex-1">{notes}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Subject and body, editable, for "Edit and approve". The rest of the payload is kept. */
+export function PayloadEditor({ value, onChange, idPrefix }: { value: ProposalPayload; onChange: (v: ProposalPayload) => void; idPrefix: string }) {
+  return (
+    <div className="space-y-2 min-w-0">
+      {"subject" in value && (
+        <Field label="Subject" htmlFor={`${idPrefix}-subject`}>
+          <Input id={`${idPrefix}-subject`} value={String(value.subject ?? "")} onChange={(e) => onChange({ ...value, subject: e.target.value })} />
+        </Field>
+      )}
+      <Field label="Message" htmlFor={`${idPrefix}-body`}>
+        <Textarea id={`${idPrefix}-body`} rows={8} value={String(value.body ?? "")} onChange={(e) => onChange({ ...value, body: e.target.value })} autoFocus />
+      </Field>
+    </div>
+  );
+}
+
+/** Agent names for agent ids, from the agents list the Agents home already loads. */
+export function useAgentNames(enabled = true) {
+  const { data } = useFrappeGetCall<{ message: AgentCard[] }>(enabled ? M.agents : null, undefined, "agents-home", { revalidateOnFocus: false, shouldRetryOnError: false });
+  const rows = data?.message ?? [];
+  const names: Record<string, string> = {};
+  rows.forEach((a) => { names[a.name] = a.agent_name; });
+  return { names, waiting: rows.reduce((n, a) => n + (a.waiting || 0), 0) };
+}
+
+/** Opens a conversation (a thread id) in the inbox: the record route is keyed by the contact. */
+export function useOpenThread() {
+  const navigate = useNavigate();
+  const { call } = useFrappePostCall("frappe.client.get_value");
+  return async (thread: string) => {
+    let identity = "";
+    try {
+      const r = await call({ doctype: "Excom Thread", filters: thread, fieldname: "omni_identity" });
+      identity = r?.message?.omni_identity || "";
+    } catch { /* not readable: open by the thread itself */ }
+    navigate(identity ? `/t/${encodeURIComponent(identity)}?via=${encodeURIComponent(thread)}` : `/t/${encodeURIComponent(thread)}`);
+  };
 }

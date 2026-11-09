@@ -9,6 +9,7 @@ import { ContextLine } from "./ContextStrip";
 import { MessageFeed } from "./MessageFeed";
 import { Composer, type EmailDraft } from "./Composer";
 import { ActiveCallCard } from "../voice/ActiveCallCard";
+import { AgentStrip, AgentProposals } from "./AgentStrip";
 import { TasksTab } from "./TasksTab";
 import { NotesTab } from "./NotesTab";
 import { ActivityTab } from "./ActivityTab";
@@ -211,6 +212,8 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
       <RecordHeader contact={contact} record={record} showBack={drill} onBack={closeRecord} menuGroups={menuGroups} onToggleDetails={toggleDetails} detailsToggleVisible
         context={<ContextLine contact={contact} crm={crmPrimary} reach={contact.contactInfo.phone || contact.contactInfo.email || contact.contactInfo.company} onStage={crmPrimary?.doctype === "Opportunity" ? () => setTab("details") : undefined} />} />
       {contact.closure && <div className="shrink-0 flex items-center gap-2 px-3 h-8 text-xs bg-surface-sunken border-b border-border min-w-0"><span className="font-medium text-ink-1">Closed · {contact.closure.outcome}</span>{contact.closure.reason && <span className="text-ink-2 truncate">— {contact.closure.reason}</span>}<span className="text-ink-3 truncate ml-auto">{contact.closure.by}{contact.closure.at ? ` · ${contact.closure.at.slice(0, 16)}` : ""}</span></div>}
+      {/* Excom AI (HLD-007 §15.5): an agent handles it, or it is with a person. */}
+      <AgentStrip contact={contact} onChanged={refreshThreads} />
       <SegmentedControl<Tab> ariaLabel="Record sections" className="px-2 border-b border-border bg-surface" value={effectiveTab} onChange={setTab} segments={segments} />
 
       {effectiveTab === "chat" && (
@@ -238,6 +241,8 @@ function RecordBody({ contact, tab, setTab, bp, closeRecord, refreshThreads, tog
             dragHandlers={{ onDragOver: fileUpload.handleDragOver, onDragLeave: fileUpload.handleDragLeave, onDrop: fileUpload.handleDrop }}
           />
           )}
+          {/* An AI agent's open proposals on this conversation, at its foot. */}
+          <AgentProposals contact={contact} />
           {/* Above the composer, not over it: the agent takes notes and keeps typing mid-call. */}
           <ActiveCallCard threadIds={threadIds} />
           {((contact.threads?.length ?? 0) > 0 || archived) && (

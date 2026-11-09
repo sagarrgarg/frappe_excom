@@ -225,3 +225,118 @@ export interface ReadinessResult {
   warnings: number;
   infos: number;
 }
+
+/* ─── Needs you, Shadow, Research, inbox (HLD-007 §15.4, §15.5; excom_ai/needs_you.py) ─── */
+
+export type CheckResult = { ok: boolean; why?: string | null };
+/** checks.check(): one entry per code check, plus `ok` for all of them. */
+export type Checks = Record<string, CheckResult | boolean> & { ok?: boolean };
+export type CheckerVerdict = "Pass" | "Fixed" | "Fail" | "" | null;
+
+export interface ProposalPayload {
+  subject?: string;
+  body?: string;
+  language?: string;
+  [k: string]: unknown;
+}
+
+/** queue(): a buyer an agent handed to a person. */
+export interface WaitingBuyer {
+  name: string;
+  display_name?: string | null;
+  channel?: string | null;
+  ai_agent: string;
+  ai_intent?: string | null;
+  last_inbound_at?: string | null;
+  last_message_preview?: string | null;
+  assigned_to?: string | null;
+  waited_hours?: number | null;
+  late: boolean;
+}
+
+/** queue(): a Pending or Held proposal, with its checks. */
+export interface QueueProposal {
+  name: string;
+  agent: string;
+  action: string;
+  status: string;
+  risk?: "Low" | "Medium" | "High" | null;
+  step?: number | null;
+  kind?: string | null;
+  to_email?: string | null;
+  thread?: string | null;
+  subject_doctype?: string | null;
+  subject_name?: string | null;
+  preview_html?: string | null;
+  payload?: ProposalPayload | null;
+  checks?: Checks | null;
+  checker_verdict?: CheckerVerdict;
+  checker_notes?: string | null;
+  checks_ok?: boolean;
+  creation: string;
+  hold_reason?: string | null;
+  enrollment?: string | null;
+  send_at?: string | null;
+}
+
+export interface QueueBlocker {
+  name: string;
+  agent: string;
+  rule: string;
+  detail?: string | null;
+  title?: string | null;
+}
+
+export interface NeedsYouQueue {
+  waiting: WaitingBuyer[];
+  proposals: QueueProposal[];
+  held: QueueProposal[];
+  blockers: QueueBlocker[];
+  agents: Record<string, string>;
+  reply_target_hours?: number;
+}
+
+export type ShadowVerdict = "Agent better" | "About the same" | "Person better";
+
+/** shadow_comparison(): a Shadow draft next to what a person sent on the same conversation. */
+export interface ShadowRow {
+  name: string;
+  action: string;
+  thread?: string | null;
+  to_email?: string | null;
+  payload?: ProposalPayload | null;
+  preview_html?: string | null;
+  creation: string;
+  shadow_verdict?: ShadowVerdict | "" | null;
+  shadow_note?: string | null;
+  checker_verdict?: CheckerVerdict;
+  person_sent?: { name: string; content_text?: string | null; created_by_user?: string | null; creation: string } | null;
+}
+
+/** thread_proposals(): payload and checks arrive as JSON text. */
+export interface ThreadProposal {
+  name: string;
+  agent: string;
+  action: string;
+  status: "Pending" | "Held" | "Shadow" | string;
+  preview_html?: string | null;
+  payload?: ProposalPayload | string | null;
+  checks?: Checks | string | null;
+  checker_verdict?: CheckerVerdict;
+  creation: string;
+}
+
+export interface ResearchSummary {
+  companies: Record<string, number>;
+  people: Record<string, number>;
+  total: number;
+}
+
+export interface AIPerson {
+  name: string;
+  email?: string | null;
+  full_name?: string | null;
+  email_status?: string | null;
+  status?: string | null;
+  company?: string | null;
+}

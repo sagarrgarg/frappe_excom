@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useFrappePostCall } from "frappe-react-sdk";
-import { Bot, Plus, Square } from "lucide-react";
+import { Bot, Inbox, Plus, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useFrappeGetCall } from "@/lib/api";
 import { PageFrame } from "../shell/PageFrame";
-import { Avatar, Button, EmptyState } from "../primitives";
+import { Avatar, Badge, Button, EmptyState } from "../primitives";
 import { toastError } from "../ErrorDialog";
 import { parseError } from "../../lib/errors";
 import type { AgentCard, AgentType } from "../../types/agents";
@@ -24,8 +24,14 @@ export function AgentsHome() {
   const { canBuild } = useAgentTypes();
   const agents = data?.message ?? [];
   const newButton = canBuild ? <Button variant="primary" size="sm" onClick={() => navigate("/agents/new")}><Plus />New agent</Button> : null;
+  const waiting = agents.reduce((n, a) => n + (a.waiting || 0), 0);
+  const needsYou = agents.length > 0 ? (
+    <Button size="sm" onClick={() => navigate("/agents/needs-you")} aria-label={`Needs you${waiting ? `, ${waiting} waiting` : ""}`}>
+      <Inbox />Needs you{waiting > 0 && <Badge solid accent="amber" count={waiting} />}
+    </Button>
+  ) : null;
   return (
-    <PageFrame title="Agents" icon={<Bot />} actions={newButton}>
+    <PageFrame title="Agents" icon={<Bot />} actions={(needsYou || newButton) ? <>{needsYou}{newButton}</> : null}>
       {error ? (
         <p role="alert" className="text-sm text-crayon-rose-text p-3">{parseError(error).message}</p>
       ) : isLoading && !data ? (

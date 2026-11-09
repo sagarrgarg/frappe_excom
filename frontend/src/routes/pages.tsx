@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Users, MoreHorizontal, Shield, GitMerge, ListChecks, Cog, Settings, Radio, BarChart3, Rows3, ArrowLeftRight, Bug, Search, Mail, Phone, KanbanSquare, Megaphone, LogOut, MessageSquareText, Bot } from "lucide-react";
+import { Users, MoreHorizontal, Shield, GitMerge, ListChecks, Cog, Settings, Radio, BarChart3, Rows3, ArrowLeftRight, Bug, Search, Mail, Phone, KanbanSquare, Megaphone, LogOut, MessageSquareText, Bot, Inbox } from "lucide-react";
 import { PageFrame } from "../components/shell/PageFrame";
 import { useInbox } from "../components/shell/InboxProvider";
 import { Row, Avatar, Input, EmptyState, Badge } from "../components/primitives";
@@ -92,7 +92,7 @@ export function MoreRoute() {
       { label: "Broadcasts", icon: <Radio />, to: "/broadcasts" },
       { label: "Analytics", icon: <BarChart3 />, to: "/analytics" },
       ...(hasRole("Excom Marketing") || manager ? [{ label: "Marketing", icon: <Megaphone />, to: "/marketing" }] : []),
-      ...(hasRole("Excom Agent") || manager ? [{ label: "Agents", icon: <Bot />, to: "/agents" }] : []),
+      ...(hasRole("Excom Agent") || manager ? [{ label: "Agents", icon: <Bot />, to: "/agents" }, { label: "Needs you (agents)", icon: <Inbox />, to: "/agents/needs-you" }] : []),
     ],
     [
       ...(manager ? [{ label: "Admin", icon: <Shield />, to: "/admin" }] : []),
