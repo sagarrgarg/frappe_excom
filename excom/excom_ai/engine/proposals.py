@@ -58,6 +58,8 @@ SEND_POLICIES = ("first_email", "follow_up_email", "reply", "whatsapp_template",
 	"statement", "rfq", "po_chase")
 # Actions that change only our own records: a person may let them run while the agent is on hold.
 INTERNAL = ("note", "create_todo", "create_lead", "update_lead")
+# Actions a person always decides, whatever the policy they share says (Review at most).
+NEVER_AUTO = ("create_supplier",)
 RELEASED = ("Rejected", "Cancelled", "Failed", "Expired")
 MANAGERS = {"Excom Admin", "System Manager"}
 
@@ -71,6 +73,8 @@ def mode_for(agent, action: str, policy_action: str | None = None, intent: str |
 	row = policy_row(agent, key)
 	pack = frappe.db.get_value("Excom AI Agent Type", agent.agent_type, "pack")
 	mode = capped(row.mode if row else "Review", key, pack, row.condition if row else None)
+	if mode == "Auto" and action in NEVER_AUTO:
+		mode = "Review"
 	if mode == "Auto" and key == "reply" and (not intent or intent.strip().lower() not in intents(row.condition if row else "")):
 		mode = "Review"  # Auto covers only the intents the condition names
 	return mode

@@ -893,6 +893,11 @@ A second review of the engine (same day) hardened it:
 - **draft:** on request (`api.request_draft`), a note for review.
 Its policies never go past Review, and it takes no calls.
 
+**As built (2026-11-10, Phases 2B-2D):**
+- **2B Accounts** (`packs/accounts.py`): a collections ladder per customer, under Review. Step 1 is a statement and a polite reminder; then firmer; then a request for a call; then the owner (waits halve past 60 days overdue). It writes only to the billing contact. Amounts and invoice lines are written by code from the ledger, the model writes only the words around them, and the ledger is checked again before sending. Replies record promises, suggest payment matches (a ToDo, never an entry), stop on a dispute, or prepare a statement. The MSME watch list reaches finance weekly.
+- **2C Purchase** (`packs/purchase.py`): RFQs as drafts plus one email per supplier (Review), with one reminder after 4 days. Replies, attachments included, are parsed into draft Supplier Quotations; anything unclear goes to a person. Rates are compared with past buying, and late POs are chased at most weekly. Supplier discovery is monthly, and creating a supplier is always a person's decision (`proposals.NEVER_AUTO`). It never creates or submits a Purchase Order.
+- **2D Compliance** (`packs/compliance.py`): the due-date calendar comes from the playbook's Compliance section (prefilled with the standard Indian calendar; a person names the owners). Documents expire on a 60/30/7-day ladder (docpulse when installed). GSTIN, e-invoice and e-way bill checks, and a weekly regulatory watch for a person to verify. ToDos go to the named owners.
+
 ### Phase 3: voice
 
 The VM voice service (§11.4). Inbound calls first.

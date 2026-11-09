@@ -284,6 +284,9 @@ def applies(rule, agent, concepts: set[str]) -> bool:
 
 def run(agent_name: str) -> dict:
 	"""Check every enabled rule of the agent's type. Returns {state, blockers, warnings, infos}."""
+	from excom.excom_ai.engine import registry
+
+	registry.load()  # the packs register their checks on import
 	agent = frappe.get_doc("Excom AI Agent", agent_name)
 	facts = facts_of(agent)
 	concepts = scope_concepts(agent)

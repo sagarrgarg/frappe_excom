@@ -34,6 +34,7 @@ PACK_PERMISSIONS = {
 		"read": ("Item", "Item Group", "Brand", "UOM", "Supplier", "Supplier Group", "Purchase Order", "Purchase Receipt",
 			"Purchase Invoice", "Item Price", "Price List", "Material Request", "Company", "Currency", "Country"),
 		"write": ("Request for Quotation", "Supplier Quotation", "Supplier", "Address", "Contact", "ToDo"),
+		"select": ("Account",),  # ERPNext reads the supplier's payable account when a Supplier Quotation is saved
 	},
 	"compliance": {
 		"read": ("Sales Invoice", "Purchase Invoice", "Customer", "Supplier", "Company", "Address", "Delivery Note",

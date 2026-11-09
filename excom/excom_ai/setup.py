@@ -99,7 +99,7 @@ def _pack_permissions():
 				if not frappe.db.exists("Custom DocPerm", {"parent": doctype, "role": role, "permlevel": 0}):
 					add_permission(doctype, role, 0)
 				name = frappe.db.get_value("Custom DocPerm", {"parent": doctype, "role": role, "permlevel": 0})
-				wanted = {"read": 1} if ptype == "read" else {"read": 1, "write": 1, "create": 1}
+				wanted = {"read": {"read": 1}, "select": {"select": 1}}.get(ptype, {"read": 1, "write": 1, "create": 1})
 				for prop, value in wanted.items():
 					if not frappe.db.get_value("Custom DocPerm", name, prop):
 						update_permission_property(doctype, role, 0, prop, value)
