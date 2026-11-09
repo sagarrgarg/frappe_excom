@@ -1021,6 +1021,12 @@ From a read-only inventory of `~/harvey` on 2026-11-08: the code, the live datab
 
 **Decision (2026-11-09):** every AI call from every app goes through `ai_interface`. What the agents need is added there in a generic way, named for what it does and not for Excom, so that any app (excom, docpulse, business_needed_solutions, insights) can use it.
 
+**Status (2026-11-09): done.**
+- `somil-dev` is merged into `main`, which is now the only branch.
+- Everything in B.2 is built on top of it, with tests (169 passing) and handbook sections.
+- Commits: 71d8af7, 5a0b22c and 758c048 in `ai-interface`.
+- Not yet verified against a live provider: no provider is configured on the local sites.
+
 ### B.1 Where to build: the `somil-dev` branch
 
 `ai_interface`'s branches are:
