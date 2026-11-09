@@ -25,6 +25,7 @@ MODULES = [
 	"excom.excom_ai.engine.builtin",
 	"excom.excom_ai.engine.inbound",
 	"excom.excom_ai.research",
+	"excom.excom_ai.writer",
 ]
 
 # Priorities (HLD-007 §10.1): 0 inbound replies and events · 1 approved actions and due sends ·

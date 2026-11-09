@@ -70,6 +70,10 @@ def create(agent_type: str, keywords: str, rows: list | None = None, excluded: d
 	agent.save(ignore_permissions=True)
 	knowledge.save(agent, sections)
 	readiness.run(agent.name)
+	if pack == "sales":
+		from excom.excom_ai.writer import default_sequence
+
+		default_sequence(frappe.get_doc("Excom AI Agent", agent.name))
 	return agent.name
 
 

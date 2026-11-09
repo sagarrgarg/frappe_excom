@@ -73,9 +73,12 @@ def exclusion(domain: str | None, emails: list[str] | None = None, agent: str | 
 			if domain == d.domain or domain.endswith("." + d.domain):
 				return ("Competitor" if d.reason == "Competitor" else "Group company" if d.reason == "Group company"
 					else "Do not contact"), None
+		fields = ["name", "lead_owner"] + (["ai_agent"] if frappe.get_meta("Lead").has_field("ai_agent") else [])
 		leads = frappe.get_all("Lead", {"email_id": ["like", f"%@{domain}"], "status": ["not in", ("Converted", "Do Not Contact")]},
-			["name", "lead_owner"])
-		if any(lead.lead_owner and not is_service_user(lead.lead_owner) for lead in leads):
+			fields)
+		# A lead this same agent made (promoted from its research) is its own, not a colleague's.
+		if any(lead.lead_owner and not is_service_user(lead.lead_owner) and not (agent and lead.get("ai_agent") == agent)
+				for lead in leads):
 			return "Open lead or deal (people)", None
 	for e in emails:
 		if frappe.db.exists("Omni Identity", {"primary_email": e, "do_not_contact": 1}):

@@ -27,6 +27,8 @@ GUARDS = {
 	# Excom AI builder: building needs an Excom Admin or a team manager; an agent is read through
 	# its team-scoped permission, and changed only by its owner, backup, team manager or an admin.
 	"_can_build", "_readable", "_changeable", "_can_see_agents",
+	# Excom AI Needs you: thread access (Excom's own rule), and who may decide an agent's proposals.
+	"_thread_for_change", "may_decide", "_excom_user",
 }
 # Public by design. Each line says why it is safe to leave open.
 ALLOWED = {

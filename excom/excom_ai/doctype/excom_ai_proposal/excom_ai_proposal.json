@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-10 00:30:00.000000",
+ "creation": "2026-11-10 01:30:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -34,6 +34,8 @@
   "checks",
   "checker_verdict",
   "checker_notes",
+  "shadow_verdict",
+  "shadow_note",
   "sb_decision",
   "decided_by",
   "decided_on",
@@ -234,6 +236,18 @@
    "read_only": 1
   },
   {
+   "fieldname": "shadow_verdict",
+   "fieldtype": "Select",
+   "label": "Compared With What Was Sent",
+   "options": "\nAgent better\nAbout the same\nPerson better",
+   "description": "In Shadow: the owner's comparison of this draft with what a person actually sent."
+  },
+  {
+   "fieldname": "shadow_note",
+   "fieldtype": "Small Text",
+   "label": "Comparison Note"
+  },
+  {
    "fieldname": "sb_decision",
    "fieldtype": "Section Break",
    "label": "Decision"
@@ -329,7 +343,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 00:30:00.000000",
+ "modified": "2026-11-10 01:30:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Proposal",

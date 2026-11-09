@@ -68,7 +68,7 @@ def propose(task, agent, action: str, *, policy_action: str | None = None, paylo
 		channel_account: str | None = None, risk: str = "Medium", checks: dict | None = None,
 		enrollment: str | None = None, step: int | None = None, kind: str | None = None,
 		to_email: str | None = None, send_at=None, email_draft: str | None = None,
-		intent: str | None = None) -> str | None:
+		intent: str | None = None, checks_ok: bool = True) -> str | None:
 	"""Record an action under the agent's policy. Returns the proposal name (None when Off).
 
 	It commits: what the task's handler wrote before it is committed with it. Handlers are
@@ -84,6 +84,8 @@ def propose(task, agent, action: str, *, policy_action: str | None = None, paylo
 	mode = mode_for(agent, action, key, intent)
 	if mode == "Off":
 		return None
+	if mode == "Auto" and not checks_ok:
+		mode = "Review"  # a failed check always waits for a person
 	if agent.status == "Shadow" or mode == "Shadow":
 		status = "Shadow"
 	elif mode == "Auto" and agent.status == "Live" and not _over_daily_cap(agent, key):
