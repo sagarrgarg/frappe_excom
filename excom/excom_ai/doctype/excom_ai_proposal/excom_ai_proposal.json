@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-10 03:00:00.000000",
+ "creation": "2026-11-10 04:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -36,6 +36,7 @@
   "checker_notes",
   "shadow_verdict",
   "shadow_note",
+  "source_ref",
   "sb_decision",
   "decided_by",
   "decided_on",
@@ -248,6 +249,14 @@
    "label": "Comparison Note"
   },
   {
+   "fieldname": "source_ref",
+   "fieldtype": "Data",
+   "label": "Imported From",
+   "read_only": 1,
+   "search_index": 1,
+   "description": "Where an imported proposal came from, for example harvey:outbox:<id>."
+  },
+  {
    "fieldname": "sb_decision",
    "fieldtype": "Section Break",
    "label": "Decision"
@@ -343,7 +352,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 03:00:00.000000",
+ "modified": "2026-11-10 04:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Proposal",

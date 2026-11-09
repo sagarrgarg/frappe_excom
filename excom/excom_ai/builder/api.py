@@ -190,13 +190,15 @@ def agent(name: str) -> dict:
 			for r in doc.playbooks],
 		"knowledge": knowledge,
 		"gaps": gaps,
-		"needs_you": frappe.get_all("Excom AI Proposal", {"agent": name, "status": ["in", ("Pending", "Held")]},
-			["name", "action", "status", "risk", "subject_doctype", "subject_name", "thread", "preview_html", "creation",
-				"hold_reason"], order_by="creation desc", limit=50),
+		"needs_you": [r.update({"payload": json.loads(r.payload or "{}") if isinstance(r.payload, str) else r.payload}) or r
+			for r in frappe.get_all("Excom AI Proposal", {"agent": name, "status": ["in", ("Pending", "Held")]},
+			["name", "action", "policy_action", "status", "risk", "subject_doctype", "subject_name", "thread", "preview_html", "creation",
+				"hold_reason", "payload", "to_email", "step"], order_by="creation desc", limit=50)],
 		"activity": frappe.get_all("Excom AI Task", {"agent": name}, ["name", "kind", "status", "outcome", "error",
 			"creation", "ended_on", "ai_cost"], order_by="creation desc", limit=50),
 		"usage": usage,
 		"can_change": user in (doc.owner_user, doc.backup_user) or bool(_roles() & MANAGERS) or _team_manager(doc.team),
+		"can_handover": bool(_roles() & MANAGERS) or _team_manager(doc.team),
 		"modes": MODES,
 	}
 

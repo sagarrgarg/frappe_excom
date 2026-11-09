@@ -19,7 +19,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, now_datetime, time_diff_in_hours
+from frappe.utils import cint, now_datetime
 
 from excom.excom_ai.engine import proposals
 from excom.excom_ai.permissions import is_manager, visible_agents
@@ -56,10 +56,13 @@ def queue() -> dict:
 		["name", "display_name", "channel", "ai_agent", "ai_intent", "last_inbound_at", "last_message_preview", "assigned_to",
 			"omni_identity"],
 		order_by="last_inbound_at asc", limit=100)
+	from excom.excom_ai.monitor import working_hours_waited
+
 	for w in waiting:
-		w.waited_hours = round(time_diff_in_hours(now_datetime(), w.last_inbound_at), 1) if w.last_inbound_at else None
+		# weekday hours, as the live view and the alerts count them
+		w.waited_hours = round(working_hours_waited(w.last_inbound_at), 1) if w.last_inbound_at else None
 		w.late = bool(w.waited_hours and w.waited_hours > REPLY_TARGET_HOURS)
-	fields = ["name", "agent", "action", "status", "risk", "step", "kind", "to_email", "thread", "subject_doctype", "subject_name",
+	fields = ["name", "agent", "action", "policy_action", "status", "risk", "step", "kind", "to_email", "thread", "subject_doctype", "subject_name",
 		"preview_html", "payload", "checks", "checker_verdict", "checker_notes", "creation", "hold_reason", "enrollment", "send_at"]
 	pending = frappe.get_all("Excom AI Proposal", {"agent": ["in", agents], "status": "Pending"}, fields,
 		order_by="risk desc, creation asc", limit=300)
@@ -160,7 +163,7 @@ def thread_proposals(thread: str) -> list:
 	"""An agent's open proposals on one conversation, for the inbox (inline at its foot)."""
 	_thread_for_change(thread)
 	rows = frappe.get_all("Excom AI Proposal", {"thread": thread, "status": ["in", ("Pending", "Held", "Shadow")]},
-		["name", "agent", "action", "status", "preview_html", "payload", "checks", "checker_verdict", "checker_notes", "to_email",
+		["name", "agent", "action", "policy_action", "status", "preview_html", "payload", "checks", "checker_verdict", "checker_notes", "to_email",
 			"creation"], order_by="creation desc", limit=10)
 	out = []
 	for r in rows:

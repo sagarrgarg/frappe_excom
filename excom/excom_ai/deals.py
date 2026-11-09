@@ -140,7 +140,8 @@ def draft_quote(task, agent) -> str:
 	results = checks.check(agent, email, "re", body, kind="Reply", account=thread.account, language=language or None)
 	reply = proposals.propose(task, agent, "reply", policy_action="prices_and_terms", thread=thread.name,
 		channel_account=thread.account, subject=("Excom Thread", thread.name), kind="Reply", to_email=email,
-		payload={"subject": "", "body": body, "language": language, "intent": "negotiate", "quote_proposal": quote},
+		payload={"subject": "", "body": body, "language": language, "intent": "negotiate", "quote_proposal": quote,
+			"price_list": priced.price_list},
 		preview_html="".join(f"<p>{frappe.utils.escape_html(p)}</p>" for p in body.split("\n\n")), checks=results,
 		checks_ok=results["ok"], risk="Medium" if results["ok"] else "High")
 	return _("{0} lines priced from {1}; quotation {2}, reply {3}").format(len(priced.lines), priced.price_list, quote, reply)

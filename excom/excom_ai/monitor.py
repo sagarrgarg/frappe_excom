@@ -83,6 +83,9 @@ def live(agent_name: str) -> dict:
 			"tools_month": flt(frappe.db.sql("SELECT SUM(used_this_month) FROM `tabExcom AI Tool` WHERE enabled = 1")[0][0])},
 		"health": {"status": agent.status, "readiness": agent.readiness_state, "failures_in_a_row": cint(agent.consecutive_failures),
 			"channels": [{"account": r.channel_account, "paused": r.paused, "pause_reason": r.pause_reason,
+				"channel": frappe.db.get_value("Excom Channel Account", r.channel_account, "channel"),
+				"quality_rating": frappe.db.get_value("Excom Channel Account", r.channel_account, "wa_quality_rating")
+					if frappe.get_meta("Excom Channel Account").has_field("wa_quality_rating") else None,
 				"health": json.loads(r.health) if r.get("health") else None} for r in agent.channels or []],
 			"modes": {p.action: {"mode": p.mode, "ceiling": ceiling(p.action, pack, p.condition)} for p in agent.policies or []}},
 		"promotions": promotion_suggestions(agent),
