@@ -10,7 +10,7 @@ import json
 import frappe
 from frappe import _
 
-from excom.excom_ai.builder import brief, knowledge, readiness, resolve
+from excom.excom_ai.builder import brief, geo, knowledge, readiness, resolve
 
 
 def pack_of(agent_type: str) -> str:
@@ -26,7 +26,9 @@ def preview(agent_type: str, keywords: str, rows: list | None = None, excluded: 
 	sections = knowledge.build(ctx)
 	return {"rows": rows, "scope": dict(ctx.scope), "company": ctx.company, "currency": ctx.currency,
 		"sections": [{k: v for k, v in s.items() if k != "data"} | {"data": _visible(s)} for s in sections],
-		"left_out": getattr(ctx.scope, "left_out", []) or []}
+		"left_out": getattr(ctx.scope, "left_out", []) or [],
+		# what each left-out country speaks, so the screen can offer "add Portuguese"
+		"left_out_languages": {c: geo.languages_of(c) for c in getattr(ctx.scope, "left_out", []) or []}}
 
 
 def _visible(section: dict) -> dict:

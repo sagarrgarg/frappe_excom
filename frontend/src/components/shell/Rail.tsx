@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Plus, Sun, Inbox, KanbanSquare, Users, Radio, BarChart3, Building2, ChevronsUpDown,
   Shield, GitMerge, ListChecks, Cog, Settings, Rows3, LogOut, Bug, Sparkles, ArrowLeftRight, Keyboard, ListTodo, Phone,
-  CheckSquare, Megaphone, PanelLeftClose, PanelLeftOpen,
+  CheckSquare, Megaphone, PanelLeftClose, PanelLeftOpen, Bot,
 } from "lucide-react";
 import { hasRole } from "../../lib/ui-flag";
 import { cn } from "../ui/utils";
@@ -57,6 +57,7 @@ const RAIL_EXPLAIN: Record<string, string> = {
   "/broadcasts": "Template sends to subscriber lists, with delivery logs.",
   "/analytics": "Response times, volumes, funnel.",
   "/marketing": "Ads across Meta and Google: spend, results, campaigns, account health and alerts.",
+  "/agents": "AI agents: what each is doing today, what waits for your approval, and the builder for a new one.",
 };
 
 export function Rail() {
@@ -94,6 +95,8 @@ export function Rail() {
     { to: "/broadcasts", label: "Broadcasts", icon: <Radio /> },
     { to: "/analytics", label: "Analytics", icon: <BarChart3 /> },
     ...(hasRole("Excom Marketing") || isManager ? [{ to: "/marketing", label: "Marketing", icon: <Megaphone /> } as RailItem] : []),
+    // The Agents API is for Excom users (excom_ai/builder/api.py _can_see_agents).
+    ...(hasRole("Excom Agent") || isManager ? [{ to: "/agents", label: "Agents", icon: <Bot /> } as RailItem] : []),
   ];
 
   const inboxActive = location.pathname.startsWith("/inbox") || location.pathname.startsWith("/t/");

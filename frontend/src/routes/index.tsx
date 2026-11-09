@@ -23,6 +23,9 @@ const StressRoute = lazy(() => import("./stress").then((m) => ({ default: m.Stre
 const CallsRoute = lazy(() => import("../components/voice/CallsPage").then((m) => ({ default: m.CallsPage })));
 const TasksRoute = lazy(() => import("../components/tasks/TasksPage").then((m) => ({ default: m.TasksPage })));
 const MarketingRoute = lazy(() => import("../components/marketing/MarketingPage").then((m) => ({ default: m.MarketingPage })));
+const AgentsRoute = lazy(() => import("../components/agents/AgentsHome").then((m) => ({ default: m.AgentsHome })));
+const AgentBuilderRoute = lazy(() => import("../components/agents/AgentBuilder").then((m) => ({ default: m.AgentBuilder })));
+const AgentRoute = lazy(() => import("../components/agents/AgentPage").then((m) => ({ default: m.AgentPage })));
 
 const L = (el: React.ReactNode) => <Suspense fallback={<RouteFallback />}>{el}</Suspense>;
 
@@ -33,6 +36,7 @@ const L = (el: React.ReactNode) => <Suspense fallback={<RouteFallback />}>{el}</
  *   /today /pipeline /intake   (P3 — registered, flagged)
  *   /marketing/:tab?  overview|campaigns|accounts|alerts|activity  ?range=&from=&to=&company=&workspace=&brand=&provider=&account=
  *   /broadcasts /analytics /teams /merge /subscribers /rules /settings /contacts /more
+ *   /agents  /agents/new  /agents/:name/:tab?   (Excom AI, HLD-007 §15)
  *   /dev/stress
  */
 export function NextRouter() {
@@ -70,6 +74,9 @@ export function NextRouter() {
           <Route path="/broadcasts" element={L(<BroadcastsRoute />)} />
           <Route path="/analytics" element={L(<AnalyticsRoute />)} />
           <Route path="/marketing/:tab?" element={L(<MarketingRoute />)} />
+          <Route path="/agents" element={L(<AgentsRoute />)} />
+          <Route path="/agents/new" element={L(<AgentBuilderRoute />)} />
+          <Route path="/agents/:name/:tab?" element={L(<AgentRoute />)} />
           <Route path="/teams" element={<Navigate to="/admin/teams" replace />} />
           <Route path="/admin/:section?" element={L(<AdminRoute />)} />
           <Route path="/merge" element={L(<MergeRoute />)} />
