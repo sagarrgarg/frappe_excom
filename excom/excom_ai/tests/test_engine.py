@@ -637,3 +637,11 @@ class TestEngine(FrappeTestCase):
 		with patch.object(proposals, "execute"):
 			p = proposals.propose(t, a, "reply", policy_action="todo_note", subject=("User", OWNER))
 		self.assertEqual(frappe.db.get_value("Excom AI Proposal", p, ["policy_action", "status"]), ("reply", "Pending"))
+
+	def test_the_open_key_survives_a_schema_sync(self):
+		from excom.excom_ai.doctype.excom_ai_task.excom_ai_task import ensure_open_key
+
+		if frappe.db.sql("SHOW INDEX FROM `tabExcom AI Task` WHERE Key_name = 'open_key'"):
+			frappe.db.sql_ddl("ALTER TABLE `tabExcom AI Task` DROP INDEX `open_key`")  # what Frappe's sync does to it
+		ensure_open_key()
+		self.assertTrue(frappe.db.sql("SHOW INDEX FROM `tabExcom AI Task` WHERE Key_name = 'open_key' AND Non_unique = 0"))

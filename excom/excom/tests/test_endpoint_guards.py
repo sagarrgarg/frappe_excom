@@ -42,6 +42,8 @@ ALLOWED = {
 	"excom.excom.channels.whatsapp.api.handle_flow_request": "delegates to api.flow_endpoint which verifies HMAC",
 	"excom.excom.utils.webhook.webhook": "dispatcher: GET verifies hub.verify_token, POST verifies X-Hub-Signature-256 in post()",
 	"excom.excom.api.email.jmap_push": "JMAP push callback from the mail server: 403 unless the account's own secret token matches (constant time); it only enqueues a normal sync",
+	"excom.excom_ai.mail.unsubscribe": "personal unsubscribe link in agents' cold email: 400 unless the HMAC of the identity "
+		"matches (constant time); GET only shows a confirm button, POST records the opt-out; rate limited",
 	"excom.excom.api.intake.google_lead_form": "Google Ads lead form webhook: 403 unless the per-form google_key matches (constant time, adapters.google_leads.find_source) before anything is stored; rate limited",
 }
 

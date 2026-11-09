@@ -46,9 +46,9 @@ SALES_RULES = [
 		"No customers in or near the target markets: the audience comes from the playbook and market data, not lookalikes.", ""),
 	("sales.mailbox", "Mailbox", "Blocker", "",
 		"Connect the agent's mailbox (Stalwart), with SPF, DKIM and DMARC, and warm it up for at least 14 days.",
-		"/excom/admin/channels"),
+		"/excom/admin/accounts"),
 	("sales.whatsapp", "WhatsApp", "Warning", "whatsapp",
-		"An approved first-contact template, and the number's quality rating green.", "/excom/admin/channels"),
+		"An approved first-contact template, and the number's quality rating green.", "/excom/admin/accounts"),
 	("sales.playbook", "Playbook", "Blocker", "",
 		"Approve a playbook with Certifications, Banned claims and Objections filled in.",
 		"/app/excom-ai-playbook"),
@@ -178,14 +178,24 @@ def mailbox(agent, facts):
 	emails = [r for r in agent.channels or [] if frappe.db.get_value("Excom Channel Account", r.channel_account, "channel") == "email"]
 	if not emails:
 		return False, _("No mailbox on the agent.")
+	from excom.excom_ai.mail import warmed_up
+
 	for r in emails:
 		status = frappe.db.get_value("Excom Channel Account", r.channel_account, "status")
 		if status != "Active":
 			return False, _("{0} is {1}.").format(r.channel_account, status)
-		if not r.warmup_start or getdate(r.warmup_start) > getdate(add_days(nowdate(), -14)):
+		if r.paused:
+			return False, _("{0} is paused: {1}").format(r.channel_account, r.pause_reason or "")
+		if not warmed_up(r):
 			return False, _("{0} has not been warming up for 14 days.").format(r.channel_account)
-	return True, _("{0} connected and warmed up (SPF, DKIM and DMARC are checked in Phase 1B).").format(
-		", ".join(r.channel_account for r in emails))
+		health = frappe.parse_json(r.health) if r.get("health") else None
+		if not health:
+			return False, _("{0}: the mailbox health has not been checked yet.").format(r.channel_account)
+		missing = [k.upper() for k in ("spf", "dkim", "dmarc", "mx") if not health.get(k)]
+		if missing or health.get("blocklisted"):
+			return False, _("{0}: {1}").format(r.channel_account, ", ".join(missing) + (" missing" if missing else "")
+				+ (_("; the domain is on a blocklist") if health.get("blocklisted") else ""))
+	return True, _("{0}: connected, warmed up, SPF, DKIM and DMARC pass.").format(", ".join(r.channel_account for r in emails))
 
 
 @check("sales.whatsapp")
@@ -345,6 +355,9 @@ def seed(agent_type: str = "Sales") -> None:
 		return
 	for key, title, severity, when, hint, route in SALES_RULES:
 		if frappe.db.exists("Excom AI Readiness Rule", {"rule_key": key}):
+			# a link that moved is corrected; nothing else a person edited is touched
+			frappe.db.set_value("Excom AI Readiness Rule", {"rule_key": key, "fix_route": "/excom/admin/channels"},
+				"fix_route", route)
 			continue
 		frappe.get_doc({"doctype": "Excom AI Readiness Rule", "rule_key": key, "agent_type": agent_type, "title": title,
 			"severity": severity, "applies_when": when, "fix_hint": hint, "fix_route": route,

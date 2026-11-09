@@ -117,7 +117,8 @@ class TestAIRecords(FrappeTestCase):
 		events = frappe.get_hooks("scheduler_events") or {}
 		jobs = [j for v in events.values() for j in (v if isinstance(v, list) else [x for l in v.values() for x in l])]
 		self.assertEqual(sorted(j for j in jobs if "excom_ai" in j),
-			["excom.excom_ai.builder.service.nightly", "excom.excom_ai.engine.orchestrator.tick"])
+			["excom.excom_ai.builder.service.nightly", "excom.excom_ai.engine.orchestrator.tick",
+				"excom.excom_ai.mail.nightly_health"])
 		with patch.object(frappe, "get_all") as get_all, patch.object(frappe, "enqueue") as enqueue:
 			orchestrator.tick()
 		get_all.assert_not_called()

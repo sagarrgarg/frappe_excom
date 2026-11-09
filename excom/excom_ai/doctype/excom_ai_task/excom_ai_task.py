@@ -27,7 +27,19 @@ def ensure_open_key():
 	cannot do that under MariaDB's snapshot reads). Frappe never writes it: it is not a field.
 	"""
 	if "open_key" in frappe.db.get_table_columns("Excom AI Task"):
+		# Frappe's schema sync drops indexes it did not create: put the unique key back each migrate.
+		if not frappe.db.sql("SHOW INDEX FROM `tabExcom AI Task` WHERE Key_name = 'open_key'"):
+			_close_duplicates()
+			frappe.db.sql_ddl("ALTER TABLE `tabExcom AI Task` ADD UNIQUE INDEX `open_key` (`open_key`)")
 		return
+	_close_duplicates()
+	frappe.db.sql_ddl("""ALTER TABLE `tabExcom AI Task`
+		ADD COLUMN `open_key` VARCHAR(280) AS (IF(status IN ('Queued', 'Running', 'Held') AND IFNULL(dedupe_key, '') != '',
+			CONCAT(agent, ':', dedupe_key), NULL)) PERSISTENT,
+		ADD UNIQUE INDEX `open_key` (`open_key`)""")
+
+
+def _close_duplicates():
 	# Older duplicates (before the key existed): keep the oldest open one of each key.
 	frappe.db.sql("""UPDATE `tabExcom AI Task` t JOIN (
 			SELECT agent, dedupe_key, MIN(creation) first FROM `tabExcom AI Task`
@@ -36,7 +48,3 @@ def ensure_open_key():
 		ON d.agent = t.agent AND d.dedupe_key = t.dedupe_key
 		SET t.status = 'Skipped', t.outcome = 'Duplicate of an open task with the same key'
 		WHERE t.status IN ('Queued', 'Held') AND t.creation > d.first""")
-	frappe.db.sql_ddl("""ALTER TABLE `tabExcom AI Task`
-		ADD COLUMN `open_key` VARCHAR(280) AS (IF(status IN ('Queued', 'Running', 'Held') AND IFNULL(dedupe_key, '') != '',
-			CONCAT(agent, ':', dedupe_key), NULL)) PERSISTENT,
-		ADD UNIQUE INDEX `open_key` (`open_key`)""")

@@ -27,6 +27,11 @@ def seed():
 	_tools()
 	_cap_custom()
 	_builder()
+	# The unique open-task key (a generated column Frappe does not manage): checked every migrate,
+	# since the schema sync drops indexes it did not create.
+	from excom.excom_ai.doctype.excom_ai_task.excom_ai_task import ensure_open_key
+
+	ensure_open_key()
 	schema.apply()
 	_sync_retention()
 

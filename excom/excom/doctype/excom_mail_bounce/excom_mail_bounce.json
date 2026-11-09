@@ -1,0 +1,126 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-10 00:30:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "description": "A delivery report: an email we sent did not arrive. Kept here, never as a person or a conversation.",
+ "field_order": [
+  "account",
+  "provider_message_id",
+  "received_on",
+  "kind",
+  "cb1",
+  "recipient",
+  "status_code",
+  "original_message",
+  "thread",
+  "sb1",
+  "reason",
+  "subject"
+ ],
+ "fields": [
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "label": "Mailbox",
+   "options": "Excom Channel Account",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "provider_message_id",
+   "fieldtype": "Data",
+   "label": "Mailbox Message Id",
+   "unique": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "received_on",
+   "fieldtype": "Datetime",
+   "label": "Received",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "label": "Kind",
+   "options": "Hard\nSoft\nUnknown",
+   "default": "Unknown",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "recipient",
+   "fieldtype": "Data",
+   "label": "Failed Address",
+   "in_list_view": 1,
+   "search_index": 1,
+   "options": "Email"
+  },
+  {
+   "fieldname": "status_code",
+   "fieldtype": "Data",
+   "label": "Status Code"
+  },
+  {
+   "fieldname": "original_message",
+   "fieldtype": "Link",
+   "label": "Original Email",
+   "options": "Excom Message"
+  },
+  {
+   "fieldname": "thread",
+   "fieldtype": "Link",
+   "label": "Conversation",
+   "options": "Excom Thread"
+  },
+  {
+   "fieldname": "sb1",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason"
+  },
+  {
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "label": "Subject"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-10 00:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom",
+ "name": "Excom Mail Bounce",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "delete": 1,
+   "role": "System Manager"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0,
+ "title_field": "recipient"
+}

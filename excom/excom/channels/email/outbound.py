@@ -58,6 +58,7 @@ def send_email_reply(
 	bcc: str = "",
 	in_reply_to_gmail_id: str = "",
 	draft_name: str = "",
+	extra_headers: dict | None = None,
 ) -> str:
 	"""
 	Send an email on a conversation and record it. Returns the Excom Message name.
@@ -76,7 +77,8 @@ def send_email_reply(
 	account = frappe.get_doc("Excom Channel Account", thread.account)
 	provider = P.get(account)
 	headers = reply_headers(thread_name, in_reply_to_gmail_id)
-	mail = {"to": to, "cc": cc, "bcc": bcc, "subject": subject, "body_html": body_html, "from_name": "", **headers}
+	mail = {"to": to, "cc": cc, "bcc": bcc, "subject": subject, "body_html": body_html, "from_name": "", **headers,
+		"headers": extra_headers or {}}
 
 	from excom.excom.channels.email import drafts
 

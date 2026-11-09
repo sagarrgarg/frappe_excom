@@ -52,9 +52,12 @@ class Sink:
 		self.account = account
 
 	def known(self, sid: str) -> bool:
+		from excom.excom.channels.email import bounces
+
 		return bool(
 			frappe.db.exists(MSG, {"provider_message_id": sid})
 			or frappe.db.exists("Excom Email Draft", {"provider_message_id": sid})
+			or bounces.known(sid)
 		)
 
 	def ingest(self, meta: dict):
@@ -136,6 +139,12 @@ def ingest(account, meta: dict) -> str | None:
 	to_raw = headers.get("To", "")
 	subject = headers.get("Subject") or "(No Subject)"
 	from_email, from_name = parse_address(from_raw)
+	from excom.excom.channels.email import bounces
+
+	if bounces.is_bounce(from_email, subject, folder):
+		# A delivery report: kept as a bounce, never as a person or a conversation.
+		bounces.handle(account, meta)
+		return None
 	ours = (account.email_address or "").strip().lower()
 	outbound = folder == SENT or bool(ours and from_email.lower() == ours)
 	direction = "Outbound" if outbound else "Inbound"

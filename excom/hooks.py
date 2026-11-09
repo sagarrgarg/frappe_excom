@@ -356,6 +356,8 @@ scheduler_events = {
 		"*/2 * * * *": ["excom.excom_ai.engine.orchestrator.tick"],
 		# Excom AI: each working agent's knowledge rebuilt and readiness rechecked; owners told of changes.
 		"30 1 * * *": ["excom.excom_ai.builder.service.nightly"],
+		# Excom AI: SPF, DKIM, DMARC, blocklist and bounce rate of the agents' mailboxes.
+		"10 2 * * *": ["excom.excom_ai.mail.nightly_health"],
 		# Ads: today's spend and results. Structure is hourly, the 28-day settle re-pull is daily.
 		"*/30 * * * *": ["excom.excom_ads.tasks.enqueue_intraday", "excom.excom_ads.tasks.wake_snoozed_alerts"],
 		# Ads: scheduled reports that are due (enqueue only, once per period).
@@ -471,6 +473,12 @@ excom_inbound_handlers = [
 	"excom.excom.channels.voice.whatsapp_calling.on_inbound",
 	# Excom AI: a reply stops the sequence, "are you a bot?" goes to a person, the rest is queued
 	"excom.excom_ai.engine.inbound.on_inbound",
+]
+
+# Delivery reports (channels/email/bounces.py): features that act when an email we sent did not arrive.
+excom_bounce_handlers = [
+	# Excom AI: the address is marked invalid, the sequence stops, a mailbox that bounces too much pauses
+	"excom.excom_ai.mail.on_bounce",
 ]
 
 default_log_clearing_doctypes = {

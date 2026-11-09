@@ -216,6 +216,10 @@ def fetch_attachment(account, msg_id: str, attachment_id: str) -> bytes:
 	return gs.get_attachment(account.name, msg_id, attachment_id)
 
 
+# Headers Excom may add to a message (cold mail's unsubscribe headers, RFC 2369 / 8058).
+EXTRA_HEADERS = {"list-unsubscribe", "list-unsubscribe-post", "precedence", "auto-submitted"}
+
+
 def _raw(account, mail: dict) -> str:
 	msg = MIMEMultipart("alternative")
 	msg["From"] = formataddr((mail.get("from_name") or "", account.email_address)) if mail.get("from_name") else account.email_address
@@ -226,6 +230,9 @@ def _raw(account, mail: dict) -> str:
 	if mail.get("in_reply_to"):
 		msg["In-Reply-To"] = mail["in_reply_to"]
 		msg["References"] = mail.get("references") or mail["in_reply_to"]
+	for name, value in (mail.get("headers") or {}).items():
+		if name.lower() in EXTRA_HEADERS and value:
+			msg[name] = value
 	html = mail.get("body_html") or ""
 	msg.attach(MIMEText(frappe.utils.strip_html_tags(html), "plain", "utf-8"))
 	msg.attach(MIMEText(html, "html", "utf-8"))

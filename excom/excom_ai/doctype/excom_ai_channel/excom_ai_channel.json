@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-09 23:30:00.000000",
+ "creation": "2026-11-10 00:30:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -11,7 +11,10 @@
   "warmup_start",
   "signature_mode",
   "paused",
-  "pause_reason"
+  "pause_reason",
+  "dkim_selector",
+  "health",
+  "health_checked_on"
  ],
  "fields": [
   {
@@ -67,11 +70,30 @@
    "fieldtype": "Small Text",
    "label": "Pause Reason",
    "read_only": 1
+  },
+  {
+   "fieldname": "dkim_selector",
+   "fieldtype": "Data",
+   "label": "DKIM Selector",
+   "description": "Blank: the usual selectors are tried (default, stalwart, mail…)."
+  },
+  {
+   "fieldname": "health",
+   "fieldtype": "JSON",
+   "label": "Mailbox Health",
+   "read_only": 1,
+   "description": "SPF, DKIM, DMARC, MX, blocklist and bounces, checked nightly."
+  },
+  {
+   "fieldname": "health_checked_on",
+   "fieldtype": "Datetime",
+   "label": "Health Checked On",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-09 23:30:00.000000",
+ "modified": "2026-11-10 00:30:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Channel",

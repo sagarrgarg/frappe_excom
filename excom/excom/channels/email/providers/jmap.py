@@ -787,6 +787,9 @@ def _from_email(account) -> str:
 	return account.get("email_address") or _session(account).get("username") or ""
 
 
+EXTRA_HEADERS = {"list-unsubscribe", "list-unsubscribe-post", "precedence", "auto-submitted"}
+
+
 def _new_email(account, mail: dict, boxes: _Boxes, with_bcc: bool = True) -> dict:
 	"""An Email/set create object for a draft in Drafts, from Excom's mail dict."""
 	html = mail.get("body_html") or ""
@@ -814,6 +817,9 @@ def _new_email(account, mail: dict, boxes: _Boxes, with_bcc: bool = True) -> dic
 		email["inReplyTo"] = in_reply_to
 	if references:
 		email["references"] = references
+	for name, value in (mail.get("headers") or {}).items():
+		if name.lower() in EXTRA_HEADERS and value:
+			email[f"header:{name}:asText"] = value  # RFC 8621 §4.1.3: a raw header set on create
 	return email
 
 
