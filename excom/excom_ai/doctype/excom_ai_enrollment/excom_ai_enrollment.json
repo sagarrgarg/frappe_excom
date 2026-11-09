@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-09 16:00:00.000000",
+ "creation": "2026-11-09 20:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -20,7 +20,8 @@
   "next_due",
   "started_on",
   "last_sent_on",
-  "review_next_reply"
+  "review_next_reply",
+  "open_key"
  ],
  "fields": [
   {
@@ -122,11 +123,20 @@
    "fieldname": "review_next_reply",
    "fieldtype": "Check",
    "label": "Review Next Reply"
+  },
+  {
+   "fieldname": "open_key",
+   "fieldtype": "Data",
+   "label": "Open Key",
+   "unique": 1,
+   "read_only": 1,
+   "hidden": 1,
+   "description": "agent:lead while the enrollment is active or paused; empty once it ends."
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-09 16:00:00.000000",
+ "modified": "2026-11-09 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Enrollment",

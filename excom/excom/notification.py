@@ -208,7 +208,9 @@ def _get_notification_recipients(thread: dict) -> list[str]:
 				users.add(m.user)
 
 	users.discard("Administrator")
-	return list(users)
+	from excom.excom_ai.service_user import humans
+
+	return humans(users)
 
 
 def _truncate(content: str) -> str:

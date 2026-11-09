@@ -38,5 +38,20 @@ def fields() -> dict:
 	}
 
 
+def chained() -> dict:
+	"""Each field placed after the one before it, so the block stays together where the first lands."""
+	out = {}
+	for doctype, rows in fields().items():
+		prev = None
+		out[doctype] = []
+		for row in rows:
+			row = dict(row)
+			if prev and not row.get("insert_after"):
+				row["insert_after"] = prev
+			prev = row["fieldname"]
+			out[doctype].append(row)
+	return out
+
+
 def apply() -> None:
-	create_custom_fields(fields(), ignore_validate=True, update=True)
+	create_custom_fields(chained(), ignore_validate=True, update=True)

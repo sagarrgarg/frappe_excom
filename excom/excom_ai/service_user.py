@@ -6,7 +6,7 @@ history), and limited by Frappe's permissions like any person's:
 - no password and no welcome mail, so nobody can sign in as it;
 - the Excom Agent role, so Excom's own rules (threads, visibility) apply to it as to a person;
 - one pack role (Excom AI Sales, …) for what its type needs, nothing more;
-- a Member of the agent's team, so it sees what that desk sees.
+- a Member of the agent's team, and of no other, so it sees what that desk sees and nothing more.
 
 The address is on the reserved `.invalid` domain, so no mail can ever be sent to it.
 """
@@ -41,7 +41,11 @@ def ensure(agent) -> str:
 		user.flags.no_welcome_mail = True
 	user.first_name = agent.agent_name
 	user.last_name = "(AI)"
-	user.enabled = 0 if agent.status == "Retired" else 1
+	if agent.status == "Retired":
+		user.enabled = 0
+	elif user.is_new():
+		user.enabled = 1
+	# An existing user keeps its enabled flag: an admin who switched it off by hand stays obeyed.
 	wanted = {"Excom Agent", PACK_ROLES.get(pack, PACK_ROLES["custom"])}
 	stale = [r for r in user.roles if r.role in set(PACK_ROLES.values()) - wanted]
 	for r in stale:
@@ -65,7 +69,21 @@ def is_service_user(user: str | None) -> bool:
 	return bool(user and user.endswith("@" + DOMAIN))
 
 
+def humans(users):
+	"""The people among these users: agents' own users never ring, get notified or fill a report."""
+	return [u for u in users if not is_service_user(u)]
+
+
 def _join_team(user: str, team: str | None) -> None:
+	# Leave every other team first: an agent moved from Export to Domestic stops seeing Export.
+	for other in frappe.get_all(
+		"Excom Team Member", {"parenttype": "Excom Team", "user": user, "parent": ["!=", team or ""]},
+		pluck="parent",
+	):
+		doc = frappe.get_doc("Excom Team", other)
+		doc.members = [m for m in doc.members if m.user != user]
+		doc.flags.ignore_permissions = True
+		doc.save(ignore_permissions=True)
 	if not team or not frappe.db.exists("Excom Team", team):
 		return
 	if frappe.db.exists("Excom Team Member", {"parent": team, "parenttype": "Excom Team", "user": user}):

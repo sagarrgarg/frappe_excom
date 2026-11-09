@@ -15,6 +15,8 @@ class ExcomAIEnrollment(Document):
 				"status": ["in", OPEN], "name": ["!=", self.name or ""]})
 			if other:
 				frappe.throw(_("Lead {0} is already in a sequence of this agent ({1}).").format(self.lead, other))
+		# Also a unique key in the database, so a race between two workers cannot enrol a lead twice.
+		self.open_key = f"{self.agent}:{self.lead}" if self.lead and self.status in OPEN else None
 		if self.status not in OPEN and not self.stop_reason and self.status != "Completed":
 			self.stop_reason = self.status
 		self.started_on = self.started_on or now_datetime()

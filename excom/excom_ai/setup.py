@@ -25,7 +25,9 @@ def seed():
 	_types()
 	_signals()
 	_tools()
+	_cap_custom()
 	schema.apply()
+	_sync_retention()
 
 
 def _roles():
@@ -47,6 +49,24 @@ def _types():
 				row["condition"] = constants.SAFE_REPLY_INTENTS
 			doc.append("default_policies", row)
 		doc.insert(ignore_permissions=True)
+
+
+def _cap_custom():
+	"""Custom agents work in Review at most: lower any row an earlier seed or edit left at Auto."""
+	for t in frappe.get_all("Excom AI Agent Type", {"pack": "custom"}, pluck="name"):
+		frappe.db.sql(
+			"""UPDATE `tabExcom AI Policy` SET mode = 'Review'
+			WHERE parenttype = 'Excom AI Agent Type' AND parent = %s AND mode = 'Auto'""", t)
+		for agent in frappe.get_all("Excom AI Agent", {"agent_type": t}, pluck="name"):
+			frappe.db.sql(
+				"""UPDATE `tabExcom AI Policy` SET mode = 'Review'
+				WHERE parenttype = 'Excom AI Agent' AND parent = %s AND mode = 'Auto'""", agent)
+
+
+def _sync_retention():
+	from excom.excom_ai.doctype.excom_ai_settings.excom_ai_settings import _sync_ai_interface_policy
+
+	_sync_ai_interface_policy(frappe.db.get_single_value("Excom AI Settings", "prompt_retention_days") or 0)
 
 
 def _signals():

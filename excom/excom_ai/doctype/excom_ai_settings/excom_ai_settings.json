@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-09 16:00:00.000000",
+ "creation": "2026-11-09 20:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -25,6 +25,12 @@
   "handover_line",
   "dnc_domains",
   "quiet_dates",
+  "sb_engine",
+  "tasks_per_tick",
+  "max_task_attempts",
+  "cb_engine",
+  "hold_after_failures",
+  "owner_quiet_days",
   "sb_retention",
   "prompt_retention_days"
  ],
@@ -153,6 +159,41 @@
    "description": "No outreach on these dates."
   },
   {
+   "fieldname": "sb_engine",
+   "fieldtype": "Section Break",
+   "label": "Engine"
+  },
+  {
+   "fieldname": "tasks_per_tick",
+   "fieldtype": "Int",
+   "label": "Tasks Started per Tick",
+   "default": "20",
+   "description": "Every 2 minutes at most this many tasks start, taking turns between agents."
+  },
+  {
+   "fieldname": "max_task_attempts",
+   "fieldtype": "Int",
+   "label": "Attempts per Task",
+   "default": "3"
+  },
+  {
+   "fieldname": "cb_engine",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "hold_after_failures",
+   "fieldtype": "Int",
+   "label": "Hold After Failures in a Row",
+   "default": "5"
+  },
+  {
+   "fieldname": "owner_quiet_days",
+   "fieldtype": "Int",
+   "label": "Hold When Owner and Backup Are Quiet For (working days)",
+   "default": "2",
+   "description": "The dead-man switch: no approval, review or acknowledgement by either for this long puts the agent on hold."
+  },
+  {
    "fieldname": "sb_retention",
    "fieldtype": "Section Break",
    "label": "Retention"
@@ -167,7 +208,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-09 16:00:00.000000",
+ "modified": "2026-11-09 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Settings",

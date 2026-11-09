@@ -5,7 +5,9 @@ What the record itself guarantees, whoever edits it:
   agent has a team, both belong to it (or are Excom Admins).
 - No action is ever allowed more than its ceiling (constants.CEILINGS): prices, terms and
   quotations stay with a person; submitting a document is never allowed.
-- Live needs an approved brief and a readiness check without blockers.
+- Live needs an approved brief and a readiness check without blockers; editing the brief clears
+  its approval (and a Live agent goes back to Shadow).
+- On Hold and Retired can always be saved, even after the owner has left.
 - Its channels are active Excom numbers and mailboxes, used by one agent at a time for outreach.
 - It acts as its own user (service_user.py), created with it and disabled when it retires.
 """
@@ -16,10 +18,14 @@ from frappe.model.document import Document
 from frappe.utils import cint
 
 from excom.excom_ai import service_user
-from excom.excom_ai.constants import CEILINGS, MODES
+from excom.excom_ai.constants import check_policy_rows
 
 ACTIVE = ("Shadow", "Live")
+STOPPED = ("On Hold", "Retired")
 EXCOM_ROLES = {"Excom Agent", "Excom Admin", "System Manager"}
+MANAGERS = {"Excom Admin", "System Manager"}
+# Editing any of these after approval clears the approval: a changed brief is checked again.
+BRIEF_FIELDS = ("what_it_is", "mission", "audience", "tone", "tone_examples", "rules_do", "rules_dont")
 
 
 class ExcomAIAgent(Document):
@@ -29,6 +35,7 @@ class ExcomAIAgent(Document):
 
 	def validate(self):
 		self._check_people()
+		self._check_brief()
 		self._check_policies()
 		self._check_channels()
 		self._check_status()
@@ -63,6 +70,9 @@ class ExcomAIAgent(Document):
 			self.append("policies", {k: row.get(k) for k in ("action", "mode", "sample_percent", "daily_cap", "condition")})
 
 	def _check_people(self):
+		if self.status in STOPPED and not self.has_value_changed("owner_user") and not self.has_value_changed("backup_user"):
+			# Stopping or retiring an agent must work even when its owner has left.
+			return
 		self._check_person(self.owner_user, _("Owner"))
 		if self.backup_user:
 			self._check_person(self.backup_user, _("Backup"))
@@ -89,15 +99,19 @@ class ExcomAIAgent(Document):
 			if self.team not in get_user_teams_with_ancestors(user):
 				frappe.throw(_("{0} {1} is not in the team {2}.").format(label, user, self.team))
 
+	def _check_brief(self):
+		if self.is_new() or not self.brief_approved_on:
+			return
+		if not any(self.has_value_changed(f) for f in BRIEF_FIELDS):
+			return
+		self.brief_approved_on = None
+		self.brief_approved_by = None
+		if self.status == "Live":
+			self.status = "Shadow"
+			frappe.msgprint(_("The brief changed, so it needs approving again. The agent is back in Shadow until then."))
+
 	def _check_policies(self):
-		seen = set()
-		for row in self.policies:
-			if row.action in seen:
-				frappe.throw(_("Row {0}: {1} has two policies.").format(row.idx, row.action))
-			seen.add(row.action)
-			ceiling = CEILINGS.get(row.action, "Review")
-			if MODES.index(row.mode) > MODES.index(ceiling):
-				frappe.throw(_("Row {0}: {1} can be set to {2} at most.").format(row.idx, row.action, ceiling))
+		check_policy_rows(self.policies, frappe.db.get_value("Excom AI Agent Type", self.agent_type, "pack"))
 
 	def _check_channels(self):
 		seen = set()
@@ -115,7 +129,7 @@ class ExcomAIAgent(Document):
 			if row.purpose != "Replies" and self.status in ACTIVE:
 				other = frappe.db.sql(
 					"""SELECT a.name FROM `tabExcom AI Channel` c JOIN `tabExcom AI Agent` a ON a.name = c.parent
-					WHERE c.channel_account = %s AND c.purpose != 'Replies' AND a.status IN ('Shadow', 'Live')
+					WHERE c.channel_account = %s AND IFNULL(c.purpose, '') != 'Replies' AND a.status IN ('Shadow', 'Live')
 					AND a.name != %s LIMIT 1""",
 					(row.channel_account, self.name or ""),
 				)
@@ -140,10 +154,19 @@ def approve_brief(name: str):
 	doc = frappe.get_doc("Excom AI Agent", name)
 	frappe.has_permission("Excom AI Agent", "read", doc, throw=True)
 	user = frappe.session.user
-	if user not in (doc.owner_user, doc.backup_user) and not set(frappe.get_roles(user)) & {"Excom Admin", "System Manager"}:
-		frappe.throw(_("Only the agent's owner, backup or an Excom Admin can approve its brief."), frappe.PermissionError)
+	if user not in (doc.owner_user, doc.backup_user) and not set(frappe.get_roles(user)) & MANAGERS \
+			and not _team_manager(doc.team, user):
+		frappe.throw(_("Only the agent's owner, backup, its team's manager or an Excom Admin can approve its brief."),
+			frappe.PermissionError)
+	if doc.status == "Retired":
+		frappe.throw(_("This agent is retired."))
 	doc.brief_version = cint(doc.brief_version) + 1
 	doc.brief_approved_by = user
 	doc.brief_approved_on = frappe.utils.now_datetime()
 	doc.save(ignore_permissions=True)  # who may approve was checked above; owners only read agents otherwise
 	return {"version": doc.brief_version}
+
+
+def _team_manager(team: str | None, user: str) -> bool:
+	return bool(team) and bool(frappe.db.exists(
+		"Excom Team Member", {"parenttype": "Excom Team", "parent": team, "user": user, "role": "Manager"}))

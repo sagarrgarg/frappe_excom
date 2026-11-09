@@ -35,6 +35,54 @@ CEILINGS = {
 }
 
 SAFE_REPLY_INTENTS = "ooo, thanks, scheduling, public catalogue"
+SAFE_INTENTS = frozenset(i.strip() for i in SAFE_REPLY_INTENTS.split(","))
+
+
+def intents(condition: str | None) -> set[str]:
+	return {i.strip().lower() for i in (condition or "").split(",") if i.strip()}
+
+
+def ceiling(action: str, pack: str | None = None, condition: str | None = None) -> str:
+	"""The most an action may be set to for this pack and condition.
+
+	- the action's own ceiling (CEILINGS; unknown actions: Review);
+	- a Custom agent works in Review at most, whatever the action;
+	- a reply goes out on its own only for the safe intents: Auto needs a condition naming only
+	  those (ooo, thanks, scheduling, public catalogue); otherwise Review.
+	"""
+	top = CEILINGS.get(action, "Review")
+	if pack == "custom" and MODES.index(top) > MODES.index("Review"):
+		top = "Review"
+	if action == "reply" and top == "Auto":
+		wanted = intents(condition)
+		if not wanted or not wanted <= SAFE_INTENTS:
+			top = "Review"
+	return top
+
+
+def check_policy_rows(rows, pack: str | None) -> None:
+	"""Refuse a policy table that names an action twice or goes past a ceiling."""
+	import frappe
+	from frappe import _
+
+	seen = set()
+	for row in rows or []:
+		if row.action in seen:
+			frappe.throw(_("Row {0}: {1} has two policies.").format(row.idx, row.action))
+		seen.add(row.action)
+		top = ceiling(row.action, pack, row.condition)
+		if MODES.index(row.mode) > MODES.index(top):
+			hint = ""
+			if row.action == "reply" and pack != "custom":
+				hint = " " + _("Replies go out on their own only when the condition names just: {0}.").format(
+					SAFE_REPLY_INTENTS
+				)
+			frappe.throw(_("Row {0}: {1} can be set to {2} at most.").format(row.idx, row.action, top) + hint)
+
+
+def capped(mode: str, action: str, pack: str | None = None, condition: str | None = None) -> str:
+	top = ceiling(action, pack, condition)
+	return mode if MODES.index(mode) <= MODES.index(top) else top
 
 DEFAULT_POLICIES = {
 	"sales": [
@@ -74,7 +122,7 @@ DEFAULT_POLICIES = {
 		("submit_document", "Off"),
 	],
 	"custom": [
-		("write_draft", "Auto"),
+		("write_draft", "Review"),
 		("reply", "Review"),
 		("todo_note", "Review"),
 		("submit_document", "Off"),

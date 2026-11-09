@@ -155,6 +155,11 @@ permission_query_conditions = {
 	"Ads Metric Import": "excom.excom_ads.permissions.get_permission_query_conditions",
 	"Ads Report Template": "excom.excom_ads.permissions.get_permission_query_conditions",
 	"Ads Report Delivery": "excom.excom_ads.permissions.get_permission_query_conditions",
+	# Excom AI: an agent's records are seen by its people and its team (excom_ai/permissions.py).
+	"Excom AI Agent": "excom.excom_ai.permissions.agent_query",
+	"Excom AI Proposal": "excom.excom_ai.permissions.proposal_query",
+	"Excom AI Sequence": "excom.excom_ai.permissions.sequence_query",
+	"Excom AI Feedback": "excom.excom_ai.permissions.feedback_query",
 }
 
 has_permission = {
@@ -187,6 +192,10 @@ has_permission = {
 	"Ads Metric Import": "excom.excom_ads.permissions.has_permission",
 	"Ads Report Template": "excom.excom_ads.permissions.has_permission",
 	"Ads Report Delivery": "excom.excom_ads.permissions.has_permission",
+	"Excom AI Agent": "excom.excom_ai.permissions.agent_has_permission",
+	"Excom AI Proposal": "excom.excom_ai.permissions.by_agent_has_permission",
+	"Excom AI Sequence": "excom.excom_ai.permissions.by_agent_has_permission",
+	"Excom AI Feedback": "excom.excom_ai.permissions.by_agent_has_permission",
 }
 
 # DocType Class
@@ -343,6 +352,8 @@ scheduler_events = {
 		# Duration and cost land at the provider a minute or two after a call ends. Without this
 		# sweep, completed calls sit at duration = 0 forever.
 		"*/3 * * * *": ["excom.excom.channels.voice.reconcile.reconcile_pending_calls"],
+		# Excom AI agents (HLD-007 §10.1): reads one setting and returns while the master switch is off.
+		"*/2 * * * *": ["excom.excom_ai.engine.orchestrator.tick"],
 		# Ads: today's spend and results. Structure is hourly, the 28-day settle re-pull is daily.
 		"*/30 * * * *": ["excom.excom_ads.tasks.enqueue_intraday", "excom.excom_ads.tasks.wake_snoozed_alerts"],
 		# Ads: scheduled reports that are due (enqueue only, once per period).

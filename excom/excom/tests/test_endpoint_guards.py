@@ -22,6 +22,8 @@ GUARDS = {
 	"_verified_account",
 	# Excom Ads: scope (company / workspace / brand / account) and per-user rights.
 	"require_access", "require", "_visible", "_require_connection", "_require_import",
+	# Excom AI: read permission on the agent, then owner / backup / Excom Admin only.
+	"_agent_for",
 }
 # Public by design. Each line says why it is safe to leave open.
 ALLOWED = {

@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-09 16:00:00.000000",
+ "creation": "2026-11-09 20:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -12,6 +12,7 @@
   "cb1",
   "status",
   "hold_reason",
+  "resume_status",
   "service_user",
   "avatar",
   "sb_people",
@@ -22,6 +23,8 @@
   "escalation_user",
   "reviewers",
   "owner_last_seen",
+  "acting_owner",
+  "consecutive_failures",
   "sb_keywords",
   "keywords",
   "keyword_rows",
@@ -111,6 +114,14 @@
    "depends_on": "eval:doc.status=='On Hold'"
   },
   {
+   "fieldname": "resume_status",
+   "fieldtype": "Select",
+   "label": "Resumes As",
+   "options": "\nShadow\nLive",
+   "read_only": 1,
+   "depends_on": "eval:doc.status=='On Hold'"
+  },
+  {
    "fieldname": "service_user",
    "fieldtype": "Link",
    "label": "Acts As",
@@ -170,6 +181,21 @@
    "fieldname": "owner_last_seen",
    "fieldtype": "Datetime",
    "label": "Owner Last Active",
+   "read_only": 1,
+   "description": "Last approval, review or acknowledgement by the owner or backup (the dead-man switch)."
+  },
+  {
+   "fieldname": "acting_owner",
+   "fieldtype": "Link",
+   "label": "In Charge Now",
+   "options": "User",
+   "read_only": 1,
+   "description": "The owner, or the backup while the owner is away or has left."
+  },
+  {
+   "fieldname": "consecutive_failures",
+   "fieldtype": "Int",
+   "label": "Failures in a Row",
    "read_only": 1
   },
   {
@@ -382,7 +408,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-09 16:00:00.000000",
+ "modified": "2026-11-09 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Agent",

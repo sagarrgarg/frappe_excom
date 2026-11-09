@@ -32,14 +32,23 @@ def is_enabled() -> bool:
 
 
 def _sync_ai_interface_policy(days: int):
-	"""Keep excom's prompt retention in ai_interface's per-app policies, without touching the rest."""
+	"""Keep excom's prompt retention in ai_interface's per-app policies, without touching the rest.
+
+	0 means "follow AI Settings' own retention" there, as here.
+	"""
+	from frappe.utils import cint
+
+	days = cint(days)
 	if "ai_interface" not in frappe.get_installed_apps() or not frappe.db.exists("DocType", "AI App Policy"):
 		return
 	existing = frappe.db.get_value("AI App Policy", {"parent": "AI Settings", "calling_app": "excom"}, "name")
 	if existing:
-		frappe.db.set_value("AI App Policy", existing, "payload_retention_days", days)
+		if cint(frappe.db.get_value("AI App Policy", existing, "payload_retention_days")) != days:
+			frappe.db.set_value("AI App Policy", existing, "payload_retention_days", days)
+			frappe.clear_document_cache("AI Settings", "AI Settings")
 		return
 	idx = (frappe.db.sql("SELECT MAX(idx) FROM `tabAI App Policy` WHERE parent = 'AI Settings'")[0][0] or 0) + 1
 	frappe.get_doc({"doctype": "AI App Policy", "parent": "AI Settings", "parenttype": "AI Settings",
 		"parentfield": "app_policies", "idx": idx, "calling_app": "excom",
 		"payload_retention_days": days}).db_insert()
+	frappe.clear_document_cache("AI Settings", "AI Settings")

@@ -222,7 +222,9 @@ def line_agents(account: str) -> list[dict]:
 		if user and user not in first_team:
 			first_team[user] = parent
 
-	users = list(first_team)
+	from excom.excom_ai.service_user import humans
+
+	users = humans(list(first_team))  # an AI agent's own user is never rung
 	if not users:
 		frappe.cache.set_value(key, [], expires_in_sec=CACHE_TTL)
 		return []

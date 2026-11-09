@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-09 16:00:00.000000",
+ "creation": "2026-11-09 20:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -43,7 +43,10 @@
   "executed_name",
   "error",
   "hold_reason",
-  "expires_on"
+  "expires_on",
+  "sampled",
+  "sample_reviewed_by",
+  "step_key"
  ],
  "fields": [
   {
@@ -68,7 +71,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Pending\nApproved\nEdited\nRejected\nExpired\nSending\nSent\nSent by hand\nDone\nFailed\nHeld\nCancelled",
+   "options": "Pending\nShadow\nApproved\nEdited\nRejected\nExpired\nExecuting\nSending\nSent\nSent by hand\nDone\nFailed\nHeld\nCancelled",
    "default": "Pending",
    "in_list_view": 1,
    "in_standard_filter": 1
@@ -282,11 +285,34 @@
    "fieldname": "expires_on",
    "fieldtype": "Datetime",
    "label": "Expires On"
+  },
+  {
+   "fieldname": "sampled",
+   "fieldtype": "Check",
+   "label": "Drawn for Review",
+   "read_only": 1,
+   "description": "Done under Auto, and drawn for a person to check afterwards."
+  },
+  {
+   "fieldname": "sample_reviewed_by",
+   "fieldtype": "Link",
+   "label": "Sample Reviewed By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "step_key",
+   "fieldtype": "Data",
+   "label": "Step Key",
+   "unique": 1,
+   "read_only": 1,
+   "hidden": 1,
+   "description": "enrollment:step while this proposal holds its step; empty once rejected, cancelled, failed or expired."
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-09 16:00:00.000000",
+ "modified": "2026-11-09 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Proposal",

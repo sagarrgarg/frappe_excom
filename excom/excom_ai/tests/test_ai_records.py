@@ -1,7 +1,7 @@
 """Excom AI records (HLD-007 §5, Appendix C): what each record guarantees on its own.
 
-Phase 0.2 builds records only. The master switch starts off and nothing is scheduled, so the
-module costs nothing until it is switched on.
+The master switch starts off; the engine's tick then reads one setting and returns, so the module
+costs nothing until it is switched on.
 """
 
 import frappe
@@ -15,7 +15,9 @@ from excom.excom_ai.doctype.excom_ai_company.excom_ai_company import normalise_d
 OWNER = "qa.ai.owner@example.com"
 BACKUP = "qa.ai.backup@example.com"
 OUTSIDER = "qa.ai.outsider@example.com"
+LEAD_MANAGER = "qa.ai.manager@example.com"
 TEAM = "QA AI Desk"
+TEAM_2 = "QA AI Other Desk"
 BOX = "QA AI Box"
 
 
@@ -43,11 +45,12 @@ def _cleanup():
 	frappe.db.delete("Excom AI Recipe", {"recipe_key": ["like", "qa_%"]})
 	frappe.db.delete("Excom AI Glossary", {"term": ["like", "qa %"]})
 	frappe.db.delete("Excom AI Readiness Rule", {"rule_key": ["like", "qa_%"]})
-	if frappe.db.exists("Excom Team", TEAM):
-		frappe.delete_doc("Excom Team", TEAM, force=True, ignore_permissions=True)
+	for team in (TEAM, TEAM_2):
+		if frappe.db.exists("Excom Team", team):
+			frappe.delete_doc("Excom Team", team, force=True, ignore_permissions=True)
 	if frappe.db.exists("Excom Channel Account", BOX):
 		frappe.delete_doc("Excom Channel Account", BOX, force=True, ignore_permissions=True)
-	purge_users(OWNER, BACKUP, OUTSIDER)
+	purge_users(OWNER, BACKUP, OUTSIDER, LEAD_MANAGER)
 	frappe.db.commit()
 
 
@@ -69,14 +72,17 @@ class TestAIRecords(FrappeTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		_cleanup()
-		for email in (OWNER, BACKUP, OUTSIDER):
+		for email in (OWNER, BACKUP, OUTSIDER, LEAD_MANAGER):
 			u = frappe.get_doc({"doctype": "User", "email": email, "first_name": email.split("@")[0], "send_welcome_email": 0})
 			u.insert(ignore_permissions=True)
 			u.add_roles("Excom Agent")
 		team = frappe.get_doc({"doctype": "Excom Team", "team_name": TEAM})
 		team.append("members", {"user": OWNER, "role": "Manager"})
 		team.append("members", {"user": BACKUP, "role": "Member"})
+		team.append("members", {"user": LEAD_MANAGER, "role": "Manager"})
 		team.insert(ignore_permissions=True)
+		frappe.get_doc({"doctype": "Excom Team", "team_name": TEAM_2,
+			"members": [{"user": OUTSIDER, "role": "Member"}]}).insert(ignore_permissions=True)
 		frappe.get_doc({"doctype": "Excom Channel Account", "account_name": BOX, "channel": "email", "status": "Active",
 			"email_address": "qa.ai.box@example.com"}).insert(ignore_permissions=True)
 		frappe.db.commit()
@@ -96,13 +102,20 @@ class TestAIRecords(FrappeTestCase):
 
 	# ---- off by default, nothing scheduled
 
-	def test_off_by_default_and_nothing_scheduled(self):
+	def test_off_by_default_and_the_tick_does_nothing(self):
+		from unittest.mock import patch
+
 		from excom.excom_ai.doctype.excom_ai_settings.excom_ai_settings import is_enabled
+		from excom.excom_ai.engine import orchestrator
 
 		self.assertFalse(is_enabled())
 		events = frappe.get_hooks("scheduler_events") or {}
 		jobs = [j for v in events.values() for j in (v if isinstance(v, list) else [x for l in v.values() for x in l])]
-		self.assertFalse([j for j in jobs if "excom_ai" in j], "Phase 0.2 schedules nothing")
+		self.assertEqual([j for j in jobs if "excom_ai" in j], ["excom.excom_ai.engine.orchestrator.tick"])
+		with patch.object(frappe, "get_all") as get_all, patch.object(frappe, "enqueue") as enqueue:
+			orchestrator.tick()
+		get_all.assert_not_called()
+		enqueue.assert_not_called()
 
 	def test_seeds(self):
 		sales = frappe.get_doc("Excom AI Agent Type", "Sales")
@@ -146,6 +159,24 @@ class TestAIRecords(FrappeTestCase):
 			self.agent(agent_name="QA Bot", backup_user=a.service_user)
 		self.agent(agent_name="QA Good", backup_user=BACKUP, status="Shadow")
 
+	def test_custom_agents_review_and_replies_go_alone_only_for_safe_intents(self):
+		custom = frappe.get_doc("Excom AI Agent Type", "Custom")
+		self.assertNotIn("Auto", {r.mode for r in custom.default_policies}, "Custom works in Review only")
+		c = self.agent(agent_name="QA Custom", agent_type="Custom")
+		next(r for r in c.policies if r.action == "todo_note").mode = "Auto"
+		with self.assertRaises(frappe.ValidationError):
+			c.save(ignore_permissions=True)
+		a = self.agent(agent_name="QA Replies")
+		row = next(r for r in a.policies if r.action == "reply")
+		row.mode, row.condition = "Auto", "ooo, thanks"
+		a.save(ignore_permissions=True)
+		for condition in ("", "ooo, price question"):
+			a.reload()
+			row = next(r for r in a.policies if r.action == "reply")
+			row.mode, row.condition = "Auto", condition
+			with self.assertRaises(frappe.ValidationError, msg=condition):
+				a.save(ignore_permissions=True)
+
 	def test_policy_ceilings(self):
 		a = self.agent(agent_name="QA Ceilings")
 		for action, mode in (("quotation", "Auto"), ("submit_document", "Review"), ("prices_and_terms", "Auto")):
@@ -178,6 +209,69 @@ class TestAIRecords(FrappeTestCase):
 		a.reload()
 		a.status = "Live"
 		a.save(ignore_permissions=True)
+
+	def test_an_edited_brief_needs_approving_again(self):
+		a = self.agent(agent_name="QA Brief", backup_user=BACKUP, status="Shadow", mission="Sell water guns")
+		frappe.set_user(LEAD_MANAGER)
+		approve_brief(a.name)  # the team's manager may approve
+		frappe.set_user("Administrator")
+		a.reload()
+		a.db_set("readiness_state", "Ready")
+		a.reload()
+		a.status = "Live"
+		a.save(ignore_permissions=True)
+		a.mission = "Sell water guns and gulal"
+		a.save(ignore_permissions=True)
+		self.assertEqual((a.status, a.brief_approved_on), ("Shadow", None))
+
+	def test_stopping_works_after_the_owner_left(self):
+		a = self.agent(agent_name="QA Left", backup_user=BACKUP, status="Shadow")
+		frappe.db.set_value("User", OWNER, "enabled", 0)
+		try:
+			a.status = "On Hold"
+			a.save(ignore_permissions=True)
+			a.status = "Retired"
+			a.save(ignore_permissions=True)
+			with self.assertRaises(frappe.ValidationError):
+				approve_brief(a.name)
+		finally:
+			frappe.db.set_value("User", OWNER, "enabled", 1)
+
+	def test_team_scoping_and_moves(self):
+		from excom.excom_ai import permissions
+
+		a = self.agent(agent_name="QA Scoped", backup_user=BACKUP)
+		frappe.get_doc({"doctype": "Excom AI Proposal", "agent": a.name, "action": "note"}).insert(ignore_permissions=True)
+		frappe.set_user(OUTSIDER)
+		self.assertFalse(frappe.has_permission("Excom AI Agent", "read", a))
+		self.assertFalse(frappe.get_list("Excom AI Proposal", {"agent": a.name}))
+		self.assertFalse(frappe.get_list("Excom AI Agent", {"name": a.name}))
+		frappe.set_user(LEAD_MANAGER)  # in the team, not named on the agent
+		self.assertTrue(frappe.has_permission("Excom AI Agent", "read", a))
+		self.assertTrue(frappe.get_list("Excom AI Proposal", {"agent": a.name}))
+		frappe.set_user("Administrator")
+		self.assertIsNone(permissions.visible_agents())
+
+		a.reload()
+		a.team, a.backup_user = TEAM_2, None
+		a.owner_user = "Administrator"
+		a.save(ignore_permissions=True)
+		self.assertFalse(frappe.db.exists("Excom Team Member", {"parent": TEAM, "user": a.service_user}), "left its old desk")
+		self.assertTrue(frappe.db.exists("Excom Team Member", {"parent": TEAM_2, "user": a.service_user}))
+
+	def test_a_service_user_disabled_by_hand_stays_disabled(self):
+		a = self.agent(agent_name="QA Disabled")
+		frappe.db.set_value("User", a.service_user, "enabled", 0)
+		a.reload()
+		a.agent_name = "QA Disabled Two"
+		a.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("User", a.service_user, "enabled"), 0)
+
+	def test_ai_fields_sit_together_on_native_forms(self):
+		fields = [f.fieldname for f in frappe.get_meta("Lead").fields]
+		i = fields.index("ai_section")
+		self.assertEqual(fields[i:i + 4], ["ai_section", "ai_agent", "ai_person", "ai_email_status"])
+		self.assertGreater(i, 0)
 
 	def test_one_agent_does_outreach_per_mailbox(self):
 		self.agent(agent_name="QA Box One", backup_user=BACKUP, status="Shadow", channels=[{"channel_account": BOX}])
@@ -231,7 +325,15 @@ class TestAIRecords(FrappeTestCase):
 		first.reject_reason = "Wrong tone"
 		first.save()
 		self.assertEqual(first.decided_by, "Administrator")
-		frappe.get_doc(base).insert()  # a rejected step can be proposed again
+		second = frappe.get_doc(base).insert()  # a rejected step can be proposed again
+		self.assertEqual(second.step_key, f"{enr.name}:1")
+		second.db_set("status", "Expired")
+		second.reload()
+		second.save()
+		self.assertIsNone(second.step_key)
+		frappe.get_doc(base).insert()  # an expired one frees the step too
+		with self.assertRaises(frappe.UniqueValidationError, msg="the database refuses a second holder"):
+			frappe.get_doc({**base, "step": 9, "step_key": f"{enr.name}:1"}).db_insert()
 
 	def test_one_open_enrollment_per_lead_and_agent(self):
 		a = self.agent(agent_name="QA Enroll")
@@ -275,21 +377,32 @@ class TestAIRecords(FrappeTestCase):
 		if not frappe.get_meta("Customer").has_field("gst_category"):
 			ok["query_spec"] = '{"doctype": "Customer", "fields": ["name", "customer_group"]}'
 		frappe.get_doc(ok).insert()
+		frappe.get_doc({**ok, "recipe_key": "qa_counts", "query_spec": '{"doctype": "Sales Order", '
+			'"fields": ["customer", "count(name) as orders", "sum(grand_total) as total"], "group_by": "customer", '
+			'"order_by": "customer asc", "filters": [["docstatus", "=", 1]], "limit": 50}'}).insert()
 		for key, spec in (
 			("qa_user", '{"doctype": "User", "fields": ["name"]}'),
 			("qa_badkey", '{"doctype": "Customer", "sql": "select 1"}'),
 			("qa_nofield", '{"doctype": "Customer", "fields": ["no_such_field"]}'),
 			("qa_secret", '{"doctype": "Excom AI Tool", "fields": ["api_key"]}'),
 			("qa_notjson", "{not json"),
+			("qa_mailqueue", '{"doctype": "Email Queue", "fields": ["message"]}'),
+			("qa_contact", '{"doctype": "Contact", "fields": ["email_id"]}'),
+			("qa_dictfield", '{"doctype": "Customer", "fields": [{"x": "y"}]}'),
+			("qa_badfilter", '{"doctype": "Customer", "filters": [["no_such", "=", 1]]}'),
+			("qa_otherdt", '{"doctype": "Customer", "filters": [["User", "name", "=", "x"]]}'),
+			("qa_order", '{"doctype": "Customer", "order_by": "(select 1)"}'),
+			("qa_limit", '{"doctype": "Customer", "limit": 100000}'),
 		):
-			with self.assertRaises(frappe.ValidationError, msg=key):
+			with self.assertRaises((frappe.ValidationError, frappe.PermissionError), msg=key):
 				frappe.get_doc({**ok, "recipe_key": key, "query_spec": spec}).insert()
 
 	def test_waiving_a_blocker(self):
 		a = self.agent(agent_name="QA Gaps")
 		frappe.get_doc({"doctype": "Excom AI Readiness Rule", "rule_key": "qa_price_list", "agent_type": "Sales",
 			"title": "QA price list", "severity": "Blocker"}).insert()
-		gap = frappe.get_doc({"doctype": "Excom AI Readiness Gap", "agent": a.name, "rule": "qa_price_list"}).insert()
+		gap = frappe.get_doc({"doctype": "Excom AI Readiness Gap", "agent": a.name, "rule": "qa_price_list",
+			"severity": "Info"}).insert()
 		self.assertEqual(gap.severity, "Blocker")
 		gap.status = "Waived"
 		with self.assertRaises(frappe.ValidationError):

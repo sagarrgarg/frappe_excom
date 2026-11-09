@@ -64,7 +64,9 @@ def _people() -> list[str]:
 	enabled = frappe.get_all(
 		"User", filters={"name": ["in", rows], "enabled": 1}, pluck="name"
 	)
-	return sorted(enabled)
+	from excom.excom_ai.service_user import humans
+
+	return sorted(humans(enabled))
 
 
 def _resolve(user: str) -> list[str]:
