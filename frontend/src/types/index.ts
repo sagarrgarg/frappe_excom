@@ -33,6 +33,11 @@ export interface ExcomThread {
   kinds?: ContactKind[];
   closure_outcome?: string;
   closure_reason?: string;
+  /** Excom AI (HLD-007): the agent handling this conversation, and whether it waits for a person. */
+  ai_agent?: string;
+  ai_mode?: string;
+  ai_intent?: string;
+  ai_stage?: string;
   closed_by?: string;
   closed_at?: string;
 }

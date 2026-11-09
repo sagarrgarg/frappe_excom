@@ -206,6 +206,10 @@ def send_visitor_message(
 
     frappe.db.commit()
 
+    from excom.excom.services.inbound_dispatch import message_event
+
+    message_event(msg.name, kind="text")
+
     return {"success": True, "message_id": msg.name}
 
 

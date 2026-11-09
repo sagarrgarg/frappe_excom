@@ -224,6 +224,9 @@ def _auto_claim_thread(thread, user: str) -> bool:
 
     Returns True if the thread was claimed.
     """
+    # An AI agent claims for its owner (HLD-007 §11.6), never for itself.
+    from excom.excom_ai.service_user import claim_for
+    user = claim_for(user, thread.name)
     if thread.assigned_to and frappe.db.get_value("User", thread.assigned_to, "enabled"):
         return False  # an assignee whose user is disabled counts as unassigned
 
@@ -260,6 +263,11 @@ def send_outbound_message(
     thread = frappe.get_doc("Excom Thread", thread_name)
     identity = frappe.get_doc("Omni Identity", thread.omni_identity)
 
+    # An AI agent's own user: consent, its own channels and the reply window, checked here so no
+    # route can skip them (excom_ai/send_rules.py). People's sends are untouched.
+    from excom.excom_ai import send_rules
+    send_rules.check(thread)
+
     account_doctype = thread.account_doctype
     account_name = thread.account
 
@@ -284,7 +292,8 @@ def send_outbound_message(
         if media_file:
             result = meta_dm.send_media(account, to_id, message_type, media_file, content_text, thread=thread)
         else:
-            result = meta_dm.send_text(account, to_id, content_text, thread=thread)
+            result = meta_dm.send_text(account, to_id, content_text, thread=thread,
+                                       allow_tag=send_rules.allow_meta_tag())
         provider_message_id = result.get("provider_message_id", "")
     elif thread.channel == "whatsapp":
         # A username-only contact has no number but can be reached by business-scoped user id.

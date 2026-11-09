@@ -462,11 +462,13 @@ after_request = ["excom.excom.middleware.add_webchat_cors_headers"]
 # starting retention, editable there (broadcast history is kept two years).
 # Messages, calls, threads and data
 # deletion requests are never on this list.
-# Features that act on inbound WhatsApp messages (button taps, Flow answers, cart orders, …).
+# Features that act on inbound messages on any channel (button taps, Flow answers, cart orders, replies …).
 # Each gets one event dict — see excom.excom.services.inbound_dispatch. Other apps add their own.
 excom_inbound_handlers = [
 	# WhatsApp calling: call_permission_reply updates the cached call permission
 	"excom.excom.channels.voice.whatsapp_calling.on_inbound",
+	# Excom AI: a reply stops the sequence, "are you a bot?" goes to a person, the rest is queued
+	"excom.excom_ai.engine.inbound.on_inbound",
 ]
 
 default_log_clearing_doctypes = {

@@ -69,6 +69,19 @@ def is_service_user(user: str | None) -> bool:
 	return bool(user and user.endswith("@" + DOMAIN))
 
 
+def claim_for(user: str, thread: str | None = None) -> str:
+	"""Whom a send by `user` claims a chat and lead for: the user, or for an agent's own user the
+	person in charge of that agent (HLD-007 §11.6). The thread then names the agent."""
+	if not is_service_user(user):
+		return user
+	agent = frappe.db.get_value("Excom AI Agent", {"service_user": user}, ["name", "acting_owner", "owner_user"], as_dict=True)
+	if not agent:
+		return user
+	if thread:
+		frappe.db.set_value("Excom Thread", thread, "ai_agent", agent.name, update_modified=False)
+	return agent.acting_owner or agent.owner_user
+
+
 def humans(users):
 	"""The people among these users: agents' own users never ring, get notified or fill a report."""
 	return [u for u in users if not is_service_user(u)]

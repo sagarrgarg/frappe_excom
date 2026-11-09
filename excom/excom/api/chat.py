@@ -326,7 +326,8 @@ def get_threads(
                u.full_name AS assigned_to_name, u.user_image AS assigned_to_avatar,
                COALESCE(u.enabled, 0) AS assigned_to_enabled,
                t.closure_outcome, t.closure_reason, t.closed_by, t.closed_at,
-               et.team_name AS assigned_team_name
+               et.team_name AS assigned_team_name,
+               t.ai_agent, t.ai_mode, t.ai_intent, t.ai_stage
                {broadcast_badge_col}
         FROM `tabExcom Thread` t
         LEFT JOIN `tabOmni Identity` oi ON oi.name = t.omni_identity
@@ -383,6 +384,10 @@ def _claim_on_talk(thread_id: str, user: str | None = None) -> None:
     user = user or frappe.session.user
     if not user or user == "Guest":
         return
+    # An AI agent claims for its owner (HLD-007 §11.6): the chat and the lead go to the person in
+    # charge and their desk, and the thread remembers which agent handles it.
+    from excom.excom_ai.service_user import claim_for
+    user = claim_for(user, thread_id)
     row = frappe.db.get_value("Excom Thread", thread_id, ["assigned_to", "assigned_team", "omni_identity"], as_dict=True)
     if not row:
         return
@@ -1879,6 +1884,8 @@ def send_template_to_thread(
     _check_thread_access(thread_id)
     extras_dict = parse_extras(extras)
     _check_send_access(thread_id)
+    from excom.excom_ai import send_rules
+    send_rules.check(thread_id, purpose="outreach", window=False)  # AI agents: consent, own numbers
     _claim_on_talk(thread_id)
 
     thread = frappe.db.get_value(

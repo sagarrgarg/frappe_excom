@@ -244,6 +244,14 @@ def ingest(account, meta: dict) -> str | None:
 		)
 	frappe.publish_realtime("excom:thread_updated", {"thread": thread, "event": "new_email"}, after_commit=True)
 	frappe.db.commit()
+	if not outbound and folder == INBOX:
+		# A new email in the inbox goes to the features that act on replies (AI agents among them).
+		# Spam, archive and trash do not; old mail synced in later is skipped by message_event.
+		from excom.excom.services.inbound_dispatch import message_event
+
+		message_event(msg.name, kind="email", subject=subject,
+			payload={"from_email": from_email, "in_reply_to": headers.get("In-Reply-To", ""),
+				"list": bool(list_headers)})
 	return msg.name
 
 

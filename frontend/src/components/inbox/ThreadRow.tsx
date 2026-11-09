@@ -108,6 +108,7 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
     ],
   ];
 
+  const aiThread = c.threads?.find((t) => t.ai_agent);
   const detail = [
     c.contactName,
     [c.contactInfo.phone, c.contactInfo.email].filter(Boolean).join(" · ") || "No phone / email",
@@ -117,6 +118,7 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
     `Last message: ${formatServerTime(c.timestamp)} · ${c.lastMessageDirection === "Inbound" ? "from them" : "from us"}${unread ? ` · ${c.totalUnreadCount} unread` : ""}`,
     c.tags?.length ? `Tags: ${c.tags.map((t) => t.tag_name).join(", ")}` : "",
     c.closure ? `Closed · ${c.closure.outcome}${c.closure.reason ? ` — ${c.closure.reason}` : ""}` : "",
+    aiThread ? `AI agent: ${aiThread.ai_agent}${aiThread.ai_mode ? ` · ${aiThread.ai_mode}` : ""}` : "",
   ].filter(Boolean).join(" | ");
 
   return (
@@ -140,6 +142,7 @@ export const ThreadRow = memo(function ThreadRow({ c, selected, onOpen, actions,
           <span className={cn("truncate text-sm min-w-0", unread ? "font-semibold text-ink-1" : "font-medium text-ink-1")}>{c.contactName}</span>
           {c.closure && <Chip size="sm" accent={["Resolved", "Converted"].includes(c.closure.outcome) ? "green" : "rose"} label={c.closure.outcome} className="shrink-0" title={c.closure.reason} />}
           {kind && <Chip size="sm" accent={kind.accent} label={kind.label} className="shrink-0 max-w-[45%]" />}
+          {aiThread && <Chip size="sm" accent={aiThread.ai_mode === "Needs person" ? "rose" : "violet"} label={aiThread.ai_mode === "Needs person" ? "Needs person" : "AI"} className="shrink-0" title={aiThread.ai_mode === "Needs person" ? "The AI agent handed this to a person" : `Handled by AI agent ${aiThread.ai_agent}${aiThread.ai_mode ? " · " + aiThread.ai_mode : ""}`} />}
           <span className="flex items-center gap-0.5 shrink-0" aria-label={c.channels.join(", ")}>
             {c.channels.slice(0, 4).map((ch) => {
               const m = channelMeta(ch);

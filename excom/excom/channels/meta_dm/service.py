@@ -327,6 +327,9 @@ def ingest_conversation(account, conv: dict) -> int:
 		)
 		if created:
 			n += 1
+			from excom.excom.services.inbound_dispatch import message_event
+
+			message_event(created, kind="media" if mtype != "Text" else "text")
 	return n
 
 
@@ -372,13 +375,15 @@ def window_status(thread) -> dict:
 	return {"window_open": diff < WINDOW_HOURS * 3600, "last_inbound_at": str(last_inbound), "hours_remaining": round(remaining / 3600, 1), "human_agent_ok": bool(account.meta_human_agent_tag) and diff < HUMAN_AGENT_DAYS * 86400}
 
 
-def send_text(account, to_id: str, text: str, thread=None) -> dict:
+def send_text(account, to_id: str, text: str, thread=None, allow_tag: bool = True) -> dict:
+	"""allow_tag=False: refuse outside the window instead of adding Meta's HUMAN_AGENT tag, which
+	is for human agents only (an AI agent's send always passes False)."""
 	c = _creds(account)
 	payload: dict = {"recipient": {"id": to_id}, "message": {"text": text[:1000]}, "messaging_type": "RESPONSE"}
 	if thread is not None:
 		w = window_status(thread)
 		if not w["window_open"]:
-			if w["human_agent_ok"]:
+			if w["human_agent_ok"] and allow_tag:
 				payload["messaging_type"] = "MESSAGE_TAG"
 				payload["tag"] = "HUMAN_AGENT"
 			else:

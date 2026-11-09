@@ -9,6 +9,9 @@
     @executor("note")
     def add_note(proposal, agent) -> tuple[str, str] | None: ...   # what it created
 
+    @responder("sales")
+    def respond(task, agent) -> str: ...               # a buyer wrote (an `inbound` task)
+
 Modules that register are listed in MODULES and imported once, on first use.
 """
 
@@ -20,6 +23,7 @@ import frappe
 
 MODULES = [
 	"excom.excom_ai.engine.builtin",
+	"excom.excom_ai.engine.inbound",
 ]
 
 # Priorities (HLD-007 §10.1): 0 inbound replies and events · 1 approved actions and due sends ·
@@ -40,6 +44,7 @@ class TaskKind:
 TASK_KINDS: dict[str, TaskKind] = {}
 PLANNERS: dict[str, list] = {}
 EXECUTORS: dict[str, callable] = {}
+RESPONDERS: dict[str, callable] = {}
 _loaded = False
 
 
@@ -64,6 +69,14 @@ def planner(*packs: str):
 def executor(action: str):
 	def wrap(fn):
 		EXECUTORS[action] = fn
+		return fn
+
+	return wrap
+
+
+def responder(pack: str):
+	def wrap(fn):
+		RESPONDERS[pack] = fn
 		return fn
 
 	return wrap

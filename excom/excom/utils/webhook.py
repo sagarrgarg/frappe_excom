@@ -830,6 +830,8 @@ def _dispatch_inbound(message_name: str, kind: str, text: str, payload, provider
 		from excom.excom.services.inbound_dispatch import dispatch
 
 		dispatch({
+			"channel": "whatsapp",
+			"sender_verified": True,
 			"kind": kind,
 			"message": message_name,
 			"identity": msg.get("omni_identity"),

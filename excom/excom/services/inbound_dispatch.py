@@ -1,4 +1,4 @@
-"""Hand every new inbound WhatsApp message to the features that care about it.
+"""Hand every new inbound message, on any channel, to the features that care about it.
 
 Apps (and excom's own features) register in hooks.py:
 
@@ -6,7 +6,12 @@ Apps (and excom's own features) register in hooks.py:
 
 Each handler gets one `event` dict and decides from it whether the message is theirs:
 
-	kind                 text | button | list | flow | address | order | location | reaction | media | contact
+	channel              whatsapp | email | instagram | messenger | webchat. A handler that only
+	                     knows WhatsApp must check this: other channels arrive too.
+	sender_verified      True when the platform vouches for who sent it (WhatsApp, Instagram,
+	                     Messenger); False for email (a From line can be forged) and web chat
+	                     (an anonymous visitor). Never act on account data for an unverified sender.
+	kind                 email (any email) | text | media (Instagram, Messenger, web chat) | button | list | flow | address | order | location | reaction | media | contact
 	                     | command (a text "/name …" naming one of the number's commands: payload {"command", "args"})
 	                     | welcome (request_welcome). Any other "/word" text is kind text with the same
 	                     payload as a hint; a plain text has payload None.
@@ -21,6 +26,11 @@ Each handler gets one `event` dict and decides from it whether the message is th
 	                     (incl. flow_token), address, location, or the order (catalog_id, product_items)
 
 	signed               False only when the site has no app secret and the payload was accepted unsigned
+	subject              email only: the subject line
+
+Only live messages are dispatched. Email backfill, a mailbox moving servers and Meta's
+conversation polling store history too; anything received more than FRESH_HOURS ago is stored
+quietly, so an old email never wakes an agent.
 
 Handlers run in their own savepoint; one that fails is logged and never stops the others or
 the message itself. Handlers must be quick — enqueue anything slow.
@@ -34,9 +44,56 @@ Trust rules for handlers:
 """
 
 import frappe
+from frappe.utils import get_datetime, now_datetime, time_diff_in_hours
+
+FRESH_HOURS = 24
+VERIFIED = {"whatsapp", "instagram", "messenger"}
+
+
+def message_event(message_name: str, kind: str = "text", payload=None, subject: str = "") -> None:
+	"""Dispatch a stored inbound message from a channel other than the WhatsApp webhook (which
+	builds its own richer event). Quietly does nothing for an old message."""
+	try:
+		msg = frappe.db.get_value(
+			"Excom Message", message_name,
+			["omni_identity", "thread", "reply_to", "account", "channel", "provider_message_id", "provider_timestamp",
+			 "content_text", "direction"],
+			as_dict=True,
+		)
+		if not msg or msg.direction != "Inbound" or not is_fresh(msg.provider_timestamp):
+			return
+		dispatch({
+			"channel": msg.channel,
+			"sender_verified": msg.channel in VERIFIED,
+			"kind": kind,
+			"message": message_name,
+			"identity": msg.omni_identity,
+			"thread": msg.thread,
+			"reply_to": msg.reply_to or "",
+			"account": msg.account,
+			"waba": "",
+			"provider_message_id": msg.provider_message_id or "",
+			"text": msg.content_text or "",
+			"payload": payload,
+			"subject": subject,
+			"signed": True,
+		})
+	except Exception:
+		frappe.log_error(title="Excom: inbound dispatch failed", message=frappe.get_traceback())
+
+
+def is_fresh(received_at) -> bool:
+	if not received_at:
+		return True
+	try:
+		return time_diff_in_hours(now_datetime(), get_datetime(received_at)) <= FRESH_HOURS
+	except Exception:
+		return True
 
 
 def dispatch(event: dict) -> None:
+	event.setdefault("channel", "whatsapp")
+	event.setdefault("sender_verified", event["channel"] in VERIFIED)
 	for path in frappe.get_hooks("excom_inbound_handlers") or []:
 		try:
 			handler = frappe.get_attr(path)
