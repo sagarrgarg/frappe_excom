@@ -24,6 +24,7 @@ import frappe
 MODULES = [
 	"excom.excom_ai.engine.builtin",
 	"excom.excom_ai.engine.inbound",
+	"excom.excom_ai.research",
 ]
 
 # Priorities (HLD-007 §10.1): 0 inbound replies and events · 1 approved actions and due sends ·

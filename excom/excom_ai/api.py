@@ -76,3 +76,35 @@ def run_self_test(name: str):
 	task = tasks.add(agent.name, "echo", dedupe_key=f"echo:{agent.name}")
 	frappe.db.commit()
 	return {"task": task}
+
+
+@frappe.whitelist(methods=["POST"])
+def promote_person(name: str, person: str):
+	"""Research becomes CRM for one person: a Lead (and the company a Prospect), exclusions checked again."""
+	from excom.excom_ai import research
+
+	agent = _agent_for(name)
+	if frappe.db.get_value("Excom AI Company", frappe.db.get_value("Excom AI Person", person, "company"), "agent") != agent.name:
+		frappe.throw(_("This person was not found by this agent."), frappe.PermissionError)
+	out = research.promote(person, agent)
+	frappe.db.commit()
+	return out
+
+
+@frappe.whitelist()
+def research_summary(name: str):
+	from excom.excom_ai import research
+
+	agent = _agent_for(name, need_owner=False)
+	return research.summary(agent.name)
+
+
+@frappe.whitelist(methods=["POST"])
+def import_volza(name: str, file_url: str):
+	"""Queue a Volza customs-data export (an uploaded file) as a discovery run for this agent."""
+	agent = _agent_for(name)
+	if not frappe.db.exists("File", {"file_url": file_url}):
+		frappe.throw(_("Upload the Volza export first."))
+	task = tasks.add(agent.name, "discover", dedupe_key=f"volza:{file_url}", params={"source": "volza", "file_url": file_url})
+	frappe.db.commit()
+	return {"task": task}
