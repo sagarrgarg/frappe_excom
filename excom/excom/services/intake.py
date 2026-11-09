@@ -265,6 +265,15 @@ def process_log(log_name: str, force: bool = False) -> None:
 		log.error = ""
 		log.save(ignore_permissions=True)
 		frappe.db.commit()
+		# Features that act on a new enquiry (Excom AI qualifies it for the desk's agent).
+		for path in frappe.get_hooks("excom_enquiry_handlers") or []:
+			try:
+				frappe.get_attr(path)({"log": log.name, "lead": log.lead, "lead_doctype": log.lead_doctype,
+					"thread": thread, "source": source.name, "created": created})
+				frappe.db.commit()
+			except Exception:
+				frappe.db.rollback()
+				frappe.log_error(title=f"Excom: enquiry handler failed: {path}", message=frappe.get_traceback())
 	except Exception:
 		frappe.db.rollback()
 		log.reload()

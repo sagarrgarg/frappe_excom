@@ -32,6 +32,9 @@ def seed():
 	from excom.excom_ai.doctype.excom_ai_task.excom_ai_task import ensure_open_key
 
 	ensure_open_key()
+	from excom.excom_ai import evals
+
+	evals.seed()
 	schema.apply()
 	_sync_retention()
 

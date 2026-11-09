@@ -475,6 +475,15 @@ excom_inbound_handlers = [
 	"excom.excom_ai.engine.inbound.on_inbound",
 ]
 
+# New enquiries (services/intake.py): features that act on a lead that just came in from a form or an ad.
+excom_enquiry_handlers = [
+	# Excom AI: the desk's Sales agent qualifies it and drafts a first reply
+	"excom.excom_ai.responder.on_enquiry",
+]
+
+# Callables ai_interface eval sets may run (ai_interface services/evals.py)
+ai_eval_targets = ["excom.excom_ai.responder.eval_classify"]
+
 # Delivery reports (channels/email/bounces.py): features that act when an email we sent did not arrive.
 excom_bounce_handlers = [
 	# Excom AI: the address is marked invalid, the sequence stops, a mailbox that bounces too much pauses

@@ -219,9 +219,14 @@ class TestInbound(FrappeTestCase):
 		t = tasks.add(a.name, "inbound", params={"channel": "email"})
 		frappe.db.set_value("Excom AI Task", t, "status", "Running")
 		frappe.db.commit()
-		runner.run_task(t)
-		self.assertIn("no responder for sales", frappe.db.get_value("Excom AI Task", t, "outcome"))
 		registry.load()
+		sales = registry.RESPONDERS.pop("sales", None)
+		try:
+			runner.run_task(t)
+		finally:
+			if sales:
+				registry.RESPONDERS["sales"] = sales
+		self.assertIn("no responder for sales", frappe.db.get_value("Excom AI Task", t, "outcome"))
 		registry.RESPONDERS["sales"] = lambda task, agent: f"answered by {agent.name}"
 		try:
 			t2 = tasks.add(a.name, "inbound", dedupe_key="second")
@@ -231,6 +236,8 @@ class TestInbound(FrappeTestCase):
 			self.assertEqual(frappe.db.get_value("Excom AI Task", t2, "outcome"), f"answered by {a.name}")
 		finally:
 			registry.RESPONDERS.pop("sales", None)
+			if sales:
+				registry.RESPONDERS["sales"] = sales
 
 	# ---- what an agent may send
 
