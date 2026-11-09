@@ -41,13 +41,13 @@ def _visible(section: dict) -> dict:
 
 def create(agent_type: str, keywords: str, rows: list | None = None, excluded: dict | None = None, persona: str = "",
 		owner: str | None = None, backup: str | None = None, team: str | None = None, company: str | None = None,
-		use_ai: bool = True) -> str:
+		use_ai: bool = True, description: str = "", abilities: str = "") -> str:
 	"""Save the Draft agent. Returns its name."""
 	pack = pack_of(agent_type)
 	rows = rows or resolve.resolve(keywords, pack)
 	ctx = knowledge.context(rows, pack, company, team, excluded)
 	sections = knowledge.build(ctx)
-	d = brief.draft(ctx, sections, persona)
+	d = brief.draft(ctx, sections, persona) if pack == "sales" else brief.generic_draft(ctx, sections, pack, persona, description)
 	if use_ai:
 		d = brief.ai_polish(d, knowledge.summary(sections), keywords)
 	f = d["fields"]
@@ -55,6 +55,7 @@ def create(agent_type: str, keywords: str, rows: list | None = None, excluded: d
 		"doctype": "Excom AI Agent", "agent_type": agent_type, "status": "Draft", "company": ctx.company,
 		"owner_user": owner or frappe.session.user, "backup_user": backup, "team": team,
 		"keywords": ", ".join(r["keyword"] for r in rows),
+		"abilities": _abilities(abilities) if pack == "custom" else None,
 		"keyword_rows": [_keyword_row(r) for r in rows],
 		"scope_exclusions": json.dumps(excluded or {}),
 		**{k: f.get(k) for k in ("agent_name", "title", "what_it_is", "mission", "audience", "tone", "tone_examples",
@@ -65,6 +66,12 @@ def create(agent_type: str, keywords: str, rows: list | None = None, excluded: d
 	agent.insert(ignore_permissions=True)
 	language = next((m["language"] for m in d["markets"] if m.get("language")), None)
 	pb = brief.playbook_skeleton(agent.agent_name, agent_type, language, sections)
+	if pack == "custom" and description:
+		pbd = frappe.get_doc("Excom AI Playbook", pb)
+		for sec in pbd.sections:
+			if sec.kind == "Process rules" and not sec.content:
+				sec.content, sec.source = description, "Manual"
+		pbd.save(ignore_permissions=True)
 	agent.reload()
 	agent.append("playbooks", {"playbook": pb})
 	agent.save(ignore_permissions=True)
@@ -75,6 +82,15 @@ def create(agent_type: str, keywords: str, rows: list | None = None, excluded: d
 
 		default_sequence(frappe.get_doc("Excom AI Agent", agent.name))
 	return agent.name
+
+
+CUSTOM_ABILITIES = ("watch", "answer", "chase", "draft")
+
+
+def _abilities(value: str) -> str:
+	"""A Custom agent's abilities: up to four of watch, answer, chase, draft (default: watch and draft)."""
+	chosen = [a.strip().lower() for a in (value or "").split(",") if a.strip().lower() in CUSTOM_ABILITIES]
+	return ", ".join(dict.fromkeys(chosen)) or "watch, draft"
 
 
 def _keyword_row(r: dict) -> dict:

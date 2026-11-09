@@ -228,3 +228,70 @@ def playbook_skeleton(agent_name: str, agent_type: str, language: str | None, se
 			"source": "ERP" if filled.get(k) else "Manual"} for k in PLAYBOOK_KINDS]})
 	doc.insert(ignore_permissions=True)
 	return doc.name
+
+
+# ── every other type (Phase 2A) ──────────────────────────────────────────────
+
+PACKS = {
+	"accounts": {
+		"title": "Collections", "what": "An accounts agent for {company}: it chases what customers owe, keeps their promises "
+			"on record, suggests payment matches and watches what we owe Micro and Small suppliers.",
+		"mission": "Bring overdue receivables down month on month; every promise to pay followed up on its date.",
+		"audience": "Customers with overdue invoices, through their billing contacts only.",
+		"do": ["Write only to a customer's billing contact", "Quote amounts and invoice numbers exactly as the ledger has them",
+			"Stop on payment, a dispute or a promise still in date"],
+		"dont": ["Never waive, discount or threaten", "Never post an accounting entry", "Never say or imply you are a person"],
+		"kpis": [("Overdue over 90 days reduced (%)", 10, "Month"), ("Promises followed up on the day (%)", 100, "Month")]},
+	"purchase": {
+		"title": "Purchasing", "what": "A purchase agent for {company}: it finds suppliers, sends requests for quotation, "
+			"turns their replies into supplier quotations and chases late orders.",
+		"mission": "Every request for quotation answered and compared within a week; no order late without a chase.",
+		"audience": "Suppliers of {products}.",
+		"do": ["State items and quantities exactly as the request has them", "Compare every quote with the price history"],
+		"dont": ["Never create or submit a purchase order", "Never commit to a quantity or a price",
+			"Never say or imply you are a person"],
+		"kpis": [("RFQs answered within a week (%)", 80, "Month"), ("Late orders chased (%)", 100, "Month")]},
+	"compliance": {
+		"title": "Compliance", "what": "An internal compliance agent for {company}: it keeps the due-date calendar, watches "
+			"document expiry and checks transactions, and tells the named owner in time.",
+		"mission": "No statutory due date or document expiry missed.",
+		"audience": "The company's own people: each obligation's named owner.",
+		"do": ["Tell the named owner in time, with the rule and the date"],
+		"dont": ["Never write to anyone outside the company", "Never file, pay or submit anything"],
+		"kpis": [("Due dates met (%)", 100, "Month")]},
+	"custom": {
+		"title": "Assistant", "what": "{description}",
+		"mission": "{description}",
+		"audience": "As described.",
+		"do": ["Work in Review: a person approves everything", "Use only the playbook and the records given"],
+		"dont": ["Never use paid tools unless an Excom Admin adds them", "Never say or imply you are a person"],
+		"kpis": []},
+}
+
+
+def generic_draft(ctx, sections: list[dict], pack: str, persona: str = "", description: str = "") -> dict:
+	"""The draft for a type other than Sales: the pack's purpose in the company's words, its rules,
+	and what the keywords added."""
+	spec = PACKS.get(pack) or PACKS["custom"]
+	s = ctx.scope
+	products = ", ".join(s.get("product_words") or s.item_groups or s.brands or []) or _("the products in scope")
+	fmt = {"company": ctx.company, "products": products, "description": description or _("Described by its owner.")}
+	fields = {
+		"agent_name": persona or {"accounts": "Meera", "purchase": "Vikram", "compliance": "Anil"}.get(pack, "Asha"),
+		"title": f"{spec['title']}, {ctx.company}",
+		"what_it_is": spec["what"].format(**fmt), "mission": spec["mission"].format(**fmt),
+		"audience": spec["audience"].format(**fmt),
+		"tone": _("Polite, clear and brief; formal with customers and suppliers, plain with colleagues."),
+		"tone_examples": "",
+		"rules_do": "\n".join(f"- {x}" for x in spec["do"]), "rules_dont": "\n".join(f"- {x}" for x in spec["dont"]),
+	}
+	sources = {k: TYPE_DEFAULT for k in fields}
+	sources["agent_name"] = SUGGEST
+	if description:
+		sources["what_it_is"] = sources["mission"] = _("the owner's description")
+	channels = [] if pack == "compliance" else [{"channel_account": a, "purpose": "Outreach and replies"}
+		for a in _channels_for(ctx)[:2]]
+	products_rows = [{"item_group": g} for g in s.item_groups]
+	return {"fields": fields, "markets": [], "products": products_rows, "channels": channels,
+		"kpi_targets": [{"metric": m, "value": v, "period": p} for m, v, p in spec["kpis"]], "sources": sources,
+		"left_out": getattr(s, "left_out", []) or []}

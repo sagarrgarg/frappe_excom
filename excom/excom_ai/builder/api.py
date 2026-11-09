@@ -101,12 +101,13 @@ def preview(agent_type: str, keywords: str, rows=None, excluded=None, team: str 
 
 @frappe.whitelist(methods=["POST"])
 def create_agent(agent_type: str, keywords: str, rows=None, excluded=None, persona: str = "", backup: str | None = None,
-		team: str | None = None, company: str | None = None, owner: str | None = None) -> dict:
+		team: str | None = None, company: str | None = None, owner: str | None = None, description: str = "",
+		abilities: str = "") -> dict:
 	_can_build()
 	if owner and owner != frappe.session.user and not _roles() & MANAGERS and not _team_manager(team):
 		frappe.throw(_("Only an Excom Admin or the team's manager names someone else as the owner."), frappe.PermissionError)
 	name = service.create(agent_type, keywords, _json(rows), _json(excluded, {}), persona, owner, backup or None,
-		team or None, company or None)
+		team or None, company or None, description=description, abilities=abilities)
 	frappe.db.commit()
 	return {"name": name}
 

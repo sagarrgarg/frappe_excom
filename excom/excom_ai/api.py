@@ -177,3 +177,16 @@ def apply_promotion(name: str, action: str):
 	agent.save(ignore_permissions=True)
 	frappe.db.commit()
 	return suggestion
+
+
+@frappe.whitelist(methods=["POST"])
+def request_draft(name: str, instruction: str, subject_doctype: str | None = None, subject_name: str | None = None):
+	"""Custom agents: ask for a document or message draft (it arrives as a note for review)."""
+	from excom.excom_ai.packs import custom
+
+	agent = _agent_for(name)
+	if "draft" not in custom.abilities(agent):
+		frappe.throw(_("This agent does not draft."))
+	task = custom.request_draft(agent.name, instruction, subject_doctype, subject_name)
+	frappe.db.commit()
+	return {"task": task}
