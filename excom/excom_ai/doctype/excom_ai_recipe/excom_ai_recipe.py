@@ -78,6 +78,15 @@ def check_spec(spec: dict) -> None:
 			frappe.throw(_("Password fields cannot be read by a recipe."), frappe.PermissionError)
 
 	for f in spec.get("fields") or []:
+		if isinstance(f, dict):
+			# v16 form: {"COUNT": "*", "as": "n"} / {"SUM": "grand_total", "as": "total"}
+			fn = [k for k in f if k != "as"]
+			if len(fn) != 1 or fn[0].lower() not in ("count", "sum", "avg", "min", "max") or \
+					(f.get("as") and not re.match(r"^[a-z_][a-z0-9_]*$", f["as"], re.I)):
+				frappe.throw(_("A computed field is {\"COUNT\": \"*\", \"as\": \"n\"} or SUM, AVG, MIN, MAX of a field."))
+			if f[fn[0]] != "*":
+				field(f[fn[0]], _("fields"))
+			continue
 		if not isinstance(f, str):
 			frappe.throw(_("Fields are plain names, for example \"customer_name\" or \"count(name) as orders\"."))
 		f = f.strip()
@@ -118,3 +127,21 @@ def check_spec(spec: dict) -> None:
 			field(part.strip(), "group_by")
 	if spec.get("limit") is not None and not (isinstance(spec["limit"], int) and 0 < spec["limit"] <= 500):
 		frappe.throw(_("limit is a whole number from 1 to 500."))
+
+
+def run_spec(spec: dict, limit: int = 500) -> list:
+	"""Run a checked query spec through frappe.get_list as the current user (permissions apply).
+	"count(name) as n" strings become v16's {"COUNT": "name", "as": "n"}."""
+	check_spec(spec)
+	fields = []
+	for f in spec.get("fields") or ["name"]:
+		if isinstance(f, str):
+			alias = ALIAS.match(f.strip())
+			expr = alias.group(1).strip() if alias else f.strip()
+			agg = AGGREGATE.match(expr)
+			if agg:
+				fields.append({agg.group(1).upper(): agg.group(2), "as": alias.group(2) if alias else agg.group(1).lower()})
+				continue
+		fields.append(f)
+	return frappe.get_list(spec["doctype"], filters=spec.get("filters"), or_filters=spec.get("or_filters"), fields=fields,
+		group_by=spec.get("group_by"), order_by=spec.get("order_by"), limit_page_length=min(int(spec.get("limit") or limit), 500))

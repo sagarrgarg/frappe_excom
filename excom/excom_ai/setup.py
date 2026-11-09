@@ -26,6 +26,7 @@ def seed():
 	_signals()
 	_tools()
 	_cap_custom()
+	_builder()
 	schema.apply()
 	_sync_retention()
 
@@ -61,6 +62,21 @@ def _cap_custom():
 			frappe.db.sql(
 				"""UPDATE `tabExcom AI Policy` SET mode = 'Review'
 				WHERE parenttype = 'Excom AI Agent' AND parent = %s AND mode = 'Auto'""", agent)
+
+
+def _builder():
+	"""The Sales readiness rules and the built-in recipes, as records people can see and switch off."""
+	from excom.excom_ai.builder import readiness, recipes
+
+	readiness.seed("Sales")
+	for key, r in recipes.RECIPES.items():
+		rk = f"sales.{key}"
+		if frappe.db.exists("Excom AI Recipe", {"recipe_key": rk}):
+			continue
+		frappe.get_doc({"doctype": "Excom AI Recipe", "recipe_key": rk, "label": r["title"], "kind": "Built-in",
+			"agent_types": ", ".join(r["packs"]), "section": r["title"], "handler": f"excom.excom_ai.builder.recipes.{key}",
+			"privacy": {"names": "Names allowed", "none": "Aggregates only"}.get(r["privacy"], "Aggregates only"),
+			"enabled": 1}).insert(ignore_permissions=True)
 
 
 def _sync_retention():

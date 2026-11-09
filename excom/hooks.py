@@ -354,6 +354,8 @@ scheduler_events = {
 		"*/3 * * * *": ["excom.excom.channels.voice.reconcile.reconcile_pending_calls"],
 		# Excom AI agents (HLD-007 §10.1): reads one setting and returns while the master switch is off.
 		"*/2 * * * *": ["excom.excom_ai.engine.orchestrator.tick"],
+		# Excom AI: each working agent's knowledge rebuilt and readiness rechecked; owners told of changes.
+		"30 1 * * *": ["excom.excom_ai.builder.service.nightly"],
 		# Ads: today's spend and results. Structure is hourly, the 28-day settle re-pull is daily.
 		"*/30 * * * *": ["excom.excom_ads.tasks.enqueue_intraday", "excom.excom_ads.tasks.wake_snoozed_alerts"],
 		# Ads: scheduled reports that are due (enqueue only, once per period).
