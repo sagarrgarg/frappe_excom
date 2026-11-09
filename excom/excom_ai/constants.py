@@ -15,6 +15,17 @@ PACK_ROLES = {
 	"custom": "Excom AI Custom",
 }
 
+# What each pack's role may do in ERPNext (HLD-007 §14.2): only what that type of work needs. No
+# submit, cancel or delete anywhere: documents a person must sign off stay drafts.
+PACK_PERMISSIONS = {
+	"sales": {
+		"read": ("Item", "Item Group", "Brand", "Price List", "Item Price", "Pricing Rule", "Currency Exchange", "UOM",
+			"Customer", "Customer Group", "Territory", "Country", "Currency", "Company", "Payment Terms Template", "Incoterm",
+			"Contact", "Sales Order", "Sales Invoice", "Delivery Note"),
+		"write": ("Lead", "Prospect", "Opportunity", "Quotation", "Address", "ToDo"),
+	},
+}
+
 MODES = ("Off", "Shadow", "Review", "Auto")
 
 # The most each action may ever be set to, whatever an owner chooses (HLD-007 §12.1).

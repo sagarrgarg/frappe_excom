@@ -219,14 +219,14 @@ class TestResponder(FrappeTestCase):
 		self.respond(a, c, {"intent": "not_interested", "language": "en", "summary": "no", "asks_price": False})
 		self.assertEqual(frappe.db.get_value("Excom Thread", c.thread, ["ai_mode", "ai_stage"]), ("Hold", "Closed lost"))
 
-	def test_a_reply_never_goes_on_a_conversation_a_person_took(self):
+	def test_autopilot_never_replies_on_a_conversation_a_person_took(self):
 		a = self.agent()
 		c = self.conversation(a, "hello")
 		frappe.db.set_value("Excom Thread", c.thread, "ai_mode", "Hold")
 		t = frappe.get_doc("Excom AI Task", tasks.add(a.name, "echo", dedupe_key=f"hold{self.n}"))
 		with patch.object(proposals, "execute"):
 			p = proposals.propose(t, a, "reply", thread=c.thread, payload={"body": "hola"}, subject=("Excom Thread", c.thread))
-		frappe.db.set_value("Excom AI Proposal", p, "status", "Approved")
+		frappe.db.set_value("Excom AI Proposal", p, {"status": "Approved", "decided_by": "Autopilot"})
 		with patch("excom.excom.channels.email.outbound.send_email_reply") as send:
 			proposals.execute(p)
 		send.assert_not_called()

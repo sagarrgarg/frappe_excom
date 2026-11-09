@@ -55,6 +55,9 @@ def create_todo(proposal, agent):
 	payload = frappe.parse_json(proposal.payload or "{}")
 	# Only to the agent's own people: an edited payload cannot hand work to anyone else.
 	people = set(proposals.reviewers(agent)) | {agent.owner_user}
+	if proposal.subject_doctype == "Customer" and frappe.get_meta("Customer").has_field("account_manager"):
+		# a check-in suggestion goes to the customer's own account manager
+		people.add(frappe.db.get_value("Customer", proposal.subject_name, "account_manager"))
 	allocated = payload.get("allocated_to") if payload.get("allocated_to") in people else None
 	todo = frappe.get_doc({
 		"doctype": "ToDo",

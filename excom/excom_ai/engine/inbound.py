@@ -117,15 +117,23 @@ def _stop_sequences(agent: str, thread: str, event: dict) -> None:
 				"hold_reason": _("The buyer replied")}, update_modified=False)
 
 
-def hand_to_person(thread: str, agent, question: str | None, message: str | None = None) -> None:
-	"""The fixed escalation: the conversation waits for a person, who is told why."""
-	frappe.db.set_value("Excom Thread", thread, {"ai_mode": "Needs person", "ai_intent": "asks_if_ai"}, update_modified=False)
+HANDOVER_REASONS = {
+	"asks_if_ai": (_("the buyer asked whether they are talking to a person or an AI"),
+		_("A buyer asked {0} (AI) if it is a person: please answer")),
+	"negotiate": (_("the buyer is talking about price or terms"), _("A buyer is asking {0} (AI) about price: please answer")),
+	"escalate": (_("the buyer is upset, or wrote about spam or the law"), _("A buyer needs you on a conversation {0} (AI) had")),
+}
+
+
+def hand_to_person(thread: str, agent, question: str | None, message: str | None = None, reason: str = "asks_if_ai") -> None:
+	"""The conversation waits for a person, who is told why."""
+	why, subject = HANDOVER_REASONS.get(reason, HANDOVER_REASONS["escalate"])
+	frappe.db.set_value("Excom Thread", thread, {"ai_mode": "Needs person", "ai_intent": reason}, update_modified=False)
 	frappe.get_doc("Excom Thread", thread).add_comment(
-		"Comment", _("{0} (AI) handed this conversation to a person: the buyer asked whether they are talking to a person or an AI.").format(
-			agent.agent_name))
+		"Comment", _("{0} (AI) handed this conversation to a person: {1}.").format(agent.agent_name, why))
 	notify.alert(
 		[agent.acting_owner or agent.owner_user, agent.backup_user, agent.escalation_user],
-		_("A buyer asked {0} (AI) if it is a person: please answer").format(agent.agent_name),
+		subject.format(agent.agent_name),
 		message=frappe.utils.escape_html((question or "")[:500]),
 		doctype="Excom Thread", name=thread,
 	)

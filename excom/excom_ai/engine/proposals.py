@@ -42,7 +42,7 @@ ACTION_POLICY = {
 	"note": "todo_note",
 }
 SENDS = ("send_email", "send_whatsapp", "reply", "payment_reminder")
-SEND_POLICIES = ("first_email", "follow_up_email", "reply", "whatsapp_template", "payment_reminder")
+SEND_POLICIES = ("first_email", "follow_up_email", "reply", "whatsapp_template", "payment_reminder", "prices_and_terms")
 # Actions that change only our own records: a person may let them run while the agent is on hold.
 INTERNAL = ("note", "create_todo", "create_lead", "update_lead")
 RELEASED = ("Rejected", "Cancelled", "Failed", "Expired")

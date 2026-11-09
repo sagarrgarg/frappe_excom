@@ -26,6 +26,7 @@ def seed():
 	_signals()
 	_tools()
 	_cap_custom()
+	_pack_permissions()
 	_builder()
 	# The unique open-task key (a generated column Frappe does not manage): checked every migrate,
 	# since the schema sync drops indexes it did not create.
@@ -58,6 +59,28 @@ def _types():
 				row["condition"] = constants.SAFE_REPLY_INTENTS
 			doc.append("default_policies", row)
 		doc.insert(ignore_permissions=True)
+
+
+def _pack_permissions():
+	"""Give each pack role read (and draft-write) rights on the records its work needs, as Custom
+	DocPerms for that role only. Never submit, cancel or delete."""
+	from frappe.permissions import add_permission, update_permission_property
+
+	for pack, rights in constants.PACK_PERMISSIONS.items():
+		role = constants.PACK_ROLES[pack]
+		if not frappe.db.exists("Role", role):
+			continue
+		for ptype, doctypes in rights.items():
+			for doctype in doctypes:
+				if not frappe.db.exists("DocType", doctype):
+					continue
+				if not frappe.db.exists("Custom DocPerm", {"parent": doctype, "role": role, "permlevel": 0}):
+					add_permission(doctype, role, 0)
+				name = frappe.db.get_value("Custom DocPerm", {"parent": doctype, "role": role, "permlevel": 0})
+				wanted = {"read": 1} if ptype == "read" else {"read": 1, "write": 1, "create": 1}
+				for prop, value in wanted.items():
+					if not frappe.db.get_value("Custom DocPerm", name, prop):
+						update_permission_property(doctype, role, 0, prop, value)
 
 
 def _cap_custom():

@@ -196,10 +196,13 @@ def respond(task, agent) -> str:
 		frappe.db.set_value("Excom Thread", thread.name, "ai_mode", "Hold", update_modified=False)
 		return _("opted out; nothing sent")
 	if intent in ("escalate", "negotiate"):
+		from excom.excom_ai.engine import tasks
 		from excom.excom_ai.engine.inbound import hand_to_person
 
-		hand_to_person(thread.name, agent, text[:500], params.get("message"))
-		frappe.db.set_value("Excom Thread", thread.name, "ai_intent", intent, update_modified=False)
+		hand_to_person(thread.name, agent, text[:500], params.get("message"), reason=intent)
+		if intent == "negotiate":
+			# the person answers, with a priced draft and a Quotation draft ready (deals.py)
+			tasks.add(agent.name, "draft_quote", thread=thread.name, dedupe_key=f"quote:{thread.name}")
 		return _("{0}: handed to a person").format(intent)
 	if intent == "not_interested":
 		frappe.db.set_value("Excom Thread", thread.name, "ai_mode", "Hold", update_modified=False)
@@ -299,7 +302,8 @@ def send_reply(proposal, agent):
 	"""Send an approved reply on its conversation, as the agent's own user (Excom's send rules
 	apply: consent, its own accounts, the 24-hour window for chat channels)."""
 	thread = frappe.get_doc("Excom Thread", proposal.thread)
-	if thread.ai_mode in ("Hold", "Needs person"):
+	if thread.ai_mode in ("Hold", "Needs person") and proposal.decided_by == "Autopilot":
+		# a person has the conversation: only what a person approved goes out (a priced reply they checked)
 		raise registry.Cancel(_("a person has this conversation"))
 	payload = frappe.parse_json(proposal.payload or "{}")
 	body = payload.get("body") or ""
