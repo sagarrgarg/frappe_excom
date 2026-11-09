@@ -1,0 +1,124 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "type_name",
+  "pack",
+  "enabled",
+  "cb1",
+  "icon",
+  "colour",
+  "description",
+  "sb_defaults",
+  "default_policies",
+  "brief_prompt",
+  "default_kpis"
+ ],
+ "fields": [
+  {
+   "fieldname": "type_name",
+   "fieldtype": "Data",
+   "label": "Type",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "pack",
+   "fieldtype": "Select",
+   "label": "Capability Pack",
+   "options": "sales\npurchase\naccounts\ncompliance\ncustom",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "icon",
+   "fieldtype": "Data",
+   "label": "Icon"
+  },
+  {
+   "fieldname": "colour",
+   "fieldtype": "Color",
+   "label": "Colour"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "What It Does",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "sb_defaults",
+   "fieldtype": "Section Break",
+   "label": "Defaults for New Agents"
+  },
+  {
+   "fieldname": "default_policies",
+   "fieldtype": "Table",
+   "label": "Policies",
+   "options": "Excom AI Policy"
+  },
+  {
+   "fieldname": "brief_prompt",
+   "fieldtype": "Link",
+   "label": "Brief Prompt",
+   "options": "AI Prompt Template",
+   "description": "The ai_interface template that drafts an agent's brief from keywords and ERP facts."
+  },
+  {
+   "fieldname": "default_kpis",
+   "fieldtype": "Small Text",
+   "label": "Suggested Targets"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Agent Type",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Excom Agent"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "field:type_name",
+ "description": "An agent type: what a pack of abilities can do, and its editable defaults"
+}

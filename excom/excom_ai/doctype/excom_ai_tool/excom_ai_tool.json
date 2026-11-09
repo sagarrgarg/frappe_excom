@@ -1,0 +1,145 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "tool_key",
+  "label",
+  "tier",
+  "enabled",
+  "cb1",
+  "api_key",
+  "api_secret",
+  "account_id",
+  "sb_budget",
+  "monthly_budget",
+  "used_this_month",
+  "rate_limit",
+  "cb2",
+  "last_error",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "tool_key",
+   "fieldtype": "Data",
+   "label": "Key",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "label": "Tool",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "tier",
+   "fieldtype": "Select",
+   "label": "Tier",
+   "options": "read\ndraft\ncommunicate\npaid",
+   "default": "read",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "0",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "API Key"
+  },
+  {
+   "fieldname": "api_secret",
+   "fieldtype": "Password",
+   "label": "API Secret / Password"
+  },
+  {
+   "fieldname": "account_id",
+   "fieldtype": "Data",
+   "label": "Account / Login"
+  },
+  {
+   "fieldname": "sb_budget",
+   "fieldtype": "Section Break",
+   "label": "Budget"
+  },
+  {
+   "fieldname": "monthly_budget",
+   "fieldtype": "Currency",
+   "label": "Monthly Budget",
+   "description": "0 = no cap."
+  },
+  {
+   "fieldname": "used_this_month",
+   "fieldtype": "Currency",
+   "label": "Used This Month",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rate_limit",
+   "fieldtype": "Int",
+   "label": "Calls per Minute"
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Tool",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "field:tool_key",
+ "title_field": "label",
+ "show_title_field_in_link": 1,
+ "description": "An outside service agents may use (search, verification, data), with its key and budget"
+}

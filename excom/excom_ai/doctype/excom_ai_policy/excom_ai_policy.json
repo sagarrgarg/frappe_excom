@@ -1,0 +1,70 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "action",
+  "mode",
+  "sample_percent",
+  "daily_cap",
+  "condition"
+ ],
+ "fields": [
+  {
+   "fieldname": "action",
+   "fieldtype": "Select",
+   "label": "Action",
+   "options": "create_record\nwrite_draft\nfirst_email\nfollow_up_email\nreply\nwhatsapp_template\nprices_and_terms\ncreate_opportunity\nquotation\nsubmit_document\npayment_reminder\ntodo_note",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "mode",
+   "fieldtype": "Select",
+   "label": "Mode",
+   "options": "Off\nShadow\nReview\nAuto",
+   "default": "Review",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Off: not done. Shadow: prepared, nothing leaves. Review: a person approves each one. Auto: done, a sample reviewed after."
+  },
+  {
+   "fieldname": "sample_percent",
+   "fieldtype": "Percent",
+   "label": "Review Sample",
+   "default": "10",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "daily_cap",
+   "fieldtype": "Int",
+   "label": "Daily Cap",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "0 = no cap of its own."
+  },
+  {
+   "fieldname": "condition",
+   "fieldtype": "Small Text",
+   "label": "Condition",
+   "description": "Optional: only for these intents or cases, for example 'ooo, thanks, scheduling'."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Policy",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1
+}

@@ -1,0 +1,103 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "domain",
+  "mx_type",
+  "pattern",
+  "pattern_source",
+  "pattern_confidence",
+  "cb1",
+  "catch_all",
+  "checked_on",
+  "hunter_searched_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "domain",
+   "fieldtype": "Data",
+   "label": "Domain",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "mx_type",
+   "fieldtype": "Select",
+   "label": "Mail Provider",
+   "options": "\nGoogle\nMicrosoft\nGateway\nOther\nNone",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "pattern",
+   "fieldtype": "Data",
+   "label": "Address Pattern",
+   "in_list_view": 1,
+   "description": "For example {f}.{l}"
+  },
+  {
+   "fieldname": "pattern_source",
+   "fieldtype": "Data",
+   "label": "Pattern Source"
+  },
+  {
+   "fieldname": "pattern_confidence",
+   "fieldtype": "Float",
+   "label": "Pattern Confidence"
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "catch_all",
+   "fieldtype": "Check",
+   "label": "Catch-all",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "checked_on",
+   "fieldtype": "Datetime",
+   "label": "Checked On"
+  },
+  {
+   "fieldname": "hunter_searched_on",
+   "fieldtype": "Datetime",
+   "label": "Hunter Searched On"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Email Domain",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "field:domain",
+ "description": "What is known about a mail domain: provider, pattern, catch-all"
+}

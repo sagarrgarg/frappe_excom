@@ -1,0 +1,263 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "company",
+  "first_name",
+  "last_name",
+  "full_name",
+  "title",
+  "seniority",
+  "department",
+  "is_inbox",
+  "cb1",
+  "email",
+  "email_status",
+  "email_source",
+  "verified_by",
+  "verified_on",
+  "catch_all",
+  "consent_verdict",
+  "consent_checked_on",
+  "sb_more",
+  "phone",
+  "phone_verified",
+  "linkedin_url",
+  "timezone",
+  "language",
+  "cb2",
+  "source",
+  "source_url",
+  "score",
+  "status",
+  "write_attempts",
+  "lead",
+  "sb_notes",
+  "personalization_notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Excom AI Company",
+   "reqd": 1,
+   "in_list_view": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "first_name",
+   "fieldtype": "Data",
+   "label": "First Name"
+  },
+  {
+   "fieldname": "last_name",
+   "fieldtype": "Data",
+   "label": "Last Name"
+  },
+  {
+   "fieldname": "full_name",
+   "fieldtype": "Data",
+   "label": "Name",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title"
+  },
+  {
+   "fieldname": "seniority",
+   "fieldtype": "Select",
+   "label": "Seniority",
+   "options": "\nOwner\nExecutive\nDirector\nManager\nStaff\nInbox"
+  },
+  {
+   "fieldname": "department",
+   "fieldtype": "Data",
+   "label": "Department"
+  },
+  {
+   "fieldname": "is_inbox",
+   "fieldtype": "Check",
+   "label": "Published Inbox",
+   "description": "info@, sales@ and the like rather than a person."
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "options": "Email",
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "email_status",
+   "fieldtype": "Select",
+   "label": "Email Status",
+   "options": "Unknown\nVerified\nRisky\nGuess\nInvalid",
+   "default": "Unknown",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "email_source",
+   "fieldtype": "Select",
+   "label": "Found Via",
+   "options": "\nPublished\nPattern\nHunter\nImport"
+  },
+  {
+   "fieldname": "verified_by",
+   "fieldtype": "Select",
+   "label": "Verified By",
+   "options": "\nReoon\nZeroBounce\nHunter\nNone"
+  },
+  {
+   "fieldname": "verified_on",
+   "fieldtype": "Datetime",
+   "label": "Verified On"
+  },
+  {
+   "fieldname": "catch_all",
+   "fieldtype": "Check",
+   "label": "Catch-all Domain"
+  },
+  {
+   "fieldname": "consent_verdict",
+   "fieldtype": "Select",
+   "label": "Consent",
+   "options": "Unknown\nOK to email\nConsent needed\nBlocked",
+   "default": "Unknown"
+  },
+  {
+   "fieldname": "consent_checked_on",
+   "fieldtype": "Datetime",
+   "label": "Consent Checked On"
+  },
+  {
+   "fieldname": "sb_more",
+   "fieldtype": "Section Break",
+   "label": "More"
+  },
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "Phone"
+  },
+  {
+   "fieldname": "phone_verified",
+   "fieldtype": "Check",
+   "label": "Phone Verified"
+  },
+  {
+   "fieldname": "linkedin_url",
+   "fieldtype": "Data",
+   "label": "LinkedIn URL",
+   "description": "Stored only; never automated."
+  },
+  {
+   "fieldname": "timezone",
+   "fieldtype": "Autocomplete",
+   "label": "Timezone"
+  },
+  {
+   "fieldname": "language",
+   "fieldtype": "Link",
+   "label": "Writes In",
+   "options": "Language"
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Data",
+   "label": "Source"
+  },
+  {
+   "fieldname": "source_url",
+   "fieldtype": "Data",
+   "label": "Source URL"
+  },
+  {
+   "fieldname": "score",
+   "fieldtype": "Int",
+   "label": "Score"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "New\nReady\nWrite failed\nInvalid\nPromoted\nExcluded",
+   "default": "New",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "write_attempts",
+   "fieldtype": "Int",
+   "label": "Write Attempts",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lead",
+   "fieldtype": "Link",
+   "label": "Lead",
+   "options": "Lead",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_notes",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "personalization_notes",
+   "fieldtype": "Text",
+   "label": "Personalisation Notes"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Person",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "hash",
+ "title_field": "full_name",
+ "show_title_field_in_link": 1,
+ "description": "A person or published inbox at a researched company"
+}

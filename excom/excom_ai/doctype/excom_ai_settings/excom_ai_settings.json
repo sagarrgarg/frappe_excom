@@ -1,0 +1,200 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "default_model",
+  "cb1",
+  "daily_budget_total",
+  "review_sample_percent",
+  "use_batch_for_night_work",
+  "sb_effort",
+  "effort_classify",
+  "effort_write",
+  "cb2",
+  "effort_reason",
+  "sb_people",
+  "alert_users",
+  "digest_time",
+  "sb_outreach",
+  "postal_addresses",
+  "ai_identity_policy",
+  "handover_line",
+  "dnc_domains",
+  "quiet_dates",
+  "sb_retention",
+  "prompt_retention_days"
+ ],
+ "fields": [
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "AI Agents Enabled",
+   "default": "0",
+   "description": "Master switch. Off: no scheduled work, no AI calls, no queue entries for any agent."
+  },
+  {
+   "fieldname": "default_model",
+   "fieldtype": "Data",
+   "label": "Default Model",
+   "default": "claude-opus-5-5",
+   "description": "Passed to ai_interface only when an agent's task names no model; routing rules in AI Settings still apply."
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "daily_budget_total",
+   "fieldtype": "Currency",
+   "label": "Daily AI Budget (all agents)",
+   "description": "In AI Settings' base currency. 0 = no cap of its own."
+  },
+  {
+   "fieldname": "review_sample_percent",
+   "fieldtype": "Percent",
+   "label": "Review Sample for Auto Actions",
+   "default": "10"
+  },
+  {
+   "fieldname": "use_batch_for_night_work",
+   "fieldtype": "Check",
+   "label": "Use Batches for Night Work",
+   "default": "1"
+  },
+  {
+   "fieldname": "sb_effort",
+   "fieldtype": "Section Break",
+   "label": "Effort per Kind of Work"
+  },
+  {
+   "fieldname": "effort_classify",
+   "fieldtype": "Select",
+   "label": "Classify and Extract",
+   "options": "low\nmedium\nhigh\nxhigh\nmax",
+   "default": "low"
+  },
+  {
+   "fieldname": "effort_write",
+   "fieldtype": "Select",
+   "label": "Routine Writing",
+   "options": "low\nmedium\nhigh\nxhigh\nmax",
+   "default": "medium"
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "effort_reason",
+   "fieldtype": "Select",
+   "label": "Briefs, Replies to Buyers, Quotations",
+   "options": "low\nmedium\nhigh\nxhigh\nmax",
+   "default": "high"
+  },
+  {
+   "fieldname": "sb_people",
+   "fieldtype": "Section Break",
+   "label": "Alerts and Digest"
+  },
+  {
+   "fieldname": "alert_users",
+   "fieldtype": "Table MultiSelect",
+   "label": "System Alerts To",
+   "options": "Excom AI Alert User"
+  },
+  {
+   "fieldname": "digest_time",
+   "fieldtype": "Time",
+   "label": "Morning Digest At",
+   "default": "08:30:00"
+  },
+  {
+   "fieldname": "sb_outreach",
+   "fieldtype": "Section Break",
+   "label": "Outreach Rules"
+  },
+  {
+   "fieldname": "postal_addresses",
+   "fieldtype": "Table",
+   "label": "Postal Address per Company",
+   "options": "Excom AI Postal Address",
+   "description": "Required in every cold email."
+  },
+  {
+   "fieldname": "ai_identity_policy",
+   "fieldtype": "Select",
+   "label": "When Asked If AI",
+   "options": "Hand to a person\nDisclose",
+   "default": "Hand to a person",
+   "description": "Owner's decision of 2026-11-09 (HLD-007 §12.6). Either way an agent never claims to be human or denies being AI."
+  },
+  {
+   "fieldname": "handover_line",
+   "fieldtype": "Small Text",
+   "label": "Holding Line",
+   "default": "Let me bring in my colleague, who can help you with that.",
+   "description": "Sent when a buyer's question goes to a person. Written in the buyer's language by the agent."
+  },
+  {
+   "fieldname": "dnc_domains",
+   "fieldtype": "Table",
+   "label": "Do-Not-Contact Domains",
+   "options": "Excom AI DNC Domain"
+  },
+  {
+   "fieldname": "quiet_dates",
+   "fieldtype": "Table",
+   "label": "Quiet Dates",
+   "options": "Excom AI Quiet Date",
+   "description": "No outreach on these dates."
+  },
+  {
+   "fieldname": "sb_retention",
+   "fieldtype": "Section Break",
+   "label": "Retention"
+  },
+  {
+   "fieldname": "prompt_retention_days",
+   "fieldtype": "Int",
+   "label": "Keep Prompts (days)",
+   "default": "30",
+   "description": "Applied to excom's AI Call Logs through ai_interface's per-app policy."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "issingle": 1,
+ "description": "Excom AI: master switch and global rules for AI agents"
+}

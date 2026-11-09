@@ -1,0 +1,141 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "recipe_key",
+  "label",
+  "kind",
+  "enabled",
+  "cb1",
+  "keywords",
+  "agent_types",
+  "section",
+  "privacy",
+  "sb_spec",
+  "handler",
+  "query_spec",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "recipe_key",
+   "fieldtype": "Data",
+   "label": "Key",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "label": "Label",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "label": "Kind",
+   "options": "Built-in\nQuery spec",
+   "default": "Query spec",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "keywords",
+   "fieldtype": "Small Text",
+   "label": "Keywords",
+   "description": "Comma-separated words and synonyms that select this recipe."
+  },
+  {
+   "fieldname": "agent_types",
+   "fieldtype": "Small Text",
+   "label": "For Types",
+   "description": "Comma-separated packs; blank = all."
+  },
+  {
+   "fieldname": "section",
+   "fieldtype": "Data",
+   "label": "Knowledge Section"
+  },
+  {
+   "fieldname": "privacy",
+   "fieldtype": "Select",
+   "label": "May Reach Prompts",
+   "options": "Aggregates only\nNames allowed\nContacts allowed",
+   "default": "Aggregates only"
+  },
+  {
+   "fieldname": "sb_spec",
+   "fieldtype": "Section Break",
+   "label": "Query"
+  },
+  {
+   "fieldname": "handler",
+   "fieldtype": "Data",
+   "label": "Built-in Handler",
+   "depends_on": "eval:doc.kind=='Built-in'",
+   "description": "Dotted path of the Python recipe."
+  },
+  {
+   "fieldname": "query_spec",
+   "fieldtype": "Code",
+   "label": "Query Spec",
+   "options": "JSON",
+   "depends_on": "eval:doc.kind=='Query spec'",
+   "description": "{\"doctype\": \"Customer\", \"filters\": [...], \"fields\": [...], \"group_by\": \"...\", \"limit\": 50}: read through frappe.get_list as the person building the agent."
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Recipe",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "field:recipe_key",
+ "title_field": "label",
+ "show_title_field_in_link": 1,
+ "description": "A safe, read-only ERP query that turns a keyword into facts"
+}

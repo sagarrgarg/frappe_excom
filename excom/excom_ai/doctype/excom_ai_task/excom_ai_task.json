@@ -1,0 +1,237 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "agent",
+  "kind",
+  "priority",
+  "status",
+  "dedupe_key",
+  "cb1",
+  "subject_doctype",
+  "subject_name",
+  "thread",
+  "not_before",
+  "attempts",
+  "sb_run",
+  "started_on",
+  "ended_on",
+  "model",
+  "effort",
+  "ai_log",
+  "cb2",
+  "provider",
+  "records",
+  "tool_cost",
+  "ai_cost",
+  "sb_outcome",
+  "params",
+  "prompt_versions",
+  "outcome",
+  "error"
+ ],
+ "fields": [
+  {
+   "fieldname": "agent",
+   "fieldtype": "Link",
+   "label": "Agent",
+   "options": "Excom AI Agent",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Data",
+   "label": "Kind",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "priority",
+   "fieldtype": "Int",
+   "label": "Priority",
+   "default": "5",
+   "description": "0 is the most urgent."
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Queued\nRunning\nDone\nFailed\nSkipped\nHeld\nBatched",
+   "default": "Queued",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "dedupe_key",
+   "fieldtype": "Data",
+   "label": "Dedupe Key",
+   "search_index": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "subject_doctype",
+   "fieldtype": "Link",
+   "label": "Subject Type",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "subject_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Subject",
+   "options": "subject_doctype"
+  },
+  {
+   "fieldname": "thread",
+   "fieldtype": "Link",
+   "label": "Conversation",
+   "options": "Excom Thread"
+  },
+  {
+   "fieldname": "not_before",
+   "fieldtype": "Datetime",
+   "label": "Not Before"
+  },
+  {
+   "fieldname": "attempts",
+   "fieldtype": "Int",
+   "label": "Attempts",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_run",
+   "fieldtype": "Section Break",
+   "label": "Run"
+  },
+  {
+   "fieldname": "started_on",
+   "fieldtype": "Datetime",
+   "label": "Started",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ended_on",
+   "fieldtype": "Datetime",
+   "label": "Ended",
+   "read_only": 1
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model",
+   "read_only": 1
+  },
+  {
+   "fieldname": "effort",
+   "fieldtype": "Data",
+   "label": "Effort",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ai_log",
+   "fieldtype": "Link",
+   "label": "AI Call",
+   "options": "AI Call Log",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Data",
+   "label": "Tool Provider",
+   "read_only": 1,
+   "description": "For discovery and profile runs: the search or data provider used."
+  },
+  {
+   "fieldname": "records",
+   "fieldtype": "Int",
+   "label": "Records",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tool_cost",
+   "fieldtype": "Float",
+   "label": "Tool Cost",
+   "precision": "6",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ai_cost",
+   "fieldtype": "Float",
+   "label": "AI Cost",
+   "precision": "6",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_outcome",
+   "fieldtype": "Section Break",
+   "label": "Outcome"
+  },
+  {
+   "fieldname": "params",
+   "fieldtype": "JSON",
+   "label": "Parameters"
+  },
+  {
+   "fieldname": "prompt_versions",
+   "fieldtype": "JSON",
+   "label": "Prompt Versions",
+   "read_only": 1
+  },
+  {
+   "fieldname": "outcome",
+   "fieldtype": "Small Text",
+   "label": "Outcome",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Error",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Task",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "hash",
+ "description": "One unit of agent work in the queue"
+}

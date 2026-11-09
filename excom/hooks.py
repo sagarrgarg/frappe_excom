@@ -85,8 +85,8 @@ app_include_js = "/assets/excom/js/excom_navbar.js"
 # Installation
 # ------------
 
-after_install = ["excom.setup.after_install", "excom.excom_ads.setup.after_install"]
-after_migrate = ["excom.setup.after_migrate", "excom.excom_ads.setup.after_migrate"]
+after_install = ["excom.setup.after_install", "excom.excom_ads.setup.after_install", "excom.excom_ai.setup.after_install"]
+after_migrate = ["excom.setup.after_migrate", "excom.excom_ads.setup.after_migrate", "excom.excom_ai.setup.after_migrate"]
 
 boot_session = "excom.boot.boot_session"
 

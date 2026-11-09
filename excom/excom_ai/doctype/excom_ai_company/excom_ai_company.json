@@ -1,0 +1,277 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "company_name",
+  "domain",
+  "external_id",
+  "website",
+  "description",
+  "industry",
+  "buyer_type",
+  "size_band",
+  "cb1",
+  "country",
+  "city",
+  "location_text",
+  "phone",
+  "language",
+  "source",
+  "source_url",
+  "found_by_task",
+  "sb_state",
+  "agent",
+  "status",
+  "exclusion_reason",
+  "fit_score",
+  "cb2",
+  "company_stop",
+  "stop_reason",
+  "prospect",
+  "customer",
+  "profile_checked_on",
+  "contacts_checked_on",
+  "sb_research",
+  "research_notes",
+  "website_facts",
+  "signals"
+ ],
+ "fields": [
+  {
+   "fieldname": "company_name",
+   "fieldtype": "Data",
+   "label": "Company",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "domain",
+   "fieldtype": "Data",
+   "label": "Domain",
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "The dedupe key: lowercase, without www."
+  },
+  {
+   "fieldname": "external_id",
+   "fieldtype": "Data",
+   "label": "External ID",
+   "unique": 1,
+   "description": "For example osm:node/… or dataforseo:cid:…"
+  },
+  {
+   "fieldname": "website",
+   "fieldtype": "Data",
+   "label": "Website",
+   "options": "URL"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "industry",
+   "fieldtype": "Data",
+   "label": "Industry (as found)"
+  },
+  {
+   "fieldname": "buyer_type",
+   "fieldtype": "Select",
+   "label": "Buyer Type",
+   "options": "\nImporter\nDistributor\nWholesaler\nRetailer\nOnline store\nManufacturer\nOther",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "size_band",
+   "fieldtype": "Select",
+   "label": "Size",
+   "options": "\n1-10\n11-50\n51-200\n201-1000\n1000+"
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "country",
+   "fieldtype": "Link",
+   "label": "Country",
+   "options": "Country",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "city",
+   "fieldtype": "Data",
+   "label": "City"
+  },
+  {
+   "fieldname": "location_text",
+   "fieldtype": "Data",
+   "label": "Location (as found)"
+  },
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "Phone"
+  },
+  {
+   "fieldname": "language",
+   "fieldtype": "Link",
+   "label": "Website Language",
+   "options": "Language"
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "label": "Source",
+   "options": "\nOSM\nSerper\nScavio\nDataForSEO\nTinyFish\nVolza\nImport\nWeb search\nManual",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "source_url",
+   "fieldtype": "Data",
+   "label": "Source URL"
+  },
+  {
+   "fieldname": "found_by_task",
+   "fieldtype": "Link",
+   "label": "Found By",
+   "options": "Excom AI Task"
+  },
+  {
+   "fieldname": "sb_state",
+   "fieldtype": "Section Break",
+   "label": "State"
+  },
+  {
+   "fieldname": "agent",
+   "fieldtype": "Link",
+   "label": "Owned By Agent",
+   "options": "Excom AI Agent",
+   "search_index": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "New\nProfiled\nContacts found\nNo contacts\nQualified\nPromoted\nExcluded",
+   "default": "New",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "exclusion_reason",
+   "fieldtype": "Select",
+   "label": "Excluded Because",
+   "options": "\nExisting customer\nOpen lead or deal (people)\nDo not contact\nCompetitor\nGroup company\nPoor fit\nOther"
+  },
+  {
+   "fieldname": "fit_score",
+   "fieldtype": "Int",
+   "label": "Fit Score",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company_stop",
+   "fieldtype": "Check",
+   "label": "Company Stop",
+   "description": "Someone there replied: no more cold email to anyone there."
+  },
+  {
+   "fieldname": "stop_reason",
+   "fieldtype": "Small Text",
+   "label": "Stop Reason"
+  },
+  {
+   "fieldname": "prospect",
+   "fieldtype": "Link",
+   "label": "Prospect",
+   "options": "Prospect",
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "profile_checked_on",
+   "fieldtype": "Datetime",
+   "label": "Profiled On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "contacts_checked_on",
+   "fieldtype": "Datetime",
+   "label": "Contacts Checked On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_research",
+   "fieldtype": "Section Break",
+   "label": "Research"
+  },
+  {
+   "fieldname": "research_notes",
+   "fieldtype": "Text",
+   "label": "Research Notes"
+  },
+  {
+   "fieldname": "website_facts",
+   "fieldtype": "JSON",
+   "label": "Website Facts",
+   "read_only": 1
+  },
+  {
+   "fieldname": "signals",
+   "fieldtype": "JSON",
+   "label": "Signals (latest)",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Company",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "hash",
+ "title_field": "company_name",
+ "show_title_field_in_link": 1,
+ "description": "A company an agent found: research data, not CRM, until someone there is contacted"
+}

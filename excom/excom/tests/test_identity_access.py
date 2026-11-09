@@ -55,7 +55,10 @@ class TestIdentityAccess(FrappeTestCase):
 			"primary_phone": "+919900000981"}).insert(ignore_permissions=True).name
 		frappe.get_doc({"doctype": "Excom Thread", "omni_identity": cls.owned, "channel": ref.channel,
 			"account_doctype": ref.account_doctype, "account": ref.account, "thread_key": "qa-ident-1",
-			"status": "Open", "assigned_team": TEAM, "last_message_at": now_datetime()}).insert(ignore_permissions=True)
+			# Worked by the desk: someone on it owns the conversation. (An unowned one on a number open
+			# to every team is visible to every team, by the access rule of 2026-11-08.)
+			"status": "Open", "assigned_team": TEAM, "assigned_to": MINE,
+			"last_message_at": now_datetime()}).insert(ignore_permissions=True)
 		cls.unclaimed = frappe.get_doc({"doctype": "Omni Identity", "display_name": "QA Ident Unclaimed",
 			"primary_phone": "+919900000982"}).insert(ignore_permissions=True).name
 		frappe.db.commit()

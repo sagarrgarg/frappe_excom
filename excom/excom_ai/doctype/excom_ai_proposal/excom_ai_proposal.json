@@ -1,0 +1,324 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "agent",
+  "action",
+  "status",
+  "risk",
+  "task",
+  "cb1",
+  "subject_doctype",
+  "subject_name",
+  "thread",
+  "channel_account",
+  "sb_message",
+  "enrollment",
+  "step",
+  "kind",
+  "to_email",
+  "cb2",
+  "send_at",
+  "sent_on",
+  "email_draft",
+  "message",
+  "sb_content",
+  "preview_html",
+  "payload",
+  "sb_checks",
+  "checks",
+  "checker_verdict",
+  "checker_notes",
+  "sb_decision",
+  "decided_by",
+  "decided_on",
+  "reject_reason",
+  "reject_note",
+  "cb3",
+  "edit_diff",
+  "executed_doctype",
+  "executed_name",
+  "error",
+  "hold_reason",
+  "expires_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "agent",
+   "fieldtype": "Link",
+   "label": "Agent",
+   "options": "Excom AI Agent",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "action",
+   "fieldtype": "Select",
+   "label": "Action",
+   "options": "send_email\nsend_whatsapp\nreply\ncreate_lead\nupdate_lead\ncreate_opportunity\ncreate_quotation\npayment_reminder\ncreate_todo\nnote",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nApproved\nEdited\nRejected\nExpired\nSending\nSent\nSent by hand\nDone\nFailed\nHeld\nCancelled",
+   "default": "Pending",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "risk",
+   "fieldtype": "Select",
+   "label": "Risk",
+   "options": "Low\nMedium\nHigh",
+   "default": "Medium"
+  },
+  {
+   "fieldname": "task",
+   "fieldtype": "Link",
+   "label": "Task",
+   "options": "Excom AI Task"
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "subject_doctype",
+   "fieldtype": "Link",
+   "label": "Subject Type",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "subject_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Subject",
+   "options": "subject_doctype"
+  },
+  {
+   "fieldname": "thread",
+   "fieldtype": "Link",
+   "label": "Conversation",
+   "options": "Excom Thread"
+  },
+  {
+   "fieldname": "channel_account",
+   "fieldtype": "Link",
+   "label": "Number / Mailbox",
+   "options": "Excom Channel Account"
+  },
+  {
+   "fieldname": "sb_message",
+   "fieldtype": "Section Break",
+   "label": "Message"
+  },
+  {
+   "fieldname": "enrollment",
+   "fieldtype": "Link",
+   "label": "Enrollment",
+   "options": "Excom AI Enrollment",
+   "search_index": 1
+  },
+  {
+   "fieldname": "step",
+   "fieldtype": "Int",
+   "label": "Step"
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "label": "Kind",
+   "options": "\nSequence\nReply"
+  },
+  {
+   "fieldname": "to_email",
+   "fieldtype": "Data",
+   "label": "To"
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "send_at",
+   "fieldtype": "Datetime",
+   "label": "Send At"
+  },
+  {
+   "fieldname": "sent_on",
+   "fieldtype": "Datetime",
+   "label": "Sent On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "email_draft",
+   "fieldtype": "Link",
+   "label": "Email Draft",
+   "options": "Excom Email Draft",
+   "read_only": 1
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Link",
+   "label": "Sent Message",
+   "options": "Excom Message",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_content",
+   "fieldtype": "Section Break",
+   "label": "What It Proposes"
+  },
+  {
+   "fieldname": "preview_html",
+   "fieldtype": "HTML Editor",
+   "label": "Preview",
+   "read_only": 1,
+   "description": "Exactly what the recipient will see."
+  },
+  {
+   "fieldname": "payload",
+   "fieldtype": "JSON",
+   "label": "Payload",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_checks",
+   "fieldtype": "Section Break",
+   "label": "Checks"
+  },
+  {
+   "fieldname": "checks",
+   "fieldtype": "JSON",
+   "label": "Code Checks",
+   "read_only": 1
+  },
+  {
+   "fieldname": "checker_verdict",
+   "fieldtype": "Select",
+   "label": "AI Check",
+   "options": "\nPass\nFixed\nFail",
+   "read_only": 1
+  },
+  {
+   "fieldname": "checker_notes",
+   "fieldtype": "Small Text",
+   "label": "AI Check Notes",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_decision",
+   "fieldtype": "Section Break",
+   "label": "Decision"
+  },
+  {
+   "fieldname": "decided_by",
+   "fieldtype": "Data",
+   "label": "Decided By",
+   "read_only": 1,
+   "description": "A user, Autopilot or Earlier."
+  },
+  {
+   "fieldname": "decided_on",
+   "fieldtype": "Datetime",
+   "label": "Decided On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reject_reason",
+   "fieldtype": "Select",
+   "label": "Reject Reason",
+   "options": "\nWrong facts\nWrong tone\nWrong recipient\nNot needed\nOther"
+  },
+  {
+   "fieldname": "reject_note",
+   "fieldtype": "Small Text",
+   "label": "Reject Note"
+  },
+  {
+   "fieldname": "cb3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "edit_diff",
+   "fieldtype": "Long Text",
+   "label": "Edits",
+   "read_only": 1
+  },
+  {
+   "fieldname": "executed_doctype",
+   "fieldtype": "Link",
+   "label": "Result Type",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "executed_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Result",
+   "options": "executed_doctype",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "hold_reason",
+   "fieldtype": "Small Text",
+   "label": "Hold Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "expires_on",
+   "fieldtype": "Datetime",
+   "label": "Expires On"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Proposal",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Excom Agent"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "hash",
+ "description": "An action an agent wants to take, waiting for a person or done under its policy"
+}

@@ -1,0 +1,118 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "rule_key",
+  "agent_type",
+  "title",
+  "severity",
+  "enabled",
+  "cb1",
+  "handler",
+  "applies_when",
+  "fix_hint",
+  "fix_route"
+ ],
+ "fields": [
+  {
+   "fieldname": "rule_key",
+   "fieldtype": "Data",
+   "label": "Key",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "agent_type",
+   "fieldtype": "Link",
+   "label": "Type",
+   "options": "Excom AI Agent Type",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Rule",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "severity",
+   "fieldtype": "Select",
+   "label": "Severity",
+   "options": "Blocker\nWarning\nInfo",
+   "default": "Warning",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1"
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "handler",
+   "fieldtype": "Data",
+   "label": "Check",
+   "description": "Dotted path of the code check."
+  },
+  {
+   "fieldname": "applies_when",
+   "fieldtype": "Small Text",
+   "label": "Applies When",
+   "description": "Keywords or concepts; blank = always."
+  },
+  {
+   "fieldname": "fix_hint",
+   "fieldtype": "Small Text",
+   "label": "How to Fix"
+  },
+  {
+   "fieldname": "fix_route",
+   "fieldtype": "Data",
+   "label": "Fix Link"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Readiness Rule",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "field:rule_key",
+ "title_field": "title",
+ "show_title_field_in_link": 1,
+ "description": "A readiness check run before an agent may go live"
+}

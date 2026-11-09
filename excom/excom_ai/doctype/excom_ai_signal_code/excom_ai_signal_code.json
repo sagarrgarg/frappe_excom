@@ -1,0 +1,118 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "code",
+  "label",
+  "category",
+  "value_type",
+  "cb1",
+  "collector",
+  "cost_note",
+  "status",
+  "confidence_floor",
+  "description"
+ ],
+ "fields": [
+  {
+   "fieldname": "code",
+   "fieldtype": "Data",
+   "label": "Code",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "label": "Label",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "Trade\nPeople\nVerification\nDiscovery\nProfile",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "value_type",
+   "fieldtype": "Select",
+   "label": "Value",
+   "options": "Flag\nNumber\nText",
+   "default": "Text"
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "collector",
+   "fieldtype": "Data",
+   "label": "Collected By"
+  },
+  {
+   "fieldname": "cost_note",
+   "fieldtype": "Data",
+   "label": "Cost"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Proposed\nConfirmed\nRejected",
+   "default": "Proposed",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Discovery and research only collect Confirmed signals: a person decides what the agents look for."
+  },
+  {
+   "fieldname": "confidence_floor",
+   "fieldtype": "Float",
+   "label": "Minimum Confidence",
+   "default": "0.5"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Signal Code",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "field:code",
+ "title_field": "label",
+ "show_title_field_in_link": 1,
+ "description": "Something research may record about a company or person"
+}

@@ -164,6 +164,14 @@ frontend/src/routes/agents/   the screens in §15
 
 ## 5. Records
 
+**As built (2026-11-09, Phase 0.2):** the records are named **Excom AI …**, not "Excom Agent …":
+- **Why:** "Excom Agent" is the human agent role in Excom, so "Excom Agent Task" would read as a person's task.
+- **Renames:** Excom Agent → Excom AI Agent, Excom Agent Type → Excom AI Agent Type, Excom Agent Settings → Excom AI Settings, and every other "Excom Agent X" → "Excom AI X". Excom Email Domain is now Excom AI Email Domain.
+- **Field prefix:** fields added to native records use the prefix `ai_` (`Lead.ai_agent`, `Prospect.ai_company_stop`, `Excom Thread.ai_mode`…).
+- **Budget scope:** an agent's budget scope in ai_interface is `Excom AI Agent:<name>`.
+
+The text below keeps the original names.
+
 Names start with **Excom Agent** to avoid clashes with `ai_interface`, which already has AI Settings, AI Provider, AI Prompt Template and AI Call Log.
 
 ### 5.1 Configuration

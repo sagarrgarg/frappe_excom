@@ -1,0 +1,84 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "channel_account",
+  "purpose",
+  "daily_cap",
+  "warmup_start",
+  "signature_mode",
+  "paused",
+  "pause_reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "channel_account",
+   "fieldtype": "Link",
+   "label": "Number / Mailbox",
+   "options": "Excom Channel Account",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "purpose",
+   "fieldtype": "Select",
+   "label": "Used For",
+   "options": "Outreach and replies\nOutreach\nReplies",
+   "default": "Outreach and replies",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "daily_cap",
+   "fieldtype": "Int",
+   "label": "Daily Cap",
+   "default": "40",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "warmup_start",
+   "fieldtype": "Date",
+   "label": "Warm-up Started",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "New mailboxes start at 5 a day and add 3 a day up to the cap, for at least 14 days."
+  },
+  {
+   "fieldname": "signature_mode",
+   "fieldtype": "Select",
+   "label": "Signature",
+   "options": "Server adds it\nAgent adds it",
+   "default": "Server adds it"
+  },
+  {
+   "fieldname": "paused",
+   "fieldtype": "Check",
+   "label": "Paused",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "pause_reason",
+   "fieldtype": "Small Text",
+   "label": "Pause Reason",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Channel",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1
+}

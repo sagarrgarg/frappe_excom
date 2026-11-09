@@ -1,0 +1,115 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "agent",
+  "version",
+  "generated_on",
+  "approx_tokens",
+  "cb1",
+  "recipes_used",
+  "changes_since_last",
+  "sb_facts",
+  "summary",
+  "facts"
+ ],
+ "fields": [
+  {
+   "fieldname": "agent",
+   "fieldtype": "Link",
+   "label": "Agent",
+   "options": "Excom AI Agent",
+   "reqd": 1,
+   "in_list_view": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "version",
+   "fieldtype": "Int",
+   "label": "Version",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "generated_on",
+   "fieldtype": "Datetime",
+   "label": "Generated On",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "approx_tokens",
+   "fieldtype": "Int",
+   "label": "Approx. Tokens",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "recipes_used",
+   "fieldtype": "JSON",
+   "label": "Recipes Used",
+   "read_only": 1
+  },
+  {
+   "fieldname": "changes_since_last",
+   "fieldtype": "Small Text",
+   "label": "What Changed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_facts",
+   "fieldtype": "Section Break",
+   "label": "Facts"
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Markdown Editor",
+   "label": "Summary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "facts",
+   "fieldtype": "JSON",
+   "label": "Facts by Section",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Knowledge",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "hash",
+ "description": "ERP facts for one agent, from its recipes; versioned and refreshed nightly"
+}

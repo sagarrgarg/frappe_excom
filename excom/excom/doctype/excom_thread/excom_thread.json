@@ -21,6 +21,12 @@
   "priority",
   "inbox_lane",
   "inbox_lane_pinned",
+  "ai_section",
+  "ai_agent",
+  "ai_mode",
+  "ai_cb",
+  "ai_intent",
+  "ai_stage",
   "closure_outcome",
   "closure_reason",
   "closed_by",
@@ -163,6 +169,46 @@
    "fieldname": "inbox_lane_pinned",
    "fieldtype": "Check",
    "label": "Lane Set by Hand"
+  },
+  {
+   "fieldname": "ai_section",
+   "fieldtype": "Section Break",
+   "label": "AI Agent",
+   "collapsible": 1,
+   "depends_on": "ai_agent"
+  },
+  {
+   "fieldname": "ai_agent",
+   "fieldtype": "Link",
+   "label": "Handled By AI Agent",
+   "options": "Excom AI Agent",
+   "search_index": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "ai_mode",
+   "fieldtype": "Select",
+   "label": "AI Mode",
+   "options": "\nAssist\nHandle\nNeeds person\nHold",
+   "read_only": 1,
+   "description": "Handle: the agent answers under its policies. Needs person: a buyer's question is waiting for its owner. Hold: the agent is on hold."
+  },
+  {
+   "fieldname": "ai_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ai_intent",
+   "fieldtype": "Data",
+   "label": "Last Intent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ai_stage",
+   "fieldtype": "Select",
+   "label": "AI Stage",
+   "read_only": 1,
+   "options": "\nInitial outreach\nEngaged\nQualifying\nPresenting\nNegotiating\nClosing\nClosed won\nClosed lost"
   },
   {
    "fieldname": "closure_outcome",
@@ -327,7 +373,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-07 21:00:00.000000",
+ "modified": "2026-11-09 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Thread",

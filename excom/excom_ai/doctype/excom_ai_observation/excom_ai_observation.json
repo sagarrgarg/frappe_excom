@@ -1,0 +1,117 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 16:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "company",
+  "person",
+  "signal",
+  "collector",
+  "cb1",
+  "value_num",
+  "value_text",
+  "confidence",
+  "evidence_url",
+  "observed_on",
+  "task"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Excom AI Company",
+   "search_index": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "person",
+   "fieldtype": "Link",
+   "label": "Person",
+   "options": "Excom AI Person"
+  },
+  {
+   "fieldname": "signal",
+   "fieldtype": "Link",
+   "label": "Signal",
+   "options": "Excom AI Signal Code",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "collector",
+   "fieldtype": "Data",
+   "label": "Collector"
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "value_num",
+   "fieldtype": "Float",
+   "label": "Number"
+  },
+  {
+   "fieldname": "value_text",
+   "fieldtype": "Small Text",
+   "label": "Text",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "confidence",
+   "fieldtype": "Float",
+   "label": "Confidence"
+  },
+  {
+   "fieldname": "evidence_url",
+   "fieldtype": "Data",
+   "label": "Evidence"
+  },
+  {
+   "fieldname": "observed_on",
+   "fieldtype": "Datetime",
+   "label": "Observed On"
+  },
+  {
+   "fieldname": "task",
+   "fieldtype": "Link",
+   "label": "Task",
+   "options": "Excom AI Task"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Observation",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "hash",
+ "description": "One observed signal, with its evidence"
+}
