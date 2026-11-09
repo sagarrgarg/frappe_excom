@@ -29,6 +29,8 @@ GUARDS = {
 	"_can_build", "_readable", "_changeable", "_can_see_agents",
 	# Excom AI Needs you: thread access (Excom's own rule), and who may decide an agent's proposals.
 	"_thread_for_change", "may_decide", "_excom_user",
+	# Excom AI voice: the voice service's shared key (constant time), then a one-call token from the cache.
+	"_verify_voice_key",
 }
 # Public by design. Each line says why it is safe to leave open.
 ALLOWED = {

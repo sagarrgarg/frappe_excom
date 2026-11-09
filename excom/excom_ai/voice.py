@@ -100,7 +100,7 @@ def after_dial(provider, event) -> str | None:
 # ── the voice service's endpoints ────────────────────────────────────────────
 
 
-def _verify():
+def _verify_voice_key():
 	key = settings().get_password("voice_service_key", raise_exception=False) or ""
 	sent = frappe.get_request_header("X-Excom-Voice-Key") or ""
 	if not key or not hmac.compare_digest(key, sent):
@@ -140,7 +140,7 @@ def greeting(agent) -> str:
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 def start(token: str) -> dict:
 	"""The call is connected to the voice service: who speaks, in which language, and the greeting."""
-	_verify()
+	_verify_voice_key()
 	state = _state(token)
 	if state.get("started") or state.get("declined"):
 		frappe.throw(_("This call has already started."), frappe.PermissionError)  # a token works once
@@ -192,7 +192,7 @@ def turn(token: str, text: str) -> dict:
 	from excom.excom_ai.engine.identity import as_user
 	from excom.excom_ai.engine.inbound import asks_if_ai
 
-	_verify()
+	_verify_voice_key()
 	state = _state(token)
 	agent = frappe.get_doc("Excom AI Agent", state["agent"])
 	text = (text or "").strip()[:2000]
@@ -240,7 +240,7 @@ def turn(token: str, text: str) -> dict:
 def end(token: str, transcript=None, duration_seconds: int = 0, reason: str = "") -> dict:
 	"""The call is over: the transcript goes on the Excom Call, and a summary task is queued. Safe to
 	repeat (the voice service retries): a call already ended is acknowledged again."""
-	_verify()
+	_verify_voice_key()
 	state = frappe.cache.get_value(_key(token or ""))
 	if not state:
 		return {"ok": True, "already": True}

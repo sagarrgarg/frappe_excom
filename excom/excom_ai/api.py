@@ -206,6 +206,5 @@ def cost_check(candidates):
 	case). Nothing is switched; the recommendation is applied through the usual settings change."""
 	from excom.excom_ai import learning
 
-	if not set(frappe.get_roles()) & MANAGERS:
-		frappe.throw(_("Only an Excom Admin runs a cost check."), frappe.PermissionError)
+	frappe.only_for(list(MANAGERS))  # it spends money on model calls
 	return learning.cost_check(frappe.parse_json(candidates) if isinstance(candidates, str) else candidates)
