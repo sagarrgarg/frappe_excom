@@ -23,6 +23,7 @@ import { ChannelsTab } from "./ChannelsTab";
 import { AutonomyTab } from "./AutonomyTab";
 import { ShadowTab } from "./ShadowTab";
 import { ResearchTab } from "./ResearchTab";
+import { TemplatesTab } from "./TemplatesTab";
 
 const TABS = [
   { value: "overview", label: "Overview" },
@@ -36,6 +37,7 @@ const TABS = [
   { value: "readiness", label: "Readiness" },
   { value: "channels", label: "Channels and limits" },
   { value: "autonomy", label: "Autonomy" },
+  { value: "templates", label: "Templates" },
   { value: "usage", label: "Usage" },
 ] as const;
 export type AgentTab = (typeof TABS)[number]["value"];
@@ -85,6 +87,7 @@ export function AgentPage() {
       {tab === "readiness" && <ReadinessTab d={d} reload={reload} />}
       {tab === "channels" && <ChannelsTab d={d} reload={reload} />}
       {tab === "autonomy" && <AutonomyTab d={d} reload={reload} />}
+      {tab === "templates" && <TemplatesTab agent={a.name} />}
       {tab === "usage" && <UsageTab d={d} />}
     </AdminPage>
   );

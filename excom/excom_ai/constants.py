@@ -71,7 +71,8 @@ CEILINGS = {
 	"statement": "Review",  # Accounts: a customer's statement
 	"rfq": "Review",  # Purchase: a request for quotation to a supplier
 	"po_chase": "Auto",  # Purchase: asking a supplier about a late order
-	"voice_call": "Auto",  # Phase 3: taking the calls nobody answers (Auto is the only mode that takes one)
+	"voice_call": "Auto",
+	"template": "Review",  # HLD-008: an email template (or a WhatsApp one with auto-submission off) waits for a person  # Phase 3: taking the calls nobody answers (Auto is the only mode that takes one)
 }
 
 SAFE_REPLY_INTENTS = "ooo, thanks, scheduling, public catalogue"

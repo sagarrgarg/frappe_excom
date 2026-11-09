@@ -17,7 +17,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, add_to_date, fmt_money, getdate, now_datetime, nowdate
 
 from excom.excom.tests.fixtures import purge_users
-from excom.excom_ai import checks
+from excom.excom_ai import checks, templates
 from excom.excom_ai.builder import readiness
 from excom.excom_ai.engine import inbound, ownership, proposals, runner, tasks
 from excom.excom_ai.packs import accounts
@@ -28,6 +28,10 @@ FINANCE = "qa.acc.finance@example.com"
 TEAM = "QA Acc Desk"
 BOX = "QA Acc Box"
 DOMAIN = "qa-acc.example"
+WA1, WA2 = "QA Acc WA 1", "QA Acc WA 2"
+WABA = "990077665544"  # both numbers are on one WhatsApp business account
+PHONE = "+91990077{:04d}"
+REMINDER = "accounts.payment_reminder"
 PTYPE, PROVIDER = "_TA Scripted", "_TA Accounts"
 MICRO, BIG = "QA Acc Micro Supplier", "QA Acc Big Supplier"
 WORDS = {"subject": "Your account with us",
@@ -39,9 +43,21 @@ def _company():
 	return frappe.db.get_value("Company", {"default_currency": "INR"}, "name")
 
 
+def _clear_steward(agents=None):
+	"""Template needs and WhatsApp Templates rows made here (rows only: nothing is ever on Meta)."""
+	agents = agents if agents is not None else frappe.get_all("Excom AI Agent", {"agent_name": ["like", "QA Acc%"]},
+		pluck="name")
+	frappe.db.delete("Excom AI Template Need", {"wa_business_id": WABA})
+	frappe.db.delete("Excom AI Template Need", {"agent": ["in", agents or ["-"]]})
+	for t in frappe.get_all("WhatsApp Templates", {"template_name": ["like", "qa_acc_%"]}, pluck="name"):
+		frappe.db.delete("WhatsApp Template Linked Account", {"parent": t})
+		frappe.db.delete("WhatsApp Templates", {"name": t})
+
+
 def _cleanup():
 	frappe.set_user("Administrator")
 	agents = frappe.get_all("Excom AI Agent", {"agent_name": ["like", "QA Acc%"]}, pluck="name")
+	_clear_steward(agents)
 	customers = frappe.get_all("Customer", {"customer_name": ["like", "QA Acc%"]}, pluck="name")
 	suppliers = frappe.get_all("Supplier", {"supplier_name": ["like", "QA Acc%"]}, pluck="name")
 	bts = frappe.get_all("Bank Transaction", {"name": ["like", "QA-ACC-%"]}, pluck="name")
@@ -54,7 +70,7 @@ def _cleanup():
 	frappe.db.delete("Comment", {"reference_name": ["in", refs or ["-"]]})
 	for dt in ("Sales Invoice", "Purchase Invoice", "Bank Transaction"):
 		frappe.db.delete(dt, {"name": ["like", "QA-ACC-%"]})
-	accs = frappe.get_all("Excom Channel Account", {"account_name": BOX}, pluck="name")
+	accs = frappe.get_all("Excom Channel Account", {"account_name": ["in", (BOX, WA1, WA2)]}, pluck="name")
 	ids = set()
 	for t in frappe.get_all("Excom Thread", {"account": ["in", accs or ["-"]]}, ["name", "omni_identity"]):
 		ids.add(t.omni_identity)
@@ -62,6 +78,10 @@ def _cleanup():
 		frappe.db.delete("Comment", {"reference_name": t.name})
 		frappe.delete_doc("Excom Thread", t.name, force=True, ignore_permissions=True)
 	ids |= set(frappe.get_all("Omni Identity", {"primary_email": ["like", f"%{DOMAIN}"]}, pluck="name"))
+	ids |= set(frappe.get_all("Omni Identity", {"primary_phone": ["like", PHONE[:9] + "%"]}, pluck="name"))
+	ids |= set(frappe.get_all("Omni Identity", {"normalized_phone": ["like", PHONE[1:9] + "%"]}, pluck="name"))
+	if ids and frappe.db.exists("DocType", "Excom Consent"):
+		frappe.db.delete("Excom Consent", {"omni_identity": ["in", [i for i in ids if i] or ["-"]]})
 	ids |= set(frappe.get_all("Omni Identity Link", {"linked_doctype": ["in", ("Customer", "Supplier")],
 		"linked_name": ["in", customers + suppliers or ["-"]]}, pluck="parent"))
 	for oi in ids:
@@ -69,7 +89,8 @@ def _cleanup():
 			for child in ("Omni Identity Link", "Omni Identity Channel", "Omni Identity Alias"):
 				frappe.db.delete(child, {"parent": oi})
 			frappe.delete_doc("Omni Identity", oi, force=True, ignore_permissions=True)
-	for c in frappe.get_all("Contact", {"email_id": ["like", f"%{DOMAIN}"]}, pluck="name"):
+	for c in set(frappe.get_all("Contact", {"email_id": ["like", f"%{DOMAIN}"]}, pluck="name")) | set(
+			frappe.get_all("Contact", {"first_name": ["like", "QA Acc%"]}, pluck="name")):
 		frappe.delete_doc("Contact", c, force=True, ignore_permissions=True)
 	for name in customers:
 		frappe.delete_doc("Customer", name, force=True, ignore_permissions=True)
@@ -141,6 +162,13 @@ class TestAccountsPack(FrappeTestCase):
 		cls.box = frappe.get_doc({"doctype": "Excom Channel Account", "account_name": BOX, "channel": "email",
 			"status": "Active",
 			"email_address": f"accounts@ours.{DOMAIN}"}).insert(ignore_permissions=True)
+		cls.wa = []
+		for name in (WA1, WA2):
+			wa = frappe.get_doc({"doctype": "Excom Channel Account", "account_name": name, "channel": "whatsapp",
+				"status": "Active", "wa_business_id": WABA})
+			wa.flags.ignore_validate = True
+			wa.flags.ignore_mandatory = True
+			cls.wa.append(wa.insert(ignore_permissions=True).name)
 		cls.company = _company()
 		cls.msme = frappe.db.exists("DocType",
 			"MSME Registration Detail") and frappe.get_meta("Supplier").has_field("custom_msme_details")
@@ -196,25 +224,33 @@ class TestAccountsPack(FrappeTestCase):
 
 	# ---- fixtures
 
-	def agent(self, status="Live"):
+	def agent(self, status="Live", whatsapp=False):
+		numbers = [{"channel_account": wa, "purpose": "Outreach and replies"} for wa in self.wa] if whatsapp else []
 		a = _retry(lambda: frappe.get_doc({"doctype": "Excom AI Agent", "agent_name": f"QA Acc {self.n}",
 			"agent_type": "Accounts",
 			"owner_user": OWNER, "backup_user": BACKUP, "team": TEAM, "company": self.company,
 			"channels": [{"channel_account": self.box.name,
-				"purpose": "Outreach and replies"}]}).insert(ignore_permissions=True))
+				"purpose": "Outreach and replies"}, *numbers]}).insert(ignore_permissions=True))
 		a.db_set({"status": status, "brief_approved_on": now_datetime(), "readiness_state": "Ready"})
 		ownership.evaluate(frappe.get_doc("Excom AI Agent", a.name))
 		frappe.db.commit()
 		return frappe.get_doc("Excom AI Agent", a.name)
 
-	def buyer(self, contacts=True):
+	def buyer(self, contacts=True, mobile=False, email=True):
 		"""A customer 120 days overdue on one invoice and 95 on a part-paid one, with a third not due
-		yet; a billing contact and a primary contact who is not the billing one."""
+		yet; a billing contact and a primary contact who is not the billing one. mobile: the billing
+		contact has a WhatsApp number too; email=False: a mobile number only (no primary contact)."""
 		c = _retry(lambda: frappe.get_doc({"doctype": "Customer", "customer_name": f"QA Acc Buyer {self.n}",
 			"customer_type": "Company", "gst_category": "Unregistered", "language": "en"}).insert(ignore_permissions=True))
 		out = frappe._dict(customer=c.name, billing=f"billing{self.n}@buyer.{DOMAIN}", boss=f"boss{self.n}@buyer.{DOMAIN}",
-			old=f"QA-ACC-SINV-{self.n}-1", part=f"QA-ACC-SINV-{self.n}-2", fresh=f"QA-ACC-SINV-{self.n}-3")
-		if contacts:
+			old=f"QA-ACC-SINV-{self.n}-1", part=f"QA-ACC-SINV-{self.n}-2", fresh=f"QA-ACC-SINV-{self.n}-3",
+			mobile=PHONE.format(self.n) if mobile or not email else None, first=f"QA Acc Billing {self.n}")
+		if contacts and out.mobile:
+			frappe.get_doc({"doctype": "Contact", "first_name": out.first, "is_billing_contact": 1,
+				"email_ids": [{"email_id": out.billing, "is_primary": 1}] if email else [],
+				"phone_nos": [{"phone": out.mobile, "is_primary_mobile_no": 1}],
+				"links": [{"link_doctype": "Customer", "link_name": c.name}]}).insert(ignore_permissions=True)
+		elif contacts:
 			for first, email, billing, primary in (("QA Acc Boss", out.boss, 0, 1), ("QA Acc Billing", out.billing, 1, 0)):
 				frappe.get_doc({"doctype": "Contact", "first_name": f"{first} {self.n}", "email_ids": [{"email_id": email,
 					"is_primary": 1}],
@@ -290,6 +326,46 @@ class TestAccountsPack(FrappeTestCase):
 		t = frappe.db.get_value("Excom AI Task", {"agent": a.name, "kind": "inbound", "thread": thread, "status": "Queued"})
 		self.assertTrue(t, "the reply reached the agent")
 		return self.run_now(t, classified)
+
+	# ---- the template steward (HLD-008): rows only, Meta is never called
+
+	def steward_on(self):
+		"""The steward and first-use review on for this pack's code, whatever the shared settings say."""
+		real = frappe.get_cached_doc("Excom AI Settings")
+		s = frappe._dict(real.as_dict(), enabled=1, templates_enabled=1, template_first_use_review=1)
+		return patch.object(templates, "_settings", return_value=s)
+
+	def wa_template(self, name: str, text: str, need: str | None = None) -> str:
+		"""An APPROVED utility template on the first number, written straight to its table (after_insert
+		would post it to Meta)."""
+		doc = frappe.new_doc("WhatsApp Templates")
+		doc.update({"template_name": name, "actual_name": name, "template": text, "language": "en", "language_code": "en",
+			"category": "UTILITY", "status": "APPROVED", "whatsapp_account": self.wa[0], "header_type": "",
+			"xai_need": need, "xai_first_use_done": 0})
+		doc.name = f"{name}-en"
+		doc.db_insert()
+		frappe.db.commit()
+		return doc.name
+
+	def met_need(self, a, channel: str, key: str = REMINDER, template: str | None = None, subject: str = "",
+			body: str = "") -> str:
+		"""A need the steward has met: WhatsApp on the WABA (linked both ways to its template), email per agent."""
+		wa = channel == "WhatsApp"
+		doc = frappe.get_doc({"doctype": "Excom AI Template Need", "need_key": key, "channel": channel,
+			"category": "UTILITY" if wa else "", "language": "en", "agent": a.name, "agents": a.name,
+			"channel_account": self.wa[0] if wa else None, "wa_business_id": WABA if wa else "",
+			"unique_key": templates.unique_key(key, channel, "en", a.name, self.wa[0] if wa else None), "status": "Met",
+			"source": "Written", "template": template, "subject": subject, "body": body,
+			"variable_map": json.dumps(templates.NEEDS[key]["variables"])}).insert(ignore_permissions=True)
+		if template:
+			frappe.db.set_value("WhatsApp Templates", template, {"xai_need": doc.name,
+				"xai_variable_map": json.dumps(templates.NEEDS[key]["variables"])}, update_modified=False)
+		frappe.db.commit()
+		return doc.name
+
+	def set_policy(self, a, action: str, mode: str):
+		frappe.db.set_value("Excom AI Policy", {"parent": a.name, "action": action}, "mode", mode)
+		frappe.db.commit()
 
 	def enrollment(self, a, b):
 		return accounts.enrollment_for(a, b.customer, create=False)
@@ -528,6 +604,195 @@ class TestAccountsPack(FrappeTestCase):
 		self.assertEqual(json.loads(p.payload)["invoices"], {b.old: 50000, b.part: 20000, b.fresh: 5000})
 		self.assertIn(b.fresh, p.preview_html)
 		self.assertTrue(json.loads(p.checks)["ok"], checks.failures(json.loads(p.checks)))
+
+	# ---- the template steward (HLD-008)
+
+	def opt_in(self, b, action="Granted"):
+		from excom.excom.services.consent import record_consent
+
+		ident = accounts.identity_for(phone=b.mobile, display=b.first)
+		record_consent(ident, action, channel="whatsapp", purpose="transactional")
+		frappe.db.commit()
+		return ident
+
+	def test_a_met_whatsapp_need_carries_the_reminder_and_its_first_use_waits(self):
+		_clear_steward()
+		a, b = self.agent(whatsapp=True), self.buyer(email=False)
+		tpl = self.wa_template(f"qa_acc_steward_{self.n}", "Hello {{1}}, our invoices {{3}} are past their due date, "
+			"{{2}} in all. Please let us know when payment is arranged.")
+		need = self.met_need(a, "WhatsApp", template=tpl)
+		self.set_policy(a, "payment_reminder", "Auto")
+		self.opt_in(b)
+		with self.steward_on(), patch.object(runner, "ai", side_effect=AssertionError("no model call")) as ai:
+			p = self.step(a, b, words=None).proposal
+		ai.assert_not_called()
+		payload = json.loads(p.payload)
+		self.assertEqual((payload["channel"], payload["template"], payload["template_need"]), ("whatsapp", tpl, need))
+		self.assertEqual(payload["variables"], [b.first, fmt_money(70000, currency="INR"), f"{b.old}, {b.part}"],
+			"name, total and invoice numbers filled by code from the contact and the ledger")
+		self.assertIn(f"Hello {b.first}, our invoices {b.old}, {b.part} are past", payload["body"])
+		self.assertEqual((p.channel_account, payload["mobile"]), (self.wa[0], b.mobile))
+		self.assertEqual(p.status, "Pending", "the first send of a steward template waits for a person, even under Auto")
+		self.assertIn("first send waits", json.loads(p.checks)["template"]["why"])
+
+		# once a person has approved one send, the policy applies
+		frappe.db.set_value("WhatsApp Templates", tpl, "xai_first_use_done", 1)
+		frappe.db.set_value("Excom AI Proposal", p.name, {"status": "Cancelled", "step_key": None})
+		with self.steward_on():
+			again = self.step(a, b, words=None)
+		self.assertNotEqual(again.proposal.name, p.name, again.outcome)
+		again = again.proposal
+		self.assertEqual((again.status, again.decided_by), ("Approved", "Autopilot"))
+
+	def test_no_template_records_one_need_and_the_hand_made_template_is_used(self):
+		_clear_steward()
+		a, b = self.agent(whatsapp=True), self.buyer(email=False)
+		hand = self.wa_template(f"qa_acc_payment_reminder_{self.n}", "Dear {{1}}, {{2}} is overdue on {{3}}. "
+			"Kindly arrange the payment.")
+		# a steward template whose need is not Met is never picked by its name
+		self.wa_template(f"qa_acc_xai_payment_reminder_{self.n}", "Hi {{1}}, {{3}} are due: {{2}}. Thank you.",
+			need="QA-ACC-NOT-MET")
+		self.opt_in(b)
+		with self.steward_on():
+			p = self.step(a, b, words=None).proposal
+		needs = frappe.get_all("Excom AI Template Need", {"need_key": REMINDER, "wa_business_id": WABA},
+			["channel", "status", "agents", "language"])
+		self.assertEqual(len(needs), 1, "two numbers on one WABA: one need")
+		self.assertEqual((needs[0].channel, needs[0].status, needs[0].language, needs[0].agents), ("WhatsApp", "Open", "en",
+			a.name))
+		self.assertFalse(frappe.db.exists("Excom AI Template Need", {"agent": a.name, "channel": "Email"}),
+			"no email need for a contact with no email")
+		payload = json.loads(p.payload)
+		self.assertEqual(payload["template"], hand, "the hand-made template, as before")
+		self.assertNotIn("template_need", payload)
+		self.assertEqual(payload["variables"], [b.first, fmt_money(70000, currency="INR"), f"{b.old}, {b.part}"])
+		self.assertEqual(p.status, "Pending")
+		self.assertFalse(templates.first_use_pending(hand), "first-use review is for the steward's templates")
+
+	def test_an_approved_email_template_replaces_the_model_words(self):
+		a, b = self.agent(), self.buyer()
+		need = self.met_need(a, "Email", subject="Invoices past due for {{1}}", body="Dear {{1}},\nthe invoices below are "
+			"past their due date.\n{{content}}\nCould you tell us when payment will be arranged, or if anything looks wrong?")
+		with self.steward_on(), patch.object(runner, "ai", side_effect=AssertionError("no model call")) as ai:
+			p = self.step(a, b, words=None).proposal
+		ai.assert_not_called()
+		payload = json.loads(p.payload)
+		self.assertEqual(payload["template_need"], need)
+		self.assertEqual(payload["subject"], f"Invoices past due for {b.first}")
+		self.assertEqual(payload["opening"], f"Dear {b.first},\nthe invoices below are past their due date.")
+		self.assertEqual(payload["closing"], "Could you tell us when payment will be arranged, or if anything looks wrong?")
+		body = payload["body"]
+		self.assertTrue(body.startswith(payload["opening"]) and body.endswith(payload["closing"]))
+		for text in (b.old, b.part, f"Total overdue: {fmt_money(70000, currency='INR')}"):
+			self.assertIn(text, body, "the invoice lines are still written by code")
+		results = json.loads(p.checks)
+		self.assertTrue(results["ok"], checks.failures(results))
+		self.assertEqual((p.status, p.to_email), ("Pending", b.billing))
+		# the same checks run on the template's own words
+		frappe.db.set_value("Excom AI Template Need", need, {"subject": "Final notice",
+			"body": "We will take legal action.\n{{content}}\nPay now."})
+		frappe.db.set_value("Excom AI Proposal", p.name, {"status": "Cancelled", "step_key": None})
+		with self.steward_on(), patch.object(runner, "ai", side_effect=AssertionError("no model call")):
+			worse = self.step(a, b, words=None).proposal
+		self.assertEqual(json.loads(worse.payload)["template_need"], need)
+		self.assertFalse(json.loads(worse.checks)["collections"]["ok"])
+		self.assertEqual(worse.risk, "High")
+
+	def test_without_an_opt_in_no_whatsapp_is_written_but_the_need_is_kept(self):
+		_clear_steward()
+		a, b = self.agent(whatsapp=True), self.buyer(email=False)
+		tpl = self.wa_template(f"qa_acc_noopt_{self.n}", "Hello {{1}}, our invoices {{3}} are past their due date, "
+			"{{2}} in all. Please let us know when payment is arranged.")
+		self.met_need(a, "WhatsApp", template=tpl)
+		with self.steward_on():
+			out = self.step(a, b, words=None)
+		p = out.proposal
+		self.assertFalse(p and json.loads(p.payload or "{}").get("channel") == "whatsapp", out.outcome)
+
+	def test_a_template_send_needs_a_whatsapp_opt_in(self):
+		from excom.excom.services.consent import record_consent
+
+		_clear_steward()
+		a, b = self.agent(whatsapp=True), self.buyer(email=False)
+		tpl = self.wa_template(f"qa_acc_optin_{self.n}", "Hello {{1}}, our invoices {{3}} are past their due date, "
+			"{{2}} in all. Please let us know when payment is arranged.")
+		self.met_need(a, "WhatsApp", template=tpl)
+		ident = self.opt_in(b)  # opted in when the reminder was written ...
+		with self.steward_on():
+			p = self.step(a, b, words=None).proposal
+		self.assertEqual(json.loads(p.payload)["channel"], "whatsapp")
+		self.opt_in(b, "Withdrawn")  # ... and withdrawn before it went: the send rules check again
+		frappe.set_user(OWNER)
+		self.assertEqual(proposals.decide(p.name, "approve"), "Approved")
+		frappe.set_user("Administrator")
+
+		def send():
+			with self.steward_on(), patch("excom.excom.services.whatsapp_service.send_template_message",
+					return_value={"provider_message_id": "wamid.QA-ACC"}) as meta, \
+					patch("excom.excom_ai.sequencer.in_window", return_value=True):
+				proposals.execute(p.name)
+			return meta, frappe.db.get_value("Excom AI Proposal", p.name, ["status", "error"], as_dict=True)
+
+		meta, row = send()
+		self.assertEqual(row.status, "Failed")
+		self.assertIn("opt-in", row.error)
+		meta.assert_not_called()
+		self.assertFalse(frappe.db.get_value("WhatsApp Templates", tpl, "xai_first_use_done"))
+
+		record_consent(ident, "Granted", channel="whatsapp", purpose="transactional")
+		frappe.db.set_value("Excom AI Proposal", p.name, {"status": "Approved", "error": None})
+		frappe.db.commit()
+		meta, row = send()
+		self.assertEqual(row.status, "Sent", row.error)
+		meta.assert_called_once()
+		self.assertEqual(meta.call_args.kwargs["template_name"], f"qa_acc_optin_{self.n}")
+		self.assertTrue(frappe.db.get_value("WhatsApp Templates", tpl, "xai_first_use_done"),
+			"a person approved its first send")
+
+	def test_a_statement_carries_a_whatsapp_notice_when_email_goes_unanswered(self):
+		from excom.excom.services.thread_service import upsert_thread
+
+		_clear_steward()
+		a, b = self.agent(whatsapp=True), self.buyer(mobile=True)
+		thread = upsert_thread(accounts.identity_for(phone=b.mobile, display=b.first), "whatsapp", self.wa[0])
+		words = {"subject": "Your statement of account", "note": "As requested, here is your statement of account."}
+
+		def prepare():
+			frappe.db.delete("Excom AI Proposal", {"agent": a.name, "action": "send_statement"})
+			frappe.db.delete("Excom AI Task", {"agent": a.name, "kind": "prepare_statement"})
+			with self.steward_on():
+				self.run_now(tasks.add(a.name, "prepare_statement", subject=("Customer", b.customer), thread=thread), words)
+			return frappe.get_doc("Excom AI Proposal", {"agent": a.name, "action": "send_statement"})
+
+		# asked on WhatsApp, no template yet: the statement goes by email alone and the need is recorded
+		p = prepare()
+		self.assertNotIn("notice", json.loads(p.payload))
+		self.assertEqual(frappe.db.count("Excom AI Template Need", {"need_key": "accounts.statement_ready",
+			"wa_business_id": WABA}), 1)
+		_clear_steward()
+		tpl = self.wa_template(f"qa_acc_statement_{self.n}", "Hello {{1}}, your statement of account as of {{2}} is "
+			"ready and is on its way by email.")
+		self.met_need(a, "WhatsApp", key="accounts.statement_ready", template=tpl)
+		p = prepare()
+		notice = json.loads(p.payload)["notice"]
+		self.assertEqual((notice["template"], notice["mobile"], notice["account"]), (tpl, b.mobile, self.wa[0]))
+		self.assertEqual(notice["variables"], [b.first, frappe.utils.formatdate(nowdate())])
+		self.assertEqual((p.status, p.to_email), ("Pending", b.billing), "the statement still goes by email, for review")
+		self.assertIn("on its way by email", p.preview_html)
+
+		# sent: the email first, then the notice; with no WhatsApp opt-in the notice is refused and
+		# noted, and the statement still counts as sent
+		frappe.set_user(OWNER)
+		self.assertEqual(proposals.decide(p.name, "approve"), "Approved")
+		frappe.set_user("Administrator")
+		with self.steward_on(), patch("excom.excom.channels.email.outbound.send_email_reply", return_value="QA-ACC-MSG") as mail, \
+				patch("excom.excom.services.whatsapp_service.send_template_message") as meta, \
+				patch("excom.excom_ai.sequencer.in_window", return_value=True):
+			proposals.execute(p.name)
+		mail.assert_called_once()
+		meta.assert_not_called()
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", p.name, "status"), "Sent")
+		self.assertTrue(frappe.db.exists("Comment", {"reference_name": p.name, "content": ["like", "%notice was not sent%opt-in%"]}))
 
 	# ---- readiness
 

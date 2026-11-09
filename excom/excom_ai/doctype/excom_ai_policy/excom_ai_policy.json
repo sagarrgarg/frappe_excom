@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-10 08:00:00.000000",
+ "creation": "2026-11-10 10:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -16,7 +16,7 @@
    "fieldname": "action",
    "fieldtype": "Select",
    "label": "Action",
-   "options": "create_record\nwrite_draft\nfirst_email\nfollow_up_email\nreply\nwhatsapp_template\nprices_and_terms\ncreate_opportunity\nquotation\nsubmit_document\npayment_reminder\ntodo_note\nplaybook_change\nstatement\nrfq\npo_chase\nvoice_call",
+   "options": "create_record\nwrite_draft\nfirst_email\nfollow_up_email\nreply\nwhatsapp_template\nprices_and_terms\ncreate_opportunity\nquotation\nsubmit_document\npayment_reminder\ntodo_note\nplaybook_change\nstatement\nrfq\npo_chase\nvoice_call\ntemplate",
    "reqd": 1,
    "in_list_view": 1,
    "columns": 3
@@ -57,7 +57,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 08:00:00.000000",
+ "modified": "2026-11-10 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Policy",

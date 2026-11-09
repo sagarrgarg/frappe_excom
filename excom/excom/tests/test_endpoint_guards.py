@@ -31,6 +31,8 @@ GUARDS = {
 	"_thread_for_change", "may_decide", "_excom_user",
 	# Excom AI voice: the voice service's shared key (constant time), then a one-call token from the cache.
 	"_verify_voice_key",
+	# Excom AI templates (HLD-008): read permission on the need, then its agents' owner (one owner) or an Excom Admin.
+	"_may_change_need",
 }
 # Public by design. Each line says why it is safe to leave open.
 ALLOWED = {

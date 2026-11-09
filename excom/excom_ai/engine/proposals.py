@@ -42,6 +42,7 @@ ACTION_POLICY = {
 	"note": "todo_note",
 	"update_playbook": "playbook_change",
 	"keep_subject": "playbook_change",
+	"approve_template": "template",
 	# Accounts
 	"send_statement": "statement",
 	"record_promise": "create_record",
@@ -103,6 +104,11 @@ def propose(task, agent, action: str, *, policy_action: str | None = None, paylo
 		return None
 	if mode == "Auto" and not checks_ok:
 		mode = "Review"  # a failed check always waits for a person
+	if mode == "Auto" and payload and payload.get("template"):
+		from excom.excom_ai import templates
+
+		if templates.first_use_pending(payload["template"]):
+			mode = "Review"  # the first send of a new template version: a person reads it once (HLD-008)
 	if agent.status == "Shadow" or mode == "Shadow":
 		status = "Shadow"
 	elif mode == "Auto" and agent.status == "Live" and not _over_daily_cap(agent, key):

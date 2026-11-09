@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-10 08:00:00.000000",
+ "creation": "2026-11-10 10:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -31,6 +31,13 @@
   "cb_voice",
   "voice_max_seconds",
   "voice_turn_limit",
+  "sb_templates",
+  "templates_enabled",
+  "whatsapp_auto_submit",
+  "template_first_use_review",
+  "cb_templates",
+  "template_submissions_per_day",
+  "template_max_attempts",
   "sb_engine",
   "tasks_per_tick",
   "max_task_attempts",
@@ -198,6 +205,47 @@
    "default": "30"
   },
   {
+   "fieldname": "sb_templates",
+   "fieldtype": "Section Break",
+   "label": "Template Steward (HLD-008)"
+  },
+  {
+   "fieldname": "templates_enabled",
+   "fieldtype": "Check",
+   "label": "Make Templates for Agents",
+   "default": "1",
+   "description": "Background service: finds what agents need to send again and again and makes WhatsApp and email templates."
+  },
+  {
+   "fieldname": "whatsapp_auto_submit",
+   "fieldtype": "Check",
+   "label": "Submit WhatsApp Templates to Meta Without Review",
+   "default": "1",
+   "description": "Meta's review is the approval (owner's decision, 2026-11-10). Only UTILITY needs declared in code, after the checks."
+  },
+  {
+   "fieldname": "template_first_use_review",
+   "fieldtype": "Check",
+   "label": "First Send of Each New Template Goes to Review",
+   "default": "1"
+  },
+  {
+   "fieldname": "cb_templates",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "template_submissions_per_day",
+   "fieldtype": "Int",
+   "label": "Template Submissions per Day",
+   "default": "10"
+  },
+  {
+   "fieldname": "template_max_attempts",
+   "fieldtype": "Int",
+   "label": "Rework Attempts after a Rejection",
+   "default": "2"
+  },
+  {
    "fieldname": "sb_engine",
    "fieldtype": "Section Break",
    "label": "Engine"
@@ -247,7 +295,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 08:00:00.000000",
+ "modified": "2026-11-10 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Settings",

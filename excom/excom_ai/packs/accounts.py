@@ -32,12 +32,17 @@ Collections ladder, per customer (not per invoice)
     Messages go to the billing contact only (the customer's Contact marked is_billing_contact,
     else the primary contact's email), checked again when it is sent. With no such contact a
     person gets a ToDo to add one. Email, or an approved WhatsApp utility template when the
-    contact has only a mobile number.
+    contact has only a mobile number: the template steward's (HLD-008, `accounts.payment_reminder`,
+    variables filled by code; its first send waits for a person), else a hand-made one found by name.
 
-    Amounts and invoice numbers are written by code from ERPNext; the model writes only the
-    opening and closing words, in the customer's language. A code check refuses any digit in the
-    model's words and any threat, waiver or discount; the sender compares the invoices with the
-    ledger again and cancels if they changed (the next tick writes a fresh one).
+    Amounts and invoice numbers are written by code from ERPNext; the opening and closing words come
+    from the steward's approved email template, else the model writes them in the customer's
+    language. A code check refuses any digit in those words and any threat, waiver or discount; the
+    sender compares the invoices with the ledger again and cancels if they changed (the next tick
+    writes a fresh one).
+
+Statements: when the customer does not answer by email, the emailed statement carries a WhatsApp
+notice (`accounts.statement_ready`) on the steward's approved template, sent after the email.
 
 Promises: the `accounts` responder reads a customer's reply (rules first: opt-out, escalation),
 then the model: promise (with a date), paid, dispute, statement, question, other.
@@ -75,6 +80,7 @@ from frappe.utils import (
 )
 
 from excom.excom_ai import checks, responder, sequencer
+from excom.excom_ai import templates as steward
 from excom.excom_ai.builder import geo
 from excom.excom_ai.builder.readiness import check, people
 from excom.excom_ai.builder.readiness import seed as seed_rules
@@ -93,6 +99,8 @@ HAND_OVER_STEP = 4
 OLD_DEBT_DAYS = 60  # waits are halved from here
 PER_TICK = 5  # customers a tick may queue
 LINES_MAX = 15  # invoice lines written into the text (the total covers all)
+WA_LIST_CHARS = 180  # invoice numbers in one WhatsApp variable (the steward cuts values at 200)
+REMINDER_NEED, STATEMENT_NEED = "accounts.payment_reminder", "accounts.statement_ready"  # templates.NEEDS
 GRACE_DAYS = 1  # a promise is broken this many days after its date
 RETRY_DAYS = 7  # a rejected or failed step is tried again after this
 PAUSE_DAYS = {"paid": 5, "question": 7, "statement": 3, "no_contact": 7}
@@ -332,7 +340,7 @@ def billing_contact(customer: str) -> frappe._dict | None:
 		return None
 	return frappe._dict(contact=pick.name, email=(pick.email_id or "").strip().lower() or None, mobile=pick.mobile_no,
 		name=" ".join(filter(None, (pick.first_name, pick.last_name))) or label("Customer", customer),
-		billing=bool(pick.is_billing_contact))
+		first_name=pick.first_name, billing=bool(pick.is_billing_contact))
 
 
 def email_account(agent) -> str | None:
@@ -342,20 +350,25 @@ def email_account(agent) -> str | None:
 	return rows[0].channel_account if rows else None
 
 
+def whatsapp_numbers(agent) -> list[str]:
+	return [r.channel_account for r in agent.channels or [] if not r.paused
+		and frappe.db.get_value("Excom Channel Account", r.channel_account, "channel") == "whatsapp"]
+
+
 def whatsapp_template(agent) -> frappe._dict | None:
-	"""An approved utility template for payment reminders on one of the agent's WhatsApp numbers,
-	with at most three body variables (name, amount, invoices)."""
+	"""A hand-made approved utility template for payment reminders on one of the agent's WhatsApp
+	numbers, with at most three body variables (name, amount, invoices). The steward's own templates
+	are left out: they are used only through `steward.find`, with their own variable map."""
 	if not frappe.db.table_exists("WhatsApp Templates"):
 		return None
 	from excom.excom.whatsapp_template_utils import template_is_linked_to_account
 
-	numbers = [r.channel_account for r in agent.channels or [] if not r.paused
-		and frappe.db.get_value("Excom Channel Account", r.channel_account, "channel") == "whatsapp"]
+	numbers = whatsapp_numbers(agent)
 	if not numbers:
 		return None
 	for t in frappe.get_all("WhatsApp Templates", {"status": "APPROVED"}, ["name", "template_name", "category",
-		"template"]):
-		if (t.category or "").upper() != "UTILITY" or not any(w in (t.template_name or t.name).lower()
+		"template", "xai_need"]):
+		if t.xai_need or (t.category or "").upper() != "UTILITY" or not any(w in (t.template_name or t.name).lower()
 				for w in ("payment", "reminder", "dues", "outstanding", "statement")):
 			continue
 		n = len(set(re.findall(r"\{\{\s*(\d+)\s*\}\}", t.template or "")))
@@ -365,6 +378,67 @@ def whatsapp_template(agent) -> frappe._dict | None:
 			if template_is_linked_to_account(t.name, account):
 				return frappe._dict(account=account, template=t.name, variables=n, text=t.template or "")
 	return None
+
+
+def invoice_list(invoices: list, limit: int = WA_LIST_CHARS) -> str:
+	"""Invoice numbers for one WhatsApp variable: whole numbers only, then "(+n)" for the rest (the
+	total covers all of them)."""
+	names = [r["name"] for r in invoices]
+	shown = []
+	for name in names:
+		if shown and len(", ".join([*shown, name])) > limit:
+			break
+		shown.append(name)
+	more = len(names) - len(shown)
+	return ", ".join(shown) + (f" (+{more})" if more else "")
+
+
+def reminder_values(contact, invoices: list) -> dict:
+	"""The `accounts.payment_reminder` variables, from the contact and the ledger."""
+	return {"contact_name": contact.first_name or contact.name,
+		"total_due": "; ".join(fmt_money(v, currency=c) for c, v in totals(invoices).items()),
+		"invoices": invoice_list(invoices)}
+
+
+def steward_whatsapp(agent, key: str, language: str, values: dict) -> frappe._dict | None:
+	"""The steward's approved template for this need on one of the agent's WhatsApp numbers, filled.
+	None when there is none (`find` records the need for each number's WABA). With `error` set when
+	one exists but these values do not fit it (missing, or the message too long)."""
+	for account in whatsapp_numbers(agent):
+		found = steward.find(agent, key, "WhatsApp", language, account)
+		if not found:
+			continue
+		try:
+			variables = steward.whatsapp_values(found, values)
+		except ValueError as e:
+			return frappe._dict(account=account, template=found["template"], need=found["need"], error=str(e))
+		return frappe._dict(account=account, template=found["template"], need=found["need"], variables=variables,
+			text=steward.fill(found["text"], variables), first_use=not found["first_use_done"])
+	return None
+
+
+def whatsapp_reminder(agent, contact, overdue: list, language: str) -> frappe._dict | None:
+	"""What a WhatsApp reminder goes on: the steward's template, else a hand-made one (as before).
+	None when neither can carry it; a steward template whose values do not fit is not swapped for
+	a hand-made one (the reminder falls back to email, or a person adds a contact)."""
+	from excom.excom_ai.send_rules import number_opted_in
+
+	found = steward_whatsapp(agent, REMINDER_NEED, language, reminder_values(contact, overdue))  # records the need
+	if not number_opted_in(contact.mobile):
+		return None  # WhatsApp's policy: no opt-in, no business-started message (email, or a ToDo, instead)
+	if found:
+		return None if found.error else found
+	wa = whatsapp_template(agent)
+	if not wa:
+		return None
+	total = "; ".join(fmt_money(v, currency=c) for c, v in totals(overdue).items())
+	variables = [contact.name, total, ", ".join(r.name for r in overdue[:5])][: wa.variables]
+	return frappe._dict(account=wa.account, template=wa.template, need=None, variables=variables,
+		text=steward.fill(wa.text, variables), first_use=False)
+
+
+def is_steward_template(template: str | None) -> bool:
+	return bool(template and frappe.db.get_value("WhatsApp Templates", template, "xai_need"))
 
 
 def customer_zone(customer: str, agent) -> str:
@@ -686,40 +760,47 @@ def write_reminder(task, agent, enr, customer: str, overdue: list, step: int, br
 	company = company_of(agent)
 	contact = billing_contact(customer)
 	account = email_account(agent)
-	wa = whatsapp_template(agent) if contact and contact.mobile and not (contact.email and account) else None
+	language = enr.language or frappe.db.get_value("Customer", customer, "language") or "en"
+	wa = whatsapp_reminder(agent, contact, overdue, language) \
+		if contact and contact.mobile and not (contact.email and account) else None
 	if not contact or not ((contact.email and account) or wa):
 		return _no_contact(task, agent, enr, customer)
-	language = enr.language or frappe.db.get_value("Customer", customer, "language") or "en"
 	lines = invoice_lines(overdue, language)
 	base = {"step": step, "customer": customer, "invoices": snapshot(overdue), "lines": lines, "language": language,
 		"scope": "overdue", "with_table": step == 1, "broken_promise": broken}
 	if wa:
-		total = "; ".join(fmt_money(v, currency=c) for c, v in totals(overdue).items())
-		variables = [contact.name, total, ", ".join(r.name for r in overdue[:5])][: wa.variables]
-		text = re.sub(r"\{\{\s*(\d+)\s*\}\}",
-			lambda m: variables[int(m.group(1)) - 1] if int(m.group(1)) <= len(variables) else m.group(0),
-			wa.text)
+		why = _("approved template {0} from the template steward{1}").format(wa.template,
+			_("; its first send waits for a person") if wa.first_use else "") if wa.need \
+			else _("approved utility template {0}").format(wa.template)
 		results = {"recipient": {"ok": True, "why": _("WhatsApp {0} (billing contact)").format(contact.mobile)},
-			"channel": {"ok": True, "why": wa.account}, "template": {"ok": True,
-				"why": _("approved utility template {0}").format(wa.template)}}
+			"channel": {"ok": True, "why": wa.account}, "template": {"ok": True, "why": why}}
 		results = _finish_checks(results, [], customer, company)
 		name = proposals.propose(task, agent, "payment_reminder", subject=("Customer", customer), enrollment=enr.name,
 			step=step,
 			kind="Sequence", channel_account=wa.account, risk="Medium" if results["ok"] else "High", checks=results,
-			checks_ok=results["ok"], payload={**base, "channel": "whatsapp", "template": wa.template, "variables": variables,
-				"mobile": contact.mobile, "contact": contact.contact, "body": text},
-			preview_html=f"<p>{frappe.utils.escape_html(text)}</p>")
+			checks_ok=results["ok"], payload={**base, "channel": "whatsapp", "template": wa.template,
+				"variables": wa.variables, "mobile": contact.mobile, "contact": contact.contact, "body": wa.text,
+				**({"template_need": wa.need} if wa.need else {})},
+			preview_html=f"<p>{frappe.utils.escape_html(wa.text)}</p>")
 	else:
-		r = runner.ai(task, agent, pack_instructions=REMINDER_RULES, output_schema=REMINDER_SCHEMA,
-			prompt=_("Customer: {0}. Their language: {1}. Step {2} of the collections ladder. {3}{4}").format(
-				label("Customer", customer), language, step, STEP_ASKS[step],
-				_(" They promised to pay by a date that has passed; mention it calmly.") if broken else ""))
-		subject = (r.data.get("subject") or "").strip()
-		opening, closing = (r.data.get("opening") or "").strip(), (r.data.get("closing") or "").strip()
+		found = steward.find(agent, REMINDER_NEED, "Email", language, None)
+		if found:
+			# A person approved these words once: no model call. The checks read the template's own
+			# words; the values filled into them come from the contact and the ledger.
+			subject, opening, closing = steward.email_parts(found, reminder_values(contact, overdue))
+			own_words = list(steward.email_parts(found, {}, strict=False))
+		else:
+			r = runner.ai(task, agent, pack_instructions=REMINDER_RULES, output_schema=REMINDER_SCHEMA,
+				prompt=_("Customer: {0}. Their language: {1}. Step {2} of the collections ladder. {3}{4}").format(
+					label("Customer", customer), language, step, STEP_ASKS[step],
+					_(" They promised to pay by a date that has passed; mention it calmly.") if broken else ""))
+			subject = (r.data.get("subject") or "").strip()
+			opening, closing = (r.data.get("opening") or "").strip(), (r.data.get("closing") or "").strip()
+			own_words = [subject, opening, closing]
 		body = "\n\n".join(filter(None, [opening, "\n".join(lines), closing]))
 		results = checks.check(agent, contact.email, subject, body, kind="Statement", account=account, language=language,
 			word_limit=120 + 15 * len(lines))
-		results = _finish_checks(results, [subject, opening, closing], customer, company)
+		results = _finish_checks(results, own_words, customer, company)
 		preview = paragraphs(body) + (statement_table(open_invoices(customer, company),
 			language=language) if step == 1 else "")
 		name = proposals.propose(task, agent, "payment_reminder", subject=("Customer", customer), enrollment=enr.name,
@@ -727,7 +808,7 @@ def write_reminder(task, agent, enr, customer: str, overdue: list, step: int, br
 			kind="Sequence", to_email=contact.email, channel_account=account, risk="Medium" if results["ok"] else "High",
 			checks=results, checks_ok=results["ok"], preview_html=preview,
 			payload={**base, "channel": "email", "subject": subject, "opening": opening, "closing": closing, "body": body,
-				"contact": contact.contact})
+				"contact": contact.contact, **({"template_need": found["need"]} if found else {})})
 	_set(enr, current_step=step, next_due=add_days(now_datetime(), 1))
 	return _("{0}: step {1} proposed to the billing contact ({2})").format(customer, step, name or _("policy off"))
 
@@ -774,7 +855,15 @@ def preview(proposal, agent, payload: dict) -> str:
 		company = company_of(agent)
 		html += statement_table(open_invoices(proposal.subject_name, company), recent_payments(proposal.subject_name, company),
 			p.language)
-	return html
+	return html + notice_html(p.notice)
+
+
+def notice_html(notice: dict | None) -> str:
+	n = frappe._dict(notice or {})
+	if not n.template:
+		return ""
+	e = frappe.utils.escape_html
+	return f"<p><i>{e(_('And on WhatsApp to {0}:').format(n.mobile))}</i><br>{e(n.text or '')}</p>"
 
 
 # ── sending ──────────────────────────────────────────────────────────────────
@@ -806,7 +895,10 @@ def _send(proposal, agent):
 
 		identity = identity_for(phone=contact.mobile, display=contact.name)
 		thread = upsert_thread(identity, "whatsapp", proposal.channel_account)
-		sent = send_template_to_thread(thread, p.template, variables=json.dumps(p.variables or []))
+		if is_steward_template(p.template):  # marks the template's first use once a person approved a send
+			sent = steward.send_whatsapp(proposal, agent, thread, p.template, p.variables or [])
+		else:
+			sent = send_template_to_thread(thread, p.template, variables=json.dumps(p.variables or []))
 		message = (sent or {}).get("message_name")
 	else:
 		from excom.excom.channels.email.outbound import send_email_reply
@@ -845,7 +937,32 @@ def payment_reminder(proposal, agent):
 
 @registry.executor("send_statement")
 def send_statement(proposal, agent):
-	return _send(proposal, agent)
+	out = _send(proposal, agent)
+	_send_notice(proposal, agent)
+	return out
+
+
+def _send_notice(proposal, agent) -> None:
+	"""The WhatsApp notice that goes with an emailed statement (payload "notice"). The statement is
+	out already, so a refusal (no opt-in, the template withdrawn) is noted and never fails the send."""
+	n = frappe._dict(frappe.parse_json(proposal.payload or "{}").get("notice") or {})
+	if not n.template:
+		return
+	contact = billing_contact(proposal.subject_name)
+	if not contact or contact.mobile != n.mobile:
+		why = _("the billing contact's mobile changed")
+	else:
+		from excom.excom.services.thread_service import upsert_thread
+
+		try:
+			thread = upsert_thread(identity_for(phone=contact.mobile, display=contact.name), "whatsapp", n.account)
+			steward.send_whatsapp(proposal, agent, thread, n.template, n.variables or [])
+			return
+		except Exception as e:
+			frappe.clear_last_message()
+			why = str(e)
+	frappe.get_doc("Excom AI Proposal", proposal.name).add_comment("Comment",
+		_("The WhatsApp notice was not sent: {0}").format(why)[:500])
 
 
 # ── statements on request ────────────────────────────────────────────────────
@@ -881,15 +998,48 @@ def prepare_statement(task, agent) -> str:
 		word_limit=120 + 15 * len(lines))
 	results = _finish_checks(results, [subject, note], customer, company)
 	results.pop("credits", None)  # a statement shows credits as they are; it asks for nothing
+	notice = statement_notice(agent, customer, contact, language, task.thread)
+	if notice:
+		results["notice"] = {"ok": True, "why": _("WhatsApp notice to {0} on template {1}").format(notice.mobile,
+			notice.template)}
 	results["ok"] = all(v["ok"] for k, v in results.items() if k != "ok")
 	name = proposals.propose(task, agent, "send_statement", subject=("Customer", customer), thread=task.thread,
 		kind="Reply",
 		to_email=contact.email, channel_account=account, risk="Medium" if results["ok"] else "High", checks=results,
-		checks_ok=results["ok"], preview_html=paragraphs(note) + statement_table(invoices, payments, language),
+		checks_ok=results["ok"],
+		preview_html=paragraphs(note) + statement_table(invoices, payments, language) + notice_html(notice),
 		payload={"customer": customer, "subject": subject, "note": note, "body": note, "lines": lines,
 			"invoices": snapshot(invoices), "scope": "all", "with_table": True, "language": language, "channel": "email",
-			"contact": contact.contact})
+			"contact": contact.contact, **({"notice": dict(notice)} if notice else {})})
 	return _("{0}: statement prepared for review ({1})").format(customer, name or _("policy off"))
+
+
+def email_unanswered(agent, customer: str, thread: str | None) -> bool:
+	"""Email is not where this customer answers: they asked on WhatsApp, or (asked some other way)
+	the ladder's last email got no reply."""
+	channel = frappe.db.get_value("Excom Thread", thread, "channel") if thread else None
+	if channel in ("email", "whatsapp"):
+		return channel == "whatsapp"
+	enr = enrollment_for(agent, customer, create=False)
+	if not enr or not enr.thread or not enr.last_sent_on or \
+			frappe.db.get_value("Excom Thread", enr.thread, "channel") != "email":
+		return False
+	return not frappe.db.exists("Excom Message", {"thread": enr.thread, "direction": "Inbound",
+		"creation": [">", enr.last_sent_on]})
+
+
+def statement_notice(agent, customer: str, contact, language: str, thread: str | None) -> frappe._dict | None:
+	"""A short WhatsApp notice that the statement is on its way by email, sent with it, for a billing
+	contact who does not answer by email. Only on the steward's approved template; without one,
+	`find` records the need and the statement goes by email alone."""
+	if not contact.mobile or not whatsapp_numbers(agent) or not email_unanswered(agent, customer, thread):
+		return None
+	found = steward_whatsapp(agent, STATEMENT_NEED, language,
+		{"contact_name": contact.first_name or contact.name, "as_of": formatdate(nowdate())})
+	if not found or found.error:
+		return None
+	return frappe._dict(account=found.account, template=found.template, need=found.need, variables=found.variables,
+		text=found.text, mobile=contact.mobile)
 
 
 # ── replies: promises, payments, disputes ────────────────────────────────────
@@ -1362,9 +1512,13 @@ def payment_terms_rule(agent, facts):
 @check("accounts.reminder_channel")
 def reminder_channel_rule(agent, facts):
 	account, wa = email_account(agent), whatsapp_template(agent)
-	if account or wa:
+	wabas = [w for w in (frappe.db.get_value("Excom Channel Account", n, "wa_business_id") for n in whatsapp_numbers(agent)) if w]
+	met = frappe.db.get_value("Excom AI Template Need", {"need_key": REMINDER_NEED, "channel": "WhatsApp", "status": "Met",
+		"wa_business_id": ["in", wabas]}, "template") if wabas else None
+	if account or wa or met:
 		return True, ", ".join(filter(None, [_("mailbox {0}").format(account) if account else None,
-			_("WhatsApp template {0}").format(wa.template) if wa else None]))
+			_("WhatsApp template {0}").format(wa.template) if wa else None,
+			_("WhatsApp template {0} (template steward)").format(met) if met else None]))
 	return False, _("No mailbox on the agent and no approved WhatsApp utility template for reminders.")
 
 

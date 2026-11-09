@@ -1,0 +1,256 @@
+{
+ "actions": [],
+ "creation": "2026-11-10 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "need_key",
+  "channel",
+  "category",
+  "language",
+  "status",
+  "cb1",
+  "agent",
+  "agents",
+  "channel_account",
+  "wa_business_id",
+  "unique_key",
+  "sb_template",
+  "source",
+  "library_template_name",
+  "template",
+  "subject",
+  "body",
+  "variable_map",
+  "samples",
+  "back_translation",
+  "cb2",
+  "proposal",
+  "attempts",
+  "version",
+  "last_error",
+  "submitted_on",
+  "met_on",
+  "notified"
+ ],
+ "fields": [
+  {
+   "fieldname": "need_key",
+   "fieldtype": "Data",
+   "label": "Need",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "channel",
+   "fieldtype": "Select",
+   "label": "Channel",
+   "options": "WhatsApp\nEmail",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "\nUTILITY\nMARKETING"
+  },
+  {
+   "fieldname": "language",
+   "fieldtype": "Data",
+   "label": "Language (Meta code)",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Open\nDrafting\nSubmitted\nIn review\nMet\nFailed\nWithdrawn",
+   "default": "Open",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "agent",
+   "fieldtype": "Link",
+   "label": "First Agent",
+   "options": "Excom AI Agent",
+   "reqd": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "agents",
+   "fieldtype": "Small Text",
+   "label": "Agents That Need It"
+  },
+  {
+   "fieldname": "channel_account",
+   "fieldtype": "Link",
+   "label": "Number or Mailbox",
+   "options": "Excom Channel Account"
+  },
+  {
+   "fieldname": "wa_business_id",
+   "fieldtype": "Data",
+   "label": "WhatsApp Business Account"
+  },
+  {
+   "fieldname": "unique_key",
+   "fieldtype": "Data",
+   "label": "Unique Key",
+   "unique": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_template",
+   "fieldtype": "Section Break",
+   "label": "Template"
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "label": "Source",
+   "options": "\nLibrary\nWritten",
+   "read_only": 1
+  },
+  {
+   "fieldname": "library_template_name",
+   "fieldtype": "Data",
+   "label": "Library Template",
+   "read_only": 1
+  },
+  {
+   "fieldname": "template",
+   "fieldtype": "Link",
+   "label": "WhatsApp Template",
+   "options": "WhatsApp Templates",
+   "read_only": 1
+  },
+  {
+   "fieldname": "subject",
+   "fieldtype": "Small Text",
+   "label": "Email Subject"
+  },
+  {
+   "fieldname": "body",
+   "fieldtype": "Small Text",
+   "label": "Body",
+   "description": "Variables as {{1}}, {{2}} … in order."
+  },
+  {
+   "fieldname": "variable_map",
+   "fieldtype": "Code",
+   "label": "Variables",
+   "options": "JSON",
+   "description": "[{\"n\": 1, \"means\": \"contact name\", \"field\": \"contact_name\", \"fallback\": \"there\"}]"
+  },
+  {
+   "fieldname": "samples",
+   "fieldtype": "Code",
+   "label": "Samples",
+   "options": "JSON"
+  },
+  {
+   "fieldname": "back_translation",
+   "fieldtype": "Small Text",
+   "label": "In English"
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "proposal",
+   "fieldtype": "Link",
+   "label": "Review",
+   "options": "Excom AI Proposal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attempts",
+   "fieldtype": "Int",
+   "label": "Attempts",
+   "default": "0",
+   "read_only": 1
+  },
+  {
+   "fieldname": "version",
+   "fieldtype": "Int",
+   "label": "Version",
+   "default": "1",
+   "read_only": 1,
+   "description": "Goes up when a template is withdrawn: Meta keeps a deleted name for weeks, so the next one gets a new name."
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "submitted_on",
+   "fieldtype": "Datetime",
+   "label": "Submitted On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "met_on",
+   "fieldtype": "Datetime",
+   "label": "Met On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notified",
+   "fieldtype": "Check",
+   "label": "Owners Told",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-10 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI Template Need",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Excom Admin",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Excom Agent"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "hash",
+ "title_field": "need_key",
+ "show_title_field_in_link": 1,
+ "description": "Something agents need to send again and again, and the template that meets it (HLD-008)"
+}

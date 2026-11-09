@@ -1885,7 +1885,10 @@ def send_template_to_thread(
     extras_dict = parse_extras(extras)
     _check_send_access(thread_id)
     from excom.excom_ai import send_rules
-    send_rules.check(thread_id, purpose="outreach", window=False)  # AI agents: consent, own numbers
+    # AI agents: consent, own numbers, an approved template, and a WhatsApp opt-in (HLD-008)
+    category = (frappe.db.get_value("WhatsApp Templates", template_name, "category") or "").upper()
+    send_rules.check(thread_id, purpose="outreach" if category == "MARKETING" else "transactional", window=False,
+        template=template_name)
     _claim_on_talk(thread_id)
 
     thread = frappe.db.get_value(

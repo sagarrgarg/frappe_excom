@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { abilitiesText, bounceRate, inZone, noteParts, parseAbilities, pricedFrom } from "../agents-logic";
+import { abilitiesText, bounceRate, groupByStatus, inZone, languageName, needIsFor, needLabel, noteParts, parseAbilities, pricedFrom, splitVariables, templateActions } from "../agents-logic";
 
 describe("pricedFrom", () => {
   const quote = { name: "P-1", action: "create_quotation", payload: { price_list: "Export USD" } };
@@ -65,5 +65,93 @@ describe("noteParts", () => {
   it("is null when there is nothing to show", () => {
     expect(noteParts({ body: "hi" })).toBeNull();
     expect(noteParts("not json")).toBeNull();
+  });
+});
+
+describe("needLabel", () => {
+  it("reads a need key as what it is for, then its area", () => {
+    expect(needLabel("accounts.payment_reminder")).toBe("Payment reminder (Accounts)");
+    expect(needLabel("sales.quote_follow_up")).toBe("Quote follow up (Sales)");
+  });
+  it("keeps short words in capitals", () => {
+    expect(needLabel("purchase.po_chase")).toBe("PO chase (Purchase)");
+    expect(needLabel("purchase.rfq_reminder")).toBe("RFQ reminder (Purchase)");
+  });
+  it("reads a key with no area, and nothing as nothing", () => {
+    expect(needLabel("order_update")).toBe("Order update");
+    expect(needLabel("")).toBe("");
+    expect(needLabel(null)).toBe("");
+  });
+});
+
+describe("groupByStatus", () => {
+  const rows = [
+    { name: "a", status: "Met" }, { name: "b", status: "In review" }, { name: "c", status: "Failed" },
+    { name: "d", status: "Met" }, { name: "e", status: "Paused" },
+  ];
+  it("puts what waits on a person first, leaves empty groups out and keeps row order", () => {
+    const g = groupByStatus(rows);
+    expect(g.map((x) => x.status)).toEqual(["In review", "Failed", "Met", "Paused"]);
+    expect(g[2].items.map((r) => r.name)).toEqual(["a", "d"]);
+    expect(g[0].label).toBe("Waiting for your approval");
+  });
+  it("keeps a status it does not know, under its own name, last", () => {
+    expect(groupByStatus(rows).at(-1)).toMatchObject({ status: "Paused", label: "Paused", items: [{ name: "e" }] });
+  });
+  it("is empty for no rows", () => { expect(groupByStatus([])).toEqual([]); });
+});
+
+describe("splitVariables", () => {
+  it("splits the words around numbered variables", () => {
+    expect(splitVariables("Hello {{1}}, you owe {{2}}.")).toEqual([
+      { text: "Hello " }, { variable: "1" }, { text: ", you owe " }, { variable: "2" }, { text: "." },
+    ]);
+  });
+  it("finds an email's {{content}}, side by side variables and spaces inside the braces", () => {
+    expect(splitVariables("{{ 1 }}{{2}}\n{{content}}")).toEqual([{ variable: "1" }, { variable: "2" }, { text: "\n" }, { variable: "content" }]);
+  });
+  it("leaves single braces and plain words alone", () => {
+    expect(splitVariables("a {b} c")).toEqual([{ text: "a {b} c" }]);
+    expect(splitVariables("")).toEqual([]);
+    expect(splitVariables(null)).toEqual([]);
+  });
+});
+
+describe("languageName", () => {
+  it("names a language from Meta's code", () => {
+    expect(languageName("es")).toBe("Spanish");
+    expect(languageName("pt_BR")).toMatch(/Portuguese/);
+  });
+  it("is the code when it is not a language", () => {
+    expect(languageName("zz_not")).toBe("zz_not");
+    expect(languageName("")).toBe("");
+  });
+});
+
+describe("templateActions", () => {
+  it("offers Withdraw on what is used or with Meta, to someone who may change it", () => {
+    expect(templateActions({ status: "Met", can_change: true }).withdraw).toBe(true);
+    expect(templateActions({ status: "Submitted", can_change: 1 }).withdraw).toBe(true);
+    expect(templateActions({ status: "Met", can_change: false }).withdraw).toBe(false);
+    expect(templateActions({ status: "Open", can_change: true }).withdraw).toBe(false);
+  });
+  it("offers Try again on what failed or was withdrawn", () => {
+    expect(templateActions({ status: "Failed", can_change: true }).tryAgain).toBe(true);
+    expect(templateActions({ status: "Withdrawn", can_change: true }).tryAgain).toBe(true);
+    expect(templateActions({ status: "Withdrawn", can_change: false }).tryAgain).toBe(false);
+  });
+  it("offers Open review on a need in review that has its proposal", () => {
+    expect(templateActions({ status: "In review", proposal: "P-1" }).review).toBe(true);
+    expect(templateActions({ status: "In review", proposal: null }).review).toBe(false);
+  });
+});
+
+describe("needIsFor", () => {
+  it("is the first agent's and every agent's that shares it", () => {
+    const n = { agent: "A1", agents: "A1, A2" };
+    expect(needIsFor(n, "A1")).toBe(true);
+    expect(needIsFor(n, "A2")).toBe(true);
+    expect(needIsFor(n, "A")).toBe(false);
+    expect(needIsFor({ agent: "A3", agents: null }, "A3")).toBe(true);
   });
 });

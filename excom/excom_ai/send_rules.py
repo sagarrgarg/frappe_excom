@@ -10,6 +10,8 @@ Excom's send paths call `check()` whenever the sender is an agent's own user, so
   person's last message. An agent never uses Meta's HUMAN_AGENT tag (Meta allows it for human
   agents only); `allow_meta_tag()` is how the Meta send knows.
 - The channel account: an agent sends only from numbers and mailboxes listed on it.
+- WhatsApp templates (HLD-008): only an APPROVED template on the agent's number, and only to a
+  person who opted in (a "Granted" in the consent ledger) or has written to us on WhatsApp.
 
 A person's own sends are untouched: they keep today's behaviour.
 """
@@ -39,7 +41,7 @@ def allow_meta_tag(user: str | None = None) -> bool:
 
 
 def check(thread, purpose: str = "reply", user: str | None = None, window: bool = True,
-		recipients: list[str] | None = None) -> None:
+		recipients: list[str] | None = None, template: str | None = None) -> None:
 	"""Refuse (AgentSendRefused) unless an agent may send on this thread now. No-op for people.
 
 	window=False for an approved WhatsApp template, the one way to write outside the window.
@@ -55,8 +57,71 @@ def check(thread, purpose: str = "reply", user: str | None = None, window: bool 
 	if recipients is not None:
 		_check_recipients(thread, recipients)
 	_check_consent(thread, purpose)
+	if template:
+		marketing = _check_template(thread, template)
+		_check_opt_in(thread, marketing)
 	if window:
 		_check_window(thread)
+
+
+def _check_template(thread, template: str) -> bool:
+	"""Approved, on this number, and (for the steward's) still in the category it was made for.
+	Returns whether it is a MARKETING template."""
+	from excom.excom.whatsapp_template_utils import template_is_linked_to_account
+
+	t = frappe.db.get_value("WhatsApp Templates", template, ["status", "category", "xai_need"], as_dict=True) or {}
+	if (t.get("status") or "").upper() != "APPROVED":
+		raise AgentSendRefused(_("Template {0} is not approved by Meta ({1}).").format(template, t.get("status") or "-"))
+	if not template_is_linked_to_account(template, thread.account):
+		raise AgentSendRefused(_("Template {0} does not belong to {1}.").format(template, thread.account))
+	category = (t.get("category") or "").upper()
+	if t.get("xai_need"):
+		wanted = (frappe.db.get_value("Excom AI Template Need", t["xai_need"], "category") or "").upper()
+		if wanted and category != wanted:
+			raise AgentSendRefused(_("Meta moved template {0} to {1}; it was made as {2}.").format(template, category, wanted))
+	return category == "MARKETING"
+
+
+def _check_opt_in(thread, marketing: bool = False) -> None:
+	"""WhatsApp's policy: a business starts a conversation only with people who opted in."""
+	if not whatsapp_opt_in(_identities(thread), marketing):
+		raise AgentSendRefused(_("No WhatsApp opt-in: record the person's consent, or wait until they write to us."))
+
+
+def whatsapp_opt_in(identities: list[str], marketing: bool = False) -> bool:
+	"""A recorded WhatsApp "Granted" (transactional or marketing), or a WhatsApp message from them.
+	Marketing needs a recorded marketing "Granted": having written to us is not consent to promotions."""
+	from excom.excom.services.consent import latest_consent
+
+	names = [n for n in identities or [] if n]
+	purposes = ("marketing",) if marketing else ("transactional", "marketing")
+	for name in names:
+		if any(latest_consent(name, "whatsapp", purpose) == "Granted" for purpose in purposes):
+			return True
+	return bool(not marketing and names and frappe.db.exists("Excom Message", {"omni_identity": ["in", names],
+		"direction": "Inbound", "channel": "whatsapp"}))
+
+
+def number_opted_in(number: str | None) -> bool:
+	"""For packs choosing a channel at writing time: may an agent start a WhatsApp conversation with
+	this number? (Checked again when the template is sent.)"""
+	if not number:
+		return False
+	from excom.excom.services.whatsapp_service import identities_for_recipient
+
+	return whatsapp_opt_in(identities_for_recipient(number))
+
+
+def _identities(thread) -> list[str]:
+	names = [thread.omni_identity] if thread.omni_identity else []
+	ident = frappe.db.get_value("Omni Identity", thread.omni_identity, ["primary_whatsapp", "primary_phone"],
+		as_dict=True) if thread.omni_identity else None
+	if ident:
+		from excom.excom.services.whatsapp_service import identities_for_recipient
+
+		for number in filter(None, (ident.primary_whatsapp, ident.primary_phone)):
+			names += identities_for_recipient(number)
+	return list(dict.fromkeys(n for n in names if n))
 
 
 def _check_account(thread, user: str) -> None:

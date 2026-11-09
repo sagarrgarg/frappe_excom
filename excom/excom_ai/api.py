@@ -208,3 +208,73 @@ def cost_check(candidates):
 
 	frappe.only_for(list(MANAGERS))  # it spends money on model calls
 	return learning.cost_check(frappe.parse_json(candidates) if isinstance(candidates, str) else candidates)
+
+
+def _may_change_need(doc) -> None:
+	"""A need one agent uses: its owner, backup or an Excom Admin. A need several agents share (one
+	WhatsApp business account, several owners): an Excom Admin only, since all of them depend on it."""
+	from excom.excom_ai.permissions import template_need_agents
+
+	frappe.has_permission("Excom AI Template Need", "read", doc, throw=True)
+	agents = [frappe.get_doc("Excom AI Agent", a) for a in template_need_agents(doc) if frappe.db.exists("Excom AI Agent", a)]
+	owners = {a.owner_user for a in agents}
+	if set(frappe.get_roles()) & MANAGERS:
+		return
+	if len(owners) > 1:
+		frappe.throw(_("Several agents' owners use this template: an Excom Admin decides."), frappe.PermissionError)
+	if not agents or not proposals.may_decide(agents[0], frappe.session.user):
+		frappe.throw(_("Only the agent's owner, backup or an Excom Admin can do that."), frappe.PermissionError)
+
+
+@frappe.whitelist(methods=["POST"])
+def withdraw_template(need: str):
+	"""Take back a template the steward made: deleted on Meta, and agents stop using it."""
+	from excom.excom_ai import templates
+
+	doc = frappe.get_doc("Excom AI Template Need", need)
+	_may_change_need(doc)
+	if doc.status in ("Withdrawn",):
+		frappe.throw(_("Already withdrawn."))
+	templates.withdraw(need)
+	frappe.db.commit()
+	return {"status": "Withdrawn"}
+
+
+@frappe.whitelist(methods=["POST"])
+def reopen_template_need(need: str):
+	"""A failed need tried again (after a person fixed what stopped it)."""
+	doc = frappe.get_doc("Excom AI Template Need", need)
+	_may_change_need(doc)
+	if doc.status not in ("Failed", "Withdrawn"):
+		frappe.throw(_("Only a failed or withdrawn need is opened again."))
+	frappe.db.set_value("Excom AI Template Need", need, {"status": "Open", "attempts": 0, "notified": 0})
+	frappe.db.commit()
+	return {"status": "Open"}
+
+
+@frappe.whitelist()
+def template_needs(agent: str | None = None, status: str | None = None) -> list:
+	"""The Template Steward's needs a person may see (their agents' and their team's), newest first,
+	with the template's words, Meta's status and category."""
+	frappe.has_permission("Excom AI Template Need", "read", throw=True)
+	filters = {"status": status} if status else {}
+	# a need shared by several agents names the first one in `agent` and all of them in `agents`
+	or_filters = {"agent": agent, "agents": ["like", f"%{agent}%"]} if agent else None
+	rows = frappe.get_list("Excom AI Template Need", filters=filters, or_filters=or_filters, fields=["name", "need_key", "channel", "category",
+		"language", "status", "agent", "agents", "channel_account", "source", "template", "subject", "body",
+		"back_translation", "last_error", "attempts", "submitted_on", "met_on", "proposal", "modified"],
+		order_by="modified desc", limit_page_length=200)
+	for r in rows:
+		r.meta_status = r.meta_category = None
+		if r.template:
+			t = frappe.db.get_value("WhatsApp Templates", r.template, ["status", "category", "quality_score",
+				"rejection_reason"], as_dict=True) or {}
+			r.meta_status, r.meta_category = t.get("status"), t.get("category")
+			r.quality, r.rejection_reason = t.get("quality_score"), t.get("rejection_reason")
+		try:
+			_may_change_need(frappe.get_doc("Excom AI Template Need", r.name))
+			r.can_change = True
+		except frappe.PermissionError:
+			frappe.clear_last_message()
+			r.can_change = False
+	return rows

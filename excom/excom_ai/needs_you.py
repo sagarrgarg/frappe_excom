@@ -85,7 +85,11 @@ def decide_many(names, decision: str, reason: str = "", note: str = "") -> dict:
 	names = frappe.parse_json(names) if isinstance(names, str) else names
 	done, refused = [], []
 	for name in names or []:
-		frappe.has_permission("Excom AI Proposal", "read", frappe.get_doc("Excom AI Proposal", name), throw=True)
+		doc = frappe.get_doc("Excom AI Proposal", name)
+		frappe.has_permission("Excom AI Proposal", "read", doc, throw=True)
+		if doc.action == "approve_template":
+			refused.append({"name": name, "why": _("A template is approved on its own, after reading it.")})
+			continue
 		try:
 			proposals.decide(name, decision, reason=reason or None, note=note or None)
 			done.append(name)

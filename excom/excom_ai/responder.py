@@ -300,14 +300,21 @@ def _draft_reply(task, agent, thread, text: str, intent: str, language: str) -> 
 @registry.executor("reply")
 def send_reply(proposal, agent):
 	"""Send an approved reply on its conversation, as the agent's own user (Excom's send rules
-	apply: consent, its own accounts, the 24-hour window for chat channels)."""
+	apply: consent, its own accounts, the 24-hour window for chat channels). A payload naming a
+	template goes as that approved WhatsApp template (its own send rules: approved, opted in)."""
 	thread = frappe.get_doc("Excom Thread", proposal.thread)
 	if thread.ai_mode in ("Hold", "Needs person") and proposal.decided_by == "Autopilot":
 		# a person has the conversation: only what a person approved goes out (a priced reply they checked)
 		raise registry.Cancel(_("a person has this conversation"))
 	payload = frappe.parse_json(proposal.payload or "{}")
 	body = payload.get("body") or ""
-	if thread.channel == "email":
+	if payload.get("template"):
+		# outside the WhatsApp window: an approved template, filled by code (HLD-008 §6)
+		from excom.excom_ai import templates
+
+		variables = [templates.clean_value(v) for v in payload.get("variables") or []]
+		message = templates.send_whatsapp(proposal, agent, thread.name, payload["template"], variables).get("message_name")
+	elif thread.channel == "email":
 		from excom.excom.channels.email.outbound import send_email_reply
 
 		last = frappe.db.get_value("Excom Message", {"thread": thread.name, "direction": "Inbound"}, "provider_message_id",

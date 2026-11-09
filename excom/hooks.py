@@ -160,6 +160,7 @@ permission_query_conditions = {
 	"Excom AI Proposal": "excom.excom_ai.permissions.proposal_query",
 	"Excom AI Sequence": "excom.excom_ai.permissions.sequence_query",
 	"Excom AI Feedback": "excom.excom_ai.permissions.feedback_query",
+	"Excom AI Template Need": "excom.excom_ai.permissions.template_need_query",
 }
 
 has_permission = {
@@ -196,6 +197,7 @@ has_permission = {
 	"Excom AI Proposal": "excom.excom_ai.permissions.by_agent_has_permission",
 	"Excom AI Sequence": "excom.excom_ai.permissions.by_agent_has_permission",
 	"Excom AI Feedback": "excom.excom_ai.permissions.by_agent_has_permission",
+	"Excom AI Template Need": "excom.excom_ai.permissions.template_need_has_permission",
 }
 
 # DocType Class

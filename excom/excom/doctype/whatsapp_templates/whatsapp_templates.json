@@ -52,7 +52,13 @@
   "card_button_1_type",
   "card_button_2_type",
   "section_break_cards",
-  "cards"
+  "cards",
+  "sb_xai",
+  "xai_need",
+  "xai_variable_map",
+  "column_break_xai",
+  "xai_back_translation",
+  "xai_first_use_done"
  ],
  "fields": [
   {
@@ -347,12 +353,48 @@
    "label": "Cards",
    "options": "WhatsApp Carousel Card",
    "description": "2–10 cards for a media carousel (sends carry the same number). A product carousel is created with exactly 2."
+  },
+  {
+   "fieldname": "sb_xai",
+   "fieldtype": "Section Break",
+   "label": "Excom AI",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "xai_need",
+   "fieldtype": "Link",
+   "label": "Made for Need",
+   "options": "Excom AI Template Need",
+   "read_only": 1
+  },
+  {
+   "fieldname": "xai_variable_map",
+   "fieldtype": "Code",
+   "label": "Variable Map",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_xai",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "xai_back_translation",
+   "fieldtype": "Small Text",
+   "label": "In English",
+   "read_only": 1
+  },
+  {
+   "fieldname": "xai_first_use_done",
+   "fieldtype": "Check",
+   "label": "First Agent Send Reviewed",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-04 18:00:00.000000",
+ "modified": "2026-11-10 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "WhatsApp Templates",

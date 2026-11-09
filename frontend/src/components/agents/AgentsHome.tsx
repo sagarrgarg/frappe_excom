@@ -1,15 +1,18 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { Bot, Inbox, Plus, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useFrappeGetCall } from "@/lib/api";
 import { PageFrame } from "../shell/PageFrame";
-import { Avatar, Badge, Button, EmptyState } from "../primitives";
+import { Avatar, Badge, Button, EmptyState, SegmentedControl } from "../primitives";
 import { toastError } from "../ErrorDialog";
 import { parseError } from "../../lib/errors";
 import type { AgentCard, AgentType, NeedsYouCount } from "../../types/agents";
 import { HealthDot, M, NEEDS_YOU_COUNT_KEY, ReasonDialog, Stat, StatusChip, TypeChip } from "./bits";
+import { TemplatesTab } from "./TemplatesTab";
+
+type HomeTab = "agents" | "templates";
 
 /** The New agent button shows only for people who may build one: types() refuses everyone else. */
 export function useAgentTypes() {
@@ -17,9 +20,15 @@ export function useAgentTypes() {
   return { types: data?.message ?? [], canBuild: Boolean(data?.message) && !error, isLoading };
 }
 
-/** /agents — one card per agent the person may see, with today's numbers (HLD-007 §15.1). */
+/**
+ * /agents — one card per agent the person may see, with today's numbers (HLD-007 §15.1);
+ * /agents?tab=templates — the templates the Template Steward made for them (HLD-008).
+ */
 export function AgentsHome() {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const tab: HomeTab = params.get("tab") === "templates" ? "templates" : "agents";
+  const setTab = (t: HomeTab) => setParams(t === "agents" ? {} : { tab: t }, { replace: true });
   const { data, error, isLoading, mutate } = useFrappeGetCall<{ message: AgentCard[] }>(M.agents, undefined, "agents-home", { refreshInterval: 60_000 });
   const { canBuild } = useAgentTypes();
   const agents = data?.message ?? [];
@@ -48,9 +57,16 @@ export function AgentsHome() {
           action={newButton}
         />
       ) : (
-        <ul className="grid grid-cols-1 tablet:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] wide:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2">
-          {agents.map((a) => <li key={a.name} className="min-w-0"><AgentCardView agent={a} onChanged={() => mutate()} /></li>)}
-        </ul>
+        <div className="space-y-3 min-w-0">
+          <div className="min-w-0 max-w-full overflow-x-auto border-b border-border">
+            <SegmentedControl<HomeTab> value={tab} onChange={setTab} ariaLabel="Agents sections" segments={[{ value: "agents", label: "Agents", count: agents.length }, { value: "templates", label: "Templates" }]} />
+          </div>
+          {tab === "templates" ? <TemplatesTab /> : (
+            <ul className="grid grid-cols-1 tablet:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] wide:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2">
+              {agents.map((a) => <li key={a.name} className="min-w-0"><AgentCardView agent={a} onChanged={() => mutate()} /></li>)}
+            </ul>
+          )}
+        </div>
       )}
     </PageFrame>
   );

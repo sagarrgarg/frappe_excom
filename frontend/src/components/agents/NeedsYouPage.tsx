@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useSWRConfig } from "swr";
 import { AlertOctagon, Check, CheckCheck, Clock, Inbox, PauseCircle, Pencil, RefreshCw, UserRound, X } from "lucide-react";
 import { toast } from "sonner";
@@ -64,6 +64,11 @@ export function NeedsYouPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const keyed = useRef(false);
 
+  // ?p=<proposal>: opened from elsewhere (a template in review): select it and bring it into view once loaded.
+  const [params] = useSearchParams();
+  const wanted = params.get("p");
+  const found = useRef<string | null>(null);
+
   const { mutate: mutateKey } = useSWRConfig();
   const reload = () => { mutate(); mutateKey(NEEDS_YOU_COUNT_KEY); };
   const drop = (ids: string[]) => setGone((s) => { const n = new Set(s); ids.forEach((i) => n.add(i)); return n; });
@@ -111,6 +116,12 @@ export function NeedsYouPage() {
   // J/K/A/E/R like Harvey's Outbox. Not while typing, and not while a dialog is open.
   const current = order.find((p) => p.name === cursor) || null;
   useEffect(() => { if (cursor && !order.some((p) => p.name === cursor)) setCursor(order[0]?.name ?? null); }, [order, cursor]);
+  useEffect(() => {
+    if (!wanted || found.current === wanted || !order.some((p) => p.name === wanted)) return;
+    found.current = wanted;
+    setCursor(wanted);
+    requestAnimationFrame(() => document.querySelector(`[data-proposal="${CSS.escape(wanted)}"]`)?.scrollIntoView({ block: "center" }));
+  }, [wanted, order]);
   useEffect(() => {
     if (!cursor || !keyed.current) return;
     document.querySelector(`[data-proposal="${CSS.escape(cursor)}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });

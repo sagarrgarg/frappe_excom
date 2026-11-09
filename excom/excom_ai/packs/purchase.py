@@ -5,7 +5,8 @@ supplier discovery, every message to a supplier under Review.
                         Request for Quotation (create_rfq) and one email per supplier (send_rfq). The
                         items, quantities and dates in the email are written by code; the model writes
                         only the polite words around them, and they may hold no number at all.
-    rfq_follow_up       one reminder when a supplier has not answered for FOLLOW_UP_DAYS.
+    rfq_follow_up       one reminder when a supplier has not answered for FOLLOW_UP_DAYS; for a supplier
+                        with no email (asked by a person) a WhatsApp reminder from an approved template.
     respond (inbound)   a supplier answered on the RFQ conversation: the email and its PDF, XLSX or
                         CSV attachments (PDFs through ai_interface vision) are read, the offer is
                         extracted under a strict schema and mapped to the RFQ's lines, and a draft
@@ -17,7 +18,11 @@ supplier discovery, every message to a supplier under Review.
                         rules: better, worse or about the same, in the proposal's preview.
     chase_po            a submitted Purchase Order whose schedule date is near or past with items still
                         to come: a polite po_chase email (Review by default, Auto allowed), sent in the
-                        supplier's office hours; it stops when the goods are received.
+                        supplier's office hours; it stops when the goods are received. A supplier with
+                        no email but a WhatsApp number gets it as an approved WhatsApp template.
+    templates (HLD-008) WhatsApp chasers and reminders only from an approved template (templates.find;
+                        a missing one is recorded as a need and a person is given a ToDo). An approved
+                        email template gives the chaser's and the reminder's words instead of the model.
     discover_suppliers  for the biggest spend groups of the last 12 months, candidates found with the
                         discovery tools into Excom AI Company rows, read with the website profiler and
                         the email finder; each becomes a create_supplier proposal that a person approves
@@ -47,7 +52,7 @@ from frappe.utils import (
 	nowdate,
 )
 
-from excom.excom_ai import checks, sequencer, tools
+from excom.excom_ai import checks, sequencer, templates, tools
 from excom.excom_ai.builder import geo, readiness
 from excom.excom_ai.builder.recipes import fact, money, need, recipe
 from excom.excom_ai.engine import notify, proposals, registry, runner, tasks
@@ -58,6 +63,7 @@ FOLLOW_UP_UNTIL_DAYS = 30  # older RFQs are left to people
 CHASE_AHEAD_DAYS = 2  # a PO is chased from this many days before its schedule date
 CHASE_EVERY_DAYS = 7  # and again a week later while goods are still to come
 CHASE_BACK_DAYS = 120  # orders late for longer than this are a person's problem, not a reminder's
+REPLY_WITHIN_DAYS = 3  # a WhatsApp RFQ reminder asks for the quote by this many days from today
 MAX_SUPPLIERS = 6
 MAX_ATTACHMENTS = 4
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
@@ -212,17 +218,124 @@ def room(agent, account: str) -> int:
 	return max(0, (cint(row.daily_cap) or 40) - mail.sent_today(account))
 
 
-def supplier_identity(supplier: str, email: str) -> str:
-	"""The supplier's person record for this address (made, linked to the supplier, when missing)."""
-	name = frappe.db.get_value("Omni Identity", {"primary_email": email, "status": ["!=", "Merged"]})
+def supplier_identity(supplier: str, email: str | None = None, phone: str | None = None) -> str:
+	"""The supplier's person record for this address or WhatsApp number (made, linked to the
+	supplier, when missing)."""
+	from excom.excom.doctype.omni_identity.omni_identity import normalize_phone
+
+	if email:
+		name = frappe.db.get_value("Omni Identity", {"primary_email": email, "status": ["!=", "Merged"]})
+	else:
+		from excom.excom.services.identity_sync import _find_existing_identity
+
+		name = _find_existing_identity(phone=phone)
 	if name:
 		return name
-	doc = frappe.get_doc({"doctype": "Omni Identity", "display_name": frappe.db.get_value("Supplier", supplier,
-		"supplier_name") or supplier, "primary_email": email, "status": "Active", "is_master": 1,
-		"linked_entities": [{"linked_doctype": "Supplier", "linked_name": supplier, "role": "Primary Contact"}]})
+	doc = {"doctype": "Omni Identity", "display_name": frappe.db.get_value("Supplier", supplier, "supplier_name") or supplier,
+		"status": "Active", "is_master": 1,
+		"linked_entities": [{"linked_doctype": "Supplier", "linked_name": supplier, "role": "Primary Contact"}]}
+	if email:
+		doc["primary_email"] = email
+	else:  # validation is skipped (the supplier may be linked elsewhere already), so the number is normalised here
+		doc.update(primary_phone=phone, primary_whatsapp=normalize_phone(phone), normalized_phone=normalize_phone(phone))
+	doc = frappe.get_doc(doc)
 	doc.flags.ignore_validate = True
 	doc.insert(ignore_permissions=True)
 	return doc.name
+
+
+def supplier_language(supplier: str | None) -> str:
+	return (frappe.db.get_value("Supplier", supplier, "language") if supplier else None) or "en"
+
+
+def _contact_mobile(contact: str | None) -> str | None:
+	if not contact:
+		return None
+	fields = [f for f in ("whatsapp_no", "whatsapp", "mobile_no") if frappe.get_meta("Contact").has_field(f)]
+	row = frappe.db.get_value("Contact", contact, fields, as_dict=True) or {}
+	number = next((row.get(f) for f in fields if (row.get(f) or "").strip()), None) or frappe.db.get_value(
+		"Contact Phone", {"parent": contact, "parenttype": "Contact", "is_primary_mobile_no": 1}, "phone")
+	return number.strip() if number and number.strip() else None
+
+
+def supplier_mobile(supplier: str, contact: str | None = None) -> str | None:
+	"""The supplier's WhatsApp number: the contact named, else the supplier's primary contact, else
+	any contact of theirs with a mobile or WhatsApp number."""
+	number = _contact_mobile(contact) or _contact_mobile(frappe.db.get_value("Supplier", supplier, "supplier_primary_contact"))
+	if number:
+		return number
+	for (name,) in frappe.db.sql("""SELECT c.name FROM `tabContact` c JOIN `tabDynamic Link` dl ON dl.parent = c.name
+			AND dl.parenttype = 'Contact' AND dl.link_doctype = 'Supplier' WHERE dl.link_name = %s
+			ORDER BY c.is_primary_contact DESC, c.creation ASC LIMIT 10""", supplier):
+		number = _contact_mobile(name)
+		if number:
+			return number
+	return None
+
+
+def whatsapp_numbers(agent) -> list[str]:
+	"""The agent's own WhatsApp numbers (not paused)."""
+	return [r.channel_account for r in agent.channels or [] if r.channel_account and not r.paused
+		and frappe.db.get_value("Excom Channel Account", r.channel_account, "channel") == "whatsapp"]
+
+
+def whatsapp_route(agent, key: str, supplier: str, contact: str | None = None) -> frappe._dict | None:
+	"""For a supplier with no email: their number, the agent's number and the approved template for the
+	need `key` (found None when there is none; templates.find has then recorded the need). None when
+	the supplier or the agent has no WhatsApp number."""
+	mobile, numbers = supplier_mobile(supplier, contact), whatsapp_numbers(agent)
+	if not mobile or not numbers:
+		return None
+	language = supplier_language(supplier)
+	for account in numbers:
+		found = templates.find(agent, key, "WhatsApp", language, account, record=False)
+		if found:
+			return frappe._dict(mobile=mobile, account=account, found=found, language=language, contact=contact)
+	templates.find(agent, key, "WhatsApp", language, numbers[0])  # none: recorded for the steward
+	return frappe._dict(mobile=mobile, account=numbers[0], found=None, language=language, contact=contact)
+
+
+def whatsapp_opted_in(mobile: str) -> bool:
+	"""The number's person opted in to WhatsApp (send_rules' own test): a template to anyone else
+	would be refused at sending, so a person is asked instead."""
+	from excom.excom_ai.send_rules import number_opted_in
+
+	return number_opted_in(mobile)
+
+
+def whatsapp_values(route, values: dict) -> tuple[list[str] | None, str | None]:
+	"""(variables, None) when the template may go to this number, else (None, why not)."""
+	if not route or not route.found:
+		return None, _("no approved WhatsApp template yet")
+	try:
+		variables = templates.whatsapp_values(route.found, values)
+	except ValueError as e:
+		return None, str(e)
+	if not whatsapp_opted_in(route.mobile):
+		return None, _("{0} has not opted in to WhatsApp messages").format(route.mobile)
+	return variables, None
+
+
+def propose_whatsapp(task, agent, action: str, subject: tuple, route, variables: list[str], extra: dict) -> str | None:
+	"""A WhatsApp template send under the pack's own action. The first send of a new template waits
+	for a person (proposals.propose), who sees its English back-translation and Meta's category."""
+	found = route.found
+	text = templates.fill(found["text"], variables)
+	results = {"recipient": {"ok": True, "why": _("WhatsApp {0} (no email on record)").format(route.mobile)},
+		"channel": {"ok": True, "why": route.account},
+		"template": {"ok": True, "why": _("approved utility template {0}").format(found["template"])},
+		"opt_in": {"ok": True, "why": _("the supplier opted in to WhatsApp")}}
+	results["ok"] = True
+	preview = f"<p>{frappe.utils.escape_html(text)}</p>"
+	if not found.get("first_use_done"):
+		t = frappe.db.get_value("WhatsApp Templates", found["template"], ["category", "xai_back_translation"], as_dict=True) or {}
+		preview += "<p><i>" + frappe.utils.escape_html(_("First use of this template ({0}). In English: {1}").format(
+			t.get("category") or "-", t.get("xai_back_translation") or "-")) + "</i></p>"
+	payload = {**extra, "channel": "whatsapp", "template": found["template"], "variables": variables, "mobile": route.mobile,
+		"contact": route.contact, "need": found["need"], "language": found["language"], "body": text}
+	return proposals.propose(task, agent, action, subject=subject, channel_account=route.account, kind="Reply",
+		checks=results, checks_ok=True, risk="Low" if found.get("first_use_done") else "Medium", preview_html=preview,
+		payload=payload)
 
 
 def _cannot_ask(supplier: str) -> str | None:
@@ -277,12 +390,24 @@ def _strip_sign_off(text: str) -> str:
 	return "\n".join(lines).strip()
 
 
-def _check(agent, to: str, subject: str, body: str, account: str | None, lines: int, notes: list[str]) -> dict:
-	"""The code checks (§12.5) for a message to a supplier, plus whether the model's words held."""
+def _check(agent, to: str, subject: str, body: str, account: str | None, lines: int, notes: list[str],
+		words: str | None = None) -> dict:
+	"""The code checks (§12.5) for a message to a supplier, plus whether the model's words held
+	(`words` says where they came from when it was not the model)."""
 	results = checks.check(agent, to, subject, body, kind="Supplier", account=account, word_limit=150 + 25 * lines)
-	results["wording"] = {"ok": not notes, "why": "; ".join(notes) or _("the model's words only")}
+	results["wording"] = {"ok": not notes, "why": "; ".join(notes) or words or _("the model's words only")}
 	results["ok"] = all(v["ok"] for k, v in results.items() if k != "ok")
 	return results
+
+
+def email_words(agent, key: str, supplier: str, values: dict) -> frappe._dict | None:
+	"""The subject, opening and closing of the approved email template for the need `key`, filled;
+	None when there is none (templates.find has then recorded the need, and the model writes)."""
+	found = templates.find(agent, key, "Email", supplier_language(supplier), None)
+	if not found:
+		return None
+	subject, opening, closing = templates.email_parts(found, values)
+	return frappe._dict(subject=subject, opening=opening, closing=closing, need=found["need"])
 
 
 # ── RFQ: lines and suppliers ─────────────────────────────────────────────────
@@ -498,6 +623,37 @@ def _send(proposal, agent, supplier: str, subject: str, body: str, in_reply_to: 
 	return message, thread
 
 
+def _send_whatsapp(proposal, agent, supplier: str, p: dict) -> tuple[str, str]:
+	"""Send an approved WhatsApp template to a supplier now (send_rules: approved, on the agent's
+	number, opted in), or Defer to their office hours."""
+	from excom.excom.services.thread_service import upsert_thread
+	from excom.excom_ai import send_rules
+
+	zone = supplier_zone(supplier, agent)
+	now = now_datetime()
+	if not sequencer.in_window(now, zone):
+		raise registry.Defer(sequencer.next_window(now, zone), _("outside the supplier's office hours ({0})").format(zone))
+	mobile = p.get("mobile")
+	if not mobile or supplier_mobile(supplier, p.get("contact")) != mobile:
+		raise registry.Cancel(_("the supplier's WhatsApp number changed since this was written"))
+	account = proposal.channel_account
+	if not account or account not in whatsapp_numbers(agent):
+		raise registry.Cancel(_("{0} is no longer one of the agent's WhatsApp numbers").format(account or "-"))
+	if not p.get("template"):
+		raise registry.Cancel(_("no template"))
+	identity = supplier_identity(supplier, phone=mobile)
+	thread = proposal.thread or upsert_thread(identity, "whatsapp", account)
+	try:
+		sent = templates.send_whatsapp(proposal, agent, thread, p["template"], p.get("variables") or [])
+	except send_rules.AgentSendRefused as e:
+		raise registry.Cancel(str(e)) from e  # refused before anything left: nothing was sent
+	message = sent.get("message_name")
+	frappe.db.set_value("Excom AI Proposal", proposal.name, {"message": message, "sent_on": now_datetime(), "thread": thread},
+		update_modified=False)
+	frappe.db.set_value("Excom Thread", thread, {"ai_agent": agent.name, "ai_mode": "Handle"}, update_modified=False)
+	return message, thread
+
+
 def _answered_since(thread: str | None, since) -> bool:
 	return bool(thread and since and frappe.db.exists("Excom Message", {"thread": thread, "direction": "Inbound",
 		"creation": [">", get_datetime(since)]}))
@@ -528,6 +684,11 @@ def send_rfq(proposal, agent):
 		raise registry.Cancel(_("{0} was cancelled").format(rfq))
 	if _cannot_ask(supplier):
 		raise registry.Cancel(_("{0} cannot be asked: {1}").format(supplier, _cannot_ask(supplier)))
+	if p.get("channel") == "whatsapp":  # the reminder to a supplier with no email
+		if _quoted(rfq, supplier):
+			raise registry.Cancel(_("the supplier has answered"))
+		message, _thread = _send_whatsapp(proposal, agent, supplier, p)
+		return ("Excom Message", message)
 	in_reply_to, subject = "", p.get("subject") or _("Request for quotation {0}").format(rfq)
 	if cint(p.get("follow_up")):
 		parent = frappe.db.get_value("Excom AI Proposal", p.get("parent"), ["thread", "sent_on", "message"], as_dict=True)
@@ -545,7 +706,10 @@ def send_rfq(proposal, agent):
 
 @registry.task_kind("rfq_follow_up", priority=registry.PRIORITY["write"], effort="write")
 def rfq_follow_up(task, agent) -> str:
-	"""One reminder to a supplier who has not answered an RFQ."""
+	"""One reminder to a supplier who has not answered an RFQ: by email on the RFQ's conversation, or
+	(subject: the RFQ, params.supplier) on WhatsApp to a supplier with no email."""
+	if task.subject_doctype == "Request for Quotation":
+		return _rfq_whatsapp_reminder(task, agent)
 	first = frappe.get_doc("Excom AI Proposal", task.subject_name)
 	p = _payload(first)
 	supplier, rfq = p.get("supplier") or first.subject_name, rfq_of(p)
@@ -556,16 +720,55 @@ def rfq_follow_up(task, agent) -> str:
 		return _("{0} was cancelled").format(rfq)
 	lines = [{"item_code": it.item_code, "item_name": it.item_name, "qty": it.qty, "uom": it.uom, "schedule_date": str(it.schedule_date)}
 		for it in doc.items]
-	intro, closing, notes = _wording(task, agent, "follow_up", supplier)
 	name = frappe.db.get_value("Supplier", supplier, "supplier_name") or supplier
-	body = f"Dear {name},\n\n{intro}\n\n{_lines_block(lines)}\n\n{RFQ_ASK}\n\n{closing}"
+	# a reply keeps its conversation's subject, whatever the template's subject says
 	subject = "Re: " + (p.get("subject") or _("Request for quotation {0}").format(rfq))
-	results = _check(agent, first.to_email, subject, body, first.channel_account, len(lines), notes)
+	words = email_words(agent, "purchase.rfq_reminder", supplier, {"supplier_name": name, "rfq": rfq,
+		"reply_by": frappe.utils.formatdate(add_days(nowdate(), REPLY_WITHIN_DAYS))})
+	if words:
+		body = "\n\n".join(filter(None, (words.opening, _lines_block(lines), RFQ_ASK, words.closing)))
+		notes, source = [], _("an approved email template ({0})").format(words.need)
+	else:
+		intro, closing, notes = _wording(task, agent, "follow_up", supplier)
+		body, source = f"Dear {name},\n\n{intro}\n\n{_lines_block(lines)}\n\n{RFQ_ASK}\n\n{closing}", None
+	results = _check(agent, first.to_email, subject, body, first.channel_account, len(lines), notes, source)
 	made = proposals.propose(task, agent, "send_rfq", subject=("Excom AI Proposal", first.name), thread=first.thread,
 		channel_account=first.channel_account, kind="Reply", to_email=first.to_email, checks=results, checks_ok=results["ok"],
 		risk="Low" if results["ok"] else "High", preview_html=_html(body),
-		payload={"subject": subject, "body": body, "supplier": supplier, "rfq": rfq, "follow_up": 1, "parent": first.name})
+		payload={"subject": subject, "body": body, "supplier": supplier, "rfq": rfq, "follow_up": 1, "parent": first.name,
+			**({"email_template": words.need} if words else {})})
 	return _("reminder for {0} to {1}: {2}").format(rfq, supplier, made)
+
+
+def _rfq_whatsapp_reminder(task, agent) -> str:
+	"""A supplier with no email was asked by a person and has not quoted: a WhatsApp reminder from an
+	approved template, else a ToDo to remind them by phone."""
+	supplier = (frappe.parse_json(task.params or "{}") or {}).get("supplier")
+	rfq = frappe.db.get_value("Request for Quotation", task.subject_name, ["name", "docstatus"], as_dict=True)
+	if not rfq or not supplier:
+		return _("no RFQ or supplier")
+	if rfq.docstatus == 2:
+		return _("{0} was cancelled").format(rfq.name)
+	if _quoted(rfq.name, supplier):
+		return _("answered; no reminder")
+	if _cannot_ask(supplier):
+		return _("{0} cannot be asked: {1}").format(supplier, _cannot_ask(supplier))
+	if supplier_email(supplier):
+		return _("{0} has an email address now: a person follows up").format(supplier)
+	route = whatsapp_route(agent, "purchase.rfq_reminder", supplier)
+	if not route:
+		return _("{0} has no WhatsApp number: left to a person").format(supplier)
+	name = frappe.db.get_value("Supplier", supplier, "supplier_name") or supplier
+	variables, why = whatsapp_values(route, {"supplier_name": name, "rfq": rfq.name,
+		"reply_by": frappe.utils.formatdate(add_days(nowdate(), REPLY_WITHIN_DAYS))})
+	if variables:
+		made = propose_whatsapp(task, agent, "send_rfq", ("Request for Quotation", rfq.name), route, variables,
+			{"supplier": supplier, "rfq": rfq.name, "follow_up": 1, "parent": None})
+		return _("WhatsApp reminder for {0} to {1}: {2}").format(rfq.name, supplier, made)
+	proposals.propose(task, agent, "create_todo", subject=("Request for Quotation", rfq.name), risk="Low",
+		payload={"text": _("{0} has not quoted for {1} and has no email address: please remind them by phone ({2}).").format(
+			supplier, rfq.name, why)})
+	return _("no WhatsApp template for {0}: a person reminds {1}").format(rfq.name, supplier)
 
 
 # ── replies: supplier quotations ─────────────────────────────────────────────
@@ -1037,18 +1240,37 @@ def chase_po(task, agent) -> str:
 	if not lines:
 		return _("nothing outstanding on {0}").format(po.name)
 	to = (po.get("contact_email") or "").strip().lower() or supplier_email(po.supplier, po.get("contact_person"))
+	values = {"supplier_name": frappe.db.get_value("Supplier", po.supplier, "supplier_name") or po.supplier, "po": po.name,
+		"due_date": frappe.utils.formatdate(po.schedule_date)}
 	if not to:
+		route = whatsapp_route(agent, "purchase.po_chase", po.supplier, po.get("contact_person"))
+		variables, why = whatsapp_values(route, values) if route else (None, None)
+		if variables:
+			name = propose_whatsapp(task, agent, "po_chase", ("Purchase Order", po.name), route, variables,
+				{"supplier": po.supplier, "purchase_order": po.name})
+			return _("WhatsApp chaser for {0}: {1}").format(po.name, name)
+		text = _("{0} is due and {1} has no email address: please chase by phone.").format(po.name, po.supplier)
 		proposals.propose(task, agent, "create_todo", subject=("Purchase Order", po.name), risk="Low",
-			payload={"text": _("{0} is due and {1} has no email address: please chase by phone.").format(po.name, po.supplier)})
+			payload={"text": text + (" " + _("(WhatsApp: {0})").format(why) if why else "")})
 		return _("no email for {0}: a person chases").format(po.supplier)
-	intro, closing, notes = _wording(task, agent, "chase", po.supplier)
-	body = chase_body(po, intro, closing, lines)
 	subject = _("Purchase order {0}: delivery").format(po.name)
+	words = email_words(agent, "purchase.po_chase", po.supplier, values)
+	if words:
+		items = "\n".join(f"{i}. {ln['item_name']} ({ln['item_code']}): {_qty(ln['pending'])} {ln['uom']} still to come"
+			for i, ln in enumerate(lines, 1))
+		content = f"Purchase order {po.name}, due on {frappe.utils.formatdate(po.schedule_date)}:\n{items}"
+		body = "\n\n".join(filter(None, (words.opening, content, words.closing)))
+		subject = words.subject or subject
+		notes, source = [], _("an approved email template ({0})").format(words.need)
+	else:
+		intro, closing, notes = _wording(task, agent, "chase", po.supplier)
+		body, source = chase_body(po, intro, closing, lines), None
 	account = next(iter(rfq_accounts(agent)), None)
-	results = _check(agent, to, subject, body, account, len(lines), notes)
+	results = _check(agent, to, subject, body, account, len(lines), notes, source)
 	name = proposals.propose(task, agent, "po_chase", subject=("Purchase Order", po.name), channel_account=account,
 		kind="Reply", to_email=to, checks=results, checks_ok=results["ok"], risk="Low" if results["ok"] else "High",
-		preview_html=_html(body), payload={"subject": subject, "body": body, "supplier": po.supplier, "purchase_order": po.name})
+		preview_html=_html(body), payload={"subject": subject, "body": body, "supplier": po.supplier, "purchase_order": po.name,
+			**({"email_template": words.need} if words else {})})
 	return _("chaser for {0}: {1}").format(po.name, name)
 
 
@@ -1060,6 +1282,9 @@ def po_chase(proposal, agent):
 	if received(po):
 		raise registry.Cancel(_("{0} is received or closed").format(po))
 	supplier = p.get("supplier") or frappe.db.get_value("Purchase Order", po, "supplier")
+	if p.get("channel") == "whatsapp":
+		message, _thread = _send_whatsapp(proposal, agent, supplier, p)
+		return ("Excom Message", message)
 	message, _thread = _send(proposal, agent, supplier, p.get("subject") or _("Purchase order {0}: delivery").format(po),
 		p.get("body") or "")
 	return ("Excom Message", message)
@@ -1296,6 +1521,31 @@ def _follow_ups(agent) -> list[dict]:
 		specs.append({"kind": "rfq_follow_up", "subject": ("Excom AI Proposal", p.name)})
 		if len(specs) >= PER_TICK:
 			break
+	return specs + _whatsapp_follow_ups(agent, PER_TICK - len(specs))
+
+
+def _whatsapp_follow_ups(agent, limit: int) -> list[dict]:
+	"""Suppliers on the agent's RFQs who had no email (a person asked them) and have not quoted:
+	one WhatsApp reminder each, when they and the agent have a WhatsApp number."""
+	if limit <= 0 or not whatsapp_numbers(agent):
+		return []
+	specs = []
+	rfqs = frappe.get_all("Excom AI Proposal", {"agent": agent.name, "action": "create_rfq", "status": "Done",
+		"executed_name": ["is", "set"]}, pluck="executed_name", limit=50, order_by="creation desc")
+	for rfq in frappe.get_all("Request for Quotation", filters=[["name", "in", rfqs or ["-"]], ["docstatus", "<", 2],
+			["creation", ">", add_days(now_datetime(), -FOLLOW_UP_UNTIL_DAYS)],
+			["creation", "<", add_days(now_datetime(), -FOLLOW_UP_DAYS)]], pluck="name"):
+		for s in frappe.get_all("Request for Quotation Supplier", {"parent": rfq, "parenttype": "Request for Quotation"},
+				["supplier", "email_id"]):
+			key = f"rfq_follow_up:{rfq}:{s.supplier}"
+			if (s.email_id or "").strip() or frappe.db.exists("Excom AI Task", {"agent": agent.name, "dedupe_key": key}):
+				continue
+			if supplier_email(s.supplier) or _quoted(rfq, s.supplier) or _cannot_ask(s.supplier) or not supplier_mobile(s.supplier):
+				continue
+			specs.append({"kind": "rfq_follow_up", "subject": ("Request for Quotation", rfq), "dedupe_key": key,
+				"params": {"supplier": s.supplier}})
+			if len(specs) >= limit:
+				return specs
 	return specs
 
 

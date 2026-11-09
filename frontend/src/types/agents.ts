@@ -442,3 +442,36 @@ export interface DryRunRow {
   send_at?: string | null;
   account?: string | null;
 }
+
+/** template_needs(): one thing the Template Steward makes a template for (HLD-008). */
+export interface TemplateNeed {
+  name: string;
+  need_key: string;
+  channel: "WhatsApp" | "Email";
+  category?: string | null;
+  language?: string | null;
+  status: "Open" | "Drafting" | "Submitted" | "In review" | "Met" | "Failed" | "Withdrawn";
+  agent: string;
+  agents?: string | null;
+  channel_account?: string | null;
+  source?: "Library" | "Written" | "" | null;
+  template?: string | null;
+  subject?: string | null;
+  /** Variables as {{1}}…; an email's lines written by code as {{content}}. */
+  body?: string | null;
+  back_translation?: string | null;
+  last_error?: string | null;
+  attempts?: number | null;
+  submitted_on?: string | null;
+  met_on?: string | null;
+  proposal?: string | null;
+  modified?: string | null;
+  meta_status?: string | null;
+  meta_category?: string | null;
+  quality?: string | null;
+  rejection_reason?: string | null;
+  can_change?: boolean | number | null;
+}
+
+/** An approve_template proposal's payload. */
+export interface TemplatePayload { need?: string; subject?: string; body?: string }

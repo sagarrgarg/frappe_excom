@@ -18,6 +18,7 @@ BY_AGENT = {
 	"Excom AI Proposal": "agent",
 	"Excom AI Sequence": "agent",
 	"Excom AI Feedback": "agent",
+	"Excom AI Template Need": "agent",
 }
 
 
@@ -94,3 +95,29 @@ def feedback_query(user=None):
 
 def by_agent_has_permission(doc, ptype=None, user=None) -> bool:
 	return _by_agent_has_permission(doc, user or frappe.session.user)
+
+
+def template_need_query(user=None):
+	"""A WhatsApp need is shared by every agent on the business account (`agents`): each of their
+	people sees it, not only the first agent's."""
+	names = visible_agents(user)
+	if names is None:
+		return ""
+	if not names:
+		return "1=0"
+	column = "`tabExcom AI Template Need`"
+	likes = " OR ".join(f"CONCAT(', ', IFNULL({column}.`agents`, ''), ',') LIKE {frappe.db.escape('%, ' + n + ',%')}"
+		for n in names)
+	return f"({_in(column + '.`agent`', names)} OR {likes})"
+
+
+def template_need_has_permission(doc, ptype=None, user=None) -> bool:
+	names = visible_agents(user or frappe.session.user)
+	if names is None:
+		return True
+	agents = {a.strip() for a in (doc.get("agents") or "").split(",") if a.strip()} | {doc.get("agent")}
+	return bool(agents & set(names))
+
+
+def template_need_agents(doc) -> list[str]:
+	return [a for a in dict.fromkeys([doc.agent, *[a.strip() for a in (doc.agents or "").split(",") if a.strip()]]) if a]

@@ -1,12 +1,12 @@
 import { Chip } from "../primitives";
-import type { LeadPayload, PlaybookPayload, ProposalPayload, QuotationPayload, TodoPayload } from "../../types/agents";
-import { noteParts } from "../../lib/agents-logic";
+import type { LeadPayload, PlaybookPayload, ProposalPayload, QuotationPayload, TemplatePayload, TodoPayload } from "../../types/agents";
+import { noteParts, splitVariables } from "../../lib/agents-logic";
 import { HtmlPreview, parseJson } from "./bits";
 
 export { pricedFrom } from "../../lib/agents-logic";
 
 /** Proposal actions shown from their payload instead of the HTML preview. */
-const STRUCTURED = new Set(["create_quotation", "update_playbook", "update_lead", "create_todo", "note"]);
+const STRUCTURED = new Set(["create_quotation", "update_playbook", "update_lead", "create_todo", "note", "approve_template"]);
 
 const num = (v: unknown, digits = 2) => Number(v || 0).toLocaleString("en-IN", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
@@ -17,8 +17,8 @@ export function PricedChip({ priceList }: { priceList: string | null }) {
 
 /**
  * What a proposal would do, in plain words: a quotation as a table, a playbook suggestion, a lead
- * classification, a ToDo or a note (with its title, for a Custom agent's draft) from its payload;
- * anything else as its preview.
+ * classification, a ToDo, a note (with its title, for a Custom agent's draft) or an email template
+ * from its payload; anything else as its preview.
  */
 export function ProposalDetails({ action, payload: raw, previewHtml, title }: { action: string; payload?: ProposalPayload | string | null; previewHtml?: string | null; title: string }) {
   const payload = parseJson<Record<string, unknown>>(raw);
@@ -27,6 +27,7 @@ export function ProposalDetails({ action, payload: raw, previewHtml, title }: { 
     if (action === "update_playbook") return <PlaybookSuggestion p={payload as PlaybookPayload} />;
     if (action === "update_lead") return <LeadClass p={payload as LeadPayload} />;
     if (action === "create_todo") return <Todo p={payload as TodoPayload} />;
+    if (action === "approve_template") return <TemplateProposal p={payload as TemplatePayload} />;
     const note = action === "note" ? noteParts(payload) : null;
     if (note) return <Note title={note.title} text={note.text} />;
   }
@@ -131,6 +132,42 @@ function Note({ title, text }: { title: string; text: string }) {
     <div className="space-y-1 min-w-0">
       {title && <p className="text-sm font-medium text-ink-1 break-words">{title}</p>}
       {text ? <p className="text-sm text-ink-1 whitespace-pre-wrap break-words">{text}</p> : <p className="text-sm text-ink-3">No text.</p>}
+    </div>
+  );
+}
+
+/**
+ * A template's words with its variables marked: {{1}}… as a highlighted slot, an email's
+ * {{content}} as a muted "[lines written by code]". Line breaks are kept.
+ */
+export function TemplateWords({ subject, body }: { subject?: string | null; body?: string | null }) {
+  const parts = splitVariables(body);
+  return (
+    <div className="space-y-1 min-w-0">
+      {subject && <p className="text-sm font-medium text-ink-1 break-words"><TemplateLine text={subject} /></p>}
+      {parts.length === 0 ? <p className="text-sm text-ink-3">No words yet.</p> : (
+        <p className="text-sm text-ink-1 whitespace-pre-wrap break-words">
+          {parts.map((part, i) => "text" in part ? <span key={i}>{part.text}</span> : <Slot key={i} name={part.variable} />)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function TemplateLine({ text }: { text: string }) {
+  return <>{splitVariables(text).map((part, i) => "text" in part ? <span key={i}>{part.text}</span> : <Slot key={i} name={part.variable} />)}</>;
+}
+
+function Slot({ name }: { name: string }) {
+  if (name === "content") return <span className="text-ink-3 italic">[lines written by code]</span>;
+  return <mark className="rounded px-1 bg-crayon-blue-tint text-crayon-blue-text font-mono text-xs align-baseline" title="Filled in by code when it is sent">{`{{${name}}}`}</mark>;
+}
+
+function TemplateProposal({ p }: { p: TemplatePayload }) {
+  return (
+    <div className="space-y-1.5 min-w-0">
+      <TemplateWords subject={p.subject} body={p.body} />
+      <p className="text-xs text-ink-3">An email template Excom wrote for your agents. Approving lets them use it; the marked parts are filled in by code each time.</p>
     </div>
   );
 }

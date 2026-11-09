@@ -39,6 +39,23 @@ def seed():
 	schema.apply()
 	_sync_retention()
 	_snapshot_playbooks()
+	_template_defaults()
+
+
+TEMPLATE_DEFAULTS = {"templates_enabled": 1, "whatsapp_auto_submit": 1, "template_first_use_review": 1,
+	"template_submissions_per_day": 10, "template_max_attempts": 2}
+
+
+def _template_defaults():
+	"""HLD-008's settings get their defaults once: Frappe never writes a JSON default into a Single
+	that already exists, so they would read 0 (steward off). A value a person saved is kept."""
+	if not frappe.get_meta("Excom AI Settings").has_field("templates_enabled"):
+		return
+	saved = set(frappe.db.sql_list("""SELECT field FROM `tabSingles` WHERE doctype = 'Excom AI Settings'
+		AND field IN %s""", (tuple(TEMPLATE_DEFAULTS),)))
+	missing = {k: v for k, v in TEMPLATE_DEFAULTS.items() if k not in saved}
+	if missing:
+		frappe.db.set_single_value("Excom AI Settings", missing)
 
 
 def _snapshot_playbooks():

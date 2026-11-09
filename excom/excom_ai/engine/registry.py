@@ -32,6 +32,7 @@ MODULES = [
 	"excom.excom_ai.monitor",
 	"excom.excom_ai.voice",
 	"excom.excom_ai.learning",
+	"excom.excom_ai.templates",
 	# Phase 2 packs (each optional until written)
 	"excom.excom_ai.packs.accounts",
 	"excom.excom_ai.packs.purchase",

@@ -14,13 +14,17 @@ Quote follow-ups ask, once, about a quotation that has had no answer for 5 worki
 suggests a check-in with customers in scope who have not ordered for 6 months, as a ToDo for their
 own account owner (the agent never writes to a customer cold). Order updates tell a buyer the
 agent brought in when their order ships or is delivered, from the order's own facts.
+
+On WhatsApp outside the 24-hour window free text cannot go: the order update and the quotation's
+validity go as approved templates (HLD-008 §6), with variables code fills from the records. With
+no template the need is recorded for the steward, and the buyer gets an email reply, or nothing.
 """
 
 from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, add_months, flt, fmt_money, getdate, nowdate
+from frappe.utils import add_days, add_months, flt, fmt_money, formatdate, getdate, nowdate
 
 from excom.excom_ai.engine import proposals, registry, runner, tasks
 from excom.excom_ai.engine.prompts import untrusted
@@ -168,13 +172,72 @@ def agent_leads(agent_name: str) -> list[str]:
 	return frappe.get_all("Lead", {"ai_agent": agent_name}, pluck="name") if frappe.get_meta("Lead").has_field("ai_agent") else []
 
 
+def buyer_identities(email: str | None) -> list[str]:
+	"""Every identity holding the buyer's address (a Lead, its Contact and its Customer may each make one)."""
+	return frappe.get_all("Omni Identity", {"primary_email": email}, pluck="name") if email else []
+
+
+def conversation(agent, identities: list[str], channel: str | None = None) -> str | None:
+	"""The buyer's conversation with the agent (the latest, when there are several)."""
+	if not identities:
+		return None
+	filters = {"omni_identity": ["in", identities], "ai_agent": agent.name} | ({"channel": channel} if channel else {})
+	return frappe.db.get_value("Excom Thread", filters, order_by="last_message_at desc")
+
+
+def closed_whatsapp(agent, thread: str | None) -> frappe._dict | None:
+	"""The thread, when it is WhatsApp on one of the agent's numbers and the 24-hour window is closed."""
+	from frappe.utils import now_datetime, time_diff_in_hours
+
+	from excom.excom_ai.send_rules import WINDOW_HOURS
+
+	t = frappe.db.get_value("Excom Thread", thread, ["name", "channel", "account", "last_inbound_at"], as_dict=True) if thread else None
+	if not t or t.channel != "whatsapp" or t.account not in {c.channel_account for c in agent.channels or []}:
+		return None
+	if t.last_inbound_at and time_diff_in_hours(now_datetime(), t.last_inbound_at) < WINDOW_HOURS:
+		return None  # inside the window: today's free-text reply
+	return t
+
+
+def template_reply(task, agent, key: str, wa, language: str | None, values: dict, *, subject: tuple, intent: str,
+		policy_action: str | None = None) -> str | None:
+	"""Outside the window: the same reply, as an approved WhatsApp template filled by code. None when
+	there is no usable template (`find` has recorded the need) or the records cannot fill it."""
+	from excom.excom_ai import templates
+
+	found = templates.find(agent, key, "WhatsApp", language or "", wa.account)
+	if not found:
+		return None
+	try:
+		variables = templates.whatsapp_values(found, values)
+	except ValueError:
+		return None
+	text = templates.fill(found["text"], variables)
+	return proposals.propose(task, agent, "reply", policy_action=policy_action, intent=intent, thread=wa.name,
+		channel_account=wa.account, subject=subject, kind="Reply",
+		payload={"channel": "whatsapp", "template": found["template"], "variables": variables, "language": found["language"],
+			"need": found["need"], "intent": intent},
+		preview_html=f"<p>{frappe.utils.escape_html(text)}</p><p><small>"
+			+ frappe.utils.escape_html(_("WhatsApp template {0}").format(found["template"])) + "</small></p>")
+
+
 @registry.task_kind("quote_follow_up", priority=registry.PRIORITY["write"], effort="write")
 def quote_follow_up(task, agent) -> str:
 	q = frappe.get_doc("Quotation", task.subject_name)
 	lead = q.party_name if q.quotation_to == "Lead" else None
 	email = frappe.db.get_value("Lead", lead, "email_id") if lead else None
-	identity = frappe.db.get_value("Omni Identity", {"primary_email": email}) if email else None
-	thread = frappe.db.get_value("Excom Thread", {"omni_identity": identity, "ai_agent": agent.name}) if identity else None
+	identities = buyer_identities(email)
+	thread = conversation(agent, identities)
+	wa = closed_whatsapp(agent, thread)
+	if wa:
+		# free text cannot go: the quotation's validity, as a template (informational only; never an expired one)
+		valid = bool(q.valid_till) and getdate(q.valid_till) >= getdate(nowdate())
+		name = valid and template_reply(task, agent, "sales.quote_follow_up", wa, frappe.db.get_value("Lead", lead, "language"),
+			{"quotation": q.name, "valid_until": formatdate(q.valid_till)}, subject=("Quotation", q.name),
+			intent="quote_follow_up", policy_action="follow_up_email")
+		if name:
+			return _("follow-up on {0}: {1} (WhatsApp template)").format(q.name, name)
+		thread = conversation(agent, identities, "email")
 	if not thread:
 		return _("no conversation to follow up on")
 	schema = {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"], "additionalProperties": False}
@@ -199,16 +262,41 @@ def order_update(task, agent) -> str:
 	customer = so.customer
 	lead = frappe.db.get_value("Customer", customer, "lead_name")
 	email = frappe.db.get_value("Lead", lead, "email_id") if lead else None
-	identity = frappe.db.get_value("Omni Identity", {"primary_email": email}) if email else None
-	thread = frappe.db.get_value("Excom Thread", {"omni_identity": identity, "ai_agent": agent.name}) if identity else None
+	identities = buyer_identities(email)
+	thread = conversation(agent, identities)
+	what = params.get("event") or so.status
+	wa = closed_whatsapp(agent, thread)
+	if wa:
+		status = {"delivered": _("delivered"), "shipped": _("on its way"), "ready": _("ready to ship")}.get(what, what)
+		name = template_reply(task, agent, "sales.order_update", wa, frappe.db.get_value("Lead", lead, "language"),
+			{"buyer_name": frappe.db.get_value("Lead", lead, "first_name"), "order": so.po_no or so.name, "status": status},
+			subject=("Sales Order", so.name), intent="order_update")
+		if name:
+			return _("order update for {0}: {1} (WhatsApp template)").format(so.name, name)
+		thread = conversation(agent, identities, "email")
 	if not thread:
 		return _("no conversation for {0}").format(so.name)
-	what = params.get("event") or so.status
 	body = _("Your order {0}: {1}.").format(so.po_no or so.name, {"delivered": _("it has been delivered"),
 		"shipped": _("it is on its way"), "ready": _("it is ready to ship")}.get(what, what))
 	name = proposals.propose(task, agent, "reply", intent="order_update", thread=thread, subject=("Sales Order", so.name),
 		kind="Reply", to_email=email, payload={"subject": "", "body": body, "intent": "order_update"})
 	return _("order update for {0}: {1}").format(so.name, name)
+
+
+def _followed_up(agent: str, doctype: str, name: str, since=None, status: str | None = None) -> bool:
+	"""A reply already proposed on this record (any outcome but a release), since a date or for an
+	order status: the planner runs every tick and a finished task no longer dedupes."""
+	filters = {"agent": agent, "action": "reply", "subject_doctype": doctype, "subject_name": name,
+		"status": ["not in", ("Cancelled", "Expired")]}
+	if since:
+		filters["creation"] = [">=", since]
+	for row in frappe.get_all("Excom AI Proposal", filters, ["task"]):
+		if status is None:
+			return True
+		key = frappe.db.get_value("Excom AI Task", row.task, "dedupe_key") or ""
+		if key.endswith(f":{status}"):
+			return True
+	return False
 
 
 @registry.planner("sales")
@@ -223,10 +311,14 @@ def plan(agent) -> list[dict]:
 		since = add_days(nowdate(), -QUOTE_FOLLOW_UP_DAYS)
 		for q in frappe.get_all("Quotation", {"quotation_to": "Lead", "party_name": ["in", leads], "status": ["in", ("Draft", "Open")],
 				"transaction_date": ["<=", since], "docstatus": ["<", 2]}, pluck="name", limit=10):
+			if _followed_up(agent.name, "Quotation", q, add_days(nowdate(), -QUOTE_FOLLOW_UP_DAYS)):
+				continue  # one follow-up per quotation per wait, not one per tick
 			specs.append({"kind": "quote_follow_up", "subject": ("Quotation", q)})
 		customers = frappe.get_all("Customer", {"lead_name": ["in", leads]}, pluck="name")
 		for so in frappe.get_all("Sales Order", {"customer": ["in", customers or ["-"]], "docstatus": 1,
 				"status": ["in", ("To Bill", "Completed")], "modified": [">=", add_days(nowdate(), -2)]}, ["name", "status"], limit=10):
+			if _followed_up(agent.name, "Sales Order", so.name, None, so.status):
+				continue  # this status was already told
 			specs.append({"kind": "order_update", "subject": ("Sales Order", so.name), "dedupe_key": f"order:{so.name}:{so.status}",
 				"params": {"event": "delivered" if so.status in ("To Bill", "Completed") else so.status}})
 	if getdate(nowdate()).day == 1:

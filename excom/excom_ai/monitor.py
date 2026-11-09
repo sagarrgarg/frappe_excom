@@ -336,7 +336,10 @@ class _trial:
 
 
 def hourly():
-	"""Hourly jobs: the morning digest, and the weekly coach on Monday mornings."""
+	"""Hourly jobs: the morning digest, the weekly coach on Monday mornings, and the template steward."""
+	from excom.excom_ai import templates
+
+	templates.run()  # catches and logs its own errors
 	morning_digest()
 	if now_datetime().weekday() == 0 and digest_due():
 		weekly_coach()

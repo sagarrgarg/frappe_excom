@@ -58,11 +58,15 @@ export const M = {
   rateShadow: `${N}rate_shadow`,
   count: `${N}count`,
   shadowScores: `${N}shadow_scores`,
+  templateNeeds: `${P}template_needs`,
+  withdrawTemplate: `${P}withdraw_template`,
+  reopenTemplate: `${P}reopen_template_need`,
 } as const;
 
 /** SWR keys shared by more than one screen, so they read one cached copy. */
 export const liveKey = (name: string) => `agent-live-${name}`;
 export const NEEDS_YOU_COUNT_KEY = "needs-you-count";
+export const TEMPLATE_NEEDS_KEY = "template-needs";
 
 /* ─── types, statuses, health ─── */
 
@@ -154,6 +158,7 @@ export const PROPOSAL_LABEL: Record<string, string> = {
   payment_reminder: "Payment reminder",
   create_todo: "Create a ToDo",
   note: "Add a note",
+  approve_template: "Approve an email template",
 };
 
 export const RISK_ACCENT: Record<string, Accent> = { Low: "green", Medium: "amber", High: "rose" };
