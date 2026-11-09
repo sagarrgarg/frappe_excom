@@ -26,10 +26,12 @@ RETRY_GATED_MINUTES = 30
 
 
 def requeue_or_hold(task_name: str, agent, why: str) -> str:
-	"""Where a task goes when a gate says not now."""
+	"""Where a task goes when a gate says not now: held only when the reason is the agent's own
+	status (stopped, on hold); anything that passes by itself (a budget, a switch, a quiet date)
+	puts it back in the queue for later."""
 	if agent.status == "Retired":
 		status, values = "Skipped", {}
-	elif agent.status in STOPPED:
+	elif agent.status in STOPPED and why.startswith("Agent is"):
 		status, values = "Held", {}
 	else:
 		status, values = "Queued", {"not_before": add_to_date(now_datetime(), minutes=RETRY_GATED_MINUTES)}

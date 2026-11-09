@@ -49,7 +49,13 @@ def asks_if_ai(text: str | None) -> bool:
 	return bool(text and IDENTITY_QUESTION.search(text))
 
 
+# Events that are not a buyer writing: nothing to stop or answer.
+IGNORED_KINDS = ("reaction", "welcome", "call_permission")
+
+
 def on_inbound(event: dict) -> None:
+	if event.get("kind") in IGNORED_KINDS:
+		return
 	if not frappe.db.get_single_value("Excom AI Settings", "enabled"):
 		return
 	thread = event.get("thread")
@@ -68,7 +74,10 @@ def on_inbound(event: dict) -> None:
 	if not row.ai_agent:
 		frappe.db.set_value("Excom Thread", thread, "ai_agent", agent.name, update_modified=False)
 
-	_stop_sequences(agent.name, thread, event)
+	automatic = bool((event.get("payload") or {}).get("auto")) if isinstance(event.get("payload"), dict) else False
+	if not automatic:
+		# An out-of-office or a delivery report is not a reply: the sequence goes on (bounces: 1B).
+		_stop_sequences(agent.name, thread, event)
 
 	if asks_if_ai(event.get("text")) or asks_if_ai(event.get("subject")):
 		hand_to_person(thread, agent, event.get("text") or event.get("subject"), event.get("message"))
@@ -77,7 +86,7 @@ def on_inbound(event: dict) -> None:
 		return  # a person has it; the agent stays out until they hand it back
 	tasks.add(agent.name, "inbound", thread=thread, dedupe_key=f"inbound:{thread}",
 		params={"message": event.get("message"), "channel": event.get("channel"),
-			"sender_verified": bool(event.get("sender_verified"))})
+			"sender_verified": bool(event.get("sender_verified")), "automatic": automatic})
 
 
 def _agent_from_enrollment(thread: str) -> str | None:

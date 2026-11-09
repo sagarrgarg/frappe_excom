@@ -24,6 +24,9 @@ GUARDS = {
 	"require_access", "require", "_visible", "_require_connection", "_require_import",
 	# Excom AI: read permission on the agent, then owner / backup / Excom Admin only.
 	"_agent_for",
+	# Excom AI builder: building needs an Excom Admin or a team manager; an agent is read through
+	# its team-scoped permission, and changed only by its owner, backup, team manager or an admin.
+	"_can_build", "_readable", "_changeable", "_can_see_agents",
 }
 # Public by design. Each line says why it is safe to leave open.
 ALLOWED = {

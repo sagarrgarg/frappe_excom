@@ -32,8 +32,10 @@ Only live messages are dispatched. Email backfill, a mailbox moving servers and 
 conversation polling store history too; anything received more than FRESH_HOURS ago is stored
 quietly, so an old email never wakes an agent.
 
-Handlers run in their own savepoint; one that fails is logged and never stops the others or
-the message itself. Handlers must be quick — enqueue anything slow.
+The message and everything ingestion did with it are committed before the first handler runs.
+Each handler then runs in its own transaction, committed when it returns; one that fails is
+rolled back and logged and never stops the others or the message itself (one that hits a lock
+clash gets a second try). Handlers must be quick — enqueue anything slow.
 
 Trust rules for handlers:
   * Unsigned payloads (anyone could have POSTed them) are not delivered unless the handler sets
@@ -94,6 +96,9 @@ def is_fresh(received_at) -> bool:
 def dispatch(event: dict) -> None:
 	event.setdefault("channel", "whatsapp")
 	event.setdefault("sender_verified", event["channel"] in VERIFIED)
+	# What ingestion did (the message, a STOP recorded as an opt-out, ad attribution) is committed
+	# before any handler runs, so a failing handler can never undo it.
+	frappe.db.commit()
 	for path in frappe.get_hooks("excom_inbound_handlers") or []:
 		try:
 			handler = frappe.get_attr(path)
@@ -102,15 +107,19 @@ def dispatch(event: dict) -> None:
 			continue
 		if not event.get("signed", True) and not getattr(handler, "accepts_unsigned", False):
 			continue
-		frappe.db.savepoint("excom_inbound_handler")
-		try:
-			handler(event)
-		except Exception:
-			# the message itself was committed before dispatch, so a full rollback is safe when the
-			# handler committed (or the savepoint is otherwise gone)
+		for attempt in (1, 2):
 			try:
-				frappe.db.rollback(save_point="excom_inbound_handler")
+				handler(event)
+				frappe.db.commit()
+				break
+			except frappe.QueryDeadlockError:
+				# A row the handler touched changed under it (MariaDB snapshot check, or a deadlock):
+				# its work is rolled back; once more on a fresh snapshot.
+				frappe.db.rollback()
+				if attempt == 2:
+					frappe.log_error(title=f"Excom: inbound handler gave up after a lock clash: {path}",
+						message=frappe.get_traceback())
 			except Exception:
 				frappe.db.rollback()
-			frappe.log_error(title=f"Excom: inbound handler failed: {path}", message=frappe.get_traceback())
-	frappe.db.commit()
+				frappe.log_error(title=f"Excom: inbound handler failed: {path}", message=frappe.get_traceback())
+				break

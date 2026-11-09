@@ -70,7 +70,8 @@ def send_email_reply(
 		frappe.throw(_("Thread {0} is not an email thread").format(thread_name))
 	from excom.excom_ai import send_rules
 
-	send_rules.check(thread)  # an AI agent's own user only: consent and its own mailboxes
+	# An AI agent's own user only: its own mailboxes, consent, and every recipient is the person.
+	send_rules.check(thread, recipients=[to, cc, bcc])
 
 	account = frappe.get_doc("Excom Channel Account", thread.account)
 	provider = P.get(account)

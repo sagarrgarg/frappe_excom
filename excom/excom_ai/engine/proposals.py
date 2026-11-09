@@ -42,6 +42,7 @@ ACTION_POLICY = {
 	"note": "todo_note",
 }
 SENDS = ("send_email", "send_whatsapp", "reply", "payment_reminder")
+SEND_POLICIES = ("first_email", "follow_up_email", "reply", "whatsapp_template", "payment_reminder")
 # Actions that change only our own records: a person may let them run while the agent is on hold.
 INTERNAL = ("note", "create_todo", "create_lead", "update_lead")
 RELEASED = ("Rejected", "Cancelled", "Failed", "Expired")
@@ -68,9 +69,16 @@ def propose(task, agent, action: str, *, policy_action: str | None = None, paylo
 		enrollment: str | None = None, step: int | None = None, kind: str | None = None,
 		to_email: str | None = None, send_at=None, email_draft: str | None = None,
 		intent: str | None = None) -> str | None:
-	"""Record an action under the agent's policy. Returns the proposal name (None when Off)."""
+	"""Record an action under the agent's policy. Returns the proposal name (None when Off).
+
+	It commits: what the task's handler wrote before it is committed with it. Handlers are
+	written so that running again does no harm (look before creating), since a task that fails
+	later is retried.
+	"""
 	key = policy_action or ACTION_POLICY.get(action, action)
-	existing = _existing(task, action, subject, thread, enrollment, step)
+	if action in SENDS and key not in SEND_POLICIES:
+		key = ACTION_POLICY.get(action, action)  # a send is always judged by a send's policy
+	existing = _existing(task, action, subject, thread, enrollment, step, payload)
 	if existing:
 		return existing
 	mode = mode_for(agent, action, key, intent)
@@ -95,13 +103,20 @@ def propose(task, agent, action: str, *, policy_action: str | None = None, paylo
 		doc.decided_on = now_datetime()
 		row = policy_row(agent, key)
 		doc.sampled = 1 if random.random() * 100 < flt(row.sample_percent if row else 10) else 0
+	frappe.db.savepoint("excom_ai_propose")
 	try:
 		doc.insert(ignore_permissions=True)
-	except frappe.UniqueValidationError:
+	except (frappe.UniqueValidationError, frappe.DuplicateEntryError):
 		# Another worker proposed this sequence step a moment ago: theirs stands.
-		frappe.db.rollback()
+		frappe.db.rollback(save_point="excom_ai_propose")
+		frappe.clear_last_message()
 		return _existing(None, action, None, None, enrollment, step)
 	frappe.db.commit()  # made is made: a later failure in the task must not undo or repeat it
+	if status == "Approved" and _over_cap_now(agent, key, doc.name):
+		# Workers running side by side all counted under the cap: the late ones wait for a person.
+		doc.db_set({"status": "Pending", "decided_by": None, "decided_on": None, "sampled": 0}, update_modified=False)
+		frappe.db.commit()
+		status = "Pending"
 	if status == "Approved":
 		execute(doc.name)
 	elif status == "Pending":
@@ -111,8 +126,9 @@ def propose(task, agent, action: str, *, policy_action: str | None = None, paylo
 	return doc.name
 
 
-def _existing(task, action, subject, thread, enrollment, step) -> str | None:
-	"""The live proposal for the same step, or the same task's same action on the same subject."""
+def _existing(task, action, subject, thread, enrollment, step, payload=None) -> str | None:
+	"""The live proposal for the same step, or the same task's same action on the same subject
+	with the same payload (a task may propose two different notes on one record)."""
 	if enrollment and step is not None:
 		return frappe.db.get_value("Excom AI Proposal", {"enrollment": enrollment, "step": step,
 			"status": ["not in", RELEASED]})
@@ -122,7 +138,11 @@ def _existing(task, action, subject, thread, enrollment, step) -> str | None:
 			filters.update({"subject_doctype": subject[0], "subject_name": subject[1]})
 		if thread:
 			filters["thread"] = thread
-		return frappe.db.get_value("Excom AI Proposal", filters)
+		want = frappe.parse_json(frappe.as_json(payload)) if payload is not None else None
+		for row in frappe.get_all("Excom AI Proposal", filters, ["name", "payload"], order_by="creation asc"):
+			if want is None or frappe.parse_json(row.payload or "null") == want:
+				return row.name
+		return None
 	return None
 
 
@@ -134,6 +154,18 @@ def _over_daily_cap(agent, policy_action: str) -> bool:
 	done = frappe.db.count("Excom AI Proposal", {"agent": agent.name, "policy_action": policy_action,
 		"decided_by": "Autopilot", "creation": [">=", get_datetime(nowdate())]})
 	return done >= cap
+
+
+def _over_cap_now(agent, policy_action: str, name: str) -> bool:
+	"""After committing: is this Autopilot approval past today's cap, counting in creation order?
+	A fresh read sees every worker's committed approvals, so all of them agree on who is late."""
+	row = policy_row(agent, policy_action)
+	cap = cint(row.daily_cap) if row else 0
+	if cap <= 0:
+		return False
+	names = frappe.get_all("Excom AI Proposal", {"agent": agent.name, "policy_action": policy_action,
+		"decided_by": "Autopilot", "creation": [">=", get_datetime(nowdate())]}, pluck="name", order_by="creation asc, name asc")
+	return name in names and names.index(name) >= cap
 
 
 def reviewers(agent) -> list[str]:
@@ -153,7 +185,7 @@ def decide(name: str, decision: str, *, reason: str | None = None, note: str | N
 	user = frappe.session.user
 	if not may_decide(agent, user):
 		frappe.throw(_("Only this agent's owner, backup, reviewers or an Excom Admin decide its proposals."), frappe.PermissionError)
-	if doc.status != "Pending":
+	if doc.status not in ("Pending", "Held"):
 		frappe.throw(_("This proposal is {0}, not waiting for a decision.").format(doc.status))
 	if decision == "reject":
 		if not reason:

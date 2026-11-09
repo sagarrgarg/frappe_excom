@@ -38,10 +38,13 @@ def allow_meta_tag(user: str | None = None) -> bool:
 	return not applies(user)
 
 
-def check(thread, purpose: str = "reply", user: str | None = None, window: bool = True) -> None:
+def check(thread, purpose: str = "reply", user: str | None = None, window: bool = True,
+		recipients: list[str] | None = None) -> None:
 	"""Refuse (AgentSendRefused) unless an agent may send on this thread now. No-op for people.
 
 	window=False for an approved WhatsApp template, the one way to write outside the window.
+	recipients: every address an email goes to (to, cc, bcc). Each must be the conversation's own
+	person, and none on a blocked domain: an agent never copies anyone in.
 	"""
 	user = user or frappe.session.user
 	if not applies(user):
@@ -49,6 +52,8 @@ def check(thread, purpose: str = "reply", user: str | None = None, window: bool 
 	if isinstance(thread, str):
 		thread = frappe.get_doc("Excom Thread", thread)
 	_check_account(thread, user)
+	if recipients is not None:
+		_check_recipients(thread, recipients)
 	_check_consent(thread, purpose)
 	if window:
 		_check_window(thread)
@@ -61,6 +66,29 @@ def _check_account(thread, user: str) -> None:
 	if not frappe.db.exists("Excom AI Channel", {"parent": agent.name, "parenttype": "Excom AI Agent",
 			"channel_account": thread.account}):
 		raise AgentSendRefused(_("{0} is not one of this agent's numbers or mailboxes.").format(thread.account))
+
+
+def addresses(raw) -> list[str]:
+	"""'A <a@x.com>, b@y.com' (or a list of them) into lowercase addresses."""
+	import re
+
+	items = raw if isinstance(raw, list) else [raw]
+	return [m.lower() for r in items if r for m in re.findall(r"[\w.+'-]+@[\w-]+(?:\.[\w-]+)+", str(r))]
+
+
+def _check_recipients(thread, recipients: list[str]) -> None:
+	own = set()
+	if thread.omni_identity:
+		own.add((frappe.db.get_value("Omni Identity", thread.omni_identity, "primary_email") or "").lower())
+		own |= {(c or "").lower() for c in frappe.get_all("Omni Identity Channel",
+			{"parent": thread.omni_identity, "parenttype": "Omni Identity"}, pluck="channel_user_id")}
+	blocked = {r.domain for r in frappe.get_single("Excom AI Settings").dnc_domains or []}
+	for addr in addresses(recipients):
+		domain = addr.split("@", 1)[1]
+		if domain in blocked or any(domain.endswith("." + b) for b in blocked):
+			raise AgentSendRefused(_("{0} is on a do-not-contact domain.").format(addr))
+		if addr not in own:
+			raise AgentSendRefused(_("{0} is not this conversation's person: an agent writes to them only.").format(addr))
 
 
 def _check_consent(thread, purpose: str) -> None:

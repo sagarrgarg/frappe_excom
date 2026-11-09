@@ -43,10 +43,13 @@ def tick():
 def plan(agent):
 	pack = frappe.db.get_value("Excom AI Agent Type", agent.agent_type, "pack")
 	from excom.excom_ai.engine import tasks
+	from excom.excom_ai.engine.identity import as_user, service_user_of
 
-	for planner in registry.PLANNERS.get(pack, []):
-		for spec in planner(agent) or []:
-			tasks.add(agent.name, **spec)
+	# A planner reads as the agent itself, so it sees only what its team may see.
+	with as_user(service_user_of(agent)):
+		for planner in registry.PLANNERS.get(pack, []):
+			for spec in planner(agent) or []:
+				tasks.add(agent.name, **spec)
 
 
 def dispatch(limit: int | None = None, agents: list[str] | None = None) -> list[str]:
@@ -58,6 +61,10 @@ def dispatch(limit: int | None = None, agents: list[str] | None = None) -> list[
 	then age, taken in turns. `agents` limits the run to some agents (tests, a manual kick).
 	"""
 	limit = limit or cint(frappe.db.get_single_value("Excom AI Settings", "tasks_per_tick")) or 20
+	# Never more than two ticks' worth in flight: a backed-up long queue is not fed further.
+	limit = min(limit, max(0, 2 * limit - frappe.db.count("Excom AI Task", {"status": "Running"})))
+	if not limit:
+		return []
 	registry.load()
 	filters = {"status": "Queued", "not_before": ["<=", now_datetime()]}
 	if agents:

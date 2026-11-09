@@ -310,3 +310,45 @@ class TestInbound(FrappeTestCase):
 		_auto_claim_thread(frappe.get_doc("Excom Thread", t.name), a.service_user)
 		self.assertEqual(frappe.db.get_value("Excom Thread", t.name, "assigned_to"), BACKUP, "whoever is in charge now")
 		self.assertNotEqual(frappe.db.get_value("Excom Thread", t.name, "assigned_to"), a.service_user)
+
+	# ---- third review
+
+	def test_an_agent_email_goes_only_to_the_person(self):
+		a = self.agent("QA Inb Recipients", channels=(MAILBOX,))
+		mail = self.email()
+		person = frappe.db.get_value("Omni Identity", mail.omni_identity, "primary_email")
+		thread = frappe.get_doc("Excom Thread", mail.thread)
+		s = frappe.get_single("Excom AI Settings")
+		s.append("dnc_domains", {"domain": "qa-blocked.example", "reason": "Other"})
+		s.save(ignore_permissions=True)
+		self.addCleanup(lambda: frappe.db.delete("Excom AI DNC Domain", {"domain": "qa-blocked.example"}))
+		self.as_agent(a)
+		send_rules.check(thread, recipients=[person, "", ""])
+		with self.assertRaises(send_rules.AgentSendRefused, msg="copying someone in"):
+			send_rules.check(thread, recipients=[person, "boss@other.example", ""])
+		with self.assertRaises(send_rules.AgentSendRefused, msg="a blocked domain"):
+			send_rules.check(thread, recipients=["x@qa-blocked.example"])
+
+	def test_reactions_and_auto_replies_do_not_stop_a_sequence(self):
+		a = self.agent("QA Inb Auto")
+		first = self.email()
+		seq = frappe.get_doc({"doctype": "Excom AI Sequence", "title": "QA Inb seq auto", "agent": a.name, "steps": [{"step": 1}]}).insert()
+		enr = frappe.get_doc({"doctype": "Excom AI Enrollment", "agent": a.name, "sequence": seq.name, "thread": first.thread}).insert()
+		frappe.db.commit()
+		inbound.on_inbound({"kind": "reaction", "thread": first.thread, "channel": "whatsapp", "text": "👍"})
+		self.email(sender=frappe.db.get_value("Omni Identity", first.omni_identity, "primary_email"),
+			subject="Automatic reply: out of office")
+		self.assertEqual(frappe.db.get_value("Excom AI Enrollment", enr.name, "status"), "Active")
+
+	def test_a_handler_lock_clash_gets_a_second_try_and_never_undoes_ingestion(self):
+		calls = []
+
+		def flaky(event):
+			calls.append(event["message"])
+			if len(calls) == 1:
+				raise frappe.QueryDeadlockError("1020")
+
+		with patch("frappe.get_hooks", side_effect=lambda h=None, *a, **k: ["qa.flaky"] if h == "excom_inbound_handlers" else []), \
+				patch("frappe.get_attr", return_value=flaky):
+			inbound_dispatch.dispatch({"message": "m1", "channel": "email", "thread": None})
+		self.assertEqual(calls, ["m1", "m1"])

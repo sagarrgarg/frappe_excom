@@ -251,8 +251,27 @@ def ingest(account, meta: dict) -> str | None:
 
 		message_event(msg.name, kind="email", subject=subject,
 			payload={"from_email": from_email, "in_reply_to": headers.get("In-Reply-To", ""),
-				"list": bool(list_headers)})
+				"list": bool(list_headers), "auto": is_automatic(by_lower, from_email, subject)})
 	return msg.name
+
+
+AUTO_SUBJECTS = ("out of office", "automatic reply", "auto-reply", "autoreply", "undeliverable", "delivery status notification",
+	"mail delivery failed", "returned mail", "fuera de la oficina", "respuesta automática", "ausência", "abwesenheit")
+
+
+def is_automatic(headers_lower: dict, from_email: str, subject: str) -> bool:
+	"""An out-of-office, an auto-reply or a delivery report, not something a person wrote."""
+	auto = (headers_lower.get("auto-submitted") or "").lower()
+	if auto and auto != "no":
+		return True
+	if any(headers_lower.get(h) for h in ("x-autoreply", "x-autorespond", "x-auto-response-suppress")):
+		return True
+	if (headers_lower.get("precedence") or "").lower() in ("auto_reply", "bulk", "junk"):
+		return True
+	local = (from_email or "").split("@", 1)[0].lower()
+	if local in ("mailer-daemon", "postmaster", "noreply", "no-reply", "donotreply"):
+		return True
+	return (subject or "").strip().lower().startswith(AUTO_SUBJECTS)
 
 
 def _content(name: str) -> dict:

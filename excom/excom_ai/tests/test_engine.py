@@ -564,3 +564,76 @@ class TestEngine(FrappeTestCase):
 		frappe.set_user(BACKUP)
 		self.assertTrue(frappe.has_permission("Excom AI Feedback", "read", fb))
 		self.assertIn(seq.name, frappe.get_list("Excom AI Sequence", {"title": ["like", "QA Eng%"]}, pluck="name"))
+
+	# ---- third review
+
+	def test_one_open_task_per_key_held_by_the_database(self):
+		a = self.agent("QA Eng Key")
+		first = tasks.add(a.name, "echo", dedupe_key="k1")
+		self.assertEqual(tasks.add(a.name, "echo", dedupe_key="k1"), first)
+		twin = frappe.get_doc({"doctype": "Excom AI Task", "agent": a.name, "kind": "echo", "status": "Queued",
+			"dedupe_key": "k1", "priority": 6, "not_before": now_datetime()})
+		with self.assertRaises((frappe.UniqueValidationError, frappe.DuplicateEntryError)):
+			twin.insert(ignore_permissions=True)
+		frappe.db.set_value("Excom AI Task", first, "status", "Done")
+		self.assertNotEqual(tasks.add(a.name, "echo", dedupe_key="k1"), first, "a closed task frees its key")
+
+	def test_held_work_returns_whenever_the_agent_works_again(self):
+		draft = frappe.get_doc({"doctype": "Excom AI Agent", "agent_name": "QA Eng Selftest", "agent_type": "Sales",
+			"owner_user": OWNER, "backup_user": BACKUP, "team": TEAM}).insert(ignore_permissions=True)
+		frappe.set_user(OWNER)
+		t = api.run_self_test(draft.name)["task"]
+		frappe.set_user("Administrator")
+		with patch("frappe.enqueue"):
+			orchestrator.dispatch(agents=[draft.name])
+		self.assertEqual(frappe.db.get_value("Excom AI Task", t, "status"), "Held")
+		draft.reload()
+		draft.status = "Shadow"
+		draft.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Excom AI Task", t, "status"), "Queued", "back in the queue once it works")
+
+	def test_on_hold_kinds_wait_out_a_passing_gate(self):
+		a = self.agent("QA Eng Hold Budget", daily_ai_budget=1)
+		ownership.hold(a, "QA")
+		registry.TASK_KINDS["qa_fail"] = registry.TaskKind("qa_fail", lambda t, ag: "ok", on_hold=True)
+		t = tasks.add(a.name, "qa_fail")
+		frappe.db.commit()
+		with patch.object(gates, "spent_today", return_value=5), patch("frappe.enqueue"):
+			orchestrator.dispatch(agents=[a.name])
+		self.assertEqual(frappe.db.get_value("Excom AI Task", t, "status"), "Queued", "a spent budget waits, it does not hold")
+
+	def test_people_are_rechecked_on_team_changes_and_reviewers_validated(self):
+		a = self.agent("QA Eng Team Move")
+		ownership.hold(a, "QA")
+		a.reload()
+		other = frappe.get_doc({"doctype": "Excom Team", "team_name": "QA Engine Other"}).insert(ignore_permissions=True)
+		self.addCleanup(frappe.delete_doc, "Excom Team", other.name, force=True, ignore_permissions=True)
+		a.team = other.name
+		with self.assertRaises(frappe.ValidationError, msg="the owner is not in the new team, even on hold"):
+			a.save(ignore_permissions=True)
+		a.reload()
+		a.reviewers = f"{OUTSIDER}"
+		with self.assertRaises(frappe.ValidationError, msg="a reviewer outside the team"):
+			a.save(ignore_permissions=True)
+		a.reload()
+		a.reviewers = "nobody@nowhere.invalid"
+		with self.assertRaises(frappe.ValidationError):
+			a.save(ignore_permissions=True)
+
+	def test_concurrent_auto_approvals_respect_the_cap(self):
+		a = self.agent("QA Eng Race Cap", status="Live", policies={"todo_note": ("Auto", {"daily_cap": 1})})
+		t = frappe.get_doc("Excom AI Task", tasks.add(a.name, "echo", dedupe_key="racecap"))
+		with patch.object(proposals, "execute"):
+			p1 = proposals.propose(t, a, "note", subject=("User", OWNER), payload={"text": "one"})
+			with patch.object(proposals, "_over_daily_cap", return_value=False):  # as if counted at the same moment
+				p2 = proposals.propose(t, a, "note", subject=("User", OWNER), payload={"text": "two"})
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", p1, "status"), "Approved")
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", p2, "status"), "Pending", "the late one waits")
+		self.assertNotEqual(p1, p2, "different payloads are different proposals")
+
+	def test_a_send_is_judged_by_a_sends_policy(self):
+		a = self.agent("QA Eng Send Policy", status="Live")
+		t = frappe.get_doc("Excom AI Task", tasks.add(a.name, "echo", dedupe_key="sendpol"))
+		with patch.object(proposals, "execute"):
+			p = proposals.propose(t, a, "reply", policy_action="todo_note", subject=("User", OWNER))
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", p, ["policy_action", "status"]), ("reply", "Pending"))

@@ -25,11 +25,16 @@ from excom.excom_ai.engine import notify, tasks
 WORKING = ("Shadow", "Live")
 
 
-def available(user: str | None) -> tuple[bool, str]:
+def available(user: str | None, team: str | None = None) -> tuple[bool, str]:
 	if not user:
 		return False, "not set"
 	if not frappe.db.get_value("User", user, "enabled"):
 		return False, "user disabled"
+	if team and not set(frappe.get_roles(user)) & {"Excom Admin", "System Manager"}:
+		from excom.excom.doctype.excom_team.excom_team import get_user_teams_with_ancestors
+
+		if team not in get_user_teams_with_ancestors(user):
+			return False, "has moved to another team"
 	if frappe.db.table_exists("Employee") and frappe.get_meta("Employee").has_field("user_id"):
 		rows = frappe.get_all("Employee", {"user_id": user}, ["name", "status"])
 		emp = next((r for r in rows if r.status == "Active"), None)
@@ -46,8 +51,8 @@ def available(user: str | None) -> tuple[bool, str]:
 
 def evaluate(agent) -> str | None:
 	"""Set who is in charge, and hold the agent if nobody is. Returns the acting owner."""
-	owner_ok, owner_why = available(agent.owner_user)
-	backup_ok, backup_why = available(agent.backup_user)
+	owner_ok, owner_why = available(agent.owner_user, agent.team)
+	backup_ok, backup_why = available(agent.backup_user, agent.team)
 	acting = agent.owner_user if owner_ok else agent.backup_user if backup_ok else None
 
 	if acting != agent.acting_owner:
@@ -121,6 +126,15 @@ def hold(agent, reason: str, by: str | None = None):
 	)
 
 
+def release_held(agent_name: str) -> None:
+	"""The agent works again (Shadow or Live, however it got there): held tasks go back to the
+	queue, and held actions go back to a person, since what was approved before is decided again."""
+	for name in frappe.get_all("Excom AI Proposal", {"agent": agent_name, "status": "Held"}, pluck="name"):
+		frappe.db.set_value("Excom AI Proposal", name, {"status": "Pending", "hold_reason": None}, update_modified=False)
+	for name in frappe.get_all("Excom AI Task", {"agent": agent_name, "status": "Held"}, pluck="name"):
+		frappe.db.set_value("Excom AI Task", name, {"status": "Queued", "not_before": now_datetime()}, update_modified=False)
+
+
 def resume(agent, user: str):
 	if agent.status != "On Hold":
 		frappe.throw(_("{0} is not on hold.").format(agent.agent_name))
@@ -133,10 +147,5 @@ def resume(agent, user: str):
 		target = "Shadow"  # the brief or readiness changed while it was held: it earns Live again
 	doc.update({"status": target, "hold_reason": None, "resume_status": None, "consecutive_failures": 0,
 		"owner_last_seen": now_datetime()})
-	doc.save(ignore_permissions=True)  # the record's own checks (owner, backup, channels, Live) run
-	for name in frappe.get_all("Excom AI Proposal", {"agent": agent.name, "status": "Held"}, pluck="name"):
-		# Held actions go back to a person: whatever was approved before the hold is decided again.
-		frappe.db.set_value("Excom AI Proposal", name, {"status": "Pending", "hold_reason": None}, update_modified=False)
-	for name in frappe.get_all("Excom AI Task", {"agent": agent.name, "status": "Held"}, pluck="name"):
-		frappe.db.set_value("Excom AI Task", name, {"status": "Queued", "not_before": now_datetime()}, update_modified=False)
+	doc.save(ignore_permissions=True)  # the record's own checks run; on_update releases held work
 	doc.add_comment("Comment", _("Resumed as {0} by {1}.").format(target, user))

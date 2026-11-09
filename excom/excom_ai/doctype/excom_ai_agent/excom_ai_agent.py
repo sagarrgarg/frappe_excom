@@ -49,6 +49,10 @@ class ExcomAIAgent(Document):
 		self.db_set("service_user", service_user.ensure(self), update_modified=False)
 
 	def on_update(self):
+		if self.has_value_changed("status") and self.status in ACTIVE:
+			from excom.excom_ai.engine.ownership import release_held
+
+			release_held(self.name)
 		if not self.is_new() and (
 			self.has_value_changed("agent_name") or self.has_value_changed("status")
 			or self.has_value_changed("team") or self.has_value_changed("agent_type")
@@ -74,25 +78,46 @@ class ExcomAIAgent(Document):
 			self.append("policies", {k: row.get(k) for k in ("action", "mode", "sample_percent", "daily_cap", "condition")})
 
 	def _check_people(self):
+		"""Owner, backup, escalation and reviewers.
+
+		- A person set or changed is checked in full: an active user with an Excom role, in the
+		  agent's team (or an Excom Admin), never an AI agent.
+		- On a team change, and on every move into Shadow or Live (a start, a resume, going Live),
+		  everyone is checked again, except that an owner or backup who has since been disabled is
+		  passed over as long as the other one holds: that is the ownership rules' business (the
+		  backup is in charge). Nobody holding stops it.
+		- Stopping or retiring always works, even when the owner has left.
+		"""
 		before = self.get_doc_before_save()
-		starting = not before or before.status in ("Draft", "Preparing")
-		if self.status in STOPPED and not self.has_value_changed("owner_user") and not self.has_value_changed("backup_user"):
-			# Stopping or retiring an agent must work even when its owner has left.
-			return
-		# People are checked when they are set or changed, and when the agent first starts working.
-		# Later (a resume, an edit) an owner who has since left is the ownership rules' business:
-		# the backup is in charge, or the agent is held.
-		if starting or self.has_value_changed("owner_user") or self.has_value_changed("team"):
-			self._check_person(self.owner_user, _("Owner"))
-		if self.backup_user:
-			if starting or self.has_value_changed("backup_user") or self.has_value_changed("team"):
-				self._check_person(self.backup_user, _("Backup"))
-			if self.backup_user == self.owner_user:
-				frappe.throw(_("The backup must be someone other than the owner."))
-		elif self.status in ACTIVE:
+		changed = {f: not before or self.has_value_changed(f) for f in ("owner_user", "backup_user", "team",
+			"escalation_user", "reviewers")}
+		entering = self.status in ACTIVE and (not before or before.status != self.status)
+		recheck = changed["team"] or entering
+		if self.status in STOPPED and not any(changed[f] for f in ("owner_user", "backup_user", "team")):
+			recheck = False
+		holding = 0
+		for field, label in (("owner_user", _("Owner")), ("backup_user", _("Backup"))):
+			user = self.get(field)
+			if not user:
+				continue
+			if changed[field] or (recheck and frappe.db.get_value("User", user, "enabled")):
+				self._check_person(user, label)
+				holding += 1
+			elif not recheck:
+				holding += 1
+		if self.backup_user and self.backup_user == self.owner_user:
+			frappe.throw(_("The backup must be someone other than the owner."))
+		if self.status in ACTIVE and not self.backup_user:
 			frappe.throw(_("An agent needs a backup before it starts working (Shadow or Live)."))
-		if self.escalation_user and (starting or self.has_value_changed("escalation_user")):
+		if recheck and self.status in ACTIVE and not holding:
+			frappe.throw(_("Neither the owner nor the backup can be in charge: change them first."))
+		if self.escalation_user and (changed["escalation_user"] or recheck):
 			self._check_person(self.escalation_user, _("Escalation"), need_team=False)
+		if self.reviewers and (changed["reviewers"] or changed["team"]):
+			names = [u.strip() for u in self.reviewers.split(",") if u.strip()]
+			for user in names:
+				self._check_person(user, _("Reviewer"))
+			self.reviewers = ", ".join(dict.fromkeys(names))
 
 	def _check_person(self, user, label, need_team=True):
 		if service_user.is_service_user(user):

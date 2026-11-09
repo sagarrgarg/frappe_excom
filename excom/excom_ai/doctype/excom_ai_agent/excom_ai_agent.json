@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-09 22:00:00.000000",
+ "creation": "2026-11-09 23:30:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -28,6 +28,7 @@
   "sb_keywords",
   "keywords",
   "keyword_rows",
+  "scope_exclusions",
   "sb_brief",
   "what_it_is",
   "mission",
@@ -41,6 +42,7 @@
   "brief_version",
   "brief_approved_by",
   "brief_approved_on",
+  "brief_sources",
   "sb_scope",
   "markets",
   "products",
@@ -104,7 +106,9 @@
    "default": "Draft",
    "reqd": 1,
    "in_list_view": 1,
-   "in_standard_filter": 1
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "description": "Changed from the Agents screen (Start, Go live, Stop, Resume, Retire), so every rule runs."
   },
   {
    "fieldname": "hold_reason",
@@ -216,6 +220,12 @@
    "options": "Excom AI Keyword"
   },
   {
+   "fieldname": "scope_exclusions",
+   "fieldtype": "JSON",
+   "label": "Left Out",
+   "description": "Records the manager unticked in the builder ({doctype: [names]}): kept out of the knowledge pack."
+  },
+  {
    "fieldname": "sb_brief",
    "fieldtype": "Section Break",
    "label": "Brief"
@@ -284,6 +294,13 @@
    "fieldtype": "Datetime",
    "label": "Brief Approved On",
    "read_only": 1
+  },
+  {
+   "fieldname": "brief_sources",
+   "fieldtype": "JSON",
+   "label": "Where Each Line Comes From",
+   "read_only": 1,
+   "description": "Per brief field: the records it was drawn from, or 'AI suggestion, please check'."
   },
   {
    "fieldname": "sb_scope",
@@ -408,7 +425,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-09 22:00:00.000000",
+ "modified": "2026-11-09 23:30:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Agent",

@@ -21,12 +21,15 @@ def add(
 	not_before=None,
 	params: dict | None = None,
 ) -> str:
-	"""Queue a task; returns its name, or the name of the open task with the same key."""
+	"""Queue a task; returns its name, or the name of the open task with the same key (None when
+	that task was added by another worker a moment ago and is not visible to this transaction yet).
+
+	No lock is taken: this runs inside message ingestion. The database's unique `open_key`
+	(excom_ai_task.ensure_open_key) refuses a second open task with the same key.
+	"""
 	spec = registry.kind(kind)
 	key = dedupe_key or (f"{kind}:{subject[0]}:{subject[1]}" if subject else None)
 	if key:
-		# One add at a time per agent, so two messages arriving together cannot both add the task.
-		frappe.db.sql("SELECT name FROM `tabExcom AI Agent` WHERE name = %s FOR UPDATE", agent)
 		existing = frappe.db.get_value("Excom AI Task", {"agent": agent, "dedupe_key": key, "status": ["in", OPEN]})
 		if existing:
 			return existing
@@ -43,7 +46,13 @@ def add(
 		"not_before": not_before or now_datetime(),
 		"params": params,
 	})
-	doc.insert(ignore_permissions=True)
+	frappe.db.savepoint("excom_ai_task_add")
+	try:
+		doc.insert(ignore_permissions=True)
+	except (frappe.UniqueValidationError, frappe.DuplicateEntryError):
+		frappe.db.rollback(save_point="excom_ai_task_add")
+		frappe.clear_last_message()  # the "must be unique" note is not for the person
+		return frappe.db.get_value("Excom AI Task", {"agent": agent, "dedupe_key": key, "status": ["in", OPEN]})
 	return doc.name
 
 

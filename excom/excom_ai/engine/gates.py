@@ -39,7 +39,7 @@ def can_work(agent, spec) -> tuple[bool, str]:
 	if not ok:
 		return False, why
 	if spec.outreach and agent.status == "On Hold":
-		return False, "No outreach while on hold"
+		return False, "Agent is On Hold: no outreach"
 	if spec.outreach and is_quiet_date():
 		return False, "Quiet date: no outreach today"
 	return True, ""
