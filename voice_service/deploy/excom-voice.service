@@ -1,0 +1,35 @@
+# /etc/systemd/system/excom-voice.service
+# Install:  python3.12 -m venv /opt/excom-voice/venv
+#           /opt/excom-voice/venv/bin/pip install /path/to/voice_service
+#           install -m 600 .env.example /etc/excom-voice.env   (then fill it in)
+#           systemctl daemon-reload && systemctl enable --now excom-voice
+[Unit]
+Description=Excom AI voice bridge (telephony media streams <-> STT/TTS <-> Frappe)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=excom-voice
+Group=excom-voice
+EnvironmentFile=/etc/excom-voice.env
+ExecStart=/opt/excom-voice/venv/bin/excom-voice
+Restart=on-failure
+RestartSec=2
+# SIGTERM stops accepting calls and waits for live calls to finish
+# (bounded by each call's max_seconds); then systemd kills.
+KillSignal=SIGTERM
+TimeoutStopSec=960
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
