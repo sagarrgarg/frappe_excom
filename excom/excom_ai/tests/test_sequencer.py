@@ -169,7 +169,7 @@ class TestSequencer(FrappeTestCase):
 
 	def test_approval_waits_for_the_sender_and_follow_ups_keep_their_order(self):
 		a = self.agent()
-		enr, person, props = self.enrolled(a)
+		enr, _person, props = self.enrolled(a)
 		frappe.set_user(OWNER)
 		for step in (1, 2, 3):
 			self.assertEqual(proposals.decide(props[step], "approve"), "Approved", "approving a send does not send it")
@@ -194,7 +194,7 @@ class TestSequencer(FrappeTestCase):
 
 	def test_outside_hours_and_over_the_cap_it_waits(self):
 		a = self.agent(warm_days=0, cap=40)
-		enr, person, props = self.enrolled(a)
+		_enr, _person, props = self.enrolled(a)
 		frappe.db.set_value("Excom AI Proposal", props[1], "status", "Approved")
 		with patch.object(sequencer, "in_window", return_value=False), \
 				patch("excom.excom.channels.email.outbound.send_email_reply") as send:
@@ -228,7 +228,7 @@ class TestSequencer(FrappeTestCase):
 
 	def test_send_due_is_paced(self):
 		a = self.agent()
-		enr, person, props = self.enrolled(a)
+		_enr, _person, props = self.enrolled(a)
 		frappe.db.set_value("Excom AI Proposal", props[1], "status", "Approved")
 		t = tasks.add(a.name, "send_due", dedupe_key="paced")
 		frappe.db.set_value("Excom AI Task", t, "status", "Running")

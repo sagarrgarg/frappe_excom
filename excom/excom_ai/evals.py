@@ -15,7 +15,8 @@ import frappe
 
 SET = "Excom Sales reply intents"
 
-# (name, text, intent). The first group is Harvey's own processed replies, trimmed.
+# (name, text, intent). The first group is Harvey's own processed replies, trimmed. (A Ukrainian reply
+# is among them, so the Cyrillic letters are meant: noqa RUF001 below.)
 CASES = [
 	("harvey ooo ticket", "##- Please type your reply above this line -##\n\nHi Harish,\n\nThanks so much for reaching out! This "
 		"auto-reply is just to let you know we received your email and will get back to you with a response as soon as possible. "
@@ -29,7 +30,7 @@ CASES = [
 	("harvey half term", "Thanks for your email, I am unavailable for a few days during half term but I am still monitoring my "
 		"emails so if your query is urgent I will try and respond as soon as I can.", "ooo"),
 	("harvey ukrainian partnership", "Доброго дня! Дякуємо за інтерес до TA•DA!GROUP та зацікавленість в співпраці. Пропозицію щодо "
-		"партнерства можна залишити на сайті у розділі «Співпраця».", "ooo"),
+		"партнерства можна залишити на сайті у розділі «Співпраця».", "ooo"),  # noqa: RUF001
 	("harvey french auto", "Bonjour, and merci for writing to Bonjour Fête. Your note is with our team, and you will hear from a "
 		"real person within two business days.", "ooo"),
 	("harvey pool barn prices", "Hi Harish, thanks for getting in touch. Could you send me your price list for the water guns and "
