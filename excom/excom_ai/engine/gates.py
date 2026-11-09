@@ -7,7 +7,7 @@ a spent budget can land in between.
 from __future__ import annotations
 
 import frappe
-from frappe.utils import flt, getdate, nowdate
+from frappe.utils import add_days, flt, get_datetime, getdate, nowdate
 
 WORKING = ("Shadow", "Live")
 
@@ -16,26 +16,32 @@ def engine_on() -> bool:
 	return bool(frappe.db.get_single_value("Excom AI Settings", "enabled"))
 
 
-def can_work(agent, spec) -> tuple[bool, str]:
-	"""(True, "") or (False, why). `spec` is a registry.TaskKind."""
+def agent_can_work(agent, allow_hold: bool = False) -> tuple[bool, str]:
+	"""Checks that hold for every task of the agent alike. allow_hold: an On Hold agent passes
+	(for the kinds that still run on hold)."""
 	if not engine_on():
 		return False, "AI agents are switched off"
 	if not frappe.db.get_value("Excom AI Agent Type", agent.agent_type, "enabled"):
 		return False, f"Agent type {agent.agent_type} is switched off"
-	if agent.status not in WORKING:
-		if agent.status == "On Hold" and spec.on_hold:
-			pass
-		else:
-			return False, f"Agent is {agent.status}"
-	if spec.outreach and agent.status == "On Hold":
-		return False, "No outreach while on hold"
+	if agent.status not in WORKING and not (allow_hold and agent.status == "On Hold"):
+		return False, f"Agent is {agent.status}"
 	if not agent.acting_owner:
 		return False, "Nobody is in charge of this agent"
+	if not agent.service_user or not frappe.db.get_value("User", agent.service_user, "enabled"):
+		return False, "The agent's own user is missing or disabled"
+	over, why = over_budget(agent)
+	return (False, why) if over else (True, "")
+
+
+def can_work(agent, spec) -> tuple[bool, str]:
+	"""(True, "") or (False, why). `spec` is a registry.TaskKind."""
+	ok, why = agent_can_work(agent, allow_hold=spec.on_hold)
+	if not ok:
+		return False, why
+	if spec.outreach and agent.status == "On Hold":
+		return False, "No outreach while on hold"
 	if spec.outreach and is_quiet_date():
 		return False, "Quiet date: no outreach today"
-	over, why = over_budget(agent)
-	if over:
-		return False, why
 	return True, ""
 
 
@@ -50,9 +56,10 @@ def spent_today(scope: str | None = None) -> float:
 	if not frappe.db.table_exists("AI Call Log"):
 		return 0.0
 	cond, params = ("budget_scope = %(scope)s", {"scope": scope}) if scope else ("calling_app = 'excom'", {})
+	start = get_datetime(nowdate())
 	return flt(frappe.db.sql(
-		f"SELECT COALESCE(SUM(base_cost), 0) FROM `tabAI Call Log` WHERE {cond} AND DATE(creation) = %(today)s",
-		{**params, "today": nowdate()},
+		f"SELECT COALESCE(SUM(base_cost), 0) FROM `tabAI Call Log` WHERE {cond} AND creation >= %(start)s AND creation < %(end)s",
+		{**params, "start": start, "end": add_days(start, 1)},
 	)[0][0])
 
 

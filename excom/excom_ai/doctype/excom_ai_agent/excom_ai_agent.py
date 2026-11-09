@@ -25,7 +25,11 @@ STOPPED = ("On Hold", "Retired")
 EXCOM_ROLES = {"Excom Agent", "Excom Admin", "System Manager"}
 MANAGERS = {"Excom Admin", "System Manager"}
 # Editing any of these after approval clears the approval: a changed brief is checked again.
-BRIEF_FIELDS = ("what_it_is", "mission", "audience", "tone", "tone_examples", "rules_do", "rules_dont")
+BRIEF_FIELDS = ("agent_name", "title", "what_it_is", "mission", "audience", "tone", "tone_examples", "rules_do",
+	"rules_dont")
+# Tables that reach the prompt too: markets, products (with their price lists), playbooks.
+BRIEF_TABLES = {"markets": ("country", "territory", "language", "timezone"),
+	"products": ("item_group", "item", "price_list"), "playbooks": ("playbook",)}
 
 
 class ExcomAIAgent(Document):
@@ -70,19 +74,25 @@ class ExcomAIAgent(Document):
 			self.append("policies", {k: row.get(k) for k in ("action", "mode", "sample_percent", "daily_cap", "condition")})
 
 	def _check_people(self):
+		before = self.get_doc_before_save()
+		starting = not before or before.status in ("Draft", "Preparing")
 		if self.status in STOPPED and not self.has_value_changed("owner_user") and not self.has_value_changed("backup_user"):
 			# Stopping or retiring an agent must work even when its owner has left.
 			return
-		self._check_person(self.owner_user, _("Owner"))
+		# People are checked when they are set or changed, and when the agent first starts working.
+		# Later (a resume, an edit) an owner who has since left is the ownership rules' business:
+		# the backup is in charge, or the agent is held.
+		if starting or self.has_value_changed("owner_user") or self.has_value_changed("team"):
+			self._check_person(self.owner_user, _("Owner"))
 		if self.backup_user:
-			self._check_person(self.backup_user, _("Backup"))
+			if starting or self.has_value_changed("backup_user") or self.has_value_changed("team"):
+				self._check_person(self.backup_user, _("Backup"))
 			if self.backup_user == self.owner_user:
 				frappe.throw(_("The backup must be someone other than the owner."))
 		elif self.status in ACTIVE:
 			frappe.throw(_("An agent needs a backup before it starts working (Shadow or Live)."))
-		for user, label in ((self.escalation_user, _("Escalation")),):
-			if user:
-				self._check_person(user, label, need_team=False)
+		if self.escalation_user and (starting or self.has_value_changed("escalation_user")):
+			self._check_person(self.escalation_user, _("Escalation"), need_team=False)
 
 	def _check_person(self, user, label, need_team=True):
 		if service_user.is_service_user(user):
@@ -102,10 +112,15 @@ class ExcomAIAgent(Document):
 	def _check_brief(self):
 		if self.is_new() or not self.brief_approved_on:
 			return
-		if not any(self.has_value_changed(f) for f in BRIEF_FIELDS):
+		before = self.get_doc_before_save()
+		changed = any(self.has_value_changed(f) for f in BRIEF_FIELDS) or (before and any(
+			_rows(self, t, cols) != _rows(before, t, cols) for t, cols in BRIEF_TABLES.items()))
+		if not changed:
 			return
 		self.brief_approved_on = None
 		self.brief_approved_by = None
+		if self.resume_status == "Live":
+			self.resume_status = "Shadow"
 		if self.status == "Live":
 			self.status = "Shadow"
 			frappe.msgprint(_("The brief changed, so it needs approving again. The agent is back in Shadow until then."))
@@ -148,7 +163,7 @@ class ExcomAIAgent(Document):
 			frappe.throw(_("Budgets cannot be negative."))
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def approve_brief(name: str):
 	"""The owner (or an admin) approves the current brief; it gets a new version number."""
 	doc = frappe.get_doc("Excom AI Agent", name)
@@ -165,6 +180,10 @@ def approve_brief(name: str):
 	doc.brief_approved_on = frappe.utils.now_datetime()
 	doc.save(ignore_permissions=True)  # who may approve was checked above; owners only read agents otherwise
 	return {"version": doc.brief_version}
+
+
+def _rows(doc, table: str, cols: tuple) -> list:
+	return [tuple(r.get(c) for c in cols) for r in doc.get(table) or []]
 
 
 def _team_manager(team: str | None, user: str) -> bool:

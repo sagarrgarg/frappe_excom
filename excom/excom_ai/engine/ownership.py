@@ -31,9 +31,11 @@ def available(user: str | None) -> tuple[bool, str]:
 	if not frappe.db.get_value("User", user, "enabled"):
 		return False, "user disabled"
 	if frappe.db.table_exists("Employee") and frappe.get_meta("Employee").has_field("user_id"):
-		emp = frappe.db.get_value("Employee", {"user_id": user}, ["name", "status"], as_dict=True)
-		if emp and emp.status == "Left":
-			return False, "has left"
+		rows = frappe.get_all("Employee", {"user_id": user}, ["name", "status"])
+		emp = next((r for r in rows if r.status == "Active"), None)
+		if rows and not emp:
+			# Left, Inactive or Suspended (a rehire has an Active row besides the old Left one)
+			return False, "has left" if any(r.status == "Left" for r in rows) else "not an active employee"
 		if emp and frappe.db.table_exists("Leave Application") and frappe.db.exists("Leave Application", {
 			"employee": emp.name, "status": "Approved", "docstatus": 1,
 			"from_date": ["<=", nowdate()], "to_date": [">=", nowdate()],
@@ -78,29 +80,35 @@ def _dead_man(agent):
 
 
 def working_days_between(start, end) -> int:
-	"""Monday-to-Friday days from start to end, not counting the start day."""
-	n, day = 0, getdate(start)
+	"""Whole Monday-to-Friday days between start and end: neither the start day nor today counts,
+	so someone seen on Monday morning is held on Thursday at the earliest (with 2 days set)."""
+	n, day = 0, add_days(getdate(start), 1)
 	end = getdate(end)
 	while day < end:
-		day = add_days(day, 1)
 		if day.weekday() < 5:
 			n += 1
+		day = add_days(day, 1)
 	return n
 
 
-def seen(agent_name: str, user: str):
-	"""The owner or backup acted (approved, reviewed, acknowledged): restart the dead-man clock."""
+def seen(agent_name: str, user: str) -> bool:
+	"""The owner or backup acted (approved, reviewed, acknowledged): restart the dead-man clock.
+	Returns whether it counted (only the owner and the backup restart it)."""
 	row = frappe.db.get_value("Excom AI Agent", agent_name, ["owner_user", "backup_user"], as_dict=True)
 	if row and user in (row.owner_user, row.backup_user):
 		frappe.db.set_value("Excom AI Agent", agent_name, "owner_last_seen", now_datetime(), update_modified=False)
+		return True
+	return False
 
 
 def hold(agent, reason: str, by: str | None = None):
 	"""Put an agent on hold: no outreach, no Auto actions; approved actions not yet done are held."""
 	if agent.status == "On Hold":
 		return
-	resume_as = agent.status if agent.status in WORKING else "Shadow"
-	agent.db_set({"status": "On Hold", "hold_reason": reason, "resume_status": resume_as}, update_modified=False)
+	if agent.status not in WORKING:
+		frappe.throw(_("{0} is {1}: only an agent that is working can be put on hold.").format(agent.agent_name, agent.status))
+	reason = frappe.utils.escape_html(reason or "")
+	agent.db_set({"status": "On Hold", "hold_reason": reason, "resume_status": agent.status}, update_modified=False)
 	skipped = tasks.cancel_open(agent.name, _("Agent on hold: {0}").format(reason))
 	for name in frappe.get_all("Excom AI Proposal", {"agent": agent.name, "status": ["in", ("Approved", "Edited")]}, pluck="name"):
 		frappe.db.set_value("Excom AI Proposal", name, {"status": "Held", "hold_reason": reason}, update_modified=False)
@@ -119,10 +127,16 @@ def resume(agent, user: str):
 	acting = evaluate(agent)
 	if not acting:
 		frappe.throw(_("Nobody can be in charge: the owner and backup are both unavailable. Change them first."))
-	target = agent.resume_status or "Shadow"
-	agent.db_set({"status": target, "hold_reason": None, "resume_status": None, "consecutive_failures": 0,
-		"owner_last_seen": now_datetime()}, update_modified=False)
+	doc = frappe.get_doc("Excom AI Agent", agent.name)
+	target = doc.resume_status if doc.resume_status in WORKING else "Shadow"
+	if target == "Live" and (not doc.brief_approved_on or doc.readiness_state not in ("Ready", "Warnings")):
+		target = "Shadow"  # the brief or readiness changed while it was held: it earns Live again
+	doc.update({"status": target, "hold_reason": None, "resume_status": None, "consecutive_failures": 0,
+		"owner_last_seen": now_datetime()})
+	doc.save(ignore_permissions=True)  # the record's own checks (owner, backup, channels, Live) run
 	for name in frappe.get_all("Excom AI Proposal", {"agent": agent.name, "status": "Held"}, pluck="name"):
 		# Held actions go back to a person: whatever was approved before the hold is decided again.
 		frappe.db.set_value("Excom AI Proposal", name, {"status": "Pending", "hold_reason": None}, update_modified=False)
-	agent.add_comment("Comment", _("Resumed as {0} by {1}.").format(target, user))
+	for name in frappe.get_all("Excom AI Task", {"agent": agent.name, "status": "Held"}, pluck="name"):
+		frappe.db.set_value("Excom AI Task", name, {"status": "Queued", "not_before": now_datetime()}, update_modified=False)
+	doc.add_comment("Comment", _("Resumed as {0} by {1}.").format(target, user))

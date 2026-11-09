@@ -44,9 +44,10 @@ def resume_agent(name: str):
 def acknowledge(name: str):
 	"""The owner or backup confirms they are watching (the dead-man switch)."""
 	agent = _agent_for(name)
-	ownership.seen(agent.name, frappe.session.user)
+	counted = ownership.seen(agent.name, frappe.session.user)
 	frappe.db.commit()
-	return {"ok": True}
+	# Only the owner and the backup restart the watch: a manager acknowledging does not.
+	return {"ok": counted}
 
 
 @frappe.whitelist(methods=["POST"])

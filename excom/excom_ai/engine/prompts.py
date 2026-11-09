@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 
 import frappe
 
@@ -54,8 +55,25 @@ def agent_context(agent) -> str:
 	return "\n".join(lines)
 
 
-def untrusted(text: str, source: str) -> str:
-	safe = (text or "").replace("</untrusted>", "</ untrusted>")
+FENCE = re.compile(r"<\s*(/?)\s*untrusted", re.IGNORECASE)
+INJECTION = re.compile(
+	r"ignore (all |any |the )?(previous|prior|above|your) (instructions|rules|prompt)|disregard (the|your|all) (rules|instructions)"
+	r"|you are now|new instructions:|system prompt|developer mode|act as (an? )?(admin|system)|</?\s*(system|assistant)\s*>",
+	re.IGNORECASE,
+)
+
+
+def untrusted(text: str, source: str, reference: tuple | None = None) -> str:
+	"""Fence text from outside (a web page, an email, a chat message) as data. Any tag that could
+	close or reopen the fence, in any case or spacing, is broken; text that reads like an
+	instruction to the model is logged as a possible injection (HLD-007 §12.7)."""
+	text = text or ""
+	if INJECTION.search(text):
+		frappe.log_error(
+			title=f"Excom AI: possible prompt injection in {source}"[:140],
+			message=f"{reference or ''}\n\n{text[:2000]}",
+		)
+	safe = FENCE.sub(lambda m: f"<{m.group(1)}_untrusted", text)
 	return f'<untrusted source="{frappe.utils.escape_html(source)}">\n{safe}\n</untrusted>'
 
 

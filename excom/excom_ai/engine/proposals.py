@@ -3,11 +3,18 @@
     Off     the action is not done (no proposal)
     Shadow  prepared and recorded, nothing leaves (always, while the agent itself is in Shadow)
     Review  waits for the owner, backup, a listed reviewer or an admin
-    Auto    done at once, within the action's daily cap; a share is drawn for review afterwards
+    Auto    done at once, within the policy's daily cap; a share is drawn for review afterwards
 
 Ceilings (constants.CEILINGS) are applied again here, so no record edit can raise an action past
-them. Execution runs the action's executor once, as the agent's own user, and only while the
-agent is Live and the engine is on.
+them. A reply goes out on Auto only when the intent it answers is one the policy's condition
+names. While the agent is On Hold nothing is Auto: it waits for a person.
+
+Every proposal is committed as soon as it is made, and proposing the same thing again (a retried
+task, a step already proposed) returns the one that exists, so a retry never acts twice.
+
+Execution runs the action's executor once (claimed by a conditional update), as the agent's own
+user, only while the engine and the agent's type are switched on, someone is in charge, and the
+agent is Live (On Hold: internal actions a person approved only, never anything that leaves).
 """
 
 from __future__ import annotations
@@ -16,13 +23,13 @@ import random
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, now_datetime, nowdate
+from frappe.utils import cint, flt, get_datetime, now_datetime, nowdate
 
-from excom.excom_ai.constants import capped
-from excom.excom_ai.engine import gates, notify, ownership, registry
+from excom.excom_ai.constants import capped, intents
+from excom.excom_ai.engine import gates, identity, notify, ownership, registry
 
 ACTION_POLICY = {
-	# proposal action -> policy action
+	# proposal action -> default policy action (send_email is follow_up_email for later steps)
 	"send_email": "first_email",
 	"send_whatsapp": "whatsapp_template",
 	"reply": "reply",
@@ -34,35 +41,50 @@ ACTION_POLICY = {
 	"create_todo": "todo_note",
 	"note": "todo_note",
 }
+SENDS = ("send_email", "send_whatsapp", "reply", "payment_reminder")
+# Actions that change only our own records: a person may let them run while the agent is on hold.
+INTERNAL = ("note", "create_todo", "create_lead", "update_lead")
+RELEASED = ("Rejected", "Cancelled", "Failed", "Expired")
 MANAGERS = {"Excom Admin", "System Manager"}
 
 
-def mode_for(agent, action: str, policy_action: str | None = None) -> str:
+def policy_row(agent, key: str):
+	return next((p for p in agent.policies or [] if p.action == key), None)
+
+
+def mode_for(agent, action: str, policy_action: str | None = None, intent: str | None = None) -> str:
 	key = policy_action or ACTION_POLICY.get(action, action)
-	row = next((p for p in agent.policies or [] if p.action == key), None)
+	row = policy_row(agent, key)
 	pack = frappe.db.get_value("Excom AI Agent Type", agent.agent_type, "pack")
-	return capped(row.mode if row else "Review", key, pack, row.condition if row else None)
+	mode = capped(row.mode if row else "Review", key, pack, row.condition if row else None)
+	if mode == "Auto" and key == "reply" and (not intent or intent.strip().lower() not in intents(row.condition if row else "")):
+		mode = "Review"  # Auto covers only the intents the condition names
+	return mode
 
 
 def propose(task, agent, action: str, *, policy_action: str | None = None, payload: dict | None = None,
 		preview_html: str | None = None, subject: tuple | None = None, thread: str | None = None,
 		channel_account: str | None = None, risk: str = "Medium", checks: dict | None = None,
 		enrollment: str | None = None, step: int | None = None, kind: str | None = None,
-		to_email: str | None = None, send_at=None, email_draft: str | None = None) -> str | None:
+		to_email: str | None = None, send_at=None, email_draft: str | None = None,
+		intent: str | None = None) -> str | None:
 	"""Record an action under the agent's policy. Returns the proposal name (None when Off)."""
 	key = policy_action or ACTION_POLICY.get(action, action)
-	mode = mode_for(agent, action, key)
+	existing = _existing(task, action, subject, thread, enrollment, step)
+	if existing:
+		return existing
+	mode = mode_for(agent, action, key, intent)
 	if mode == "Off":
 		return None
 	if agent.status == "Shadow" or mode == "Shadow":
 		status = "Shadow"
-	elif mode == "Auto" and not _over_daily_cap(agent, key):
+	elif mode == "Auto" and agent.status == "Live" and not _over_daily_cap(agent, key):
 		status = "Approved"
 	else:
 		status = "Pending"
 	doc = frappe.get_doc({
 		"doctype": "Excom AI Proposal", "agent": agent.name, "task": task.name if task else None,
-		"action": action, "status": status, "risk": risk,
+		"action": action, "policy_action": key, "intent": intent, "status": status, "risk": risk,
 		"subject_doctype": subject[0] if subject else None, "subject_name": subject[1] if subject else None,
 		"thread": thread, "channel_account": channel_account, "payload": payload, "preview_html": preview_html,
 		"checks": checks, "enrollment": enrollment, "step": step, "kind": kind, "to_email": to_email,
@@ -71,29 +93,46 @@ def propose(task, agent, action: str, *, policy_action: str | None = None, paylo
 	if status == "Approved":
 		doc.decided_by = "Autopilot"
 		doc.decided_on = now_datetime()
-		row = next((p for p in agent.policies or [] if p.action == key), None)
+		row = policy_row(agent, key)
 		doc.sampled = 1 if random.random() * 100 < flt(row.sample_percent if row else 10) else 0
 	try:
 		doc.insert(ignore_permissions=True)
 	except frappe.UniqueValidationError:
 		# Another worker proposed this sequence step a moment ago: theirs stands.
-		return None
+		frappe.db.rollback()
+		return _existing(None, action, None, None, enrollment, step)
+	frappe.db.commit()  # made is made: a later failure in the task must not undo or repeat it
 	if status == "Approved":
 		execute(doc.name)
 	elif status == "Pending":
 		notify.alert(reviewers(agent), _("{0} (AI) needs your review: {1}").format(agent.agent_name, action),
 			doctype="Excom AI Proposal", name=doc.name)
+		frappe.db.commit()
 	return doc.name
 
 
+def _existing(task, action, subject, thread, enrollment, step) -> str | None:
+	"""The live proposal for the same step, or the same task's same action on the same subject."""
+	if enrollment and step is not None:
+		return frappe.db.get_value("Excom AI Proposal", {"enrollment": enrollment, "step": step,
+			"status": ["not in", RELEASED]})
+	if task:
+		filters = {"task": task.name, "action": action, "status": ["not in", RELEASED]}
+		if subject:
+			filters.update({"subject_doctype": subject[0], "subject_name": subject[1]})
+		if thread:
+			filters["thread"] = thread
+		return frappe.db.get_value("Excom AI Proposal", filters)
+	return None
+
+
 def _over_daily_cap(agent, policy_action: str) -> bool:
-	row = next((p for p in agent.policies or [] if p.action == policy_action), None)
+	row = policy_row(agent, policy_action)
 	cap = cint(row.daily_cap) if row else 0
 	if cap <= 0:
 		return False
-	actions = [a for a, p in ACTION_POLICY.items() if p == policy_action] or [policy_action]
-	done = frappe.db.count("Excom AI Proposal", {"agent": agent.name, "action": ["in", actions],
-		"decided_by": "Autopilot", "creation": [">=", nowdate()]})
+	done = frappe.db.count("Excom AI Proposal", {"agent": agent.name, "policy_action": policy_action,
+		"decided_by": "Autopilot", "creation": [">=", get_datetime(nowdate())]})
 	return done >= cap
 
 
@@ -133,47 +172,85 @@ def decide(name: str, decision: str, *, reason: str | None = None, note: str | N
 	doc.decided_on = now_datetime()
 	doc.save(ignore_permissions=True)
 	ownership.seen(agent.name, user)
+	frappe.db.commit()
 	if doc.status in ("Approved", "Edited"):
 		execute(doc.name)
 	return frappe.db.get_value("Excom AI Proposal", name, "status")
 
 
+def _blocked(doc, agent) -> tuple[str, str] | None:
+	"""(status, why) when the proposal may not run now; None when it may."""
+	if not gates.engine_on():
+		return "Held", _("AI agents are switched off")
+	if not frappe.db.get_value("Excom AI Agent Type", agent.agent_type, "enabled"):
+		return "Held", _("Agent type {0} is switched off").format(agent.agent_type)
+	if not agent.acting_owner:
+		return "Held", _("Nobody is in charge of this agent")
+	if not agent.service_user or not frappe.db.get_value("User", agent.service_user, "enabled"):
+		return "Held", _("The agent's own user is missing or disabled")
+	if agent.status == "On Hold":
+		if doc.action not in INTERNAL or doc.decided_by == "Autopilot":
+			return "Held", _("Agent is on hold")
+	elif agent.status != "Live":
+		return "Held", _("Agent is {0}").format(agent.status)
+	if mode_for(agent, doc.action, doc.policy_action, doc.intent) == "Off":
+		return "Cancelled", _("The policy for {0} is now Off").format(doc.policy_action or doc.action)
+	return None
+
+
+def _claim(name: str) -> bool:
+	"""Approved/Edited -> Executing, once. A concurrent claim (or MariaDB's snapshot check, error
+	1020, on a row another transaction just changed) means someone else has it."""
+	frappe.db.commit()
+	try:
+		frappe.db.sql("""UPDATE `tabExcom AI Proposal` SET status = 'Executing'
+			WHERE name = %s AND status IN ('Approved', 'Edited')""", name)
+		claimed = bool(frappe.db.sql("SELECT ROW_COUNT()")[0][0])
+	except frappe.QueryDeadlockError:
+		frappe.db.rollback()
+		return False
+	frappe.db.commit()
+	return claimed
+
+
 def execute(name: str):
 	"""Run an approved proposal's executor once, as the agent's user."""
-	frappe.db.sql(
-		"""UPDATE `tabExcom AI Proposal` SET status = 'Executing'
-		WHERE name = %s AND status IN ('Approved', 'Edited')""", name)
-	if not frappe.db.sql("SELECT ROW_COUNT()")[0][0]:
+	if not _claim(name):
 		return
 	doc = frappe.get_doc("Excom AI Proposal", name)
 	agent = frappe.get_doc("Excom AI Agent", doc.agent)
-	if not gates.engine_on() or agent.status != "Live":
-		doc.db_set({"status": "Held", "hold_reason": _("Agent is {0}").format(agent.status) if gates.engine_on()
-			else _("AI agents are switched off")}, update_modified=False)
+	blocked = _blocked(doc, agent)
+	if blocked:
+		values = {"status": blocked[0], "hold_reason": blocked[1]}
+		if blocked[0] in RELEASED:
+			values["step_key"] = None
+		doc.db_set(values, update_modified=False)
+		frappe.db.commit()
 		return
 	registry.load()
 	fn = registry.EXECUTORS.get(doc.action)
 	if not fn:
-		doc.db_set({"status": "Failed", "error": _("Nothing can carry out '{0}' yet.").format(doc.action)}, update_modified=False)
+		doc.db_set({"status": "Failed", "step_key": None,
+			"error": _("Nothing can carry out '{0}' yet.").format(doc.action)}, update_modified=False)
+		frappe.db.commit()
 		return
-	original = frappe.session.user
-	frappe.set_user(agent.service_user or "Administrator")
+	frappe.db.savepoint("excom_ai_execute")
 	try:
-		made = fn(doc, agent)
-		values = {"status": "Sent" if doc.action in ("send_email", "send_whatsapp", "reply", "payment_reminder") else "Done",
-			"error": None}
+		with identity.as_user(agent.service_user):
+			made = fn(doc, agent)
+		values = {"status": "Sent" if doc.action in SENDS else "Done", "error": None}
 		if made:
 			values.update({"executed_doctype": made[0], "executed_name": made[1]})
 		doc.db_set(values, update_modified=False)
 	except Exception as e:
-		doc.db_set({"status": "Failed", "error": f"{type(e).__name__}: {e!s}"[:500]}, update_modified=False)
+		frappe.db.rollback(save_point="excom_ai_execute")  # nothing half-done stays behind
+		doc.db_set({"status": "Failed", "step_key": None, "error": f"{type(e).__name__}: {e!s}"[:500]}, update_modified=False)
 		frappe.log_error(title=f"Excom AI: {doc.action} failed ({agent.name})", message=frappe.get_traceback())
-	finally:
-		frappe.set_user(original)
+	frappe.db.commit()
 
 
 def review_sample(name: str, ok: bool, note: str | None = None):
-	"""A person checks an Auto action drawn for review. A bad one moves that action back to Review."""
+	"""A person checks an Auto action drawn for review. A bad one moves its policy back to Review."""
 	doc = frappe.get_doc("Excom AI Proposal", name)
 	agent = frappe.get_doc("Excom AI Agent", doc.agent)
 	user = frappe.session.user
@@ -184,12 +261,12 @@ def review_sample(name: str, ok: bool, note: str | None = None):
 	doc.db_set({"sample_reviewed_by": user, "reject_note": note if not ok else doc.reject_note}, update_modified=False)
 	ownership.seen(agent.name, user)
 	if not ok:
-		key = ACTION_POLICY.get(doc.action, doc.action)
+		key = doc.policy_action or ACTION_POLICY.get(doc.action, doc.action)
 		for row in agent.policies:
 			if row.action == key and row.mode == "Auto":
 				frappe.db.set_value("Excom AI Policy", row.name, "mode", "Review", update_modified=False)
 				agent.add_comment("Comment", _("{0} moved back to Review: a sampled action was marked wrong by {1}. {2}").format(
-					key, user, note or ""))
+					key, user, frappe.utils.escape_html(note or "")))
 				notify.alert([agent.owner_user, agent.backup_user],
 					_("{0} (AI): {1} is back under Review").format(agent.agent_name, key),
 					doctype="Excom AI Agent", name=agent.name)

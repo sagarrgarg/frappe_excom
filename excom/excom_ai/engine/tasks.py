@@ -25,6 +25,8 @@ def add(
 	spec = registry.kind(kind)
 	key = dedupe_key or (f"{kind}:{subject[0]}:{subject[1]}" if subject else None)
 	if key:
+		# One add at a time per agent, so two messages arriving together cannot both add the task.
+		frappe.db.sql("SELECT name FROM `tabExcom AI Agent` WHERE name = %s FOR UPDATE", agent)
 		existing = frappe.db.get_value("Excom AI Task", {"agent": agent, "dedupe_key": key, "status": ["in", OPEN]})
 		if existing:
 			return existing

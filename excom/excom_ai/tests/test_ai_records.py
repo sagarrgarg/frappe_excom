@@ -108,6 +108,11 @@ class TestAIRecords(FrappeTestCase):
 		from excom.excom_ai.doctype.excom_ai_settings.excom_ai_settings import is_enabled
 		from excom.excom_ai.engine import orchestrator
 
+		meta = frappe.get_meta("Excom AI Settings")
+		self.assertEqual(meta.get_field("enabled").default, "0", "off when installed")
+		was = frappe.db.get_single_value("Excom AI Settings", "enabled")
+		frappe.db.set_single_value("Excom AI Settings", "enabled", 0)
+		self.addCleanup(frappe.db.set_single_value, "Excom AI Settings", "enabled", was)
 		self.assertFalse(is_enabled())
 		events = frappe.get_hooks("scheduler_events") or {}
 		jobs = [j for v in events.values() for j in (v if isinstance(v, list) else [x for l in v.values() for x in l])]
@@ -420,6 +425,17 @@ class TestAIRecords(FrappeTestCase):
 
 	def test_settings(self):
 		s = frappe.get_single("Excom AI Settings")
+		kept = ([r.as_dict() for r in s.dnc_domains], s.prompt_retention_days)
+
+		def restore():
+			s.reload()
+			s.dnc_domains = []
+			for r in kept[0]:
+				s.append("dnc_domains", {"domain": r.domain, "reason": r.reason})
+			s.prompt_retention_days = kept[1]
+			s.save(ignore_permissions=True)
+
+		self.addCleanup(restore)
 		s.dnc_domains = []
 		s.append("dnc_domains", {"domain": "https://www.Competitor.example/", "reason": "Competitor"})
 		s.prompt_retention_days = 21
@@ -428,5 +444,3 @@ class TestAIRecords(FrappeTestCase):
 		if frappe.db.exists("DocType", "AI App Policy"):
 			self.assertEqual(frappe.db.get_value("AI App Policy", {"parent": "AI Settings", "calling_app": "excom"},
 				"payload_retention_days"), 21)
-		s.dnc_domains = []
-		s.save(ignore_permissions=True)

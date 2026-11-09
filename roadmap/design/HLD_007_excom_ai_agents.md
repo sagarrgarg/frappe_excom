@@ -826,6 +826,22 @@ Sizes are relative: S, M or L.
 **As built (2026-11-09, Phase 0.2 and 0.3):** `excom/excom_ai/engine/` holds the registry (task kinds, planners, executors), the tick (every 2 minutes; while the master switch is off it reads one setting and returns), dispatch (turns between agents, each task claimed once by a conditional update, run on the `long` queue as the agent's own user), the runner (gates checked again at start, retries at 2, 4, 8 minutes, hold after failures in a row), proposals under policy (Shadow / Review / Auto with sampling and daily caps; a bad sample sends the action back to Review), ownership (backup takes over, both gone or the dead-man switch puts the agent On Hold; resume re-opens held actions for a person) and prompt assembly with cached system blocks and fenced untrusted text. `excom_ai/api.py` has Stop, Resume, Acknowledge, Decide and Run self-test. The built-in `echo` kind is the self-test; `excom_ai/tests/test_engine.py` runs it end to end through `ai_interface` with a scripted provider.
 
 The second review (same day) also added: team scoping of agents, proposals, sequences and feedback (`excom_ai/permissions.py`); a service user belongs to its agent's team only; editing the brief clears its approval (Live goes back to Shadow); Custom agents work in Review at most, and replies go out alone only when the policy condition names safe intents only; On Hold and Retired always save; one proposal per sequence step and one open enrolment per lead are unique keys in the database (an Expired proposal frees its step); recipes read only an allowlist of business doctypes, with every field, filter, order and grouping checked; AI service users are never rung, notified or listed in reports.
+
+A second review of the engine (same day) hardened it:
+- **Hold and resume.** Only a working agent can be put on hold. Resume goes through the agent's own checks, and comes back Live only with an approved brief and passing readiness; otherwise Shadow. Held tasks return to the queue on resume.
+- **Retries never act twice.** Proposals are committed as soon as they are made, and proposing the same thing again returns the existing one.
+- **Gates.**
+  - A gate that will pass later (spent budget, quiet date, type switched off) puts the task back in the queue rather than holding it. An ai_interface budget refusal is not counted as a failure.
+  - Dispatch checks each agent once, so a blocked agent never crowds out the others, and a task of an unknown kind fails alone.
+  - A contested claim (MariaDB's snapshot check) is skipped, not fatal.
+- **Execution checks every switch** (master, type, someone in charge, the agent's own enabled user, the policy now) and releases a failed sequence step.
+- **Daily caps and sampling count by the proposal's policy** (a follow-up is `follow_up_email`). A reply is Auto only for the intents its policy names, and nothing is Auto while the agent is on hold.
+- **The person's session survives** while work runs as the agent (`engine/identity.py`).
+- **Small fixes.**
+  - The dead-man watch counts whole working days only.
+  - Inactive or suspended employees count as unavailable.
+  - The untrusted-text fence holds in any spelling, and injection-like text is logged.
+  - Changes to markets, products and playbooks also need the brief approved again.
 | 0.4 | Excom plumbing: the inbound trigger for email, Instagram, Messenger and web chat; consent checks on free-text sends; the window-only Meta send; thread fields; the ownership rule in §11.6 | Existing tests pass, plus new ones for each gap | M |
 
 **As built (2026-11-09, Phase 0.4):**

@@ -53,9 +53,12 @@ def add_note(proposal, agent):
 @registry.executor("create_todo")
 def create_todo(proposal, agent):
 	payload = frappe.parse_json(proposal.payload or "{}")
+	# Only to the agent's own people: an edited payload cannot hand work to anyone else.
+	people = set(proposals.reviewers(agent)) | {agent.owner_user}
+	allocated = payload.get("allocated_to") if payload.get("allocated_to") in people else None
 	todo = frappe.get_doc({
 		"doctype": "ToDo",
-		"allocated_to": payload.get("allocated_to") or agent.acting_owner or agent.owner_user,
+		"allocated_to": allocated or agent.acting_owner or agent.owner_user,
 		"description": payload.get("text") or proposal.action,
 		"reference_type": proposal.subject_doctype,
 		"reference_name": proposal.subject_name,

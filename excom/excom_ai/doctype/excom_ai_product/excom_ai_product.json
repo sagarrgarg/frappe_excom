@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-11-09 20:00:00.000000",
+ "creation": "2026-11-09 22:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -51,7 +51,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-09 20:00:00.000000",
+ "modified": "2026-11-09 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Product",
