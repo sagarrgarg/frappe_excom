@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Document** | HLD-007, version 0.1 |
+| **Document** | HLD-007, version 0.2 (owner's decisions of 2026-11-09 in §20; sales data model in Appendix C) |
 | **Date** | 2026-11-08 |
-| **Status** | Proposed. Nothing is built. Waiting for the owner's decisions in §20. |
+| **Status** | Design approved in direction. Nothing is built. Open: the `ai_interface` branch question (Appendix B) and the decisions marked open in §20. |
 | **Owner** | Sagar Ratan Garg |
 | **Replaces** | The structure of HLD-006 (AI Sales Agents), which stays as reference for the Harvey port details, and `roadmap/phase_B_ai_layer.md` |
 | **Related** | HLD-004 (voice), HLD-005 (WhatsApp platform), `roadmap/export_pilot.md`, `roadmap/sales_sop.md`, `~/Documents/AI-Sales-Agents-Design.md` (the abstract) |
@@ -46,7 +46,7 @@ The readiness check turns that into a short list of fixes for people, which can 
 **What this plan changes in HLD-006** (each needs the owner's yes, §20):
 
 - Mail goes through **Excom's own mailboxes** (Stalwart over JMAP, or Gmail), built on 2026-11-08 with folders, drafts, scheduled send and two-way sync. HLD-006 planned a separate SMTP/IMAP transport.
-- AI runs on an **Anthropic API key** by default, because the production site is on Frappe Cloud, where the Claude command-line program cannot run (§10.6).
+- **All AI goes through `ai_interface`.** It grows, in a generic way, into the AI mediator for every app on the bench (Appendix B). The agents name what they need (tools, structured output, vision), never a provider, and `ai_interface` routes, budgets, logs and costs every call.
 - The engine is generic from day one. Sales is the first **capability pack**, not a one-off.
 - Work is committed to `main` and pushed once verified, per the owner's standing rule. HLD-006 said feature branches.
 
@@ -225,7 +225,7 @@ An email proposal **is** an Excom Email Draft. It is saved in the mailbox's Draf
 
 ### 5.3 Research and tools
 
-**Excom Agent Signal Code** and **Excom Agent Observation** (from Harvey): signal `code`, `label`, `category`, `value_type`, `collector`, `confidence_floor`; observation `subject`, `signal`, `value`, `confidence`, `evidence_url`, `observed_on`, `task`. **Excom Email Domain** (from HLD-006): `domain`, `mx_provider`, `pattern`, `catch_all`, `verified_on`, cached results. **Excom Agent Tool**: `tool_key`, `enabled`, credentials (Password fields), `monthly_budget`, `used_this_month`, `rate_limit`, `last_error`. **Excom Agent Usage** (one row per day, agent and model): calls, tokens by kind, cost, tool calls by tool.
+**Excom Agent Signal Code** and **Excom Agent Observation** (from Harvey): signal `code`, `label`, `category`, `value_type`, `collector`, `confidence_floor`; observation `subject`, `signal`, `value`, `confidence`, `evidence_url`, `observed_on`, `task`. **Excom Email Domain** (from HLD-006): `domain`, `mx_provider`, `pattern`, `catch_all`, `verified_on`, cached results. **Excom Agent Tool**: `tool_key`, `enabled`, credentials (Password fields), `monthly_budget`, `used_this_month`, `rate_limit`, `last_error`. AI usage and cost are not duplicated here: they live in `ai_interface`'s call log and budgets, attributed to the Task (Appendix B). The full Sales data model, field by field, is Appendix C.
 
 ### 5.4 Fields added to existing records
 
@@ -532,11 +532,11 @@ Work that is not urgent goes through the **Message Batches API**, which costs ha
 
 Anthropic's Managed Agents run the agent loop and a sandbox on Anthropic's side. They are not the right fit here. The tools, the data, the approvals and the audit all live in ERPNext, and every action must run as the agent's service user under Frappe's permissions. The engine therefore owns the loop and calls the Messages API. This can be revisited for long, open-ended research jobs.
 
-### 10.6 Credentials
+### 10.6 Credentials and providers
 
-- Production uses an **Anthropic API key**, ideally in its own workspace so the agents' spend is visible and capped separately.
-- The **Claude Code provider** in `ai_interface` runs the `claude` program. Frappe Cloud has no such program and no logged-in Claude account, so it cannot run there.
-- The **Auth Token** mode in `ai_interface` sends a subscription login to the API by presenting itself as Claude Code. An automated business system should not depend on that. Whether it is allowed at all is a question for Anthropic's terms, and the agents module will not rely on it.
+- Agents never hold AI credentials and never name a provider. They call `ai_interface` with a `calling_app` (excom), a reference (the Excom Agent Task), an action and the capabilities they need. `ai_interface`'s routing rules pick the provider and model; its budgets and spend caps apply.
+- **On Frappe Cloud** the Claude command-line provider cannot run: no `claude` program, no logged-in account. Production therefore routes to an API provider (an Anthropic API key, ideally in its own workspace).
+- The **Auth Token** mode (a subscription login sent to the API under Claude Code's identity) should not carry automated production work. Whether it is allowed at all is a question for Anthropic's terms.
 
 ---
 
@@ -678,11 +678,20 @@ Stopping cancels queued tasks and pending sends and leaves drafts in place.
 
 Each result is stored on the proposal, so a reviewer sees why something passed or failed.
 
-### 12.6 Disclosure and law
+### 12.6 AI identity and law
 
-- **Disclosure:** each agent has a disclosure line, shown where the owner decides (§20). For voice it is said at the start of every call.
-- **Market rules:** each market can carry its own rules in the playbook's Compliance section, for example consent rules for commercial email to individuals in some countries.
-- **Exact wording:** have the wording and the market rules checked by someone qualified; this document flags the requirement and is not legal advice.
+**The owner's decision (2026-11-09):**
+- Agents do not volunteer that they are AI.
+- When a buyer asks whether they are talking to a bot, an AI or a real person, the agent does not answer the question. It hands the conversation to its owner with a neutral holding line, for example "Let me bring in my colleague, who can help you with that." This is Harvey's current behaviour.
+
+**What the code enforces regardless of settings:**
+- **Never human, never denied.** An agent never states or implies that it is human, and never denies being AI. A draft that does fails the code checks, and the persona prompt says the same.
+- **The question always reaches a person.** "Are you a bot / AI / real person" (and its translations) is a fixed escalation intent, detected by rule before the AI classifies the message. The thread moves to "Needs person", and the owner is alerted with the question highlighted. What to answer is the person's call.
+
+**Notes:**
+- **Revisit before going live:** some places require AI disclosure, for example California's bot law for sales conversations and the EU AI Act's transparency duties. The agent's markets decide whether this policy can stay. Voice (Phase 3) is the most likely to need disclosure.
+- **Market rules:** each market can carry its own rules in the playbook's Compliance section, for example consent rules for commercial email to individuals.
+- **Legal review:** have the policy and market rules checked by someone qualified. This document flags the issue; it is not legal advice.
 
 ### 12.7 Untrusted text
 
@@ -802,7 +811,7 @@ Sizes are relative: S, M or L.
 
 | Step | Builds | Done when | Size |
 |---|---|---|---|
-| 0.1 | `ai_interface` changes (Appendix B); `ai_interface` installed on the production site (it is not installed on GGIL); an Anthropic API key and budget | A structured call with caching, effort and refusal handling passes against the live API and is logged with its reference | M |
+| 0.1 | `ai_interface`: merge `somil-dev`, then the generic additions in Appendix B.2; `ai_interface` installed on the production site (it is not installed on GGIL); an API provider and budgets configured | A structured call with caching, effort and refusal handling passes against the live API and is logged with its reference | M |
 | 0.2 | The Excom AI module, laid out like `excom_ads`: settings, the records in §5.1 and §5.2, roles, service-user creation, patches | Records can be created; the master switch is off by default and costs nothing | M |
 | 0.3 | The engine: orchestrator, tasks, runner, proposals, executor, budgets, ownership rules, audit, kill switches; the `long` queue or a dedicated one | An "echo" agent runs end to end in Shadow on a test site, with a proposal, usage and audit rows | L |
 | 0.4 | Excom plumbing: the inbound trigger for email, Instagram, Messenger and web chat; consent checks on free-text sends; the window-only Meta send; thread fields; the ownership rule in §11.6 | Existing tests pass, plus new ones for each gap | M |
@@ -946,30 +955,31 @@ The Shadow phase replaces these estimates with measured cost per task from the u
 
 ---
 
-## 20. Decisions needed
+## 20. Decisions
 
-Each has a recommendation. Nothing is built until these are answered.
+**Decided by the owner on 2026-11-09:**
 
-1. **Mail transport.** Agents use Excom's mailboxes (Stalwart over JMAP, or Gmail), not a separate SMTP/IMAP layer. *Recommended. This changes HLD-006 decision 1.*
-2. **AI credentials.** An Anthropic API key in its own workspace with a budget on production. The Claude command-line provider only on a VM, and the subscription "Auth Token" mode not at all. *Recommended. This changes HLD-006 decision 2.*
-3. **Default model.** `claude-opus-5-5` for every task, with effort tuned per task; cheaper models only per task after the evaluations allow it. *Recommended.*
-4. **Phase 2 order.** Accounts, then Purchase, then Compliance, then Custom. *Recommended, given the receivables and MSME figures in §8.2.*
-5. **Owner leaves or goes quiet.** On Hold with handover to the backup, as in §12.3. *Recommended.*
-6. **AI disclosure.** Say it everywhere, through the agent's disclosure line, including when a buyer asks.
-   - Harvey's local change currently does the opposite: "never mention AI; hand the question to a person".
-   - *Recommended: disclose.*
-7. **WhatsApp first contact.** Opted-in contacts only. *Recommended.*
-8. **Voice.** Inbound calls first, in Phase 3. *Recommended.*
-9. **Roles.** No new human roles: Excom Admin, team Managers, and owners and reviewers from the team (§14.1). One hidden role per pack for service users. *Recommended.*
-10. **Sending domain.** A separate subdomain for cold email, so the main domain's reputation is protected. *Recommended.*
-11. **Harvey until cut-over.** Stopped since 2026-11-08 14:39, with 167 approved emails waiting.
-    - **Keep it stopped** until Phase 1I.
-    - **Or restart it with safe settings:** bounce pause at 5%, and no sending to unverifiable addresses.
-    - *Recommended: restart with safe settings, so the existing sequences finish.*
-12. **Where the work lands.** Committed to `main` and pushed once verified, as with the rest of Excom. *Recommended.*
-13. **The readiness sprint.** Who owns each item in §17.4.
+1. **Mail** goes through Excom's mailboxes (Stalwart over JMAP, or Gmail). This changes HLD-006 decision 1.
+2. **AI** goes 100% through `ai_interface`, which grows generically into the AI mediator for every app (Appendix B). This changes HLD-006 decision 2.
+3. **AI identity.** Agents do not say they are AI, even when asked. They hand the question to a person instead (§12.6). The code still guarantees an agent never claims to be human or denies being AI.
+4. **Data.** Like Harvey, agents keep their own research data (companies, people, locations, signals). Native ERPNext records are used where they fit, with no duplicated data. The full fields are in Appendix C.
+5. **Scope.** All of Harvey's features, for sales.
 
----
+**Open:**
+
+6. **`ai_interface` branch.** Merge Somil's `somil-dev` branch and build on it (recommended), in agreement with Somil (Appendix B.1).
+7. **Default model.** `claude-opus-5-5` for every task, effort tuned per task; cheaper models per task only after the evaluations allow it. *Recommended.*
+8. **Phase 2 order.** Accounts, Purchase, Compliance, Custom. *Recommended* (§8.2).
+9. **Owner leaves or goes quiet.** On Hold, and handover to the backup (§12.3). *Recommended.*
+10. **WhatsApp first contact.** Opted-in contacts only. *Recommended.*
+11. **Roles.** No new human roles (§14.1). *Recommended.*
+12. **Sending domain.** A separate subdomain for cold email. *Recommended.*
+13. **Harvey until cut-over.** Stopped since 2026-11-08 14:39, with 167 approved emails waiting.
+    - **Keep it stopped**, or
+    - **restart it with safe settings:** bounce pause at 5%, no sending to unverifiable addresses.
+
+    *Recommended: restart with safe settings.*
+14. **The readiness sprint.** Who owns each item in §17.4.
 
 ## Appendix A — Harvey to Excom AI
 
@@ -996,7 +1006,7 @@ From a read-only inventory of `~/harvey` on 2026-11-08: the code, the live datab
 | Claude command-line program in an isolated subprocess; quota from the subscription | `ai_interface` with an API key; budgets from the usage log | §10.6 |
 | LinkedIn, job boards, startup signals, Instantly, Codex | Not ported | |
 | Local customisations: photo cards, server-signature stripping, Spanish opt-out line, *usted*, `negotiate` intent, bot-question escalation | Agent and playbook settings | The "never mention AI" rule waits on decision 6 |
-| Tables: `companies`, `prospects`, `observations`, `email_patterns`, `campaigns`, `outbox`, `conversations`, `actions`, `usage_events`, `settings` | Prospect, Lead, Excom Agent Observation, Excom Email Domain, Excom Agent Sequence and Enrollment, Proposal or Excom Email Draft or Excom Message, Excom Thread, audit, Excom Agent Usage, agent fields | Imported in Phase 1I |
+| Tables: `companies`, `prospects`, `observations`, `email_patterns`, `campaigns`, `outbox`, `conversations`, `actions`, `usage_events`, `settings` | Prospect, Lead, Excom Agent Observation, Excom Email Domain, Excom Agent Sequence and Enrollment, Proposal or Excom Email Draft or Excom Message, Excom Thread, audit, `ai_interface` call log, agent fields | Imported in Phase 1I (Appendix C) |
 
 **Harvey's own issues, fixed in the port:**
 - the global priority stall;
@@ -1007,27 +1017,205 @@ From a read-only inventory of `~/harvey` on 2026-11-08: the code, the live datab
 - unused prompt files (`prompts/scout.md`, `prompts/system.md`);
 - skills loaded but never used by the Scout and the Sender.
 
-## Appendix B — Changes to ai_interface (Phase 0)
+## Appendix B — `ai_interface` as the AI mediator for every app
 
-Found while reading `ai_interface` on 2026-11-08 (anthropic SDK 1.15.0 installed):
+**Decision (2026-11-09):** every AI call from every app goes through `ai_interface`. What the agents need is added there in a generic way, named for what it does and not for Excom, so that any app (excom, docpulse, business_needed_solutions, insights) can use it.
 
-1. **Responses from current models can crash the Anthropic provider.** `anthropic_provider.chat` returns `response.content[0].text`. On Opus 5.5 thinking is always on, so the first block can be a thinking block, which has no `.text`. Read the text blocks by type, and check `stop_reason` (`refusal`, `max_tokens`) first.
-2. **`temperature` is always sent** (0.7). It works with the API version the installed SDK sends today (`2023-06-01`), but the API rejects it from version `2026-10-21` on. Drop it before upgrading.
-3. **One prompt string only.** `call_ai` has no system prompt and no message list, which is enough for one-shot generation. The agents need:
-   - a system prompt, a message list, and tools;
-   - structured output (`output_config.format` or `messages.parse`);
-   - prompt caching (`cache_control` on stable blocks, with a choice of lifetime);
-   - effort (`output_config.effort`);
-   - the refusal fallback;
-   - the Batch API;
-   - usage including cached tokens.
-4. **Budgets.** Per calling app and per reference (agent): daily limits checked before the call, with usage recorded after it.
-5. **Call log.** Add `reference_doctype` and `reference_name` so every call links to its Excom Agent Task. Add an option to store prompts without personal data, or to delete them after a set number of days. The log currently stores the full input and output.
-6. **Queue.** Asynchronous calls are enqueued on `default`. Agent work must use `long`, or a dedicated queue.
-7. **Claude Code provider.** It runs `claude -p` with the default tools and settings. If it is kept for local use, run it isolated the way Harvey does:
-   - **Flags:** `--tools "" --strict-mcp-config --safe-mode --setting-sources "" --disable-slash-commands --no-session-persistence`.
-   - **Input and environment:** the prompt on stdin, an empty temporary working directory, a timeout.
-   - **Preflight:** check that every flag exists.
+### B.1 Where to build: the `somil-dev` branch
 
-   It cannot run on Frappe Cloud either way.
-8. **Auth Token mode.** Not to be used by the agents (§10.6).
+`ai_interface`'s branches are:
+
+| Branch | State |
+|---|---|
+| `develop` | The default branch, and what the bench has checked out (08c64e7) |
+| `main` | One documentation commit ahead of `develop` |
+| `somil-dev` | 15 commits by Somil Vaishya (September 2026), about 8,300 lines, not merged |
+
+`somil-dev` already provides most of the mediator:
+- provider configuration as data (AI Provider Type, an OpenAI-compatible adapter);
+- **routing** by caller, template and rules, with a **capability filter** (vision, tools, context window) and fallback across providers (retry on rate limit, timeout or 5xx; stop on auth or configuration errors);
+- **attribution** of every call by `calling_app`, `reference_doctype`, `reference_name` and `action`;
+- **cost** in the provider's currency and the base currency;
+- **spend caps** per app, daily and monthly, Warn or Block, checked before anything is spent;
+- **provider health** and a connection test;
+- an assistant with conversation memory, a cost dashboard, a handbook and a test suite.
+
+Building the agent features anywhere else would duplicate and conflict with it.
+
+**Recommendation:** review and test `somil-dev`, merge it into the branch the bench runs, then add B.2 on top, in agreement with Somil. *(Open question for the owner.)*
+
+### B.2 What to add (generic), in this order
+
+1. **Correct response handling.** Read text from content blocks by type, not `content[0].text`: thinking blocks come first on current models, and that line crashes. Check `stop_reason` (`refusal`, `max_tokens`) before using the output. Stop sending `temperature` before moving to API version `2026-10-21`, which rejects it. Both bugs are present on every branch.
+2. **A full request, not one prompt.** A new entry point alongside `generate()`, for example `ai_interface.services.chat.run(...)`, taking:
+   - **request:** `system` blocks, a `messages` list, and `effort`;
+   - **output:** a JSON `output_schema`, returned validated with one repair attempt;
+   - **caching:** cache markers on stable blocks, with a lifetime;
+   - **tools:** server tools such as web search and web fetch, passed through.
+
+   The existing `calling_app`, reference, `action`, `needs`, `sync`, routing and budgets work unchanged. Providers that lack a feature are filtered out by the capability filter (`needs=["tools", "json", "cache"]`).
+3. **Tools from any app.** Apps register tools in `hooks.py`, for example `ai_tools = {"excom.erp_read": "excom.excom_ai.tools.erp_read.run"}`. Each tool has a JSON schema, a tier (read, draft, communicate, paid) and a permission check. A bounded loop then runs them: a maximum number of steps, a time budget and a cost budget, with every step logged under the parent call. A caller may also run its own loop.
+4. **Batches.** Submit many requests through the provider's batch API at its discount; a scheduled job collects the results, and callers get the same realtime completion events.
+5. **Budgets per reference.** `somil-dev` caps spending per app. Agents also need caps per reference (an agent, a team, a user), so one agent cannot spend another's budget. The cap is checked before the call.
+6. **Call log hygiene.**
+   - **Retention:** a period per app after which prompts and outputs are emptied, while the cost row stays.
+   - **Redaction:** an option to store prompts without contact details.
+   - **Cache visibility:** cached and cache-written token counts, so cache breaks show up.
+7. **Command-line provider isolation**, for local use only. Run the way Harvey does:
+   - flags: `--tools "" --strict-mcp-config --safe-mode --setting-sources "" --disable-slash-commands --no-session-persistence`;
+   - the prompt on stdin, an empty temporary working directory, a timeout;
+   - a preflight check that every flag exists.
+
+   It cannot run on Frappe Cloud.
+8. **Evaluation runner.** A golden set per app and action (inputs, expected outputs or checks), run on demand and before a prompt template, model or effort change is accepted. The Excom packs use it in §13.4.
+
+Each item gets tests in `ai_interface/tests` and a section in the handbook.
+
+## Appendix C — Sales data model, field by field
+
+### C.1 The rule: research data stays apart until someone is contacted
+
+Harvey's database holds 677 companies. 389 of them never got a single contact, and only 120 were ever emailed. Raw research in ERPNext's Leads would flood the desk's lists, reports and lead-assignment rules (Excom's "Unclassified" rotation hands out every lead with no customer type).
+
+So:
+
+- **Research lives in its own records:** Excom Agent Company and Excom Agent Person, with signals, observations and email-domain facts. It is not CRM. Only agent owners and admins see it.
+- **Contacting someone promotes them into native ERPNext records.** This happens when step 1 of a sequence is about to be proposed:
+  - the **company** becomes a **Prospect**, with its location as an **Address**;
+  - the **person or published inbox** becomes a **Lead**, created through `crm_gateway.create_lead`. That also creates or links the **Omni Identity**, so the Excom conversation, team visibility, claiming and opportunity flow all work as they do for human leads;
+  - the Lead is given the agent's `customer_type` (for example Export Importer) and team, so assignment rules never treat it as unclassified.
+- **No duplicates.** At promotion, an existing Customer, Lead or Omni Identity with the same email or domain is found and linked, never copied. A match with an existing customer means the company is excluded from cold outreach.
+- **No ERPNext Contact at the lead stage.** ERPNext keeps contact details on the Lead until conversion, and Excom's Omni Identity carries the channels. A Contact is created only when a Lead becomes a Customer, as today.
+- **One source of truth.** After promotion, the research row keeps only research facts (how the address was found and verified, signals, score) and a link to its Lead or Prospect. Status, conversation and stage live on the Lead, the Enrollment and the Excom Thread.
+- **Usage and cost** stay in `ai_interface` (Appendix B).
+
+### C.2 New records
+
+**Excom Agent Company** — every company found, one row per domain across all agents
+
+| Field | Type | Notes / Harvey column |
+|---|---|---|
+| `company_name` | Data, required | `companies.name` |
+| `domain` | Data, unique | `domain`; the dedupe key |
+| `external_id` | Data, unique | `external_id` (for example `osm:node/…`, `dataforseo:cid:…`) |
+| `website` | Data | `website` |
+| `description` | Small Text | `description` |
+| `industry` | Data | `industry` (the raw text found; mapped to the Industry Type at promotion) |
+| `buyer_type` | Select: Importer, Distributor, Wholesaler, Retailer, Online store, Manufacturer, Other | New |
+| `size_band` | Select: 1-10, 11-50, 51-200, 201-1000, 1000+ | `company_size` |
+| `country` | Link Country | From `location` |
+| `city` | Data | From `location` |
+| `location_text` | Data | `location`, as found |
+| `phone` | Data | `phone` |
+| `language` | Link Language | The website's language |
+| `source` | Select: OSM, Serper, Scavio, DataForSEO, TinyFish, Volza, Import, Web search, Manual | `source` |
+| `source_url` | Data | `source_url` |
+| `found_by_task` | Link Excom Agent Task | Its `runs` row |
+| `agent` | Link Excom Agent | The one agent that owns it (empty = unclaimed) |
+| `status` | Select: New, Profiled, Contacts found, No contacts, Qualified, Promoted, Excluded | New |
+| `exclusion_reason` | Select: Existing customer, Open lead or deal (people), Do not contact, Competitor, Group company, Poor fit, Other | New |
+| `fit_score` | Int (0-100) | New; set by the Researcher |
+| `research_notes` | Text | `notes`, plus the Researcher's summary |
+| `website_facts` | JSON | `tech_stack_json` and profile facts |
+| `signals` | JSON (read-only) | `signals_json`: latest value per signal, cached from observations |
+| `profile_checked_on` | Datetime | `profile_checked_at` |
+| `contacts_checked_on` | Datetime | `prospects_checked_at` |
+| `company_stop` | Check | Settings `company_stop:<id>`: someone there replied, so no more cold mail to anyone there |
+| `stop_reason` | Small Text | New |
+| `prospect` | Link Prospect (read-only) | Set at promotion |
+| `customer` | Link Customer (read-only) | Set when matched to an existing customer |
+
+**Excom Agent Person** — a person or published inbox at a company
+
+| Field | Type | Notes / Harvey column |
+|---|---|---|
+| `company` | Link Excom Agent Company, required | `company_id` |
+| `first_name`, `last_name` | Data | Same |
+| `full_name` | Data (read-only) | Computed |
+| `title` | Data | `title` |
+| `seniority` | Select: Owner, Executive, Director, Manager, Staff, Inbox | `seniority` |
+| `department` | Data | `department` |
+| `is_inbox` | Check | Source `company_inbox` ("General inbox") |
+| `email` | Data (Email), unique | `email` |
+| `email_status` | Select: Verified, Risky, Guess, Invalid, Unknown | `email_status` |
+| `email_source` | Select: Published, Pattern, Hunter, Import | New, from the email finder |
+| `verified_by` | Select: Reoon, ZeroBounce, Hunter, None | New |
+| `verified_on` | Datetime | New |
+| `catch_all` | Check | From `email_patterns.is_catch_all` |
+| `consent_verdict` | Select: OK to email, Consent needed, Blocked, Unknown | Precleared, cached 30 days |
+| `consent_checked_on` | Datetime | Precleared cache date |
+| `phone` | Data | `phone` |
+| `phone_verified` | Check | `phone_verified` |
+| `linkedin_url` | Data | `linkedin_url` (stored only; no automation) |
+| `timezone` | Data | `timezone` |
+| `language` | Link Language | New; the language to write in |
+| `source`, `source_url` | Select, Data | Same |
+| `score` | Int (1-100) | `score` |
+| `personalization_notes` | Text | `personalization_notes` |
+| `status` | Select: New, Ready, Write failed, Invalid, Promoted, Excluded | Pre-contact states; later states live on the Lead and Enrollment |
+| `write_attempts` | Int | Settings `write_attempts:<id>` |
+| `lead` | Link Lead (read-only) | Set at promotion |
+
+**Excom Agent Signal Code**: `code` (unique), `label`, `description`, `category`, `value_type` (Number, Text, Flag), `collector`, `cost_note`, `status` (Proposed, Confirmed, Rejected), `confidence_floor`. Seeded with trade signals (§9).
+
+**Excom Agent Observation**: `company`, `person`, `signal` (Link Signal Code; must be Confirmed), `collector`, `value_num`, `value_text`, `confidence`, `evidence_url`, `observed_on`, `task`. The latest row per company and signal is the current value.
+
+**Excom Email Domain**: `domain` (unique), `mx_type` (Google, Microsoft, Gateway, Other, None), `pattern`, `pattern_source`, `pattern_confidence`, `catch_all`, `checked_on`, `hunter_searched_on`. From `email_patterns`.
+
+**Excom Agent Sequence**: `title`, `agent`, `language`, `first_email_style` (Direct offer, Observation), `steps` (table: step, wait in business days, channel, purpose, word limit, photo cards, stop on). From `campaigns.sequence_json`, but written per buyer (Appendix A).
+
+**Excom Agent Enrollment** — one per agent, Lead and sequence
+
+| Field | Type | Notes / Harvey |
+|---|---|---|
+| `agent` | Link Excom Agent | |
+| `sequence` | Link Excom Agent Sequence | `campaign_id` |
+| `lead` | Link Lead | `prospect_id`, after promotion |
+| `person` | Link Excom Agent Person | |
+| `company` | Link Excom Agent Company | Used for the company-level stop |
+| `prospect` | Link Prospect | |
+| `thread` | Link Excom Thread | `conversation_id` |
+| `language` | Link Language | So every step is in the same language |
+| `status` | Select: Active, Paused, Replied, Stopped, Completed, Opted out, Bounced | `prospects.status` after contact |
+| `stop_reason` | Small Text | `outbox.error` reasons (stop_on_reply, bounced, a colleague replied…) |
+| `current_step`, `next_due`, `started_on`, `last_sent_on` | Int, Datetime | |
+| `review_next_reply` | Check | Settings `review_next_reply:<id>` |
+
+**Excom Agent Proposal** (§5.2) also carries Harvey's outbox fields for messages:
+
+| Fields | Harvey outbox |
+|---|---|
+| `enrollment`, `step`, `kind` (Sequence, Reply) | Same |
+| `to_email`, `send_at`, `sent_on` | Same |
+| `email_draft` (Link Excom Email Draft), `message` (Link Excom Message) | `subject` and `body` live in the draft; once sent, `message_id`, `thread_ref` and `in_reply_to` live on the Excom Message |
+| `status`: Pending, Approved, Sending, Sent, Rejected, Cancelled, Failed, Held, Sent by hand | `status`, plus settings `manual_send:<id>` |
+| `approved_by`: a user, Autopilot or Earlier | `approved_by` |
+| `error`, `hold_reason` | `error` ("held for your review…", "gate: …", "precleared: …", "may have gone out: …", never retried) |
+
+Uniqueness: one Proposal per (enrollment, step), as Harvey's unique index on (campaign, prospect, step).
+
+**Excom Agent Feedback**: `agent`, `scope` (Agent, Company, Lead, Sequence), `reference`, `comment`, `active`. From Harvey's `feedback` table; the Writer reads the active rows for its scope ("owner feedback").
+
+### C.3 Fields added to native records
+
+| Record | Fields (all prefixed `excom_` unless Excom already has them) |
+|---|---|
+| Prospect | `agent` (Link Excom Agent), `research` (Link Excom Agent Company), `fit_score`, `company_stop`, `stop_reason`. Native fields used: `company_name`, `industry`, `website`, `no_of_employees`, `territory`, `prospect_owner` (the agent's owner), `leads` (Prospect Lead), notes |
+| Lead | `agent`, `person` (Link Excom Agent Person), `email_status`, `timezone`, `language`. Native and existing Excom fields used: names, `email_id`, `phone`, `job_title`, `company_name`, `website`, `country`, `city`, `source` (Lead Source "AI Outreach"), `lead_owner` (the agent's owner), `customer_type`, `excom_team`, `omni_identity`, `intake_stage`, `first_touch_channel` |
+| Address | Native, linked to the Prospect: `country`, `city`, `address_line1` when known |
+| Excom Thread | `handled_by_agent`, `agent_mode` (Off, Assist, Handle, Needs person, Hold), `agent_intent` (Harvey's intents plus "Asked if AI"), `agent_stage` (Initial outreach, Engaged, Qualifying, Presenting, Negotiating, Closing, Closed won, Closed lost) |
+| Opportunity | `origin_agent`; created from the Lead or Prospect through `crm_flow` when a buyer is interested |
+
+### C.4 What is not stored again
+
+| Harvey | Where it lives instead |
+|---|---|
+| `conversations.thread_json` | Excom Messages on the Excom Thread, all channels |
+| `processed_replies` | Excom Message's unique `provider_message_id` |
+| `runs` | Excom Agent Task: kind discover or profile, provider, records, tool cost, parameters |
+| `usage_events`, `usage_log` | `ai_interface`'s call log and budgets |
+| `actions` | Tasks, Proposals and timeline comments |
+| Settings: `sending_paused` | The agent's or channel's kill switch |
+| Settings: `bounce_count` | Counted from Proposals |
+| Settings: `geo:*` | Frappe cache |
+| Settings: `precleared:*` | `consent_verdict` on the Person |
