@@ -110,6 +110,8 @@ class TestResearch(FrappeTestCase):
 
 	def scripted(self, answers: dict):
 		def use(key, method, **kw):
+			kw.pop("cost", None)
+			kw.pop("known", None)
 			fn = answers.get((key, method))
 			if fn is None:
 				raise tools.ToolRefused(f"{key} off")

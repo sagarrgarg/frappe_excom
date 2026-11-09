@@ -111,8 +111,13 @@ def discover(task, agent) -> str:
 	params = frappe.parse_json(task.params or "{}") or {}
 	source = params.get("source") or "osm"
 	query = params.get("query") or query_for(agent, source)
-	found = tools.use(source, "search", query=query) if source != "volza" else tools.use(
-		"volza", "import_file", file_url=params["file_url"])
+	if source == "volza":
+		found = tools.use("volza", "import_file", file_url=params["file_url"])
+	else:
+		from excom.excom_ai.tools import discovery as discovery_tools
+
+		# a paid search runs several queries: charge what it will really cost
+		found = tools.use(source, "search", query=query, cost=discovery_tools.estimate(source, query))
 	new = known = excluded = 0
 	for c in found or []:
 		name, created = upsert_company(c, agent, task, source)
@@ -203,7 +208,13 @@ def profile_company(task, agent) -> str:
 	company = frappe.get_doc("Excom AI Company", task.subject_name)
 	if company.status not in ("New", "Profiled"):
 		return _("{0} is {1}").format(company.company_name, company.status)
-	facts = tools.use("web_reader", "profile", url=company.website) if company.website else {}
+	try:
+		facts = tools.use("web_reader", "profile", url=company.website) if company.website else {}
+	except Exception as e:
+		# a site the safety guard refuses, or one that does not answer: noted, not fatal
+		company.db_set({"status": "Profiled", "fit_score": 0, "profile_checked_on": now_datetime(),
+			"research_notes": _("The website could not be read: {0}").format(str(e)[:200])}, update_modified=False)
+		return _("{0}: website not readable").format(company.company_name)
 	reason, customer = exclusion(company.domain, facts.get("emails"))
 	if reason:
 		exclude(company, reason, customer)
@@ -273,13 +284,23 @@ def find_contacts(task, agent) -> str:
 	if company.status in ("Excluded", "Promoted") or not company.domain:
 		return _("{0} is {1}").format(company.company_name, company.status)
 	facts = frappe.parse_json(company.website_facts or "{}") or {}
-	found = tools.use("email_finder", "find", domain=company.domain, published=facts.get("emails") or [], people=[])
-	addresses = list(found.get("addresses") or [])
+	known = []
 	if tools.available("hunter"):
+		from excom.excom_ai.tools import email as email_tools
+
 		try:
-			addresses += tools.use("hunter", "domain_search", domain=company.domain) or []
+			known = tools.use("hunter", "domain_search", domain=company.domain, cost=email_tools.HUNTER_SEARCH_COST) or []
 		except tools.ToolRefused:
-			pass
+			known = []
+	# Hunter's named addresses are evidence for the domain's pattern, and come back among the addresses.
+	found = tools.use("email_finder", "find", domain=company.domain, published=facts.get("emails") or [], people=[], known=known)
+	addresses = list(found.get("addresses") or [])
+	try:
+		from excom.excom_ai.tools import email as email_tools
+
+		email_tools.save_domain(found)
+	except Exception:
+		frappe.log_error(title="Excom AI: could not save the email domain facts", message=frappe.get_traceback())
 	made = 0
 	for a in addresses:
 		email = (a.get("email") or "").lower().strip()
@@ -291,6 +312,7 @@ def find_contacts(task, agent) -> str:
 			"first_name": a.get("first_name"), "last_name": a.get("last_name"), "title": a.get("title"), "is_inbox": inbox,
 			"email_source": {"Published": "Published", "Pattern": "Pattern", "Hunter": "Hunter"}.get(a.get("source"), "Published"),
 			"email_status": "Guess" if a.get("source") == "Pattern" else "Unknown", "language": company.language,
+			"linkedin_url": a.get("linkedin_url") if frappe.get_meta("Excom AI Person").has_field("linkedin_url") else None,
 			"status": "New"}).insert(ignore_permissions=True)
 		made += 1
 	company.db_set({"status": "Contacts found" if made or frappe.db.exists("Excom AI Person", {"company": company.name})

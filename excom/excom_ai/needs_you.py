@@ -53,7 +53,8 @@ def queue() -> dict:
 		return {"waiting": [], "proposals": [], "held": [], "blockers": [], "agents": {}}
 	names = dict(frappe.get_all("Excom AI Agent", {"name": ["in", agents]}, ["name", "agent_name"], as_list=True))
 	waiting = frappe.get_all("Excom Thread", {"ai_agent": ["in", agents], "ai_mode": "Needs person", "status": ["!=", "Closed"]},
-		["name", "display_name", "channel", "ai_agent", "ai_intent", "last_inbound_at", "last_message_preview", "assigned_to"],
+		["name", "display_name", "channel", "ai_agent", "ai_intent", "last_inbound_at", "last_message_preview", "assigned_to",
+			"omni_identity"],
 		order_by="last_inbound_at asc", limit=100)
 	for w in waiting:
 		w.waited_hours = round(time_diff_in_hours(now_datetime(), w.last_inbound_at), 1) if w.last_inbound_at else None
@@ -159,9 +160,15 @@ def thread_proposals(thread: str) -> list:
 	"""An agent's open proposals on one conversation, for the inbox (inline at its foot)."""
 	_thread_for_change(thread)
 	rows = frappe.get_all("Excom AI Proposal", {"thread": thread, "status": ["in", ("Pending", "Held", "Shadow")]},
-		["name", "agent", "action", "status", "preview_html", "payload", "checks", "checker_verdict", "creation"],
-		order_by="creation desc", limit=10)
-	return [r for r in rows if frappe.has_permission("Excom AI Proposal", "read", frappe.get_doc("Excom AI Proposal", r.name))]
+		["name", "agent", "action", "status", "preview_html", "payload", "checks", "checker_verdict", "checker_notes", "to_email",
+			"creation"], order_by="creation desc", limit=10)
+	out = []
+	for r in rows:
+		if frappe.has_permission("Excom AI Proposal", "read", frappe.get_doc("Excom AI Proposal", r.name)):
+			r.payload = json.loads(r.payload or "{}") if isinstance(r.payload, str) else r.payload
+			r.checks = json.loads(r.checks or "{}") if isinstance(r.checks, str) else r.checks
+			out.append(r)
+	return out
 
 
 # ── the Shadow comparison ────────────────────────────────────────────────────
@@ -177,6 +184,7 @@ def shadow_comparison(agent: str, limit: int = 50) -> list:
 		"shadow_note", "checker_verdict"], order_by="creation desc", limit=cint(limit) or 50)
 	for r in rows:
 		r.payload = json.loads(r.payload or "{}") if isinstance(r.payload, str) else r.payload
+		r.omni_identity = frappe.db.get_value("Excom Thread", r.thread, "omni_identity") if r.thread else None
 		human = None
 		if r.thread:
 			human = frappe.db.get_value("Excom Message", {"thread": r.thread, "direction": "Outbound",
@@ -207,3 +215,22 @@ def shadow_score(agent: str) -> dict:
 	"""How the agent's drafts compare so far: the evidence for letting it go Live."""
 	rows = frappe.get_all("Excom AI Proposal", {"agent": agent, "shadow_verdict": ["is", "set"]}, pluck="shadow_verdict")
 	return {v: rows.count(v) for v in ("Agent better", "About the same", "Person better")} | {"rated": len(rows)}
+
+
+@frappe.whitelist()
+def count() -> dict:
+	"""For a badge: what waits for this person, cheaply."""
+	_excom_user()
+	agents = _deciding_for()
+	if not agents:
+		return {"total": 0, "waiting": 0, "proposals": 0}
+	waiting = frappe.db.count("Excom Thread", {"ai_agent": ["in", agents], "ai_mode": "Needs person", "status": ["!=", "Closed"]})
+	pending = frappe.db.count("Excom AI Proposal", {"agent": ["in", agents], "status": "Pending"})
+	return {"total": waiting + pending, "waiting": waiting, "proposals": pending}
+
+
+@frappe.whitelist()
+def shadow_scores(agent: str) -> dict:
+	doc = frappe.get_doc("Excom AI Agent", agent)
+	frappe.has_permission("Excom AI Agent", "read", doc, throw=True)
+	return shadow_score(agent)

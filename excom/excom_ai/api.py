@@ -117,3 +117,22 @@ def dry_run(name: str, days: int = 21):
 
 	agent = _agent_for(name, need_owner=False)
 	return sequencer.dry_run(agent.name, days=int(days or 21))
+
+
+@frappe.whitelist()
+def research_people(name: str, status: str = "Ready", limit: int = 200):
+	"""The people this agent's research found (research records are not readable to owners directly)."""
+	agent = _agent_for(name, need_owner=False)
+	companies = frappe.get_all("Excom AI Company", {"agent": agent.name}, pluck="name")
+	if not companies:
+		return []
+	filters = {"company": ["in", companies]}
+	if status:
+		filters["status"] = status
+	rows = frappe.get_all("Excom AI Person", filters, ["name", "email", "full_name", "title", "email_status", "status", "company",
+		"consent_verdict", "is_inbox", "lead"], order_by="modified desc", limit=int(limit or 200))
+	names = dict(frappe.get_all("Excom AI Company", {"name": ["in", list({r.company for r in rows}) or ["-"]]},
+		["name", "company_name"], as_list=True))
+	for r in rows:
+		r.company_name = names.get(r.company)
+	return rows

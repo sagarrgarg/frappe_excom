@@ -198,6 +198,8 @@ def decide(name: str, decision: str, *, reason: str | None = None, note: str | N
 			doc.edit_diff = frappe.as_json({"before": frappe.parse_json(doc.payload or "{}"), "after": payload})
 			doc.payload = payload
 			doc.status = "Edited"
+			if doc.action in SENDS and payload.get("body") is not None:
+				doc.preview_html = _preview_after_edit(doc, agent, payload)
 		else:
 			doc.status = "Approved"
 	else:
@@ -210,6 +212,19 @@ def decide(name: str, decision: str, *, reason: str | None = None, note: str | N
 	if doc.status in ("Approved", "Edited") and doc.action not in SENDS:
 		execute(doc.name)  # sends go out paced, in the buyer's office hours (sequencer.send_due)
 	return frappe.db.get_value("Excom AI Proposal", name, "status")
+
+
+def _preview_after_edit(doc, agent, payload: dict) -> str:
+	"""What the buyer will now see (the sender composes from the payload the same way)."""
+	from excom.excom_ai.writer import compose
+
+	step_row = None
+	if doc.enrollment:
+		seq = frappe.db.get_value("Excom AI Enrollment", doc.enrollment, "sequence")
+		name = frappe.db.get_value("Excom AI Sequence Step", {"parent": seq, "step": doc.step})
+		step_row = frappe.get_doc("Excom AI Sequence Step", name) if name else None
+	identity = frappe.db.get_value("Omni Identity", {"primary_email": doc.to_email}) if doc.to_email else None
+	return compose(agent, payload.get("body") or "", step_row, identity, doc.kind or "Sequence")
 
 
 def _blocked(doc, agent) -> tuple[str, str] | None:
