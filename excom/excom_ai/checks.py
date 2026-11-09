@@ -223,8 +223,8 @@ def _footer(kind: str, composed_html: str | None, agent) -> tuple[bool, str]:
 		missing.append(_("no postal address in Excom AI Settings for {0}").format(agent.company))
 	elif frappe.utils.escape_html(address.splitlines()[0]) not in composed_html:
 		missing.append(_("postal address"))
-	if "excom.excom_ai.mail.unsubscribe" not in composed_html:
-		missing.append(_("unsubscribe link"))
+	if "excom.excom_ai.mail.unsubscribe" not in composed_html and agent.status != "Shadow":
+		missing.append(_("unsubscribe link"))  # a Shadow draft has no person record yet: the link is added when sent
 	return (not missing), (_("missing: {0}").format(", ".join(missing)) if missing else _("address and unsubscribe present"))
 
 

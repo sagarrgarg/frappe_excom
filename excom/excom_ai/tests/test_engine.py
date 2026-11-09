@@ -506,8 +506,11 @@ class TestEngine(FrappeTestCase):
 			frappe.db.set_value("Excom AI Agent Type", "Sales", "enabled", 1)
 		self.assertEqual(frappe.db.get_value("Excom AI Proposal", p.name, "status"), "Held", "the type's switch counts")
 		frappe.db.set_value("Excom AI Proposal", p.name, "status", "Approved")
-		proposals.execute(p.name)  # no executor for send_email yet: Failed
-		self.assertEqual(frappe.db.get_value("Excom AI Proposal", p.name, ["status", "step_key"]), ("Failed", None))
+		from excom.excom_ai import sequencer
+
+		with patch.object(sequencer, "in_window", return_value=True):
+			proposals.execute(p.name)  # the agent has no mailbox: it can never go
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", p.name, ["status", "step_key"]), ("Cancelled", None))
 		t = frappe.get_doc("Excom AI Task", tasks.add(a.name, "echo", dedupe_key="step"))
 		with patch.object(proposals, "execute"):
 			again = proposals.propose(t, a, "send_email", enrollment=enr.name, step=1)

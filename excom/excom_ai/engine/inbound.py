@@ -94,9 +94,19 @@ def _agent_from_enrollment(thread: str) -> str | None:
 
 
 def _stop_sequences(agent: str, thread: str, event: dict) -> None:
-	"""Someone answered: no more sequence steps to them from this agent."""
-	for name in frappe.get_all("Excom AI Enrollment", {"agent": agent, "thread": thread, "status": ["in", ("Active", "Paused")]},
-			pluck="name"):
+	"""Someone answered: no more sequence steps to them, and no more cold email to anyone at their
+	company (the company stop), from any agent."""
+	names = set(frappe.get_all("Excom AI Enrollment", {"agent": agent, "thread": thread, "status": ["in", ("Active", "Paused")]},
+		pluck="name"))
+	for company in {c for c in frappe.get_all("Excom AI Enrollment", {"thread": thread}, pluck="company") if c}:
+		frappe.db.set_value("Excom AI Company", company, {"company_stop": 1, "stop_reason": _("Someone there replied")},
+			update_modified=False)
+		prospect = frappe.db.get_value("Excom AI Company", company, "prospect")
+		if prospect and frappe.get_meta("Prospect").has_field("ai_company_stop"):
+			frappe.db.set_value("Prospect", prospect, {"ai_company_stop": 1, "ai_stop_reason": _("Someone there replied")},
+				update_modified=False)
+		names |= set(frappe.get_all("Excom AI Enrollment", {"company": company, "status": ["in", ("Active", "Paused")]}, pluck="name"))
+	for name in sorted(names):
 		doc = frappe.get_doc("Excom AI Enrollment", name)
 		doc.status = "Replied"
 		doc.stop_reason = _("Replied on {0}").format(event.get("channel") or "a channel")

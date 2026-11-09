@@ -26,6 +26,7 @@ MODULES = [
 	"excom.excom_ai.engine.inbound",
 	"excom.excom_ai.research",
 	"excom.excom_ai.writer",
+	"excom.excom_ai.sequencer",
 ]
 
 # Priorities (HLD-007 §10.1): 0 inbound replies and events · 1 approved actions and due sends ·
@@ -41,6 +42,18 @@ class TaskKind:
 	on_hold: bool = False  # may still run while the agent is On Hold (bounces, opt-outs, out-of-office)
 	outreach: bool = False  # starts contact with someone: never on quiet dates, never on hold
 	effort: str = "write"  # classify | write | reason: which effort setting its AI calls use
+
+
+class Defer(Exception):
+	"""An executor saying: not now, at `until` (a send window, a follow-up's wait, today's cap)."""
+
+	def __init__(self, until, why: str = ""):
+		super().__init__(why)
+		self.until, self.why = until, why
+
+
+class Cancel(Exception):
+	"""An executor saying: this will never be done (the sequence stopped, the step before failed)."""
 
 
 TASK_KINDS: dict[str, TaskKind] = {}

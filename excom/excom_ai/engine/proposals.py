@@ -119,8 +119,8 @@ def propose(task, agent, action: str, *, policy_action: str | None = None, paylo
 		doc.db_set({"status": "Pending", "decided_by": None, "decided_on": None, "sampled": 0}, update_modified=False)
 		frappe.db.commit()
 		status = "Pending"
-	if status == "Approved":
-		execute(doc.name)
+	if status == "Approved" and action not in SENDS:
+		execute(doc.name)  # a send waits for the paced sender (sequencer.send_due), in the buyer's hours
 	elif status == "Pending":
 		notify.alert(reviewers(agent), _("{0} (AI) needs your review: {1}").format(agent.agent_name, action),
 			doctype="Excom AI Proposal", name=doc.name)
@@ -207,8 +207,8 @@ def decide(name: str, decision: str, *, reason: str | None = None, note: str | N
 	doc.save(ignore_permissions=True)
 	ownership.seen(agent.name, user)
 	frappe.db.commit()
-	if doc.status in ("Approved", "Edited"):
-		execute(doc.name)
+	if doc.status in ("Approved", "Edited") and doc.action not in SENDS:
+		execute(doc.name)  # sends go out paced, in the buyer's office hours (sequencer.send_due)
 	return frappe.db.get_value("Excom AI Proposal", name, "status")
 
 
@@ -272,11 +272,20 @@ def execute(name: str):
 	try:
 		with identity.as_user(agent.service_user):
 			made = fn(doc, agent)
-		values = {"status": "Sent" if doc.action in SENDS else "Done", "error": None}
+		values = {"status": "Sent" if doc.action in SENDS else "Done", "error": None, "hold_reason": None}
 		if made:
 			values.update({"executed_doctype": made[0], "executed_name": made[1]})
 		doc.db_set(values, update_modified=False)
+	except registry.Defer as d:
+		# not now: back to approved, due again at the time the executor named
+		frappe.db.rollback(save_point="excom_ai_execute")
+		doc.db_set({"status": "Edited" if doc.edit_diff else "Approved", "send_at": d.until, "hold_reason": d.why},
+			update_modified=False)
+	except registry.Cancel as c:
+		frappe.db.rollback(save_point="excom_ai_execute")
+		doc.db_set({"status": "Cancelled", "step_key": None, "hold_reason": str(c)}, update_modified=False)
 	except Exception as e:
+		# Failed is final: a send that broke partway may have gone out, so it is never retried.
 		frappe.db.rollback(save_point="excom_ai_execute")  # nothing half-done stays behind
 		doc.db_set({"status": "Failed", "step_key": None, "error": f"{type(e).__name__}: {e!s}"[:500]}, update_modified=False)
 		frappe.log_error(title=f"Excom AI: {doc.action} failed ({agent.name})", message=frappe.get_traceback())

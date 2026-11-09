@@ -108,3 +108,12 @@ def import_volza(name: str, file_url: str):
 	task = tasks.add(agent.name, "discover", dedupe_key=f"volza:{file_url}", params={"source": "volza", "file_url": file_url})
 	frappe.db.commit()
 	return {"task": task}
+
+
+@frappe.whitelist()
+def dry_run(name: str, days: int = 21):
+	"""When each step of each active enrollment would go, under today's rules, without sending."""
+	from excom.excom_ai import sequencer
+
+	agent = _agent_for(name, need_owner=False)
+	return sequencer.dry_run(agent.name, days=int(days or 21))

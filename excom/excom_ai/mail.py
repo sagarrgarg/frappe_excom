@@ -179,14 +179,14 @@ def photo_cards(items: list[str], limit: int = 3) -> str:
 # ── pacing ───────────────────────────────────────────────────────────────────
 
 
-def allowance(row) -> int:
-	"""How many cold emails this agent may send from this mailbox today."""
+def allowance(row, day=None) -> int:
+	"""How many cold emails this agent may send from this mailbox on a day (today by default)."""
 	if cint(row.get("paused")):
 		return 0
 	cap = cint(row.get("daily_cap")) or 40
 	if not row.get("warmup_start"):
 		return 0
-	days = date_diff(nowdate(), getdate(row.warmup_start))
+	days = date_diff(day or nowdate(), getdate(row.warmup_start))
 	if days < 0:
 		return 0
 	return min(cap, WARMUP_START + WARMUP_STEP * days)
