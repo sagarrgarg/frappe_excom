@@ -33,6 +33,9 @@ def tick():
 			ownership.evaluate(agent)
 			if agent.status in ("Shadow", "Live"):
 				plan(agent)
+				from excom.excom_ai import monitor
+
+				monitor.alerts(agent)
 			frappe.db.commit()
 		except Exception:
 			frappe.db.rollback()

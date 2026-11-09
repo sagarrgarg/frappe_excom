@@ -22,6 +22,10 @@ class ExcomAISettings(Document):
 			seen.add(row.domain)
 		if cint(self.prompt_retention_days) < 0:
 			frappe.throw(_("Retention cannot be negative."))
+		if self.has_value_changed("effort_classify") and self.get_doc_before_save():
+			from excom.excom_ai.monitor import gate_change
+
+			gate_change(effort=self.effort_classify)  # replies are classified at this effort
 
 	def on_update(self):
 		_sync_ai_interface_policy(cint(self.prompt_retention_days))

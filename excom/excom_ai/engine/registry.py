@@ -29,6 +29,7 @@ MODULES = [
 	"excom.excom_ai.sequencer",
 	"excom.excom_ai.responder",
 	"excom.excom_ai.deals",
+	"excom.excom_ai.monitor",
 ]
 
 # Priorities (HLD-007 §10.1): 0 inbound replies and events · 1 approved actions and due sends ·

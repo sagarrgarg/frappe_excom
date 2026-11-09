@@ -405,8 +405,10 @@ def eval_classify(inp: dict) -> dict:
 		return {"intent": hit}
 	from ai_interface.services.chat import run
 
+	trial = frappe.flags.excom_ai_trial or {}
 	r = run(system=[{"text": CLASSIFY_RULES, "cache": True}], prompt=untrusted(text[:6000], "the buyer's reply"),
-		output_schema=CLASSIFY_SCHEMA, calling_app="excom", action="classify_reply", effort="low")
+		output_schema=CLASSIFY_SCHEMA, calling_app="excom", action="classify_reply", effort=trial.get("effort") or "low",
+		model=trial.get("model") or None)
 	d = dict(r.data)
 	if d.get("intent") == "question" and (d.get("asks_price") or PRICE_TALK.search(text)):
 		d["intent"] = "negotiate"

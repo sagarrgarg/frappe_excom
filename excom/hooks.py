@@ -358,6 +358,8 @@ scheduler_events = {
 		"30 1 * * *": ["excom.excom_ai.builder.service.nightly"],
 		# Excom AI: SPF, DKIM, DMARC, blocklist and bounce rate of the agents' mailboxes.
 		"10 2 * * *": ["excom.excom_ai.mail.nightly_health"],
+		# Excom AI: the owners' morning digest (at the settings' time) and the Monday coach.
+		"0 * * * *": ["excom.excom_ai.monitor.hourly"],
 		# Ads: today's spend and results. Structure is hourly, the 28-day settle re-pull is daily.
 		"*/30 * * * *": ["excom.excom_ads.tasks.enqueue_intraday", "excom.excom_ads.tasks.wake_snoozed_alerts"],
 		# Ads: scheduled reports that are due (enqueue only, once per period).

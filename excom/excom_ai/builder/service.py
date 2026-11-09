@@ -108,7 +108,11 @@ def refresh(agent_name: str, notify_changes: bool = False) -> dict:
 		accounts=[r.channel_account for r in agent.channels] or None)
 	sections = knowledge.build(ctx)
 	name = knowledge.save(agent, sections)
+	before = agent.readiness_state
 	result = readiness.run(agent.name)
+	from excom.excom_ai import monitor
+
+	monitor.readiness_changed(agent.name, before, result["state"])
 	changes = frappe.db.get_value("Excom AI Knowledge", name, "changes_since_last") or ""
 	if notify_changes and changes:
 		from excom.excom_ai.engine import notify

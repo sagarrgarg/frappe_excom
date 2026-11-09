@@ -38,6 +38,10 @@ class ExcomAIAgent(Document):
 			self._copy_type_defaults()
 
 	def validate(self):
+		if not self.is_new() and self.has_value_changed("model") and self.model:
+			from excom.excom_ai.monitor import gate_change
+
+			gate_change(model=self.model)  # a worse score on the eval set keeps the old model
 		self._check_people()
 		self._check_brief()
 		self._check_policies()

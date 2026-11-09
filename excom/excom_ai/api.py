@@ -136,3 +136,44 @@ def research_people(name: str, status: str = "Ready", limit: int = 200):
 	for r in rows:
 		r.company_name = names.get(r.company)
 	return rows
+
+
+@frappe.whitelist()
+def live(name: str):
+	"""The live view (HLD-007 §13.1)."""
+	from excom.excom_ai import monitor
+
+	agent = _agent_for(name, need_owner=False)
+	return monitor.live(agent.name)
+
+
+@frappe.whitelist(methods=["POST"])
+def handover(name: str, new_owner: str, new_backup: str | None = None):
+	"""The owner is leaving: an Excom Admin or the team's manager hands the agent over."""
+	from excom.excom_ai import monitor
+
+	agent = frappe.get_doc("Excom AI Agent", name)
+	frappe.has_permission("Excom AI Agent", "read", agent, throw=True)
+	manager = bool(set(frappe.get_roles()) & MANAGERS) or frappe.db.exists("Excom Team Member", {"parenttype": "Excom Team",
+		"parent": agent.team, "user": frappe.session.user, "role": "Manager"})
+	if not manager:
+		frappe.throw(_("Only an Excom Admin or the team's manager hands an agent over."), frappe.PermissionError)
+	out = monitor.handover(name, new_owner, new_backup, by=frappe.session.user)
+	frappe.db.commit()
+	return out
+
+
+@frappe.whitelist(methods=["POST"])
+def apply_promotion(name: str, action: str):
+	"""Move one action up a mode, as suggested (never past its ceiling: the record refuses that)."""
+	from excom.excom_ai import monitor
+
+	agent = _agent_for(name)
+	suggestion = next((s for s in monitor.promotion_suggestions(agent) if s["action"] == action), None)
+	if not suggestion:
+		frappe.throw(_("{0} is not ready to move up.").format(action))
+	row = next(p for p in agent.policies if p.action == action)
+	row.mode = suggestion["to"]
+	agent.save(ignore_permissions=True)
+	frappe.db.commit()
+	return suggestion

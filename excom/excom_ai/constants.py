@@ -43,6 +43,7 @@ CEILINGS = {
 	"submit_document": "Off",
 	"payment_reminder": "Auto",
 	"todo_note": "Auto",
+	"playbook_change": "Review",  # the coach's suggestions: always a person's decision
 }
 
 SAFE_REPLY_INTENTS = "ooo, thanks, scheduling, public catalogue"

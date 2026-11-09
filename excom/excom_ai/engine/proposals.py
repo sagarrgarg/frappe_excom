@@ -40,6 +40,7 @@ ACTION_POLICY = {
 	"payment_reminder": "payment_reminder",
 	"create_todo": "todo_note",
 	"note": "todo_note",
+	"update_playbook": "playbook_change",
 }
 SENDS = ("send_email", "send_whatsapp", "reply", "payment_reminder")
 SEND_POLICIES = ("first_email", "follow_up_email", "reply", "whatsapp_template", "payment_reminder", "prices_and_terms")
