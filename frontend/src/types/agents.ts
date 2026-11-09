@@ -140,6 +140,9 @@ export interface Proposal {
   preview_html?: string | null;
   creation: string;
   hold_reason?: string | null;
+  /** Not in agent() yet; read when the server sends it. */
+  policy_action?: string | null;
+  payload?: ProposalPayload | string | null;
 }
 
 export interface AgentTask {
@@ -277,6 +280,8 @@ export interface QueueProposal {
   hold_reason?: string | null;
   enrollment?: string | null;
   send_at?: string | null;
+  /** Not in queue() yet; read when the server sends it. */
+  policy_action?: string | null;
 }
 
 export interface QueueBlocker {
@@ -324,6 +329,7 @@ export interface ThreadProposal {
   checks?: Checks | string | null;
   checker_verdict?: CheckerVerdict;
   creation: string;
+  policy_action?: string | null;
 }
 
 export interface ResearchSummary {
@@ -339,4 +345,98 @@ export interface AIPerson {
   email_status?: string | null;
   status?: string | null;
   company?: string | null;
+}
+
+/* ─── Phase 1F–1H: new proposal payloads (deals.py, monitor.py, responder.py) ─── */
+
+export interface QuoteLine {
+  item_code: string;
+  item_name?: string | null;
+  qty: number;
+  rate: number;
+  amount: number;
+}
+
+/** create_quotation: ERPNext's own prices, from the agent's price list. */
+export interface QuotationPayload {
+  party_type?: string;
+  party?: string;
+  opportunity?: string | null;
+  price_list?: string | null;
+  lines?: QuoteLine[];
+}
+
+/** update_playbook: the weekly coach's suggestion. */
+export interface PlaybookPayload { kind?: string; text?: string; why?: string }
+
+/** update_lead: the responder's reading of what kind of buyer this is. */
+export interface LeadPayload { customer_type?: string; note?: string | null }
+
+/** create_todo */
+export interface TodoPayload { allocated_to?: string | null; text?: string }
+
+/* ─── the live view (monitor.py live) ─── */
+
+/** mail.check_domain plus the 7-day bounce count; the DNS records are their text, or null when missing. */
+export interface MailboxHealth {
+  domain?: string;
+  checked_on?: string;
+  spf?: string | null;
+  dkim?: string | null;
+  dmarc?: string | null;
+  mx?: string[] | null;
+  /** true listed, false clean, null unknown (the blocklist refused to answer). */
+  blocklisted?: boolean | null;
+  hard_bounces_7d?: number;
+  sent_7d?: number;
+  error?: string;
+  ok?: boolean;
+}
+
+export interface LiveWaiting {
+  name: string;
+  display_name?: string | null;
+  ai_intent?: string | null;
+  last_inbound_at?: string | null;
+  /** Working hours (Monday to Friday). */
+  hours: number;
+  late: boolean;
+}
+
+export interface Promotion {
+  action: string;
+  from: Mode;
+  to: Mode;
+  why: string;
+}
+
+export interface LiveView {
+  today: { tasks: Record<string, number>; waiting_for_you: number; approved: number; rejected: (string | null)[] };
+  channels: { sent: number; bounces: number; replies_by_intent: Record<string, number>; waiting: LiveWaiting[] };
+  spend: { today: number; month: number; daily_budget: number; monthly_budget: number; tools_month: number };
+  health: {
+    status: AgentStatus;
+    readiness?: ReadinessState | null;
+    failures_in_a_row: number;
+    channels: { account: string; paused?: number | null; pause_reason?: string | null; health: MailboxHealth | null }[];
+    modes: Record<string, { mode: Mode; ceiling: Mode }>;
+  };
+  promotions: Promotion[];
+}
+
+/** needs_you.count(): for badges. */
+export interface NeedsYouCount { total: number; waiting: number; proposals: number }
+
+/** needs_you.shadow_scores(agent): every verdict so far, not just the loaded drafts. */
+export type ShadowScores = Record<ShadowVerdict, number> & { rated: number };
+
+/** api.dry_run(name, days): one row per step of each active enrollment. send_at is server time, null past the window. */
+export interface DryRunRow {
+  enrollment: string;
+  lead?: string | null;
+  person?: string | null;
+  step: number;
+  zone: string;
+  send_at?: string | null;
+  account?: string | null;
 }

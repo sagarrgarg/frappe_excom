@@ -42,6 +42,11 @@ export const M = {
   promotePerson: `${P}promote_person`,
   researchSummary: `${P}research_summary`,
   importVolza: `${P}import_volza`,
+  live: `${P}live`,
+  applyPromotion: `${P}apply_promotion`,
+  handover: `${P}handover`,
+  dryRun: `${P}dry_run`,
+  researchPeople: `${P}research_people`,
   queue: `${N}queue`,
   decideMany: `${N}decide_many`,
   approveStep: `${N}approve_step`,
@@ -50,7 +55,13 @@ export const M = {
   threadProposals: `${N}thread_proposals`,
   shadowComparison: `${N}shadow_comparison`,
   rateShadow: `${N}rate_shadow`,
+  count: `${N}count`,
+  shadowScores: `${N}shadow_scores`,
 } as const;
+
+/** SWR keys shared by more than one screen, so they read one cached copy. */
+export const liveKey = (name: string) => `agent-live-${name}`;
+export const NEEDS_YOU_COUNT_KEY = "needs-you-count";
 
 /* ─── types, statuses, health ─── */
 
@@ -135,7 +146,8 @@ export const PROPOSAL_LABEL: Record<string, string> = {
   send_whatsapp: "Send a WhatsApp message",
   reply: "Reply",
   create_lead: "Create a lead",
-  update_lead: "Update a lead",
+  update_lead: "Classify a lead",
+  update_playbook: "Add to the playbook",
   create_opportunity: "Create an opportunity",
   create_quotation: "Draft a quotation",
   payment_reminder: "Payment reminder",
@@ -170,6 +182,25 @@ export function appPath(route: string): string | null {
   if (!route) return null;
   if (route === "/excom" || route.startsWith("/excom/")) return route.slice("/excom".length) || "/inbox";
   return null;
+}
+
+/** Spend against a budget, as a bar that turns amber at 70% and red at 90%. */
+export function Meter({ label, used, budget }: { label: string; used: number; budget?: number | null }) {
+  const pct = budget ? Math.min(100, Math.round((used / budget) * 100)) : null;
+  return (
+    <div className="min-w-0">
+      <div className="flex items-baseline gap-2 min-w-0">
+        <span className="text-sm text-ink-1 flex-1 min-w-0 truncate">{label}</span>
+        <span className="text-sm tabular-nums text-ink-1">{cost(used)}</span>
+        <span className="text-xs text-ink-3 tabular-nums">{budget ? `of ${cost(budget)}` : "no budget set"}</span>
+      </div>
+      {pct !== null && (
+        <div className="h-1.5 rounded-full bg-surface-sunken mt-1 overflow-hidden" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${label}: ${pct}% of the budget`}>
+          <div className={cn("h-full rounded-full", pct >= 90 ? "bg-crayon-rose-base" : pct >= 70 ? "bg-crayon-amber-base" : "bg-crayon-green-base")} style={{ width: `${pct}%` }} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ─── facts ─── */

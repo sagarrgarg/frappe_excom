@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Save, Trash2, X } from "lucide-react";
-import { Button, Chip, Field, Input, Select } from "../primitives";
+import { ArrowRightLeft, Plus, Save, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
+import { Button, Chip, Field, Input, Modal, Select } from "../primitives";
 import { LinkField } from "../crm/LinkField";
 import { cn } from "../ui/utils";
 import type { AgentDetail, ChannelRow } from "../../types/agents";
@@ -63,7 +64,7 @@ export function ChannelsTab({ d, reload }: { d: AgentDetail; reload: () => void 
         <Button size="sm" variant="primary" disabled={savePeople.loading || !people.owner_user} onClick={async () => {
           const { owner_user, ...rest } = people;
           if (await savePeople.run({ name: a.name, ...(owner_user ? { owner_user } : {}), ...rest }, "People saved", "Could not save the people")) reload();
-        }}><Save />{savePeople.loading ? "Saving…" : "Save people"}</Button></> : undefined}>
+        }}><Save />{savePeople.loading ? "Saving…" : "Save people"}</Button></> : edit ? <HandoverButton d={d} reload={reload} /> : undefined}>
         <div className="grid grid-cols-1 tablet:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
           {pp("owner_user", "Owner", "User", edit ? "Only the team's manager or an Excom Admin changes the owner." : undefined)}
           {pp("backup_user", "Backup", "User", "Takes over when the owner is away.")}
@@ -141,5 +142,46 @@ export function ChannelsTab({ d, reload }: { d: AgentDetail; reload: () => void 
         {edit && <Button size="sm" variant="ghost" className="mt-2" onClick={() => setLimits((l) => ({ ...l, channels: [...l.channels, pickChannel({ channel_account: "" })] }))}><Plus />Add a channel</Button>}
       </Panel>
     </div>
+  );
+}
+
+/**
+ * The owner is leaving: the agent, its open conversations and its leads go to someone else.
+ * Only an Excom Admin or the team's manager may; the server says so to anyone else.
+ */
+export function HandoverButton({ d, reload }: { d: AgentDetail; reload: () => void }) {
+  const a = d.agent;
+  const [open, setOpen] = useState(false);
+  const [owner, setOwner] = useState("");
+  const [backup, setBackup] = useState("");
+  const handover = useAgentAction(M.handover);
+  useEffect(() => { if (open) { setOwner(""); setBackup(""); } }, [open]);
+  const same = owner === a.owner_user;
+  const submit = async () => {
+    if (!owner || same) return;
+    const r = await handover.run({ name: a.name, new_owner: owner, ...(backup ? { new_backup: backup } : {}) }, "", "Could not hand it over");
+    if (!r) return;
+    const out = r as { threads?: number; leads?: number };
+    const n = (v: number | undefined, one: string, many: string) => `${v ?? 0} ${(v ?? 0) === 1 ? one : many}`;
+    toast.success(`Handed over to ${owner}: ${n(out.threads, "conversation", "conversations")} and ${n(out.leads, "lead", "leads")} moved.`);
+    setOpen(false);
+    reload();
+  };
+  return (
+    <>
+      <Button size="sm" onClick={() => setOpen(true)} title="Only an Excom Admin or the team's manager can hand an agent over"><ArrowRightLeft />Hand over</Button>
+      <Modal open={open} onOpenChange={setOpen} title={`Hand over ${a.agent_name}`}
+        footer={<><Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary" disabled={!owner || same || handover.loading} onClick={submit}>{handover.loading ? "Handing over…" : "Hand over"}</Button></>}>
+        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+          <p className="text-sm text-ink-2">For when {a.owner_user} is leaving or moving on. The new owner takes the agent, and the open conversations and leads that are {a.owner_user}'s move with it. Only an Excom Admin or the team's manager can do this.</p>
+          <Field label="New owner" required hint={same ? "That is the owner already." : undefined}>
+            <LinkField doctype="User" value={owner} onChange={setOwner} placeholder="Choose a person" filters={USER_FILTERS} />
+          </Field>
+          <Field label="New backup" hint={`Optional. Leave empty to keep ${a.backup_user || "no backup"}.`}>
+            <LinkField doctype="User" value={backup} onChange={setBackup} placeholder="Choose a person" filters={USER_FILTERS} />
+          </Field>
+        </form>
+      </Modal>
+    </>
   );
 }

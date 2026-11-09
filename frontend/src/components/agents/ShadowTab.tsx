@@ -4,7 +4,7 @@ import { useFrappeGetCall } from "@/lib/api";
 import { Button, EmptyState, Textarea } from "../primitives";
 import { cn } from "../ui/utils";
 import { parseError } from "../../lib/errors";
-import type { AgentDetail, ShadowRow, ShadowVerdict } from "../../types/agents";
+import type { AgentDetail, ShadowRow, ShadowScores, ShadowVerdict } from "../../types/agents";
 import { HtmlPreview, M, Panel, PROPOSAL_LABEL, Stat, useAgentAction, useOpenThread, when } from "./bits";
 
 const VERDICTS: { value: ShadowVerdict; label: string; active: string }[] = [
@@ -20,26 +20,31 @@ const VERDICTS: { value: ShadowVerdict; label: string; active: string }[] = [
 export function ShadowTab({ d }: { d: AgentDetail }) {
   const name = d.agent.name;
   const { data, error, isLoading, mutate } = useFrappeGetCall<{ message: ShadowRow[] }>(M.shadowComparison, { agent: name }, `shadow-${name}`, { revalidateOnFocus: false });
+  // Every verdict so far, not just the drafts loaded below.
+  const { data: scored, mutate: rescore } = useFrappeGetCall<{ message: ShadowScores }>(M.shadowScores, { agent: name }, `shadow-scores-${name}`, { revalidateOnFocus: false, shouldRetryOnError: false });
   const rows = data?.message ?? [];
   if (error) return <p role="alert" className="text-sm text-crayon-rose-text">{parseError(error).message}</p>;
   if (isLoading && !data) return <p className="text-sm text-ink-3">Loading…</p>;
   if (!rows.length) return <EmptyState icon={<Eye />} title="No practice drafts yet" hint="In Shadow the agent drafts what it would send, and nothing leaves. Its drafts appear here next to what a person sent." />;
 
-  const counts = { "Agent better": 0, "About the same": 0, "Person better": 0 } as Record<ShadowVerdict, number>;
-  rows.forEach((r) => { if (r.shadow_verdict) counts[r.shadow_verdict as ShadowVerdict] += 1; });
-  const rated = counts["Agent better"] + counts["About the same"] + counts["Person better"];
+  const local = { "Agent better": 0, "About the same": 0, "Person better": 0 } as Record<ShadowVerdict, number>;
+  rows.forEach((r) => { if (r.shadow_verdict) local[r.shadow_verdict as ShadowVerdict] += 1; });
+  const s = scored?.message;
+  const counts = s ?? { ...local, rated: local["Agent better"] + local["About the same"] + local["Person better"] };
+  const unjudged = rows.filter((r) => !r.shadow_verdict).length;
+  const share = (v: ShadowVerdict) => (counts.rated ? ` (${Math.round((100 * counts[v]) / counts.rated)}%)` : "");
   return (
     <div className="space-y-2 max-w-5xl">
-      <Panel title={`Your verdicts on the last ${rows.length} ${rows.length === 1 ? "draft" : "drafts"}`}>
+      <Panel title={s ? `Your verdicts so far: ${counts.rated} judged` : `Your verdicts on the last ${rows.length} ${rows.length === 1 ? "draft" : "drafts"}`}>
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] tablet:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2">
-          <Stat label="Agent better" value={counts["Agent better"]} />
-          <Stat label="About the same" value={counts["About the same"]} />
-          <Stat label="Person better" value={counts["Person better"]} tone={counts["Person better"] ? "rose" : undefined} />
-          <Stat label="Not judged yet" value={rows.length - rated} tone={rows.length - rated ? "amber" : undefined} />
+          <Stat label={`Agent better${share("Agent better")}`} value={counts["Agent better"]} />
+          <Stat label={`About the same${share("About the same")}`} value={counts["About the same"]} />
+          <Stat label={`Person better${share("Person better")}`} value={counts["Person better"]} tone={counts["Person better"] ? "rose" : undefined} />
+          <Stat label={`Not judged, of the ${rows.length} below`} value={unjudged} tone={unjudged ? "amber" : undefined} />
         </div>
         <p className="text-xs text-ink-3 mt-2">Judge a few drafts before putting the agent live: if the person is usually better, fix the brief or the playbook first.</p>
       </Panel>
-      <ul className="space-y-2">{rows.map((r) => <li key={r.name}><ShadowCard r={r} onSaved={() => mutate()} /></li>)}</ul>
+      <ul className="space-y-2">{rows.map((r) => <li key={r.name}><ShadowCard r={r} onSaved={() => { mutate(); rescore(); }} /></li>)}</ul>
     </div>
   );
 }

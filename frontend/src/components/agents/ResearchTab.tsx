@@ -96,7 +96,7 @@ function VolzaImport({ agent, onQueued }: { agent: string; onQueued: () => void 
  * research records directly).
  */
 function ReadyPeople({ agent, canPromote, onPromoted }: { agent: string; canPromote: boolean; onPromoted: () => void }) {
-  const { call } = useFrappePostCall("excom.excom_ai.api.research_people");
+  const { call } = useFrappePostCall(M.researchPeople);
   const promote = useAgentAction(M.promotePerson);
   const [rows, setRows] = useState<AIPerson[] | null>(null);
   const [companyNames, setCompanyNames] = useState<Record<string, string>>({});

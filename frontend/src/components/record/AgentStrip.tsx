@@ -7,7 +7,8 @@ import { Button, Chip } from "../primitives";
 import { cn } from "../ui/utils";
 import type { ExcomThread, UnifiedContact } from "../../types";
 import type { Checks, ProposalPayload, ThreadProposal } from "../../types/agents";
-import { ChecksSummary, HtmlPreview, M, PayloadEditor, PROPOSAL_LABEL, checksPassed, failingChecks, parseJson, useAgentAction, useAgentNames, when } from "../agents/bits";
+import { ProposalDetails, PricedChip, pricedFrom } from "../agents/ProposalDetails";
+import { ChecksSummary, M, PayloadEditor, PROPOSAL_LABEL, checksPassed, failingChecks, parseJson, useAgentAction, useAgentNames, when } from "../agents/bits";
 
 const proposalsKey = (thread: string) => `thread-proposals-${thread}`;
 
@@ -74,12 +75,12 @@ function ThreadProposals({ thread }: { thread: string }) {
   if (!rows.length) return null;
   return (
     <section aria-label="The agent's proposals" className="shrink-0 max-h-[45%] overflow-y-auto border-t border-border bg-surface-sunken px-3 py-2 space-y-2">
-      {rows.map((p) => <InlineProposal key={p.name} p={p} agent={names[p.agent] || p.agent} onDone={() => mutate()} />)}
+      {rows.map((p) => <InlineProposal key={p.name} p={p} priceList={pricedFrom(p, data?.message)} agent={names[p.agent] || p.agent} onDone={() => mutate()} />)}
     </section>
   );
 }
 
-function InlineProposal({ p, agent, onDone }: { p: ThreadProposal; agent: string; onDone: () => void }) {
+function InlineProposal({ p, priceList, agent, onDone }: { p: ThreadProposal; priceList: string | null; agent: string; onDone: () => void }) {
   const decide = useAgentAction(M.decide);
   const payload = parseJson<ProposalPayload>(p.payload) || {};
   const checks = parseJson<Checks>(p.checks);
@@ -102,6 +103,7 @@ function InlineProposal({ p, agent, onDone }: { p: ThreadProposal; agent: string
           {shadow ? <>What {agent} would have said</> : <>{agent} proposes: {label}</>}
           {payload.subject ? <span className="text-ink-3"> · {payload.subject}</span> : null}
         </span>
+        <PricedChip priceList={priceList} />
         {!shadow && checks && <Chip size="sm" accent={passed ? "green" : "rose"} label={passed ? "Checks passed" : failing ? `${failing} failed` : "AI check failed"} />}
         {shadow && <Chip size="sm" accent="violet" label="Practice" title="In Shadow nothing is sent" />}
         <span className="hidden tablet:inline text-xs text-ink-3 shrink-0">{when(p.creation)}</span>
@@ -109,8 +111,7 @@ function InlineProposal({ p, agent, onDone }: { p: ThreadProposal; agent: string
       {(open || editing) && (
         <div className="px-3 pb-3 space-y-2 min-w-0">
           {editing ? <PayloadEditor value={draft} onChange={setDraft} idPrefix={`inline-${p.name}`} />
-            : p.preview_html ? <HtmlPreview html={p.preview_html} title={`${agent}: ${label}`} />
-            : <p className="text-sm text-ink-1 whitespace-pre-wrap break-words">{payload.body || "No preview."}</p>}
+            : <ProposalDetails action={p.action} payload={payload} previewHtml={p.preview_html} title={`${agent}: ${label}`} />}
           {!shadow && <ChecksSummary checks={checks} verdict={p.checker_verdict} compact />}
         </div>
       )}

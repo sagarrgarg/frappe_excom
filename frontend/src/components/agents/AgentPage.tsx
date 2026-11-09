@@ -9,8 +9,12 @@ import { cn } from "../ui/utils";
 import { parseError } from "../../lib/errors";
 import { deskUrl } from "../../hooks/useRecordLinks";
 import { currentUser } from "../../lib/ui-flag";
-import type { AgentDetail, AgentTask, Proposal } from "../../types/agents";
-import { HtmlPreview, M, useAgentAction, Panel, PROPOSAL_LABEL, ReadinessChip, ReasonDialog, REJECT_REASONS, RISK_ACCENT, SectionPanel, Stat, StatusChip, STATUS_HINT, TypeChip, cost, when } from "./bits";
+import type { AgentDetail, AgentTask, NeedsYouQueue, Proposal, QueueProposal } from "../../types/agents";
+import { M, Meter, useAgentAction, Panel, PROPOSAL_LABEL, ReadinessChip, ReasonDialog, REJECT_REASONS, RISK_ACCENT, SectionPanel, Stat, StatusChip, STATUS_HINT, TypeChip, cost, when } from "./bits";
+import { LiveOverview } from "./LiveOverview";
+import { SchedulePreview } from "./SchedulePreview";
+import { ProposalDetails, PricedChip, pricedFrom } from "./ProposalDetails";
+import { HandoverButton } from "./ChannelsTab";
 import { BriefTab } from "./BriefTab";
 import { ReadinessTab } from "./ReadinessTab";
 import { ChannelsTab } from "./ChannelsTab";
@@ -70,7 +74,7 @@ export function AgentPage() {
     >
       {tab === "overview" && <OverviewTab d={d} reload={reload} go={setTab} />}
       {tab === "needs-you" && <NeedsYouTab d={d} reload={reload} />}
-      {tab === "activity" && <ActivityTab tasks={d.activity} />}
+      {tab === "activity" && <ActivityTab name={a.name} tasks={d.activity} />}
       {tab === "shadow" && <ShadowTab d={d} />}
       {tab === "research" && <ResearchTab d={d} />}
       {tab === "brief" && <BriefTab d={d} reload={reload} />}
@@ -144,7 +148,10 @@ function OverviewTab({ d, reload, go }: { d: AgentDetail; reload: () => void; go
         {d.can_change && a.status === "Shadow" && goLiveBlock && <p className="text-xs text-ink-3 mt-1.5">Going live: {goLiveBlock}</p>}
       </Panel>
 
-      <Panel title="Who is in charge" actions={watcher ? <Button size="sm" variant="ghost" disabled={ack.loading} onClick={async () => { if (await ack.run({ name: a.name }, "Thanks: noted that you are watching", "Could not save that")) reload(); }}><Check />I'm watching it</Button> : undefined}>
+      <Panel title="Who is in charge" actions={(watcher || (d.can_change && a.status !== "Retired")) ? <>
+        {watcher && <Button size="sm" variant="ghost" disabled={ack.loading} onClick={async () => { if (await ack.run({ name: a.name }, "Thanks: noted that you are watching", "Could not save that")) reload(); }}><Check />I'm watching it</Button>}
+        {d.can_change && a.status !== "Retired" && <HandoverButton d={d} reload={reload} />}
+      </> : undefined}>
         <dl>
           <Line label="Owner">{a.owner_user}</Line>
           {a.acting_owner && a.acting_owner !== a.owner_user && <Line label="In charge now">{a.acting_owner} <span className="text-ink-3">(the owner is away)</span></Line>}
@@ -155,6 +162,8 @@ function OverviewTab({ d, reload, go }: { d: AgentDetail; reload: () => void; go
           <Line label="Owner last seen">{when(a.owner_last_seen)}</Line>
         </dl>
       </Panel>
+
+      <LiveOverview name={a.name} go={go} />
 
       <Panel title="Readiness" actions={<Button size="sm" variant="link" onClick={() => go("readiness")}>See what to fix</Button>}>
         <div className="flex items-center gap-2 flex-wrap">
@@ -173,14 +182,6 @@ function OverviewTab({ d, reload, go }: { d: AgentDetail; reload: () => void; go
           ? <p className="text-sm text-ink-1">Version {a.brief_version}, approved by {a.brief_approved_by} on {when(a.brief_approved_on)}.</p>
           : <p className="text-sm text-crayon-amber-text">Not approved yet. It cannot go live until it is.</p>}
         {a.what_it_is && <p className="text-sm text-ink-2 mt-2 break-words line-clamp-4">{a.what_it_is}</p>}
-      </Panel>
-
-      <Panel title="Usage" actions={<Button size="sm" variant="link" onClick={() => go("usage")}>Details</Button>}>
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2">
-          <Stat label={a.daily_ai_budget ? `AI today, of ${cost(a.daily_ai_budget)}` : "AI today"} value={cost(d.usage.today)} />
-          <Stat label={a.monthly_ai_budget ? `This month, of ${cost(a.monthly_ai_budget)}` : "AI this month"} value={cost(d.usage.month)} />
-          <Stat label="AI calls this month" value={d.usage.calls_month} />
-        </div>
       </Panel>
 
       <Panel title="Targets">
@@ -208,25 +209,34 @@ function OverviewTab({ d, reload, go }: { d: AgentDetail; reload: () => void; go
 /* ─── Needs you ─── */
 
 function NeedsYouTab({ d, reload }: { d: AgentDetail; reload: () => void }) {
+  // agent() lists proposals without their payloads; the Needs you queue (same cache as that page)
+  // has them, for the agents this person decides for. Without it, cards show the preview only.
+  const { data: queue, mutate: reloadQueue } = useFrappeGetCall<{ message: NeedsYouQueue }>(d.needs_you.length ? M.queue : null, undefined, "needs-you", { revalidateOnFocus: false, shouldRetryOnError: false });
+  const full: Record<string, QueueProposal> = {};
+  [...(queue?.message?.proposals ?? []), ...(queue?.message?.held ?? [])].forEach((p) => { full[p.name] = p; });
+  const rows: Proposal[] = d.needs_you.map((p) => ({ ...p, payload: p.payload ?? full[p.name]?.payload ?? null, policy_action: p.policy_action ?? full[p.name]?.policy_action ?? null }));
   const all = <Link to="/agents/needs-you" className="text-sm text-crayon-blue-text hover:underline">Open Needs you for all agents, with checks, edits and bulk approval</Link>;
   if (d.needs_you.length === 0) return <EmptyState icon={<Check />} title="Nothing waits for you" hint="Messages and actions this agent wants approved will appear here." action={all} />;
+  const done = () => { reload(); reloadQueue(); };
   return (
     <div className="space-y-2 max-w-3xl">
       <p>{all}</p>
-      <ul className="space-y-2">{d.needs_you.map((p) => <li key={p.name}><ProposalCard p={p} reload={reload} /></li>)}</ul>
+      <ul className="space-y-2">{rows.map((p) => <li key={p.name}><ProposalCard p={p} priceList={pricedFrom(p, rows)} reload={done} /></li>)}</ul>
     </div>
   );
 }
 
-function ProposalCard({ p, reload }: { p: Proposal; reload: () => void }) {
+function ProposalCard({ p, priceList, reload }: { p: Proposal; priceList: string | null; reload: () => void }) {
   const decide = useAgentAction(M.decide);
   const [rejecting, setRejecting] = useState(false);
+  const label = PROPOSAL_LABEL[p.action] || p.action;
   return (
-    <article className="rounded-lg border border-border bg-surface min-w-0" aria-label={PROPOSAL_LABEL[p.action] || p.action}>
+    <article className="rounded-lg border border-border bg-surface min-w-0" aria-label={label}>
       <header className="flex items-center gap-2 px-3 min-h-10 py-1.5 border-b border-border flex-wrap min-w-0">
-        <h3 className="text-sm font-medium text-ink-1 truncate min-w-0">{PROPOSAL_LABEL[p.action] || p.action}</h3>
+        <h3 className="text-sm font-medium text-ink-1 truncate min-w-0">{label}</h3>
         {p.risk && <Chip size="sm" accent={RISK_ACCENT[p.risk] ?? "neutral"} label={`${p.risk} risk`} />}
         {p.status === "Held" && <Chip size="sm" accent="amber" label="Held" />}
+        <PricedChip priceList={priceList} />
         <span className="text-xs text-ink-3 ml-auto shrink-0">{when(p.creation)}</span>
       </header>
       <div className="p-3 space-y-2 min-w-0">
@@ -234,7 +244,7 @@ function ProposalCard({ p, reload }: { p: Proposal; reload: () => void }) {
           <p className="text-sm text-ink-2 min-w-0">For <a className="text-crayon-blue-text hover:underline inline-flex items-center gap-1 max-w-full" href={deskUrl(p.subject_doctype, p.subject_name)} target="_blank" rel="noreferrer"><span className="truncate">{p.subject_doctype} {p.subject_name}</span><ExternalLink className="size-3 shrink-0" /></a></p>
         )}
         {p.hold_reason && <p className="text-sm text-crayon-amber-text break-words">Held: {p.hold_reason}</p>}
-        {p.preview_html ? <HtmlPreview html={p.preview_html} title={`Preview: ${PROPOSAL_LABEL[p.action] || p.action}`} /> : <p className="text-sm text-ink-3">No preview.</p>}
+        <ProposalDetails action={p.action} payload={p.payload} previewHtml={p.preview_html} title={`Preview: ${label}`} />
         <div className="flex gap-1.5 flex-wrap">
           <Button variant="primary" size="sm" disabled={decide.loading} onClick={async () => { if (await decide.run({ name: p.name, decision: "approve" }, "Approved", "Could not approve")) reload(); }}><Check />Approve</Button>
           <Button variant="danger" size="sm" disabled={decide.loading} onClick={() => setRejecting(true)}><X />Reject</Button>
@@ -253,22 +263,25 @@ const TASK_ACCENT: Record<string, Accent> = { Queued: "neutral", Running: "blue"
 const TASK_KIND: Record<string, string> = { echo: "Self-test", inbound: "Message received" };
 const kindLabel = (k: string) => TASK_KIND[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, " ") : "—");
 
-function ActivityTab({ tasks }: { tasks: AgentTask[] }) {
+function ActivityTab({ name, tasks }: { name: string; tasks: AgentTask[] }) {
   return (
-    <div className="rounded-lg border border-border">
-      <DataTable<AgentTask>
-        rows={tasks}
-        keyOf={(t) => t.name}
-        empty={<EmptyState title="No activity yet" hint="Each piece of work the agent does shows here, with its result." compact />}
-        columns={[
-          { key: "kind", label: "Work", primary: true, render: (t) => kindLabel(t.kind) },
-          { key: "status", label: "Status", render: (t) => <Chip size="sm" accent={TASK_ACCENT[t.status] ?? "neutral"} label={t.status} /> },
-          { key: "outcome", label: "Result", className: "max-w-[420px]", render: (t) => t.error ? <span className="text-crayon-rose-text" title={t.error}>{t.error}</span> : <span title={t.outcome || ""}>{t.outcome || "—"}</span> },
-          { key: "creation", label: "Started", render: (t) => when(t.creation) },
-          { key: "ended", label: "Finished", render: (t) => when(t.ended_on) },
-          { key: "cost", label: "AI cost", align: "right", render: (t) => (t.ai_cost ? cost(t.ai_cost) : "—") },
-        ]}
-      />
+    <div className="space-y-2">
+      <SchedulePreview name={name} />
+      <div className="rounded-lg border border-border">
+        <DataTable<AgentTask>
+          rows={tasks}
+          keyOf={(t) => t.name}
+          empty={<EmptyState title="No activity yet" hint="Each piece of work the agent does shows here, with its result." compact />}
+          columns={[
+            { key: "kind", label: "Work", primary: true, render: (t) => kindLabel(t.kind) },
+            { key: "status", label: "Status", render: (t) => <Chip size="sm" accent={TASK_ACCENT[t.status] ?? "neutral"} label={t.status} /> },
+            { key: "outcome", label: "Result", className: "max-w-[420px]", render: (t) => t.error ? <span className="text-crayon-rose-text" title={t.error}>{t.error}</span> : <span title={t.outcome || ""}>{t.outcome || "—"}</span> },
+            { key: "creation", label: "Started", render: (t) => when(t.creation) },
+            { key: "ended", label: "Finished", render: (t) => when(t.ended_on) },
+            { key: "cost", label: "AI cost", align: "right", render: (t) => (t.ai_cost ? cost(t.ai_cost) : "—") },
+          ]}
+        />
+      </div>
     </div>
   );
 }
@@ -322,24 +335,6 @@ function KnowledgeTab({ d, reload }: { d: AgentDetail; reload: () => void }) {
 }
 
 /* ─── Usage ─── */
-
-function Meter({ label, used, budget }: { label: string; used: number; budget?: number | null }) {
-  const pct = budget ? Math.min(100, Math.round((used / budget) * 100)) : null;
-  return (
-    <div className="min-w-0">
-      <div className="flex items-baseline gap-2 min-w-0">
-        <span className="text-sm text-ink-1 flex-1 min-w-0 truncate">{label}</span>
-        <span className="text-sm tabular-nums text-ink-1">{cost(used)}</span>
-        <span className="text-xs text-ink-3 tabular-nums">{budget ? `of ${cost(budget)}` : "no budget set"}</span>
-      </div>
-      {pct !== null && (
-        <div className="h-1.5 rounded-full bg-surface-sunken mt-1 overflow-hidden" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${label}: ${pct}% of the budget`}>
-          <div className={cn("h-full rounded-full", pct >= 90 ? "bg-crayon-rose-base" : pct >= 70 ? "bg-crayon-amber-base" : "bg-crayon-green-base")} style={{ width: `${pct}%` }} />
-        </div>
-      )}
-    </div>
-  );
-}
 
 function UsageTab({ d }: { d: AgentDetail }) {
   const a = d.agent;

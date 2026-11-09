@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Lock, Save, X } from "lucide-react";
+import { Lock, Save, TrendingUp, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button, Chip, Field, Input, Select } from "../primitives";
 import { cn } from "../ui/utils";
 import type { AgentDetail, Mode, PolicyRow } from "../../types/agents";
 import { M, MODE_HINT, Panel, POLICY_LABEL, useAgentAction } from "./bits";
+import { useLive } from "./LiveOverview";
 
 /** Replies go out on their own only for these (excom_ai/constants.py SAFE_REPLY_INTENTS). */
 const SAFE_INTENTS = ["ooo", "thanks", "scheduling", "public catalogue"];
@@ -33,6 +34,14 @@ export function AutonomyTab({ d, reload }: { d: AgentDetail; reload: () => void 
   const over = d.policies.filter((p) => rows[p.action] && modes.indexOf(rows[p.action].mode) > modes.indexOf(ceilingFor(p, rows[p.action].condition, d.pack)));
   const save = useAgentAction(M.setPolicy);
   const [saving, setSaving] = useState(false);
+  const { live, reload: reloadLive } = useLive(d.agent.name);
+  const promotions = Object.fromEntries((live?.promotions ?? []).map((p) => [p.action, p]));
+  const promote = useAgentAction(M.applyPromotion);
+  const apply = async (action: string) => {
+    const s = promotions[action];
+    const label = POLICY_LABEL[action]?.label || action;
+    if (await promote.run({ name: d.agent.name, action }, `${label}: now ${s?.to ?? "one step up"}`, `Could not move ${label} up`)) { reload(); reloadLive(); }
+  };
 
   const saveAll = async () => {
     setSaving(true);
@@ -58,6 +67,14 @@ export function AutonomyTab({ d, reload }: { d: AgentDetail; reload: () => void 
           {modes.map((m) => <li key={m}><span className="text-ink-1 font-medium">{m}</span>: {MODE_HINT[m]}</li>)}
         </ul>
         <p className="text-xs text-ink-3 mt-2">Each action has a ceiling it can never go past, whatever is chosen here. Prices, terms and quotations always wait for a person.</p>
+        {live && (
+          <p className="text-sm text-ink-2 mt-2 flex items-center gap-1.5">
+            <TrendingUp className="size-4 shrink-0 text-ink-3" aria-hidden />
+            {live.promotions.length
+              ? `${live.promotions.length} ${live.promotions.length === 1 ? "action has" : "actions have"} earned a step up: see the suggestion under ${live.promotions.length === 1 ? "it" : "each"}.`
+              : "No suggestions to move up yet: an action earns one after 20 drafts in a row approved unchanged."}
+          </p>
+        )}
       </Panel>
 
       {d.policies.length === 0 && <p className="text-sm text-ink-3 p-3">No actions set up for this agent.</p>}
@@ -101,6 +118,19 @@ export function AutonomyTab({ d, reload }: { d: AgentDetail; reload: () => void 
                   {Number(r.daily_cap) > 0 && ` · at most ${r.daily_cap} a day`}
                   {r.condition && ` · only when: ${r.condition}`}
                 </p>
+              )}
+              {promotions[p.action] && (
+                <div className="mt-2 rounded-md border border-crayon-green-base bg-crayon-green-tint px-2.5 py-2 flex items-center gap-2 flex-wrap min-w-0" role="note" aria-label={`Suggestion for ${meta.label}`}>
+                  <TrendingUp className="size-4 shrink-0 text-crayon-green-text" aria-hidden />
+                  <p className="text-sm text-ink-1 min-w-0 flex-1 break-words">
+                    Suggested: move from <span className="font-medium">{promotions[p.action].from}</span> to <span className="font-medium">{promotions[p.action].to}</span>, because {promotions[p.action].why}.
+                  </p>
+                  {edit && (
+                    <Button size="sm" variant="primary" disabled={promote.loading || dirty.some((x) => x.action === p.action)}
+                      title={dirty.some((x) => x.action === p.action) ? "Save or discard your change to this row first" : undefined}
+                      onClick={() => apply(p.action)}>{promote.loading ? "Applying…" : "Apply"}</Button>
+                  )}
+                </div>
               )}
               {tooHigh && <p className="text-xs text-crayon-rose-text mt-1.5">{r.mode} is above what this action allows here.{p.action === "reply" ? ` Replies go out on their own only when “Only when” names just: ${SAFE_INTENTS.join(", ")}.` : ""}</p>}
               {edit && p.action === "reply" && p.hard_ceiling === "Auto" && d.pack !== "custom" && !tooHigh && ceiling !== "Auto" && (

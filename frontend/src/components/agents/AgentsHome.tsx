@@ -8,8 +8,8 @@ import { PageFrame } from "../shell/PageFrame";
 import { Avatar, Badge, Button, EmptyState } from "../primitives";
 import { toastError } from "../ErrorDialog";
 import { parseError } from "../../lib/errors";
-import type { AgentCard, AgentType } from "../../types/agents";
-import { HealthDot, M, ReasonDialog, Stat, StatusChip, TypeChip } from "./bits";
+import type { AgentCard, AgentType, NeedsYouCount } from "../../types/agents";
+import { HealthDot, M, NEEDS_YOU_COUNT_KEY, ReasonDialog, Stat, StatusChip, TypeChip } from "./bits";
 
 /** The New agent button shows only for people who may build one: types() refuses everyone else. */
 export function useAgentTypes() {
@@ -24,9 +24,13 @@ export function AgentsHome() {
   const { canBuild } = useAgentTypes();
   const agents = data?.message ?? [];
   const newButton = canBuild ? <Button variant="primary" size="sm" onClick={() => navigate("/agents/new")}><Plus />New agent</Button> : null;
-  const waiting = agents.reduce((n, a) => n + (a.waiting || 0), 0);
+  // needs_you.count(): proposals to approve plus buyers handed to a person, for the agents this
+  // person decides for. The cards' sum is only a fallback while it loads or if it fails.
+  const { data: counted } = useFrappeGetCall<{ message: NeedsYouCount }>(agents.length ? M.count : null, undefined, NEEDS_YOU_COUNT_KEY, { refreshInterval: 60_000, shouldRetryOnError: false });
+  const waiting = counted?.message ? counted.message.total : agents.reduce((n, a) => n + (a.waiting || 0), 0);
+  const waitingHint = counted?.message ? `${counted.message.proposals} to approve, ${counted.message.waiting} ${counted.message.waiting === 1 ? "buyer" : "buyers"} waiting for a person` : undefined;
   const needsYou = agents.length > 0 ? (
-    <Button size="sm" onClick={() => navigate("/agents/needs-you")} aria-label={`Needs you${waiting ? `, ${waiting} waiting` : ""}`}>
+    <Button size="sm" onClick={() => navigate("/agents/needs-you")} title={waitingHint} aria-label={`Needs you${waiting ? `, ${waiting} waiting${waitingHint ? `: ${waitingHint}` : ""}` : ""}`}>
       <Inbox />Needs you{waiting > 0 && <Badge solid accent="amber" count={waiting} />}
     </Button>
   ) : null;

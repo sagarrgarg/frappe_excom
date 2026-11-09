@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useSWRConfig } from "swr";
 import { AlertOctagon, Check, CheckCheck, Clock, Inbox, PauseCircle, Pencil, RefreshCw, UserRound, X } from "lucide-react";
 import { toast } from "sonner";
 import { useFrappeGetCall } from "@/lib/api";
@@ -9,7 +10,8 @@ import { Button, Chip, EmptyState, Kbd } from "../primitives";
 import { cn } from "../ui/utils";
 import { parseError } from "../../lib/errors";
 import type { NeedsYouQueue, ProposalPayload, QueueProposal, WaitingBuyer } from "../../types/agents";
-import { ChecksSummary, HtmlPreview, M, PayloadEditor, PROPOSAL_LABEL, REJECT_REASONS, RISK_ACCENT, ReasonDialog, checksPassed, useAgentAction, useOpenThread, when } from "./bits";
+import { ProposalDetails, PricedChip, pricedFrom } from "./ProposalDetails";
+import { ChecksSummary, M, NEEDS_YOU_COUNT_KEY, PayloadEditor, PROPOSAL_LABEL, REJECT_REASONS, RISK_ACCENT, ReasonDialog, checksPassed, useAgentAction, useOpenThread, when } from "./bits";
 
 /** How long someone has waited, in the unit a person would say. */
 function waited(h?: number | null): string {
@@ -62,7 +64,8 @@ export function NeedsYouPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const keyed = useRef(false);
 
-  const reload = () => { mutate(); };
+  const { mutate: mutateKey } = useSWRConfig();
+  const reload = () => { mutate(); mutateKey(NEEDS_YOU_COUNT_KEY); };
   const drop = (ids: string[]) => setGone((s) => { const n = new Set(s); ids.forEach((i) => n.add(i)); return n; });
   const moveAfter = (name: string) => {
     const i = order.findIndex((p) => p.name === name);
@@ -181,6 +184,7 @@ export function NeedsYouPage() {
                           <li key={p.name}>
                             <ReviewCard
                               p={p}
+                              priceList={pricedFrom(p, q.proposals)}
                               selected={cursor === p.name}
                               onSelect={() => { keyed.current = false; setCursor(p.name); }}
                               editing={editing === p.name}
@@ -289,8 +293,9 @@ function WaitingRow({ w, agent, onOpen }: { w: WaitingBuyer; agent: string; onOp
   );
 }
 
-function ReviewCard({ p, selected, onSelect, editing, draft, setDraft, busy, onApprove, onEdit, onSaveEdit, onCancelEdit, onReject }: {
+function ReviewCard({ p, priceList, selected, onSelect, editing, draft, setDraft, busy, onApprove, onEdit, onSaveEdit, onCancelEdit, onReject }: {
   p: QueueProposal;
+  priceList: string | null;
   selected: boolean;
   onSelect: () => void;
   editing: boolean;
@@ -317,6 +322,7 @@ function ReviewCard({ p, selected, onSelect, editing, draft, setDraft, busy, onA
       <header className="flex items-center gap-2 px-3 min-h-10 py-1.5 border-b border-border flex-wrap min-w-0">
         <h4 className="text-sm font-medium text-ink-1 truncate min-w-0">{label}</h4>
         {p.risk && <Chip size="sm" accent={RISK_ACCENT[p.risk] ?? "neutral"} label={`${p.risk} risk`} />}
+        <PricedChip priceList={priceList} />
         <span className="text-xs text-ink-3 ml-auto shrink-0">{when(p.creation)}</span>
       </header>
       <div className="p-3 space-y-2 min-w-0">
@@ -333,10 +339,8 @@ function ReviewCard({ p, selected, onSelect, editing, draft, setDraft, busy, onA
           <div onClick={(e) => e.stopPropagation()}>
             <PayloadEditor value={draft} onChange={setDraft} idPrefix={`edit-${p.name}`} />
           </div>
-        ) : p.preview_html ? (
-          <HtmlPreview html={p.preview_html} title={`Preview: ${label}${p.to_email ? ` to ${p.to_email}` : ""}`} />
         ) : (
-          <p className="text-sm text-ink-3">No preview.</p>
+          <ProposalDetails action={p.action} payload={p.payload} previewHtml={p.preview_html} title={`Preview: ${label}${p.to_email ? ` to ${p.to_email}` : ""}`} />
         )}
         <ChecksSummary checks={p.checks} verdict={p.checker_verdict} notes={p.checker_notes} />
         <div className="flex gap-1.5 flex-wrap pt-1" onClick={(e) => e.stopPropagation()}>
