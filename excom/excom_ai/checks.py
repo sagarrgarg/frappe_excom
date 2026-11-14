@@ -158,7 +158,7 @@ def _banned_by_playbook(agent) -> list[str]:
 	for s in frappe.get_all("Excom AI Playbook Section", {"parent": ["in", approved or ["-"]], "kind": "Banned claims"},
 			pluck="content"):
 		for line in frappe.utils.strip_html_tags(s or "").splitlines():
-			line = re.sub(r"^[\s\-*•\d.)]+", "", line).strip().strip('"').lower()
+			line = re.sub(r"^[\s\-*•\d.)]+", "", line).strip().strip('"').rstrip(".,;:!").lower()
 			# "Never claim EN71" -> "en71"
 			line = re.sub(r"^(never (claim|say|mention|use)|don't (claim|say)|no)\s+", "", line)
 			if 3 <= len(line) <= 60:

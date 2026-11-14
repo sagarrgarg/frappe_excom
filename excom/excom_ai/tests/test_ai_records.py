@@ -378,6 +378,17 @@ class TestAIRecords(FrappeTestCase):
 		pb.save()
 		self.assertEqual((pb.status, pb.version, pb.approved_by), ("In Review", 2, None), "an edit goes back to review")
 
+	def test_banned_claims_read_with_or_without_full_stop(self):
+		from excom.excom_ai import checks
+
+		pb = frappe.get_doc({"doctype": "Excom AI Playbook", "title": "QA banned", "status": "Approved",
+			"sections": [{"kind": "Banned claims", "content": "Never claim EN71.\n- non-toxic\nCE marked;\nworld-class"}]}).insert()
+		agent = frappe._dict(playbooks=[frappe._dict(playbook=pb.name)])
+		self.assertEqual(checks._banned_by_playbook(agent), ["en71", "non-toxic", "ce marked", "world-class"])
+		ok, why = checks._phrases(agent, "Our water guns are EN71 certified.")
+		self.assertFalse(ok, why)
+		self.assertTrue(checks._phrases(agent, "Tested to ASTM F963.")[0])
+
 	def test_recipes_only_read_allowed_data(self):
 		ok = {"doctype": "Excom AI Recipe", "recipe_key": "qa_overseas", "label": "QA overseas", "kind": "Query spec",
 			"query_spec": '{"doctype": "Customer", "filters": {"gst_category": "Overseas"}, "fields": ["name", "customer_group"]}'}
