@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useFrappePostCall } from "frappe-react-sdk";
-import { Bot, Inbox, Plus, Square } from "lucide-react";
+import { AlertTriangle, Bot, ChevronRight, Inbox, Plus, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useFrappeGetCall } from "@/lib/api";
 import { PageFrame } from "../shell/PageFrame";
 import { Avatar, Badge, Button, EmptyState, SegmentedControl } from "../primitives";
 import { toastError } from "../ErrorDialog";
 import { parseError } from "../../lib/errors";
+import { isManager } from "../../lib/ui-flag";
+import { SETUP_METHODS, SETUP_STATUS_KEY, progress, type SetupStatus } from "../../lib/ai-setup";
 import type { AgentCard, AgentType, NeedsYouCount } from "../../types/agents";
 import { HealthDot, M, NEEDS_YOU_COUNT_KEY, ReasonDialog, Stat, StatusChip, TypeChip } from "./bits";
 import { TemplatesTab } from "./TemplatesTab";
@@ -18,6 +20,22 @@ type HomeTab = "agents" | "templates";
 export function useAgentTypes() {
   const { data, error, isLoading } = useFrappeGetCall<{ message: AgentType[] }>(M.types, undefined, "agent-types", { revalidateOnFocus: false, shouldRetryOnError: false });
   return { types: data?.message ?? [], canBuild: Boolean(data?.message) && !error, isLoading };
+}
+
+/** For Excom Admins and System Managers: a link to /admin/ai-setup while setup is not finished. One fetch, no polling. */
+function SetupBanner() {
+  const admin = isManager();
+  const { data } = useFrappeGetCall<{ message: SetupStatus }>(admin ? SETUP_METHODS.status : null, undefined, SETUP_STATUS_KEY, { revalidateOnFocus: false, shouldRetryOnError: false });
+  const s = data?.message;
+  if (!admin || !s || s.ready_to_go_live) return null;
+  const n = Math.max(1, progress(s.steps).pending);
+  return (
+    <Link to="/admin/ai-setup" className="flex items-center gap-2 rounded-lg border border-crayon-amber-base/40 bg-crayon-amber-tint px-3 py-2 mb-3 text-sm text-crayon-amber-text hover:brightness-95 min-w-0">
+      <AlertTriangle className="size-4 shrink-0" />
+      <span className="flex-1 min-w-0 truncate">AI setup isn't finished: {n} {n === 1 ? "step" : "steps"}</span>
+      <ChevronRight className="size-4 shrink-0" />
+    </Link>
+  );
 }
 
 /**
@@ -45,6 +63,7 @@ export function AgentsHome() {
   ) : null;
   return (
     <PageFrame title="Agents" icon={<Bot />} actions={(needsYou || newButton) ? <>{needsYou}{newButton}</> : null}>
+      <SetupBanner />
       {error ? (
         <p role="alert" className="text-sm text-crayon-rose-text p-3">{parseError(error).message}</p>
       ) : isLoading && !data ? (

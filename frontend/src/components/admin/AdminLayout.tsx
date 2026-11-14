@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useFrappePostCall } from "frappe-react-sdk";
 import { useFrappeGetCall } from "@/lib/api";
-import { Shield, Users, Radio, Tag, MessageSquare, Smile, FileText, Bell, Inbox, Settings, History, GitMerge, ListChecks, Cog, RefreshCw, LayoutGrid, AlertTriangle, UserCheck, Facebook, Stethoscope, PhoneCall, MessageCircle } from "lucide-react";
+import { Shield, Users, Radio, Tag, MessageSquare, Smile, FileText, Bell, Inbox, Settings, History, GitMerge, ListChecks, Cog, RefreshCw, LayoutGrid, AlertTriangle, UserCheck, Facebook, Stethoscope, PhoneCall, MessageCircle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPage } from "../shell/AdminPage";
 import { Button, Select, Sheet, Chip } from "../primitives";
@@ -17,6 +17,7 @@ import { VoiceAdmin } from "./VoiceAdmin";
 import { WhatsAppNumberAdmin } from "./WhatsAppNumberAdmin";
 import { TemplateLibraryButton } from "./TemplateLibrary";
 import { WhatsAppCallingAdmin } from "./WhatsAppCallingAdmin";
+import { AISetupAdmin } from "./AISetupAdmin";
 import { serverMessage } from "./util";
 
 interface Section { id: string; label: string; icon: React.ReactNode; group: "People" | "Channels" | "Content" | "Automation" | "System" | "Lists"; render?: () => React.ReactNode; to?: string; hint?: string }
@@ -73,6 +74,7 @@ function SyncTemplates() {
 
 const SECTIONS: Section[] = [
   { id: "overview", label: "Overview", icon: <LayoutGrid />, group: "System" },
+  { id: "ai-setup", label: "AI setup", icon: <Sparkles />, group: "System", render: () => <AISetupAdmin />, hint: "Everything the AI agents need, in order, with the fix on the page." },
   { id: "teams", label: "Teams", icon: <Shield />, group: "People", render: () => <TeamsAdmin /> },
   { id: "users", label: "Users & roles", icon: <Users />, group: "People", render: () => <UsersAdmin /> },
   { id: "meta", label: "Meta Business", icon: <Facebook />, group: "Channels", render: () => <MetaConnectAdmin /> },

@@ -316,6 +316,22 @@ class Prospeo(Tool):
 		self.charged = PROSPEO_CREDIT if out and out.get("email") and not (answer or {}).get("free_enrichment") else 0.0
 		return out
 
+	def ping(self) -> dict:
+		"""A free check of the key (the AI setup page): Prospeo's account information, which uses no credit."""
+		secret = self.secret()
+		try:
+			r = requests.get(f"{PROSPEO_URL}/account-information", headers={"X-KEY": secret, "User-Agent": user_agent()},
+				timeout=TIMEOUT)
+			data = r.json() if r.content else {}
+		except (requests.RequestException, ValueError) as e:
+			return {"ok": False, "detail": f"Prospeo: no answer ({type(e).__name__})"}
+		if not isinstance(data, dict) or data.get("error") or r.status_code != 200:
+			code = clean((data or {}).get("error_code") if isinstance(data, dict) else "", 60) or f"HTTP {r.status_code}"
+			return {"ok": False, "detail": _("Prospeo did not accept the key ({0}).").format(code)}
+		resp = data.get("response") if isinstance(data.get("response"), dict) else data
+		left = resp.get("remaining_credits")
+		return {"ok": True, "detail": _("Key works.") + (" " + _("{0} credits left.").format(left) if left is not None else "")}
+
 	def fake_search(self, domain: str, titles: list | None = None, limit: int = 10) -> list[dict]:
 		self.charged = PROSPEO_CREDIT
 		return map_prospeo_search({"results": [

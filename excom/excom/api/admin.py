@@ -32,6 +32,18 @@ ADMIN_DOCTYPES: dict[str, dict] = {
     # Frappe's own auto-assignment engine, scoped to the doctypes Excom drives.
     "Assignment Rule": {"title": "name", "scope_field": "document_type"},
     "Excom Meta Connection": {"title": "connection_name"},
+    # Excom AI, for the AI setup page (HLD-010): only the fields listed here can be read or written
+    # through this editor. The master switch, the AI identity policy and engine limits stay in Desk.
+    "Excom AI Settings": {"title": None, "single": True, "no_delete": True, "fields": {
+        "daily_budget_total", "review_sample_percent", "alert_users", "digest_time", "postal_addresses",
+        "dnc_domains", "quiet_dates", "handover_line", "voice_service_url", "voice_service_key",
+        "voice_max_seconds", "voice_turn_limit", "voice_recording_notice", "templates_enabled",
+        "whatsapp_auto_submit", "template_first_use_review", "template_submissions_per_day",
+        "template_max_attempts", "people_per_company", "people_titles", "people_exclude_titles",
+        "people_on_demand", "people_daily_per_user"}},
+    "Excom AI Tool": {"title": "label", "no_create": True, "no_delete": True, "fields": {
+        "label", "enabled", "api_key", "api_secret", "account_id", "monthly_budget", "used_this_month",
+        "rate_limit", "last_error", "notes"}},
 }
 
 
@@ -96,6 +108,8 @@ def get_schema(doctype: str) -> dict:
             continue
         if df.fieldtype in _LAYOUT or df.fieldname in _SKIP_FIELDS or df.hidden:
             continue
+        if cfg.get("fields") is not None and df.fieldname not in cfg["fields"]:
+            continue
         cur["fields"].append(_field_dict(df))
     if cur["fields"]:
         sections.append(cur)
@@ -156,6 +170,8 @@ def get_doc(doctype: str, name: str = "") -> dict:
         doc = frappe.get_doc(doctype, name)
         _assert_in_scope(cfg, doc)
     d = doc.as_dict()
+    if cfg.get("fields") is not None:
+        d = {k: v for k, v in d.items() if k in cfg["fields"] or k in ("name", "doctype", "modified")}
     for k in list(d.keys()):
         if isinstance(d[k], list):
             d[k] = [{kk: vv for kk, vv in row.items() if not kk.startswith("_") and kk not in ("docstatus", "doctype")} for row in d[k]]
@@ -174,12 +190,17 @@ def save_doc(doctype: str, values: str | dict, name: str = "") -> dict:
     elif name:
         doc = frappe.get_doc(doctype, name)
     else:
+        if cfg.get("no_create"):
+            frappe.throw(_("{0} records are made by the app, not here").format(doctype), frappe.PermissionError)
         doc = frappe.new_doc(doctype)
         if values.get("__newname"):
             doc.__newname = values["__newname"]  # doctypes with autoname = Prompt
+    allowed = cfg.get("fields")
     for df in meta.fields:
         if df.fieldtype in _LAYOUT or df.fieldname not in values:
             continue
+        if allowed is not None and (df.fieldname not in allowed or df.read_only):
+            continue  # only the fields this editor owns; read-only ones (spend, last error) never from here
         v = values[df.fieldname]
         if df.fieldtype == "Password":
             if v and v != "__SET__":
@@ -206,6 +227,8 @@ def _assert_in_scope(cfg: dict, doc) -> None:
 @frappe.whitelist()
 def delete_doc(doctype: str, name: str) -> dict:
     cfg = _assert_allowed(doctype, write=True)
+    if cfg.get("no_delete") or cfg.get("single") or frappe.get_meta(doctype).issingle:
+        frappe.throw(_("{0} cannot be deleted here").format(doctype), frappe.PermissionError)
     _assert_in_scope(cfg, frappe.get_doc(doctype, name))
     frappe.delete_doc(doctype, name, ignore_permissions=True)
     frappe.db.commit()

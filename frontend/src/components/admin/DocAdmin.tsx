@@ -9,6 +9,7 @@ import { FieldControl, type AdminField } from "./FieldControl";
 import { deskUrl } from "../../hooks/useRecordLinks";
 import { serverMessage } from "./util";
 import { EmbedPanel } from "./EmbedPanel";
+import { pickSections } from "../../lib/ai-setup";
 
 interface Schema { doctype: string; title_field: string; single: boolean; read_only: boolean; needs_name?: boolean; sections: { label: string; fields: AdminField[]; depends_on?: string; collapsible?: number }[]; list_fields: string[]; list_labels: Record<string, string>; list_types: Record<string, string> }
 type Doc = Record<string, unknown>;
@@ -24,8 +25,12 @@ export function useSchema(doctype: string) {
   return useFrappeGetCall<{ message: Schema }>("excom.excom.api.admin.get_schema", { doctype }, `admin-schema-${doctype}`, { revalidateOnFocus: false });
 }
 
-/** Form for one doc of an admin doctype (drawer body). Also used stand-alone for the Single "Excom Settings". */
-export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraActions }: { doctype: string; name: string; schema: Schema; onSaved?: (name: string) => void; onDeleted?: () => void; extraActions?: React.ReactNode }) {
+/**
+ * Form for one doc of an admin doctype (drawer body). Also used stand-alone for the Single "Excom Settings".
+ * `fields` shows only those fields (the AI setup page shows each step's few); leave it out for the whole form.
+ */
+export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraActions, fields: only }: { doctype: string; name: string; schema: Schema; onSaved?: (name: string) => void; onDeleted?: () => void; extraActions?: React.ReactNode; fields?: string[] }) {
+  const sections = useMemo(() => pickSections(schema.sections, only), [schema, only]);
   const isNew = !name && !schema.single;
   const { data, isLoading, mutate } = useFrappeGetCall<{ message: Doc }>(isNew ? null : "excom.excom.api.admin.get_doc", isNew ? undefined : { doctype, name }, isNew ? undefined : `admin-doc-${doctype}-${name}`, { revalidateOnFocus: false });
   const [draft, setDraft] = useState<Doc>({});
@@ -71,7 +76,7 @@ export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraAction
         <span className="text-xs text-ink-3 truncate flex-1 min-w-0">{schema.single ? doctype : isNew ? `New ${doctype}` : name}</span>
         {!isNew && !schema.single && <a href={deskUrl(doctype, name)} target="_blank" rel="noreferrer" className="text-ink-3 hover:text-ink-1" title="Open in Desk"><ExternalLink className="size-4" /></a>}
         {extraActions}
-        {!schema.read_only && !isNew && !schema.single && <Button size="sm" variant="ghost" onClick={onDelete} disabled={deleting} className="text-crayon-rose-text"><Trash2 />Delete</Button>}
+        {!schema.read_only && !isNew && !schema.single && !only && <Button size="sm" variant="ghost" onClick={onDelete} disabled={deleting} className="text-crayon-rose-text"><Trash2 />Delete</Button>}
         {!schema.read_only && !dirty && !isNew && <span className="text-xs text-ink-3 shrink-0">No changes yet</span>}
         {!schema.read_only && dirty && <span className="text-xs text-crayon-amber-text shrink-0">{Object.keys(draft).length} unsaved</span>}
         {!schema.read_only && <Button size="sm" variant="primary" disabled={!dirty || saving} onClick={onSave} title={dirty ? "Save (Ctrl+S)" : "Edit a field first — Save enables when something changed"}><Save />{saving ? "Saving…" : "Save"}</Button>}
@@ -80,7 +85,7 @@ export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraAction
         {isNew && schema.needs_name && (
           <Field label="Name" required hint="This doctype is named by you; pick something readable."><Input value={String(draft.__newname ?? "")} onChange={(e) => setDraft((d) => ({ ...d, __newname: e.target.value }))} autoFocus /></Field>
         )}
-        {schema.sections.map((s, i) => {
+        {sections.map((s, i) => {
           if (s.depends_on && !visible({ depends_on: s.depends_on } as AdminField, doc)) return null;
           const fields = s.fields.filter((f) => visible(f, doc));
           if (!fields.length) return null;
@@ -99,7 +104,7 @@ export function DocForm({ doctype, name, schema, onSaved, onDeleted, extraAction
             </section>
           );
         })}
-        <EmbedPanel doctype={doctype} name={name} channel={String(doc.channel ?? "")} sourceType={String(doc.source_type ?? "")} />
+        {!only && <EmbedPanel doctype={doctype} name={name} channel={String(doc.channel ?? "")} sourceType={String(doc.source_type ?? "")} />}
       </div>
     </div>
   );

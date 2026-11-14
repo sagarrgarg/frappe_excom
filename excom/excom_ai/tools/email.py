@@ -449,6 +449,16 @@ class ZeroBounce(Tool):
 		return map_zerobounce(_get("https://api.zerobounce.net/v2/validate", {"api_key": key, "email": email},
 			"ZeroBounce", key))
 
+	def ping(self) -> dict:
+		"""A free check of the key (the AI setup page): the credit balance. ZeroBounce answers a bad key
+		with HTTP 200 and Credits -1, so the value is what counts."""
+		key = self.secret()
+		data = _get("https://api.zerobounce.net/v2/getcredits", {"api_key": key}, "ZeroBounce", key)
+		credits = flt(data.get("Credits"), 0) if str(data.get("Credits", "")).strip() else -1
+		if credits < 0:
+			return {"ok": False, "detail": _("ZeroBounce did not accept the key.")}
+		return {"ok": True, "detail": _("Key works: {0} credits left.").format(int(credits))}
+
 	def fake_verify(self, email: str) -> dict:
 		return map_zerobounce(_fake_provider(email, {"safe": {"status": "valid", "sub_status": ""},
 			"catch_all": {"status": "catch-all", "sub_status": ""},
@@ -512,6 +522,19 @@ class Hunter(Tool):
 		key, domain = self.secret(), normalize_domain(domain)
 		return map_hunter_search(_get("https://api.hunter.io/v2/domain-search",
 			{"domain": domain, "api_key": key, "limit": max(1, min(int(limit or 10), 100))}, "Hunter", key), domain)
+
+	def ping(self) -> dict:
+		"""A free check of the key (the AI setup page): Hunter's account details, which use no credit."""
+		key = self.secret()
+		try:
+			data = _get("https://api.hunter.io/v2/account", {"api_key": key}, "Hunter", key)
+		except RuntimeError as e:
+			return {"ok": False, "detail": str(e)}
+		d = data.get("data") or {}
+		searches = (d.get("requests") or {}).get("searches") or {}
+		left = (searches.get("available") or 0) - (searches.get("used") or 0) if searches else None
+		return {"ok": True, "detail": _("Key works ({0}).").format(d.get("plan_name") or _("plan unknown"))
+			+ (" " + _("{0} searches left this month.").format(left) if left is not None else "")}
 
 	def fake_domain_search(self, domain: str, limit: int = 10) -> list[dict]:
 		domain = normalize_domain(domain)
@@ -644,6 +667,14 @@ class TrulyInbox(Tool):
 		problems = {401: "the key was rejected", 403: "the key lacks a scope or the plan has no API access",
 			429: "the API limit is reached"}
 		raise RuntimeError(f"TrulyInbox: {problems.get(r.status_code, f'HTTP {r.status_code}')}")
+
+	def ping(self) -> dict:
+		"""A free check of the key (the AI setup page): the workspaces it can read."""
+		try:
+			spaces = self._get("/v2/workspaces") or []
+		except RuntimeError as e:
+			return {"ok": False, "detail": str(e)}
+		return {"ok": True, "detail": _("Key works: {0} workspace(s).").format(len(spaces))}
 
 	def status(self, mailbox_email: str) -> dict:
 		address = (mailbox_email or "").strip()
