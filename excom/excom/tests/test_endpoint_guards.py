@@ -33,6 +33,8 @@ GUARDS = {
 	"_verify_voice_key",
 	# Excom AI templates (HLD-008): read permission on the need, then its agents' owner (one owner) or an Excom Admin.
 	"_may_change_need",
+	# Excom AI People Finder (HLD-009): an Excom role and write access to the Lead or Prospect, and the switch.
+	"_check_people_access",
 }
 # Public by design. Each line says why it is safe to leave open.
 ALLOWED = {
@@ -102,6 +104,8 @@ BYPASS_ALLOWED = {
 	"webchat.send_visitor_message": "same visitor, still Guest",
 	"email.send_scheduled_emails": "the scheduler, sending as the user who scheduled it",
 	"email.schedule_email": "internal helper; the whitelisted caller checks thread access",
+	"party_contacts.put_on_record": "internal helper; add_contact and the People Finder's add_people check write access "
+		"to the record (_check_record_access) before calling it",
 	"chat._to_absolute_url": "internal helper that republishes a file for Meta to fetch",
 	"notification.register_site_on_excom_cloud": "System Manager only, writes the site's own config",
 	"mobile.create_oauth_client": "System Manager only, writes the site's own OAuth client",

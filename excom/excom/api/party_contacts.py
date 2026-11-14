@@ -165,6 +165,8 @@ def _shape(doc, identity: str | None, ident_row) -> dict:
 		"is_primary": bool(doc.is_primary_contact),
 		"omni_identity": identity,
 		"own_conversation": own,
+		# found through the People Finder (HLD-009); empty when the field is not there
+		"ai_linkedin_url": doc.get("ai_linkedin_url") or "",
 	}
 
 
@@ -271,10 +273,19 @@ def add_contact(
 		# A person nobody can reach is a note, and notes have their own place.
 		frappe.throw(_("Give a phone number or an email, so this person can be reached."))
 
+	out = put_on_record(doctype, name, first_name, last_name, designation, mobile_no, email_id, is_primary)
+	frappe.db.commit()
+	return out
+
+
+def put_on_record(doctype, name, first_name, last_name="", designation="", mobile_no="", email_id="", is_primary=0,
+		extra: dict | None = None) -> dict:
+	"""The same person linked if already on file, else a new Contact on this record. The caller has
+	checked access and commits. `extra` sets more Contact fields on a new one (the People Finder's
+	LinkedIn URL and source)."""
 	existing = _find_existing(mobile_no, email_id)
 	if existing:
 		added = _link(existing, doctype, name)
-		frappe.db.commit()
 		# Said plainly, because "added" and "was already here" are different answers and the second
 		# one is not an error.
 		return {"contact": existing, "reused": True, "already_here": not added}
@@ -289,8 +300,10 @@ def add_contact(
 	if email_id:
 		doc.append("email_ids", {"email_id": email_id, "is_primary": 1})
 	doc.append("links", {"link_doctype": doctype, "link_name": name})
+	for k, v in (extra or {}).items():
+		if v and doc.meta.has_field(k):
+			doc.set(k, v)
 	doc.insert(ignore_permissions=True)
-	frappe.db.commit()
 
 	return {"contact": doc.name, "reused": False, "already_here": False}
 

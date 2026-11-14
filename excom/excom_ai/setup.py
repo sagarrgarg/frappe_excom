@@ -43,7 +43,13 @@ def seed():
 
 
 TEMPLATE_DEFAULTS = {"templates_enabled": 1, "whatsapp_auto_submit": 1, "template_first_use_review": 1,
-	"template_submissions_per_day": 10, "template_max_attempts": 2}
+	"template_submissions_per_day": 10, "template_max_attempts": 2,
+	# HLD-009, the people finder
+	"people_per_company": 2, "people_on_demand": 1, "people_daily_per_user": 25,
+	"people_titles": "purchase, purchasing, procurement, buyer, buying, import, sourcing, category manager, compras, "
+		"importaciones, owner, founder, managing director, general manager, gerente general",
+	"people_exclude_titles": "marketing, human resources, hr, recruit, talent, software, engineer, developer, "
+		"it manager, product owner, legal, intern, student, assistant"}
 
 
 def _template_defaults():

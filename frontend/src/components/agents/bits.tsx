@@ -3,7 +3,8 @@ import { useFrappePostCall } from "frappe-react-sdk";
 import { toast } from "sonner";
 import { toastError } from "../ErrorDialog";
 import { useNavigate } from "react-router-dom";
-import { AlertOctagon, AlertTriangle, ChevronRight, CircleCheck, CircleX, ExternalLink, Info, Sparkles } from "lucide-react";
+import { AlertOctagon, AlertTriangle, ChevronRight, CircleCheck, CircleX, ExternalLink, Info, Linkedin, Sparkles } from "lucide-react";
+import { linkedinHref } from "../../lib/agents-logic";
 import { useFrappeGetCall } from "@/lib/api";
 import { Button, Chip, Field, Input, Modal, Select, Textarea, type Accent } from "../primitives";
 import { cn } from "../ui/utils";
@@ -47,6 +48,8 @@ export const M = {
   handover: `${P}handover`,
   dryRun: `${P}dry_run`,
   researchPeople: `${P}research_people`,
+  findPeople: "excom.excom_ai.people_finder.find_people",
+  addPeople: "excom.excom_ai.people_finder.add_people",
   requestDraft: `${P}request_draft`,
   queue: `${N}queue`,
   decideMany: `${N}decide_many`,
@@ -527,4 +530,19 @@ export function useOpenThread() {
     } catch { /* not readable: open by the thread itself */ }
     navigate(identity ? `/t/${encodeURIComponent(identity)}?via=${encodeURIComponent(thread)}` : `/t/${encodeURIComponent(thread)}`);
   };
+}
+
+/**
+ * A person's LinkedIn profile (HLD-009), opened in a new tab. Stored as a link and never fetched;
+ * drawn only for an http(s) address.
+ */
+export function LinkedInLink({ url, label = "LinkedIn", className }: { url?: string | null; label?: string; className?: string }) {
+  const href = linkedinHref(url);
+  if (!href) return null;
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" title="Open their LinkedIn profile" aria-label={label ? undefined : "LinkedIn profile"}
+      className={cn("inline-flex items-center gap-1 text-xs text-crayon-blue-text hover:underline shrink-0", className)}>
+      <Linkedin className="size-3.5 shrink-0" />{label}
+    </a>
+  );
 }

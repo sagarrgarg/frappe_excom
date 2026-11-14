@@ -7,8 +7,11 @@ from frappe.model.document import Document
 
 class ExcomAIPerson(Document):
 	def validate(self):
-		if self.email:
-			self.email = self.email.strip().lower()
+		# Found on LinkedIn through Apollo or Prospeo, a person may have no address yet (HLD-009); an
+		# empty one is stored as NULL so the unique index never sees two blanks.
+		self.email = (self.email or "").strip().lower() or None
+		if not self.email and not self.linkedin_url:
+			frappe.throw(_("A person needs an email or a LinkedIn URL."))
 		self.full_name = " ".join(p for p in (self.first_name, self.last_name) if p) or (
 			_("General inbox") if self.is_inbox else (self.email or "")
 		)

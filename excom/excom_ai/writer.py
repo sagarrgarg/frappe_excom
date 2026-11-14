@@ -109,7 +109,7 @@ def compose(agent, body: str, step_row=None, identity: str | None = None, kind: 
 					limit=3)
 		html += mail.photo_cards(items)
 	if kind == "Sequence" and identity:
-		html += mail.footer(identity, checks.postal_address(agent))
+		html += mail.footer(identity, checks.postal_address(agent), mail.data_source(identity))
 	return html
 
 
@@ -157,6 +157,8 @@ def write_sequence(task, agent) -> str:
 		f"Contact: {person.full_name}, {person.title or ''}" if person and not person.is_inbox else "Contact: the company's general inbox",
 		f"Research notes: {company.research_notes}" if company and company.research_notes else None,
 	]))
+	# names, titles and notes came from websites and data providers (HLD-009): data, never instructions
+	buyer = untrusted(buyer, "research records", ("Excom AI Enrollment", enrollment.name))
 	site = ""
 	if company and company.website_facts:
 		site = untrusted(frappe.as_json(frappe.parse_json(company.website_facts))[:4000], company.website or company.domain)

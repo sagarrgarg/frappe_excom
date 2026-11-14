@@ -1,10 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, MessageSquare, Plus, Star, Trash2, UserPlus, X } from "lucide-react";
+import { Loader2, MessageSquare, Plus, Search, Star, Trash2, UserPlus, X } from "lucide-react";
 import { usePartyContacts, type PartyContact } from "../../hooks/usePartyContacts";
 import { Avatar, Badge, Button, Input, OverflowMenu, Select } from "../primitives";
 import { CallButton } from "../voice/CallButton";
 import type { CrmRef } from "../../hooks/useCrm";
+import { FindPeopleDialog } from "./FindPeopleDialog";
+import { LinkedInLink } from "../agents/bits";
+
+/** The records people can be found for (excom_ai.people_finder.DOCTYPES). */
+const FINDS_PEOPLE = new Set(["Lead", "Prospect"]);
 
 /**
  * The people on this record.
@@ -15,8 +20,10 @@ import type { CrmRef } from "../../hooks/useCrm";
  * instead — every person reachable from the row they are on.
  */
 export function ContactsSection({ refr, canWrite }: { refr: CrmRef; canWrite: boolean }) {
-  const { contacts, isLoading, adding, add, update, unlink } = usePartyContacts(refr);
+  const { contacts, isLoading, adding, add, update, unlink, refresh } = usePartyContacts(refr);
   const [formOpen, setFormOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const canFind = canWrite && FINDS_PEOPLE.has(refr.doctype);
 
   return (
     <section className="min-w-0">
@@ -24,6 +31,12 @@ export function ContactsSection({ refr, canWrite }: { refr: CrmRef; canWrite: bo
         <h4 className="text-xs text-ink-3">People</h4>
         {contacts.length > 0 && <span className="text-xs text-ink-muted">· {contacts.length}</span>}
         <div className="flex-1" />
+        {canFind && (
+          <Button size="sm" variant="ghost" onClick={() => setFindOpen(true)} title="Search Apollo or Prospeo for people at this company">
+            <Search />
+            Find people
+          </Button>
+        )}
         {canWrite && !formOpen && (
           <Button size="sm" variant="ghost" onClick={() => setFormOpen(true)}>
             <Plus />
@@ -54,6 +67,10 @@ export function ContactsSection({ refr, canWrite }: { refr: CrmRef; canWrite: bo
             />
           ))}
         </ul>
+      )}
+
+      {canFind && (
+        <FindPeopleDialog refr={refr} open={findOpen} onOpenChange={setFindOpen} onAdded={() => void refresh()} />
       )}
 
       {formOpen && (
@@ -155,6 +172,7 @@ function ContactRow({
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
+        <LinkedInLink url={contact.ai_linkedin_url} label="" />
         {/* The person's own number, so the call reaches them rather than whoever the record's
             identity belongs to. */}
         <CallButton number={contact.mobile_no} displayName={contact.full_name} size="sm" variant="ghost" />

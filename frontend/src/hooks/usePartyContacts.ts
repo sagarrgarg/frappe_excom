@@ -23,6 +23,8 @@ export interface PartyContact {
    * conversation still belongs to whoever was there first. Opening it would be the wrong person.
    */
   own_conversation: boolean;
+  /** Found through the People Finder (Apollo or Prospeo); empty otherwise. */
+  ai_linkedin_url?: string;
 }
 
 export interface NewContact {

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFrappeFileUpload, useFrappePostCall } from "frappe-react-sdk";
-import { FileSpreadsheet, UserPlus } from "lucide-react";
+import { FileSpreadsheet, Linkedin, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { useFrappeGetCall } from "@/lib/api";
 import { Button, Chip, EmptyState, type Accent } from "../primitives";
 import { toastError } from "../ErrorDialog";
 import { parseError } from "../../lib/errors";
 import type { AgentDetail, AIPerson, ResearchSummary } from "../../types/agents";
-import { M, Panel, Stat, useAgentAction } from "./bits";
+import { LinkedInLink, M, Panel, Stat, useAgentAction } from "./bits";
 
 /** Excom AI Company.status, in the order research moves through. */
 const COMPANY_ORDER = ["New", "Profiled", "Contacts found", "No contacts", "Qualified", "Promoted", "Excluded"];
@@ -21,6 +21,9 @@ const EMAIL_HINT: Record<string, string> = {
   Unknown: "Not checked yet",
   Invalid: "Mail would bounce",
 };
+
+/** Address sources worth naming on a row: the paid people providers (HLD-009). */
+const PROVIDER_SOURCES = new Set(["Apollo", "Prospeo"]);
 
 function ordered(counts: Record<string, number>, order: string[]): [string, number][] {
   const known = order.filter((k) => counts[k]).map((k) => [k, counts[k]] as [string, number]);
@@ -58,6 +61,7 @@ export function ResearchTab({ d }: { d: AgentDetail }) {
       </div>
       {d.can_change && <VolzaImport agent={name} onQueued={() => mutate()} />}
       <ReadyPeople agent={name} canPromote={d.can_change} onPromoted={() => mutate()} />
+      <LinkedInOnly agent={name} />
     </div>
   );
 }
@@ -107,7 +111,7 @@ function ReadyPeople({ agent, canPromote, onPromoted }: { agent: string; canProm
     setErr("");
     try {
       const p = await call({ name: agent, status: "Ready", limit: 200 });
-      const people = (p?.message ?? []) as (AIPerson & { company_name?: string })[];
+      const people = (p?.message ?? []) as AIPerson[];
       setCompanyNames(Object.fromEntries(people.map((x) => [x.company, x.company_name || x.company])));
       setRows(people);
     } catch (e) {
@@ -142,13 +146,67 @@ function ReadyPeople({ agent, canPromote, onPromoted }: { agent: string; canProm
             <li key={p.name} className="flex items-center gap-2 px-3 py-2 min-w-0 flex-wrap">
               <div className="min-w-0 flex-1 basis-48">
                 <p className="text-sm text-ink-1 truncate">{p.full_name || p.email}</p>
-                <p className="text-xs text-ink-3 truncate">{p.email}{p.company ? ` · ${companyNames[p.company] || p.company}` : ""}</p>
+                <p className="text-xs text-ink-3 truncate">{p.email}{p.title ? ` · ${p.title}` : ""}{p.company ? ` · ${companyNames[p.company] || p.company}` : ""}</p>
               </div>
+              <LinkedInLink url={p.linkedin_url} />
+              {p.email_source && PROVIDER_SOURCES.has(p.email_source) && (
+                <Chip size="sm" accent="violet" label={`From ${p.email_source}`}
+                  title={p.verified_by ? `Address from ${p.email_source}, confirmed by ${p.verified_by}` : `Address from ${p.email_source}`} />
+              )}
               {p.email_status && <Chip size="sm" accent={EMAIL_ACCENT[p.email_status] ?? "neutral"} label={p.email_status} title={EMAIL_HINT[p.email_status]} />}
               {canPromote && <Button size="sm" disabled={busy === p.name} onClick={() => doPromote(p)}><UserPlus />{busy === p.name ? "Working…" : "Promote to lead"}</Button>}
             </li>
           ))}
         </ul>
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * People Apollo or Prospeo found with a LinkedIn profile but no address (HLD-009). The agent never
+ * writes to them; they are listed so the owner can, by hand, on LinkedIn.
+ */
+function LinkedInOnly({ agent }: { agent: string }) {
+  const { call } = useFrappePostCall(M.researchPeople);
+  const [rows, setRows] = useState<AIPerson[] | null>(null);
+  const [err, setErr] = useState("");
+
+  const load = useCallback(async () => {
+    setErr("");
+    try {
+      const p = await call({ name: agent, linkedin_only: 1, limit: 100 });
+      setRows((p?.message ?? []) as AIPerson[]);
+    } catch (e) {
+      setErr(parseError(e).message || "Could not load the people");
+      setRows([]);
+    }
+  }, [call, agent]);
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <Panel title={rows ? `On LinkedIn only: ${rows.length}${rows.length === 100 ? "+" : ""}` : "On LinkedIn only"}>
+      {err ? (
+        <p role="alert" className="text-sm text-crayon-rose-text">{err}</p>
+      ) : !rows ? (
+        <p className="text-sm text-ink-3">Loading…</p>
+      ) : rows.length === 0 ? (
+        <EmptyState compact icon={<Linkedin />} title="Nobody here" hint="People found with a LinkedIn profile but no email appear here." />
+      ) : (
+        <>
+          <p className="text-xs text-ink-3 mb-2">No email was found for these people, so the agent will not write to them. You can, on LinkedIn.</p>
+          <ul className="-mx-3 -mb-3 divide-y divide-border border-t border-border">
+            {rows.map((p) => (
+              <li key={p.name} className="flex items-center gap-2 px-3 py-2 min-w-0">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-ink-1 truncate">{p.full_name || "Name hidden"}</p>
+                  <p className="text-xs text-ink-3 truncate">{[p.title, p.company_name || p.company].filter(Boolean).join(" · ")}</p>
+                </div>
+                <LinkedInLink url={p.linkedin_url} />
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </Panel>
   );

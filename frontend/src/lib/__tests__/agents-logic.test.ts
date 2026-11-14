@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { abilitiesText, bounceRate, groupByStatus, inZone, languageName, needIsFor, needLabel, noteParts, parseAbilities, pricedFrom, splitVariables, templateActions } from "../agents-logic";
+import { abilitiesText, bounceRate, creditsFor, groupByStatus, inZone, languageName, linkedinHref, needIsFor, needLabel, noteParts, parseAbilities, pricedFrom, splitVariables, templateActions, togglePick } from "../agents-logic";
 
 describe("pricedFrom", () => {
   const quote = { name: "P-1", action: "create_quotation", payload: { price_list: "Export USD" } };
@@ -153,5 +153,49 @@ describe("needIsFor", () => {
     expect(needIsFor(n, "A2")).toBe(true);
     expect(needIsFor(n, "A")).toBe(false);
     expect(needIsFor({ agent: "A3", agents: null }, "A3")).toBe(true);
+  });
+});
+
+describe("togglePick", () => {
+  it("ticks and unticks", () => {
+    expect(togglePick([], "c")).toEqual(["c"]);
+    expect(togglePick(["a", "c"], "c")).toEqual(["a"]);
+  });
+  it("ignores a sixth tick but still unticks", () => {
+    const five = ["a", "b", "c", "d", "e"];
+    expect(togglePick(five, "g")).toBe(five);
+    expect(togglePick(five, "c")).toEqual(["a", "b", "d", "e"]);
+  });
+});
+
+describe("creditsFor", () => {
+  const cands = [{ pick: "a", known_email: "a@x.com" }, { pick: "b", known_email: null }, { pick: "c" }];
+  it("counts only ticked people whose address is not known", () => {
+    expect(creditsFor(cands, ["a", "b", "c"])).toBe(2);
+    expect(creditsFor(cands, ["a"])).toBe(0);
+    expect(creditsFor(cands, [])).toBe(0);
+  });
+});
+
+describe("linkedinHref", () => {
+  it("keeps http(s) links", () => {
+    expect(linkedinHref("https://www.linkedin.com/in/jane")).toBe("https://www.linkedin.com/in/jane");
+    expect(linkedinHref("http://linkedin.com/in/jane")).toBe("http://linkedin.com/in/jane");
+  });
+  it("adds https to a bare linkedin.com address", () => {
+    expect(linkedinHref("linkedin.com/in/jane")).toBe("https://linkedin.com/in/jane");
+    expect(linkedinHref(" www.linkedin.com/in/jane ")).toBe("https://www.linkedin.com/in/jane");
+  });
+  it("refuses anything that is not a web link", () => {
+    expect(linkedinHref("javascript:alert(1)")).toBeNull();
+    expect(linkedinHref("data:text/html,x")).toBeNull();
+    expect(linkedinHref("jane")).toBeNull();
+    expect(linkedinHref("")).toBeNull();
+    expect(linkedinHref(null)).toBeNull();
+  });
+  it("refuses other sites, however the link is dressed", () => {
+    expect(linkedinHref("https://evil.example/in/jane")).toBeNull();
+    expect(linkedinHref("https://linkedin.com.evil.example/in/jane")).toBeNull();
+    expect(linkedinHref("https://es.linkedin.com/in/jane")).toBe("https://es.linkedin.com/in/jane");
   });
 });

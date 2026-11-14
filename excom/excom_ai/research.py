@@ -12,6 +12,8 @@ and each safe to run again:
     find_contacts    published addresses and, only where the domain's pattern is known, named
                      people's addresses; no guessing an address another person could own
     verify_email     the verifiers give each address an honest status; Precleared a consent verdict
+    find_people      named buyers by job title from Apollo or Prospeo (HLD-009): LinkedIn URL, title
+                     and, where the provider has one, a work email; once per company
 
 `promote()` turns a ready person into a Lead and the company into a Prospect, through Excom's own
 CRM gateway, so conversation, team visibility, claiming and opportunities work as for any lead.
@@ -34,7 +36,9 @@ VERIFIERS = ("reoon", "zerobounce", "hunter")
 SOURCE_LABEL = {"osm": "OSM", "serper": "Serper", "dataforseo": "DataForSEO", "scavio": "Scavio", "tinyfish": "TinyFish",
 	"volza": "Volza"}
 FIT_FOR_CONTACTS = 50
-PER_TICK = {"profile_company": 5, "find_contacts": 5, "verify_email": 10}
+PER_TICK = {"profile_company": 5, "find_contacts": 5, "verify_email": 10, "find_people": 3}
+PEOPLE_PROVIDERS = ("apollo", "prospeo")  # search: Apollo's is free; Prospeo's only when Apollo is off or refused
+PROVIDER_LABEL = {"apollo": "Apollo", "prospeo": "Prospeo"}
 ROLE_WORDS = ("info", "sales", "ventas", "contacto", "contact", "compras", "import", "export", "comercial", "hello", "office")
 
 
@@ -319,8 +323,7 @@ def find_contacts(task, agent) -> str:
 		else "No contacts", "contacts_checked_on": now_datetime()}, update_modified=False)
 	from excom.excom_ai.engine import tasks
 
-	for p in frappe.get_all("Excom AI Person", {"company": company.name, "email_status": ["in", ("Unknown", "Guess")]}, pluck="name"):
-		tasks.add(agent.name, "verify_email", subject=("Excom AI Person", p))
+	_verify_new(agent, company.name)
 	_observe(company.name, None, {"CONTACT_FOUND": 1 if made else None}, "email_finder", task)
 	return _("{0}: {1} addresses").format(company.company_name, made)
 
@@ -328,6 +331,8 @@ def find_contacts(task, agent) -> str:
 @registry.task_kind("verify_email", priority=registry.PRIORITY["check"], effort="classify")
 def verify_email(task, agent) -> str:
 	person = frappe.get_doc("Excom AI Person", task.subject_name)
+	if not person.email:
+		return _("{0}: no address to check").format(person.full_name or person.name)
 	result, used = {"status": "Unknown"}, None
 	for key in VERIFIERS:
 		if not tools.available(key):
@@ -340,8 +345,12 @@ def verify_email(task, agent) -> str:
 	status = result.get("status") or "Unknown"
 	if status == "Unknown" and person.email_status == "Guess":
 		status = "Guess"  # a pattern guess no verifier confirmed stays a guess: honest, not promoted to verified
+	by = {"reoon": "Reoon", "zerobounce": "ZeroBounce", "hunter": "Hunter"}.get(used, "None")
+	if not used and person.email_source in ("Apollo", "Prospeo") and person.provider_email_status in ("Verified", "Risky"):
+		# none of our verifiers answered: the provider's own check counts, and says whose it was
+		status, by, used = person.provider_email_status, person.email_source, person.email_source.lower()
 	values = {"email_status": status, "verified_on": now_datetime() if used else None,
-		"verified_by": {"reoon": "Reoon", "zerobounce": "ZeroBounce", "hunter": "Hunter"}.get(used, "None"),
+		"verified_by": by,
 		"catch_all": 1 if result.get("catch_all") else 0}
 	country = frappe.db.get_value("Excom AI Company", person.company, "country")
 	if tools.available("precleared"):
@@ -357,6 +366,207 @@ def verify_email(task, agent) -> str:
 	return _("{0}: {1}").format(person.email, status)
 
 
+def _verify_new(agent, company: str) -> None:
+	from excom.excom_ai.engine import tasks
+
+	for p in frappe.get_all("Excom AI Person", {"company": company, "email_status": ["in", ("Unknown", "Guess")],
+			"email": ["is", "set"]}, pluck="name"):
+		tasks.add(agent.name, "verify_email", subject=("Excom AI Person", p))
+
+
+# ── named people: Apollo, Prospeo (HLD-009) ──────────────────────────────────
+
+
+def _words(field: str) -> list[str]:
+	import re
+
+	return [w.strip() for w in re.split(r"[,\n]", frappe.db.get_single_value("Excom AI Settings", field) or "") if w.strip()]
+
+
+def people_titles() -> list[str]:
+	return _words("people_titles")
+
+
+def skipped_title(title: str | None) -> bool:
+	t = f" {(title or '').lower()} "
+	return any(f" {w.lower()}" in t for w in _words("people_exclude_titles"))
+
+
+def people_search(domain: str, titles: list[str], limit: int = 10) -> tuple[list[dict], str | None]:
+	"""Candidates from the first provider that answers. Apollo's search is free (cost 0, so a nearly
+	spent budget does not refuse it); a refusal (off, no key, budget, 403 without a master key, 429)
+	falls through to Prospeo. Nothing raises: research carries on with what it has."""
+	for key in PEOPLE_PROVIDERS:
+		if not tools.available(key):
+			continue
+		try:
+			return tools.use(key, "search", domain=domain, titles=titles, limit=limit,
+				cost=0 if key == "apollo" else None) or [], key
+		except tools.ToolRefused:
+			continue
+		except Exception:
+			frappe.log_error(title=f"Excom AI: {PROVIDER_LABEL[key]} search failed", message=frappe.get_traceback())
+			continue
+		finally:
+			frappe.db.commit()  # what was spent stays counted, whatever happens next
+	return [], None
+
+
+def known_person(company: str | None, c: dict) -> str | None:
+	"""The Excom AI Person this candidate already is: by provider id, LinkedIn URL or email (never an
+	empty value), or, for Apollo's search (last name hidden), the same first name and title here."""
+	for field, value in (("apollo_id", c.get("external_id") if c.get("provider") == "Apollo" else None),
+			("prospeo_id", c.get("external_id") if c.get("provider") == "Prospeo" else None),
+			("linkedin_url", c.get("linkedin_url")), ("email", c.get("email"))):
+		if value:
+			name = frappe.db.get_value("Excom AI Person", {field: value})
+			if name:
+				return name
+	if company and c.get("first_name") and c.get("title"):
+		return frappe.db.get_value("Excom AI Person", {"company": company, "first_name": c["first_name"], "title": c["title"]})
+	return None
+
+
+def pick(candidates: list[dict], titles: list[str], n: int, company: str | None = None) -> list[dict]:
+	from excom.excom_ai.tools import people as people_tools
+
+	keep = [c for c in candidates if not skipped_title(c.get("title")) and c.get("has_email") is not False
+		and not known_person(company, c)]
+	return people_tools.rank(keep, titles)[: max(0, n)]
+
+
+def enrich_one(c: dict, domain: str, any_address: bool = False) -> dict | None:
+	"""The provider that found the person first (by its id), then the other by LinkedIn URL when there
+	is still no verified address (`any_address`: no address at all, so a person costs one credit, as
+	the Find people button promises). Each paid call is committed as it happens. Never raises."""
+	best = None
+	order = [k for k in PEOPLE_PROVIDERS if PROVIDER_LABEL[k] == c.get("provider")] + [
+		k for k in PEOPLE_PROVIDERS if PROVIDER_LABEL[k] != c.get("provider")]
+	for key in order:
+		if best and (best.get("email_status") == "Verified" or (any_address and best.get("email"))):
+			break
+		if not tools.available(key):
+			continue
+		if PROVIDER_LABEL[key] == c.get("provider") and c.get("external_id"):
+			kwargs = {"external_id": c["external_id"]}
+		elif (best or c).get("linkedin_url"):
+			kwargs = {"linkedin_url": (best or c)["linkedin_url"]}
+		else:
+			continue  # Apollo's search hides last names: nothing to ask the other provider with
+		try:
+			found = tools.use(key, "enrich", domain=domain, **kwargs)
+		except tools.ToolRefused:
+			continue
+		except Exception:
+			frappe.log_error(title=f"Excom AI: {PROVIDER_LABEL[key]} lookup failed", message=frappe.get_traceback())
+			continue
+		finally:
+			frappe.db.commit()
+		if found:
+			best = _merge(best, found)
+	return best
+
+
+def _merge(best: dict | None, found: dict) -> dict:
+	if not best:
+		out = dict(found)
+	else:
+		out = dict(best)
+		for k, v in found.items():
+			if v and not out.get(k):
+				out[k] = v
+		if found.get("email") and found.get("email_status") == "Verified" and out.get("email_status") != "Verified":
+			out.update({"email": found["email"], "email_status": "Verified", "provider": found["provider"]})
+	ids = dict(best.get("ids") or {}) if best else {}
+	if found.get("external_id"):
+		ids[found["provider"]] = found["external_id"]
+	out["ids"] = ids
+	if found.get("email") and out.get("email") == found["email"]:
+		out["email_provider"] = found["provider"]
+	return out
+
+
+def save_person(company, p: dict) -> tuple[str | None, bool]:
+	"""Update the person we already have (found by id, LinkedIn or address) or add them. Returns
+	(name, created). A person without an address is kept for LinkedIn and never written to."""
+	if not p.get("email") and not p.get("linkedin_url"):
+		return None, False
+	ids = p.get("ids") or {}
+	values = {"apollo_id": ids.get("Apollo"), "prospeo_id": ids.get("Prospeo"), "linkedin_url": p.get("linkedin_url"),
+		"title": p.get("title"), "seniority": p.get("seniority"), "first_name": p.get("first_name"),
+		"last_name": p.get("last_name")}
+	existing = None
+	for field, value in (("apollo_id", ids.get("Apollo")), ("prospeo_id", ids.get("Prospeo")),
+			("linkedin_url", p.get("linkedin_url")), ("email", p.get("email"))):
+		existing = value and frappe.db.get_value("Excom AI Person", {field: value})  # never an empty filter
+		if existing:
+			break
+	if existing:
+		doc = frappe.get_doc("Excom AI Person", existing)
+		changed = {k: v for k, v in values.items() if v and not doc.get(k)}
+		if p.get("email") and not doc.email and not frappe.db.exists("Excom AI Person", {"email": p["email"]}):
+			changed.update(_email_values(p))
+		if changed:
+			doc.db_set(changed, update_modified=False)
+		return existing, False
+	source = PROVIDER_LABEL.get((p.get("email_provider") or p.get("provider") or "").lower()) or p.get("provider")
+	doc = frappe.get_doc({"doctype": "Excom AI Person", "company": company.name, "language": company.language,
+		"status": "New", "source": source, "source_url": p.get("linkedin_url"), **{k: v for k, v in values.items() if v},
+		**(_email_values(p) if p.get("email") else {"email_status": "Unknown"})})
+	doc.insert(ignore_permissions=True)
+	return doc.name, True
+
+
+def _email_values(p: dict) -> dict:
+	provider = p.get("email_provider") or p.get("provider")
+	return {"email": p["email"], "email_source": provider, "email_status": "Unknown",
+		"provider_email_status": p.get("email_status") or "Unknown"}
+
+
+@registry.task_kind("find_people", priority=registry.PRIORITY["research"], effort="classify")
+def find_people(task, agent) -> str:
+	"""Named buyers at one good-fit company, once. Marked searched before anything is spent, so a
+	failure is never searched (and paid for) again; each person is saved as soon as they are found."""
+	company = frappe.get_doc("Excom AI Company", task.subject_name)
+	if company.status in ("Excluded", "Promoted") or not company.domain or company.company_stop:
+		return _("{0} is {1}").format(company.company_name, company.status)
+	if company.people_checked_on:
+		return _("{0}: people already searched").format(company.company_name)
+	reason, customer = exclusion(company.domain, None, agent.name)
+	if reason:
+		exclude(company, reason, customer)
+		return _("{0} excluded: {1}").format(company.company_name, reason)
+	n = cint(frappe.db.get_single_value("Excom AI Settings", "people_per_company"))
+	if n <= 0:
+		return _("People finder is off (People Per Company is 0)")
+	company.db_set("people_checked_on", now_datetime(), update_modified=False)
+	frappe.db.commit()
+	titles = people_titles()
+	found, used = people_search(company.domain, titles, limit=10)
+	made = linked = 0
+	for c in pick(found, titles, n, company.name):
+		p = enrich_one(c, company.domain)
+		if not p and c.get("linkedin_url"):
+			p = _merge(None, c)  # nothing more from the providers, but the LinkedIn link is worth keeping
+		if not p:
+			continue
+		try:
+			name, created = save_person(company, p)
+		except Exception:
+			frappe.db.rollback()
+			frappe.log_error(title="Excom AI: could not save a person found", message=frappe.get_traceback())
+			continue
+		frappe.db.commit()
+		made += created
+		linked += bool(name and not created)
+	if made and company.status == "No contacts":
+		company.db_set("status", "Contacts found", update_modified=False)
+	_verify_new(agent, company.name)
+	_observe(company.name, None, {"CONTACT_FOUND": 1 if made else None}, used or "none", task)
+	return _("{0}: {1} people found by {2}, {3} already known").format(company.company_name, made,
+		PROVIDER_LABEL.get(used or "", _("nobody")), linked)
+
+
 # ── promotion: research becomes CRM ──────────────────────────────────────────
 
 
@@ -369,6 +579,9 @@ def promote(person_name: str, agent) -> dict:
 	company = frappe.get_doc("Excom AI Company", person.company)
 	if person.lead:
 		return {"lead": person.lead, "prospect": company.prospect, "created": False}
+	if not person.email:
+		frappe.throw(_("{0} has no email address yet: write to them on LinkedIn, or add an address first.").format(
+			person.full_name or person.name))
 	reason, customer = exclusion(company.domain, [person.email], agent.name)
 	if reason or company.status == "Excluded" or company.company_stop:
 		if reason:
@@ -445,9 +658,16 @@ def plan(agent) -> list[dict]:
 			"fit_score": [">=", FIT_FOR_CONTACTS], "contacts_checked_on": ["is", "not set"]}, pluck="name",
 			limit=PER_TICK["find_contacts"]):
 		specs.append({"kind": "find_contacts", "subject": ("Excom AI Company", c)})
+	if cint(frappe.db.get_single_value("Excom AI Settings", "people_per_company")) > 0 and any(
+			tools.available(k) for k in PEOPLE_PROVIDERS):
+		# after the free addresses are in (contacts_checked_on), so the two steps never race
+		for c in frappe.get_all("Excom AI Company", {"agent": agent.name, "status": ["in", ("Contacts found", "No contacts")],
+				"fit_score": [">=", FIT_FOR_CONTACTS], "contacts_checked_on": ["is", "set"],
+				"people_checked_on": ["is", "not set"], "domain": ["is", "set"]}, pluck="name", limit=PER_TICK["find_people"]):
+			specs.append({"kind": "find_people", "subject": ("Excom AI Company", c)})
 	since = add_days(now_datetime(), -30)
 	for p in frappe.db.sql("""SELECT p.name FROM `tabExcom AI Person` p JOIN `tabExcom AI Company` c ON c.name = p.company
-		WHERE c.agent = %s AND p.email_status IN ('Unknown', 'Guess') AND p.status = 'New'
+		WHERE c.agent = %s AND p.email_status IN ('Unknown', 'Guess') AND p.status = 'New' AND IFNULL(p.email, '') != ''
 		AND (p.verified_on IS NULL OR p.verified_on < %s) LIMIT %s""", (agent.name, since, PER_TICK["verify_email"])):
 		specs.append({"kind": "verify_email", "subject": ("Excom AI Person", p[0])})
 	return specs

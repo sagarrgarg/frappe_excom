@@ -120,17 +120,28 @@ def dry_run(name: str, days: int = 21):
 
 
 @frappe.whitelist()
-def research_people(name: str, status: str = "Ready", limit: int = 200):
-	"""The people this agent's research found (research records are not readable to owners directly)."""
+def research_people(name: str, status: str = "Ready", limit: int = 200, linkedin_only: int = 0):
+	"""The people this agent's research found (research records are not readable to owners directly).
+	`linkedin_only`: people Apollo or Prospeo found with a LinkedIn profile but no address (HLD-009),
+	for someone to write to on LinkedIn by hand."""
 	agent = _agent_for(name, need_owner=False)
 	companies = frappe.get_all("Excom AI Company", {"agent": agent.name}, pluck="name")
 	if not companies:
 		return []
 	filters = {"company": ["in", companies]}
-	if status:
+	if frappe.utils.cint(linkedin_only):
+		# never someone research ruled out: a customer, a do-not-contact domain, a colleague's lead
+		open_companies = frappe.get_all("Excom AI Company", {"name": ["in", companies], "status": ["!=", "Excluded"],
+			"company_stop": 0}, pluck="name")
+		if not open_companies:
+			return []
+		filters.update({"company": ["in", open_companies], "email": ["is", "not set"], "linkedin_url": ["is", "set"],
+			"status": ["not in", ("Excluded", "Invalid")]})
+	elif status:
 		filters["status"] = status
 	rows = frappe.get_all("Excom AI Person", filters, ["name", "email", "full_name", "title", "email_status", "status", "company",
-		"consent_verdict", "is_inbox", "lead"], order_by="modified desc", limit=int(limit or 200))
+		"consent_verdict", "is_inbox", "lead", "linkedin_url", "email_source", "verified_by"], order_by="modified desc",
+		limit=int(limit or 200))
 	names = dict(frappe.get_all("Excom AI Company", {"name": ["in", list({r.company for r in rows}) or ["-"]]},
 		["name", "company_name"], as_list=True))
 	for r in rows:

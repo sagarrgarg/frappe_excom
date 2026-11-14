@@ -38,6 +38,13 @@
   "cb_templates",
   "template_submissions_per_day",
   "template_max_attempts",
+  "sb_people_finder",
+  "people_per_company",
+  "people_titles",
+  "people_exclude_titles",
+  "cb_people_finder",
+  "people_on_demand",
+  "people_daily_per_user",
   "sb_engine",
   "tasks_per_tick",
   "max_task_attempts",
@@ -246,6 +253,48 @@
    "default": "2"
   },
   {
+   "fieldname": "sb_people_finder",
+   "fieldtype": "Section Break",
+   "label": "People Finder (Apollo, Prospeo)",
+   "collapsible": 1,
+   "description": "Named buyers at researched companies, and a Find people button on Leads and Prospects. Switch the tools on, with a key and a monthly budget, in Excom AI Tool."
+  },
+  {
+   "fieldname": "people_per_company",
+   "fieldtype": "Int",
+   "label": "People Per Company",
+   "non_negative": 1,
+   "description": "How many named people research looks up at each good-fit company. 0 stops it."
+  },
+  {
+   "fieldname": "people_titles",
+   "fieldtype": "Small Text",
+   "label": "Job Titles To Find",
+   "description": "Comma separated, best first. Words in any language the titles are written in."
+  },
+  {
+   "fieldname": "people_exclude_titles",
+   "fieldtype": "Small Text",
+   "label": "Job Titles To Skip"
+  },
+  {
+   "fieldname": "cb_people_finder",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "people_on_demand",
+   "fieldtype": "Check",
+   "label": "Find People On Leads And Prospects",
+   "description": "Lets anyone who can edit a Lead or Prospect search for people there and add them (adding spends credits)."
+  },
+  {
+   "fieldname": "people_daily_per_user",
+   "fieldtype": "Int",
+   "label": "People Added Per User A Day",
+   "description": "People looked up through the Find people button, per person a day. 0 means no limit.",
+   "non_negative": 1
+  },
+  {
    "fieldname": "sb_engine",
    "fieldtype": "Section Break",
    "label": "Engine"
@@ -295,7 +344,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 10:00:00.000000",
+ "modified": "2026-11-10 12:00:00",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Settings",

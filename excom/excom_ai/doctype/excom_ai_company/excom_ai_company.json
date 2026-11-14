@@ -34,6 +34,7 @@
   "customer",
   "profile_checked_on",
   "contacts_checked_on",
+  "people_checked_on",
   "sb_research",
   "research_notes",
   "website_facts",
@@ -218,6 +219,13 @@
    "read_only": 1
   },
   {
+   "fieldname": "people_checked_on",
+   "fieldtype": "Datetime",
+   "label": "People Searched On",
+   "read_only": 1,
+   "description": "When Apollo or Prospeo were asked for named people here (once per company)."
+  },
+  {
    "fieldname": "sb_research",
    "fieldtype": "Section Break",
    "label": "Research"
@@ -242,7 +250,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 10:00:00.000000",
+ "modified": "2026-11-10 12:00:00",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Company",

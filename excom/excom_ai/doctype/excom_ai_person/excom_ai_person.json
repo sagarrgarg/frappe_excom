@@ -26,6 +26,9 @@
   "phone",
   "phone_verified",
   "linkedin_url",
+  "apollo_id",
+  "prospeo_id",
+  "provider_email_status",
   "timezone",
   "language",
   "cb2",
@@ -97,7 +100,8 @@
    "label": "Email",
    "options": "Email",
    "unique": 1,
-   "in_list_view": 1
+   "in_list_view": 1,
+   "reqd": 0
   },
   {
    "fieldname": "email_status",
@@ -112,13 +116,13 @@
    "fieldname": "email_source",
    "fieldtype": "Select",
    "label": "Found Via",
-   "options": "\nPublished\nPattern\nHunter\nImport"
+   "options": "\nPublished\nPattern\nHunter\nImport\nApollo\nProspeo"
   },
   {
    "fieldname": "verified_by",
    "fieldtype": "Select",
    "label": "Verified By",
-   "options": "\nReoon\nZeroBounce\nHunter\nNone"
+   "options": "\nReoon\nZeroBounce\nHunter\nApollo\nProspeo\nNone"
   },
   {
    "fieldname": "verified_on",
@@ -161,7 +165,29 @@
    "fieldname": "linkedin_url",
    "fieldtype": "Data",
    "label": "LinkedIn URL",
-   "description": "Stored only; never automated."
+   "description": "Stored only; never automated.",
+   "search_index": 1
+  },
+  {
+   "fieldname": "apollo_id",
+   "fieldtype": "Data",
+   "label": "Apollo ID",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "prospeo_id",
+   "fieldtype": "Data",
+   "label": "Prospeo ID",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "provider_email_status",
+   "fieldtype": "Data",
+   "label": "Provider's Email Status",
+   "read_only": 1,
+   "description": "What Apollo or Prospeo said about the address; our own verifiers are asked first."
   },
   {
    "fieldname": "timezone",
@@ -228,7 +254,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 10:00:00.000000",
+ "modified": "2026-11-10 12:00:00",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Person",

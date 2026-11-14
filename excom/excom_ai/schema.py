@@ -31,6 +31,14 @@ def fields() -> dict:
 			{"fieldname": "ai_timezone", "fieldtype": "Data", "label": "Timezone", **RO},
 			{"fieldname": "ai_language", "fieldtype": "Link", "label": "Writes In", "options": "Language", **RO},
 		],
+		"Contact": [
+			# HLD-009: a person found through Apollo or Prospeo, and where they came from
+			{"fieldname": "ai_linkedin_url", "fieldtype": "Data", "label": "LinkedIn", "options": "URL",
+			 "insert_after": "designation"},
+			{"fieldname": "ai_found_via", "fieldtype": "Small Text", "label": "Found Via", **RO,
+			 "description": "The data provider, date and person who added this contact, for anyone asking where we got their details."},
+			{"fieldname": "ai_people_id", "fieldtype": "Data", "label": "Data Provider ID", "hidden": 1, "search_index": 1, **RO},
+		],
 		"Opportunity": [
 			{"fieldname": "ai_origin_agent", "fieldtype": "Link", "label": "Found By AI Agent", "options": "Excom AI Agent",
 			 "insert_after": "opportunity_owner", **RO},

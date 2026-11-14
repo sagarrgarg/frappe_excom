@@ -170,3 +170,37 @@ export function needIsFor(n: { agent?: string | null; agents?: string | null }, 
   if (n.agent === agent) return true;
   return (n.agents || "").split(",").map((a) => a.trim()).includes(agent);
 }
+
+/* ─── HLD-009: people finder ─── */
+
+/** At most this many people are added at a time (people_finder.MAX_PICKS). */
+export const MAX_PEOPLE_PICKS = 5;
+
+/** Tick or untick one candidate; a sixth tick is ignored. */
+export function togglePick(picks: string[], pick: string, max = MAX_PEOPLE_PICKS): string[] {
+  if (picks.includes(pick)) return picks.filter((p) => p !== pick);
+  return picks.length >= max ? picks : [...picks, pick];
+}
+
+/** How many of the ticked people cost a lookup: those whose address research has not already found. */
+export function creditsFor(candidates: { pick: string; known_email?: string | null }[], picks: string[]): number {
+  return candidates.filter((c) => picks.includes(c.pick) && !c.known_email).length;
+}
+
+/**
+ * A provider's LinkedIn URL, safe to put in an href: only http(s), and a bare "linkedin.com/in/…"
+ * gets https. Anything else (javascript:, data:, junk) is null, so no link is drawn.
+ */
+export function linkedinHref(url?: string | null): string | null {
+  const v = (url || "").trim();
+  if (!v) return null;
+  const full = /^https?:\/\//i.test(v) ? v : /^(www\.)?linkedin\.com\//i.test(v) ? `https://${v}` : "";
+  if (!full) return null;
+  try {
+    const u = new URL(full);
+    // LinkedIn only, the server's rule: a contact's link is editable, and the icon must not vouch for another site
+    const host = u.hostname.toLowerCase();
+    const linkedin = host === "linkedin.com" || host.endsWith(".linkedin.com");
+    return (u.protocol === "http:" || u.protocol === "https:") && linkedin ? u.href : null;
+  } catch { return null; }
+}

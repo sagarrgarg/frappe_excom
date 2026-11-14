@@ -57,11 +57,25 @@ def cold_headers(identity: str, account) -> dict:
 	return {"List-Unsubscribe": value, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"}
 
 
-def footer(identity: str, postal_address: str = "") -> str:
-	"""The footer of a cold email: the company's postal address and the personal opt-out link."""
+PROVIDER_SITES = {"Apollo": "Apollo.io", "Prospeo": "Prospeo.io"}
+
+
+def data_source(identity: str | None) -> str | None:
+	"""Where we got this person's address, when it came from a data provider (HLD-009): the law in
+	the EU (GDPR Art. 14) and elsewhere says to tell them by the first email."""
+	address = identity and frappe.db.get_value("Omni Identity", identity, "primary_email")
+	source = address and frappe.db.get_value("Excom AI Person", {"email": address.lower()}, "email_source")
+	return PROVIDER_SITES.get(source or "")
+
+
+def footer(identity: str, postal_address: str = "", source: str | None = None) -> str:
+	"""The footer of a cold email: the company's postal address, where the address came from when a
+	data provider gave it, and the personal opt-out link."""
 	link = unsubscribe_url(identity)
 	address = frappe.utils.escape_html(postal_address or "")
-	return (f'<p style="color:#888;font-size:12px;margin-top:24px">{address}{"<br>" if address else ""}'
+	found = (frappe.utils.escape_html(_("We found your work address through {0}, a business contact database.").format(
+		source)) + "<br>") if source else ""
+	return (f'<p style="color:#888;font-size:12px;margin-top:24px">{address}{"<br>" if address else ""}{found}'
 		f'<a href="{link}" style="color:#888">{_("Unsubscribe")}</a></p>')
 
 

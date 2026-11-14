@@ -217,6 +217,10 @@ TOOLS = [
 	("zerobounce", "ZeroBounce verifier", "paid", "Per address."),
 	("hunter", "Hunter (domain search, verifier)", "paid", "Monthly quota."),
 	("precleared", "Precleared consent check", "paid", "Per address, cached 30 days."),
+	("apollo", "Apollo (people at a company, LinkedIn, work email)", "paid",
+		"Search is free; about $0.04 a person found (1 credit). Search needs a master API key."),
+	("prospeo", "Prospeo (people at a company, LinkedIn, verified email)", "paid",
+		"About $0.025 a credit: a search page with results, or a verified email found. No match is free."),
 	("mailbox_health", "Mailbox health (SPF, DKIM, DMARC, blocklists)", "read", "No cost."),
 	("trulyinbox", "TrulyInbox warm-up status", "read", "Read only."),
 ]

@@ -344,9 +344,47 @@ export interface AIPerson {
   name: string;
   email?: string | null;
   full_name?: string | null;
+  title?: string | null;
   email_status?: string | null;
   status?: string | null;
   company?: string | null;
+  company_name?: string | null;
+  /** HLD-009: the person's LinkedIn profile, kept as a link only. */
+  linkedin_url?: string | null;
+  /** Where the address came from. */
+  email_source?: "Published" | "Pattern" | "Hunter" | "Import" | "Apollo" | "Prospeo" | string | null;
+  /** Who confirmed the address: a verifier, or the provider when no verifier answered. */
+  verified_by?: string | null;
+}
+
+/* ─── HLD-009 §3.5: Find people on a Lead or Prospect (excom_ai.people_finder) ─── */
+
+/** One person a search found. `pick` is what add_people takes back. */
+export interface PeopleCandidate {
+  pick: string;
+  full_name?: string | null;
+  title?: string | null;
+  seniority?: string | null;
+  linkedin_url?: string | null;
+  /** The provider says it holds an address; null when it does not say. */
+  has_email?: boolean | null;
+  provider?: string | null;
+  /** Already found by research, so adding this person costs nothing. */
+  known_email?: string | null;
+}
+
+export interface FindPeopleResult {
+  domain: string;
+  provider: "Apollo" | "Prospeo" | "";
+  searched: boolean;
+  candidates: PeopleCandidate[];
+}
+
+export interface AddPeopleResult {
+  added: { contact: string; full_name?: string | null; email: string; linkedin_url?: string | null; reused: boolean }[];
+  no_email: { full_name?: string | null; linkedin_url?: string | null }[];
+  /** Looked up (and paid for) but not saved; adding them again costs nothing. */
+  failed?: { full_name?: string | null; email: string }[];
 }
 
 /* ─── Phase 1F–1H: new proposal payloads (deals.py, monitor.py, responder.py) ─── */

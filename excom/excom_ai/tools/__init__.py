@@ -28,6 +28,8 @@ Interfaces by kind (each adapter implements the ones it offers):
 - email finder: `find(domain, published, people) -> {mx_type, pattern, addresses: [...]}`.
 - verifier: `verify(email) -> {status: Verified|Risky|Invalid|Unknown, catch_all, raw}`.
 - consent: `check(email, country) -> {verdict: OK to email|Consent needed|Blocked|Unknown}`.
+- people (HLD-009): `search(domain, titles, limit) -> [candidate]`, `enrich(external_id | names +
+  domain | linkedin_url | email) -> person | None` (tools/people.py).
 """
 
 from __future__ import annotations
@@ -41,6 +43,7 @@ MODULES = [
 	"excom.excom_ai.tools.discovery",
 	"excom.excom_ai.tools.web",
 	"excom.excom_ai.tools.email",
+	"excom.excom_ai.tools.people",
 ]
 _loaded = False
 
@@ -125,7 +128,9 @@ def use(key: str, method: str, cost: float | None = None, **kwargs):
 			frappe.db.set_value("Excom AI Tool", key, "last_error", f"{type(e).__name__}: {e!s}"[:500], update_modified=False)
 		raise
 	if not fake and record and cls.tier == "paid":
-		_spend(record, estimate)
+		# a tool that knows what the provider billed (a no-match that cost nothing) says so in `charged`
+		charged = getattr(instance, "charged", None)
+		_spend(record, estimate if charged is None else flt(charged))
 	return out
 
 
