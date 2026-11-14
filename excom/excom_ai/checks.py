@@ -8,6 +8,8 @@ email that fails any check is never sent on Autopilot; it waits for a person.
 
     recipient      a real address, the subject's own, not opted out, not on do-not-contact, not an
                    existing customer or someone else's lead (cold mail), deliverable
+    named_person   cold mail from an agent with "Email only named people" ticked goes only to a
+                   person's own address from the People Finder (Apollo / Prospeo), never an inbox
     channel        one of the agent's mailboxes, not paused
     prices         every price in the email is in one of the agent's price lists (not for kind
                    "Statement": a reminder or statement quotes what a customer owes, written by
@@ -72,6 +74,7 @@ def check(agent, to_email: str, subject: str, body: str, *, kind: str = "Sequenc
 	text = f"{subject or ''}\n{body or ''}"
 	results = {
 		"recipient": _recipient(agent, to_email, kind, person, lead),
+		"named_person": _named_person(agent, to_email, kind, person),
 		"channel": _channel(agent, account),
 		"prices": (True, _("amounts owed, written by code from the ledger")) if kind == "Statement" else _prices(agent, text),
 		"phrases": _phrases(agent, text),
@@ -116,6 +119,16 @@ def _recipient(agent, to_email, kind, person, lead) -> tuple[bool, str]:
 		if status not in ("Verified", "Risky"):
 			return False, _("the address is {0}, not verified").format(status or _("unchecked"))
 	return True, to_email
+
+
+def _named_person(agent, to_email, kind, person) -> tuple[bool, str]:
+	"""Recipient is a person (People Finder): only for cold email from an agent with the box ticked."""
+	from excom.excom_ai import research
+
+	if kind != "Sequence" or not research.people_finder_only(agent):
+		return True, _("not required for this agent")
+	why = research.not_a_named_person(to_email, person)
+	return (False, why) if why else (True, _("a named person from the People Finder"))
 
 
 def _channel(agent, account) -> tuple[bool, str]:

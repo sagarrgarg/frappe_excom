@@ -36,3 +36,4 @@ excom.patches.v1_0.app_icon
 excom.patches.v1_0.inbox_lane_backfill
 excom.patches.v1_0.meta_dm_refill_empty_threads
 excom.patches.v1_0.mail_folders_two_way
+excom.patches.v1_0.people_finder_only_kiara

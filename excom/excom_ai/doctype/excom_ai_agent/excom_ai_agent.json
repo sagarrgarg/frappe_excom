@@ -49,6 +49,7 @@
   "markets",
   "products",
   "customer_types",
+  "people_finder_only",
   "sb_channels",
   "channels",
   "sb_knowledge",
@@ -340,6 +341,13 @@
    "description": "The Lead customer_type given to its leads, for example Export Importer."
   },
   {
+   "default": "0",
+   "description": "Cold emails go only to a person's own address found by the People Finder (Apollo or Prospeo). Never info@, sales@ or other shared inboxes, never a guessed or website address. Replies to people who wrote in are not affected.",
+   "fieldname": "people_finder_only",
+   "fieldtype": "Check",
+   "label": "Email Only Named People (People Finder)"
+  },
+  {
    "fieldname": "sb_channels",
    "fieldtype": "Section Break",
    "label": "Channels"
@@ -439,7 +447,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 10:00:00.000000",
+ "modified": "2026-11-15 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Agent",

@@ -262,3 +262,98 @@ class TestSequencer(FrappeTestCase):
 		for steps in by_enr.values():
 			if steps.get(1) and steps.get(2):
 				self.assertGreater(steps[2], steps[1])
+
+	# ---- "Email only named people" (People Finder)
+
+	def person_at(self, agent, local, source, inbox=0, seniority=None, status="Ready"):
+		type(self).pf = getattr(type(self), "pf", 0) + 1
+		c = frappe.get_doc({"doctype": "Excom AI Company", "company_name": f"QA Seq PF {self.n}-{self.pf}",
+			"domain": f"pf{self.n}-{self.pf}.qa-seq.example", "country": "Mexico", "agent": agent.name, "status": "Contacts found",
+			"fit_score": 90}).insert(ignore_permissions=True)
+		return frappe.get_doc({"doctype": "Excom AI Person", "company": c.name, "email": f"{local}@{c.domain}", "is_inbox": inbox,
+			"seniority": seniority, "email_source": source, "email_status": "Verified", "status": status,
+			"language": "es"}).insert(ignore_permissions=True)
+
+	def test_named_people_only_enrols_people_finder_people_and_nobody_else(self):
+		from excom.excom_ai import research
+
+		for ticked in (1, 0):
+			a = self.agent(status="Shadow")
+			a.db_set("people_finder_only", ticked)
+			a.reload()
+			people = {
+				"info": self.person_at(a, "info", "Published"),  # a shared inbox by its name alone
+				"ventas.mx": self.person_at(a, "ventas.mx", "Apollo"),
+				"compras2": self.person_at(a, "compras2", "Prospeo"),
+				"marked inbox": self.person_at(a, "maria", "Apollo", inbox=1),
+				"inbox seniority": self.person_at(a, "pedro", "Prospeo", seniority="Inbox"),
+				"guessed": self.person_at(a, "john.smith", "Pattern"),
+				"from a website": self.person_at(a, "luis.gomez", "Published"),
+				"apollo": self.person_at(a, "jane.doe", "Apollo"),
+				"prospeo": self.person_at(a, "ana.ruiz", "Prospeo"),
+			}
+			made = sequencer.enrol_ready(a, limit=20)
+			enrolled = {frappe.db.get_value("Excom AI Enrollment", e, "person") for e in made}
+			if ticked:
+				self.assertEqual(enrolled, {people["apollo"].name, people["prospeo"].name}, "only named people from the People Finder")
+				for key in ("info", "ventas.mx", "compras2", "marked inbox", "inbox seniority"):
+					self.assertIn("shared inbox", research.not_a_named_person(people[key].email))
+				self.assertIn("Pattern", research.not_a_named_person(people["guessed"].email))
+			else:
+				self.assertEqual(enrolled, {p.name for p in people.values()}, "unticked: everyone ready, as before")
+
+	def test_named_people_only_checks_drafts_and_refuses_at_send_but_never_replies(self):
+		from excom.excom_ai import checks
+
+		a = self.agent()
+		enr, person, props = self.enrolled(a)  # a shared inbox (p0@, is_inbox), enrolled while the box was off
+		ok, _why = checks._named_person(a, person.email, "Sequence", None)
+		self.assertTrue(ok, "box off: not required")
+		a.db_set("people_finder_only", 1)
+		a.reload()
+		ok, why = checks._named_person(a, person.email, "Sequence", None)
+		self.assertFalse(ok)
+		self.assertIn("shared inbox", why)
+		self.assertTrue(checks._named_person(a, "info@buyer.qa-seq.example", "Reply", None)[0],
+			"a buyer who wrote in from info@ is answered")
+		apollo = self.person_at(a, "jane.doe", "Apollo")
+		self.assertTrue(checks._named_person(a, apollo.email, "Sequence", None)[0])
+		frappe.db.set_value("Excom AI Proposal", props[1], "status", "Approved")
+		with patch("excom.excom.channels.email.outbound.send_email_reply") as send, \
+				patch.object(sequencer, "in_window", return_value=True):
+			proposals.execute(props[1])
+		send.assert_not_called()
+		row = frappe.db.get_value("Excom AI Proposal", props[1], ["status", "hold_reason", "error"], as_dict=True)
+		self.assertEqual(row.status, "Cancelled")
+		self.assertIn("People Finder", (row.hold_reason or "") + (row.error or ""))
+
+	def test_named_people_only_research_keeps_other_addresses_but_not_ready(self):
+		from excom.excom_ai import research
+
+		a = self.agent(status="Shadow")
+		a.db_set("people_finder_only", 1)
+		a.reload()
+		guessed = self.person_at(a, "john.smith", "Pattern", status="New")
+		apollo = self.person_at(a, "jane.doe", "Apollo", status="New")
+		with patch.object(research.tools, "available", side_effect=lambda k: k == "zerobounce"), \
+				patch.object(research.tools, "use", return_value={"status": "Verified"}):
+			for p in (guessed, apollo):
+				research.verify_email(frappe._dict(subject_name=p.name, name=None), a)
+		self.assertEqual(frappe.db.get_value("Excom AI Person", guessed.name, ["email_status", "status"]), ("Verified", "New"),
+			"kept for reference, never ready")
+		self.assertEqual(frappe.db.get_value("Excom AI Person", apollo.name, "status"), "Ready")
+
+	def test_named_people_only_needs_a_people_finder_switched_on(self):
+		from excom.excom_ai import tools
+		from excom.excom_ai.builder import readiness
+
+		a = self.agent(status="Shadow")
+		self.assertTrue(readiness.people_finder(a, {})[0], "box off: nothing needed")
+		a.db_set("people_finder_only", 1)
+		a.reload()
+		with patch.object(tools, "available", return_value=False):
+			ok, why = readiness.people_finder(a, {})
+		self.assertFalse(ok)
+		self.assertIn("email nobody", why)
+		with patch.object(tools, "available", side_effect=lambda k: k == "prospeo"):
+			self.assertEqual(readiness.people_finder(a, {}), (True, "Emails only named people found by Prospeo."))

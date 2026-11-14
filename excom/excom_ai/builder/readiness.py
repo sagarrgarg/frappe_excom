@@ -55,6 +55,9 @@ SALES_RULES = [
 	("sales.certificates", "Certificates", "Warning", "",
 		"Keep every certificate the playbook claims on record with its expiry (the document register).", ""),
 	("sales.people", "People", "Blocker", "", "Set an active owner and backup, and the team.", ""),
+	("sales.people_finder", "People Finder", "Blocker", "",
+		"The agent emails only named people from the People Finder: switch on Apollo or Prospeo with a key and a budget, "
+		"or untick 'Email only named people'.", "/excom/admin/ai-setup"),
 	("sales.lead_hygiene", "Lead hygiene", "Warning", "export", "Re-tag the desk's leads that are not really export leads.",
 		"/app/lead"),
 	("sales.thread_hygiene", "Thread hygiene", "Warning", "",
@@ -252,6 +255,18 @@ def people(agent, facts):
 	if not agent.team:
 		problems.append(_("no team"))
 	return not problems, "; ".join(problems) or _("Owner and backup active; team {0}.").format(agent.team)
+
+
+@check("sales.people_finder")
+def people_finder(agent, facts):
+	from excom.excom_ai import research, tools
+
+	if not research.people_finder_only(agent):
+		return True, _("Writes to any verified address (Email only named people is off).")
+	on = [research.PROVIDER_LABEL.get(k, k) for k in research.PEOPLE_PROVIDERS if tools.available(k)]
+	if not on:
+		return False, _("Email only named people is ticked, but neither Apollo nor Prospeo is switched on: it can email nobody.")
+	return True, _("Emails only named people found by {0}.").format(" or ".join(on))
 
 
 @check("sales.lead_hygiene")

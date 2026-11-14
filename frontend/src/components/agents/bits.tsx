@@ -431,6 +431,7 @@ export const REJECT_REASONS = ["Wrong facts", "Wrong tone", "Wrong recipient", "
 /** The code checks (excom_ai/checks.py), in plain words. */
 export const CHECK_LABEL: Record<string, string> = {
   recipient: "Recipient",
+  named_person: "Recipient is a person (People Finder)",
   channel: "Mailbox",
   prices: "Prices",
   phrases: "Words it may not use",

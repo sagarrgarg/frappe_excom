@@ -63,6 +63,37 @@ FREE_MAIL = {"gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com",
 	"yahoo.co.in", "rediffmail.com", "gmx.com", "yandex.com", "mail.com"}
 
 
+# Where an address counts as a named person's own, for an agent with "Email only named people" ticked.
+PEOPLE_FINDER_SOURCES = ("Apollo", "Prospeo")
+
+
+def people_finder_only(agent) -> bool:
+	return bool(agent and cint(agent.get("people_finder_only")))
+
+
+def not_a_named_person(email: str | None, person=None) -> str | None:
+	"""Why this address is not a person's own address from the People Finder (a shared inbox, a guessed or
+	published address, or nobody we know); None when it is. Used only for agents with the box ticked."""
+	from excom.excom_ai.tools.email import is_role
+
+	email = (email or "").strip().lower()
+	if not email:
+		return _("no address")
+	if is_role(email):
+		return _("{0} is a shared inbox, not a person").format(email)
+	if person is None or isinstance(person, str):
+		person = frappe.db.get_value("Excom AI Person", person or {"email": email},
+			["is_inbox", "seniority", "email_source"], as_dict=True)
+	if not person:
+		return _("{0} was not found by the People Finder").format(email)
+	if cint(person.get("is_inbox")) or person.get("seniority") == "Inbox":
+		return _("{0} is a shared inbox, not a person").format(email)
+	if person.get("email_source") not in PEOPLE_FINDER_SOURCES:
+		return _("{0} came from {1}, not the People Finder (Apollo or Prospeo)").format(
+			email, person.get("email_source") or _("an unknown source"))
+	return None
+
+
 def exclusion(domain: str | None, emails: list[str] | None = None, agent: str | None = None) -> tuple[str | None, str | None]:
 	"""(reason, customer) when a company must not be written to cold; (None, None) when it may."""
 	from excom.excom_ai.service_user import is_service_user
@@ -360,6 +391,8 @@ def verify_email(task, agent) -> str:
 		except tools.ToolRefused:
 			pass
 	ready = status in ("Verified", "Risky") and values.get("consent_verdict", person.consent_verdict) != "Blocked"
+	if ready and people_finder_only(agent) and not_a_named_person(person.email, person):
+		ready = False  # kept for reference; this agent writes only to named people from the People Finder
 	values["status"] = "Invalid" if status == "Invalid" else "Ready" if ready else person.status
 	person.db_set(values, update_modified=False)
 	_observe(person.company, person.name, {"EMAIL_STATUS": status}, used or "none", task)

@@ -184,6 +184,7 @@ export interface AgentRecord extends Partial<Record<BriefField, string | null>> 
   daily_ai_budget?: number | null;
   monthly_ai_budget?: number | null;
   office_hours?: string | null;
+  people_finder_only?: 0 | 1 | null;
   model?: string | null;
   /** Custom agents: "watch, draft" and so on (packs/custom.py); empty means watch and draft. */
   abilities?: string | null;

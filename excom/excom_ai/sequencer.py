@@ -30,7 +30,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, cint, get_datetime, get_system_timezone, getdate, now_datetime
 
-from excom.excom_ai import mail
+from excom.excom_ai import mail, research
 from excom.excom_ai.builder import geo
 from excom.excom_ai.constants import OUTREACH_PURPOSES
 from excom.excom_ai.engine import proposals, registry
@@ -125,13 +125,17 @@ def enrol_ready(agent, limit: int | None = None) -> list[str]:
 	today = getdate()
 	started = frappe.db.count("Excom AI Enrollment", {"agent": agent.name, "creation": [">=", get_datetime(today)]})
 	limit = max(0, limit - started)
-	rows = frappe.db.sql("""SELECT p.name, p.company, p.language, p.lead FROM `tabExcom AI Person` p
+	rows = frappe.db.sql("""SELECT p.name, p.company, p.language, p.lead, p.email, p.is_inbox, p.seniority, p.email_source
+		FROM `tabExcom AI Person` p
 		JOIN `tabExcom AI Company` c ON c.name = p.company
 		WHERE c.agent = %(agent)s AND c.status NOT IN ('Excluded', 'Promoted') AND IFNULL(c.company_stop, 0) = 0
 			AND IFNULL(c.fit_score, 0) >= %(fit)s AND p.status = 'Ready' AND p.email_status IN ('Verified', 'Risky')
 			AND IFNULL(p.consent_verdict, 'Unknown') != 'Blocked'
 			AND NOT EXISTS (SELECT 1 FROM `tabExcom AI Enrollment` e WHERE e.company = p.company)
 		ORDER BY c.fit_score DESC, p.is_inbox ASC, p.creation ASC""", {"agent": agent.name, "fit": FIT_TO_ENROL}, as_dict=True)
+	if research.people_finder_only(agent):
+		# "Email only named people": shared inboxes and guessed or published addresses are never enrolled
+		rows = [r for r in rows if not research.not_a_named_person(r.email, r)]
 	seq = default_sequence(agent)
 	made, seen = [], set()
 	from excom.excom_ai.engine import tasks
@@ -208,6 +212,10 @@ def send_email(proposal, agent):
 
 		enr.db_set("lead", promote(enr.person, agent)["lead"], update_modified=False)
 	to = proposal.to_email or (frappe.db.get_value("Lead", enr.lead, "email_id") if enr else None)
+	if research.people_finder_only(agent) and (proposal.kind or "Sequence") == "Sequence":
+		why = research.not_a_named_person(to, enr.person if enr and enr.person else None)
+		if why:
+			raise registry.Cancel(_("this agent emails only named people from the People Finder: {0}").format(why))
 	identity = frappe.db.get_value("Omni Identity", {"primary_email": to})
 	if not identity:
 		raise registry.Cancel(_("no person record for {0}").format(to))

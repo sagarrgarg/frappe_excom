@@ -14,9 +14,10 @@ const OFFICE_HOURS = [
   { value: "Company office hours", label: "Our office hours", hint: "Messages go out in your company's working day." },
 ];
 const USER_FILTERS = { enabled: 1, user_type: "System User" };
+const PEOPLE_FINDER_HINT = "Cold emails go only to a person's own address found by Apollo or Prospeo: never info@, sales@ or another shared inbox, never a guessed or website address. Replies to people who wrote in are not affected.";
 
 type People = { owner_user: string; backup_user: string; team: string; escalation_user: string; reviewers: string };
-type Limits = { daily_ai_budget: string; monthly_ai_budget: string; office_hours: string; channels: ChannelRow[] };
+type Limits = { daily_ai_budget: string; monthly_ai_budget: string; office_hours: string; people_finder_only: boolean; channels: ChannelRow[] };
 
 function pickChannel(r: ChannelRow): ChannelRow {
   return { channel_account: r.channel_account || "", purpose: r.purpose || PURPOSES[0], daily_cap: r.daily_cap ?? 0, warmup_start: r.warmup_start || "", signature_mode: r.signature_mode || SIGNATURES[0], paused: r.paused ? 1 : 0 };
@@ -41,6 +42,7 @@ export function ChannelsTab({ d, reload }: { d: AgentDetail; reload: () => void 
     daily_ai_budget: a.daily_ai_budget != null ? String(a.daily_ai_budget) : "",
     monthly_ai_budget: a.monthly_ai_budget != null ? String(a.monthly_ai_budget) : "",
     office_hours: a.office_hours || OFFICE_HOURS[0].value,
+    people_finder_only: Boolean(a.people_finder_only),
     channels: d.channels.map(pickChannel),
   }), [a, d.channels]);
   const [limits, setLimits] = useState(serverLimits);
@@ -86,6 +88,7 @@ export function ChannelsTab({ d, reload }: { d: AgentDetail; reload: () => void 
             daily_ai_budget: limits.daily_ai_budget === "" ? 0 : Number(limits.daily_ai_budget),
             monthly_ai_budget: limits.monthly_ai_budget === "" ? 0 : Number(limits.monthly_ai_budget),
             office_hours: limits.office_hours,
+            people_finder_only: limits.people_finder_only ? 1 : 0,
             channels: JSON.stringify(limits.channels.map((r) => ({ ...r, daily_cap: Number(r.daily_cap || 0), warmup_start: r.warmup_start || null }))),
           }, "Limits saved", "Could not save the limits");
           if (ok) reload();
@@ -103,6 +106,14 @@ export function ChannelsTab({ d, reload }: { d: AgentDetail; reload: () => void 
             {edit ? <Select id="hours" value={limits.office_hours} onChange={(e) => setLimits((l) => ({ ...l, office_hours: e.target.value }))}>{OFFICE_HOURS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</Select>
               : <p className="text-sm text-ink-1">{OFFICE_HOURS.find((o) => o.value === limits.office_hours)?.label || limits.office_hours}</p>}
           </Field>
+          <div className="tablet:col-span-2">
+            <label className={cn("inline-flex items-start gap-2 text-sm text-ink-1", edit && "cursor-pointer")}>
+              <input type="checkbox" className="size-4 mt-0.5 shrink-0" checked={limits.people_finder_only} disabled={!edit}
+                onChange={(e) => setLimits((l) => ({ ...l, people_finder_only: e.target.checked }))} />
+              <span>Email only named people from the People Finder</span>
+            </label>
+            <p className="text-xs text-ink-3 mt-1 ml-6">{PEOPLE_FINDER_HINT}</p>
+          </div>
         </div>
 
         <h3 className="text-sm font-medium text-ink-1 mt-4 mb-1">Channels it may use</h3>

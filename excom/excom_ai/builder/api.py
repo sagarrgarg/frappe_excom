@@ -208,7 +208,8 @@ def agent(name: str) -> dict:
 		"agent": {f: doc.get(f) for f in ("name", "agent_name", "title", "agent_type", "company", "status", "hold_reason",
 			"service_user", "avatar", "owner_user", "backup_user", "team", "escalation_user", "reviewers", "acting_owner",
 			"owner_last_seen", "keywords", "brief_version", "brief_approved_by", "brief_approved_on", "readiness_state",
-			"readiness_checked_on", "daily_ai_budget", "monthly_ai_budget", "office_hours", "model", "abilities", *BRIEF)},
+			"readiness_checked_on", "daily_ai_budget", "monthly_ai_budget", "office_hours", "people_finder_only", "model", "abilities",
+			*BRIEF)},
 		"pack": pack,
 		"people": {u: frappe.db.get_value("User", u, "full_name") or u for u in
 			{doc.owner_user, doc.backup_user, doc.acting_owner, doc.escalation_user, doc.brief_approved_by} if u},
@@ -305,7 +306,7 @@ def set_people(name: str, owner_user: str | None = None, backup_user: str | None
 
 @frappe.whitelist(methods=["POST"])
 def set_limits(name: str, daily_ai_budget=None, monthly_ai_budget=None, office_hours: str | None = None,
-		channels=None) -> dict:
+		channels=None, people_finder_only=None) -> dict:
 	doc = _changeable(name)
 	for field, value in (("daily_ai_budget", daily_ai_budget), ("monthly_ai_budget", monthly_ai_budget)):
 		if value is None or value == "":
@@ -319,6 +320,8 @@ def set_limits(name: str, daily_ai_budget=None, monthly_ai_budget=None, office_h
 		doc.set(field, amount)
 	if office_hours:
 		doc.office_hours = office_hours
+	if people_finder_only is not None and people_finder_only != "":
+		doc.people_finder_only = 1 if cint(people_finder_only) else 0
 	if channels is not None:
 		doc.set("channels", [])
 		for r in _json(channels, []):
