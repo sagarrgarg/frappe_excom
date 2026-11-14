@@ -364,17 +364,27 @@ class TestDeals(FrappeTestCase):
 		so = self.sales_order(a, c)
 		calls = self.meta()
 
+		# no opt-in: the send rules would refuse a template, so the update is written by email instead
+		with as_agent.as_user(a.service_user), self.assertRaises(send_rules.AgentSendRefused):
+			send_rules.check(w.thread, purpose="outreach", window=False, template=tname)
+		out = self.order_update(a, so, f"ou{self.n}0")
+		self.assertNotIn("WhatsApp template", out)
+		self.assertTrue(frappe.db.exists("Excom AI Proposal", {"subject_name": so.name, "action": "reply", "thread": c.thread}),
+			"the buyer is not silently skipped")
+
+		record_consent(w.identity, "Granted", channel="whatsapp", purpose="transactional")
+		frappe.db.commit()
 		out = self.order_update(a, so, f"ou{self.n}a")
 		self.assertIn("WhatsApp template", out)
-		p = frappe.get_doc("Excom AI Proposal", {"subject_name": so.name, "action": "reply"})
+		p = frappe.get_doc("Excom AI Proposal", {"subject_name": so.name, "action": "reply", "thread": w.thread})
 		payload = json.loads(p.payload)
 		self.assertEqual((p.status, p.thread, payload["channel"], payload["template"]), ("Pending", w.thread, "whatsapp", tname))
 		self.assertEqual(payload["variables"], [f"QA Deal Buyer {self.n}", f"PO-QA-{self.n}", "delivered"])
 		self.assertIn(f"your order PO-QA-{self.n} is now delivered", p.preview_html)
 
-		# no opt-in: the send rules refuse it, and Meta is never called
-		with as_agent.as_user(a.service_user), self.assertRaises(send_rules.AgentSendRefused):
-			send_rules.check(w.thread, purpose="outreach", window=False, template=tname)
+		# the opt-in withdrawn before the send: the send rules refuse it, and Meta is never called
+		record_consent(w.identity, "Withdrawn", channel="whatsapp", purpose="transactional")
+		frappe.db.commit()
 		self.approve(p.name)
 		proposals.execute(p.name)
 		row = frappe.db.get_value("Excom AI Proposal", p.name, ["status", "error"], as_dict=True)
@@ -382,11 +392,12 @@ class TestDeals(FrappeTestCase):
 		self.assertIn("opt-in", row.error)
 		self.assertEqual(calls, [])
 
-		# with the buyer's WhatsApp opt-in recorded, the next update goes, through send_template_to_thread
+		# with the buyer's WhatsApp opt-in recorded again, the next update goes, through send_template_to_thread
 		record_consent(w.identity, "Granted", channel="whatsapp", purpose="transactional")
 		frappe.db.commit()
 		self.order_update(a, so, f"ou{self.n}b")
-		p2 = frappe.get_value("Excom AI Proposal", {"subject_name": so.name, "action": "reply", "status": "Pending"})
+		p2 = frappe.get_value("Excom AI Proposal", {"subject_name": so.name, "action": "reply", "status": "Pending",
+			"thread": w.thread})
 		self.approve(p2)
 		with patch("excom.excom.api.chat.send_template_to_thread", wraps=__import__("excom.excom.api.chat",
 				fromlist=["x"]).send_template_to_thread) as via:
@@ -442,6 +453,9 @@ class TestDeals(FrappeTestCase):
 		c = self.conversation(a, "thanks")
 		w = self.on_whatsapp(a, c, wa)
 		self.approved_template(a, wa, "sales.quote_follow_up", "Quotation {{1}} is valid until {{2}}.")
+		from excom.excom.services.consent import record_consent
+
+		record_consent(w.identity, "Granted", channel="whatsapp", purpose="transactional")  # checked when it is written
 		q = deals.price(a, "Lead", c.lead, [{"item_code": "QA-DEAL-SHARK", "qty": 100}]).doc
 		q.transaction_date = add_days(nowdate(), -8)
 		q.insert(ignore_permissions=True)

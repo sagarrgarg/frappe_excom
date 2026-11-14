@@ -183,8 +183,12 @@ export function togglePick(picks: string[], pick: string, max = MAX_PEOPLE_PICKS
 }
 
 /** How many of the ticked people cost a lookup: those whose address research has not already found. */
-export function creditsFor(candidates: { pick: string; known_email?: string | null }[], picks: string[]): number {
-  return candidates.filter((c) => picks.includes(c.pick) && !c.known_email).length;
+export function creditsFor(
+  candidates: { pick: string; known_email?: string | null; looked_up?: boolean }[],
+  picks: string[],
+): number {
+  // someone already looked up (by anyone, in the last 30 days) costs nothing again, address or not
+  return candidates.filter((c) => picks.includes(c.pick) && !c.known_email && !c.looked_up).length;
 }
 
 /**

@@ -23,11 +23,13 @@ async def _main(settings: Settings) -> None:
         loop.add_signal_handler(sig, stop.set)
     await stop.wait()
 
-    # Stop accepting new calls; let calls in progress finish (systemd/docker
-    # give us TimeoutStopSec / stop_grace_period before a hard kill).
+    # Stop accepting new calls; let calls in progress finish, then give their end
+    # reports their retry window (systemd/docker give us TimeoutStopSec /
+    # stop_grace_period, which must exceed max_seconds + drain + END_RETRY_SECONDS).
     log.info("shutting down; waiting for active calls to finish")
     server.close(close_connections=False)
     await server.wait_closed()
+    await app.frappe.drain(settings.end_retry_seconds + settings.frappe_timeout_seconds)
     await app.frappe.aclose()
     await app.tts.aclose()
 

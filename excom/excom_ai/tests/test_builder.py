@@ -18,6 +18,7 @@ OWNER = "qa.build.owner@example.com"
 BACKUP = "qa.build.backup@example.com"
 OUTSIDER = "qa.build.outsider@example.com"
 TEAM = "QA Builder Desk"
+OTHER_TEAM = "QA Builder Other Desk"
 GROUP = "QA Squirters"
 PRICE_LIST = "QA Export USD"
 BUYER = "QA Comprador Mexicano"
@@ -50,8 +51,9 @@ def _cleanup():
 		frappe.delete_doc("Address", addr, force=True, ignore_permissions=True)
 	if frappe.db.exists("Customer", BUYER):
 		frappe.delete_doc("Customer", BUYER, force=True, ignore_permissions=True)
-	if frappe.db.exists("Excom Team", TEAM):
-		frappe.delete_doc("Excom Team", TEAM, force=True, ignore_permissions=True)
+	for team in (TEAM, OTHER_TEAM):
+		if frappe.db.exists("Excom Team", team):
+			frappe.delete_doc("Excom Team", team, force=True, ignore_permissions=True)
 	purge_users(OWNER, BACKUP, OUTSIDER)
 	frappe.db.commit()
 
@@ -70,6 +72,8 @@ class TestBuilder(FrappeTestCase):
 		frappe.get_doc("User", OWNER).add_roles("Sales Manager", "Stock User", "Sales Master Manager", "Purchase User", "Accounts User")
 		frappe.get_doc({"doctype": "Excom Team", "team_name": TEAM, "members": [
 			{"user": OWNER, "role": "Manager"}, {"user": BACKUP, "role": "Member"}]}).insert(ignore_permissions=True)
+		frappe.get_doc({"doctype": "Excom Team", "team_name": OTHER_TEAM, "members": [
+			{"user": BACKUP, "role": "Member"}]}).insert(ignore_permissions=True)
 		frappe.get_doc({"doctype": "Item Group", "item_group_name": GROUP, "parent_item_group": "All Item Groups"}).insert(
 			ignore_permissions=True)
 		cls.items = []
@@ -251,6 +255,99 @@ class TestBuilder(FrappeTestCase):
 		frappe.db.rollback()
 		api.waive_gap(gaps["Blocker"], "We send prices by hand")
 		self.assertEqual(frappe.db.get_value("Excom AI Readiness Gap", gaps["Blocker"], "status"), "Waived")
+
+	def create(self, **kw):
+		rows = api.resolve_keywords("Sales", KEYWORDS)
+		for r in rows:
+			if r["resolved_as"] == "AI proposal":
+				r["resolved_as"] = "Vocabulary"
+		return api.create_agent("Sales", KEYWORDS, rows=frappe.as_json(rows), **kw)["name"]
+
+	def no_team_agent(self, persona):
+		"""An agent an Excom Admin made without a team, owned by the backup; the owner reviews it."""
+		name = self.create(persona=persona, owner=BACKUP)
+		frappe.db.set_value("Excom AI Agent", name, "reviewers", OWNER)
+		frappe.db.commit()
+		return name
+
+	def test_a_team_manager_names_only_members_of_their_team(self):
+		frappe.set_user(OWNER)
+		try:
+			for kw, why in (({"owner": "Administrator"}, "no team: nobody to manage"),
+					({"team": TEAM, "owner": "Administrator"}, "an admin is not a member"),
+					({"team": TEAM, "owner": OUTSIDER}, "not in the team"),
+					({"team": OTHER_TEAM}, "a team they do not manage"),
+					({"backup": BACKUP}, "a backup needs the team too")):
+				with self.assertRaises(frappe.PermissionError, msg=why):
+					self.create(persona="QA Build Naming", **kw)
+			name = self.create(persona="QA Build Naming", team=TEAM, owner=BACKUP, backup=OWNER)
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual(frappe.db.get_value("Excom AI Agent", name, ["owner_user", "team"]), (BACKUP, TEAM))
+
+	def test_a_team_manager_changes_only_their_teams_agents(self):
+		name = self.no_team_agent("QA Build No Team")
+		frappe.set_user(OWNER)  # a team's manager, and a reviewer here
+		try:
+			self.assertFalse(api.agent(name)["can_change"], "an agent without a team has no team manager")
+			with self.assertRaises(frappe.PermissionError):
+				api.save_brief(name, frappe.as_json({"mission": "QA taken over"}))
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_who_names_the_backup_and_reviewers(self):
+		a = self.build(persona="QA Build People")
+		same = {"owner_user": OWNER, "backup_user": BACKUP, "team": TEAM, "escalation_user": "", "reviewers": ""}
+		frappe.set_user(BACKUP)
+		try:
+			self.assertFalse(api.agent(a.name)["can_change_people"])
+			api.set_people(a.name, **same)  # the screen sends everything: nothing changed, nothing checked
+			with self.assertRaises(frappe.PermissionError, msg="the backup does not choose reviewers"):
+				api.set_people(a.name, **{**same, "reviewers": OWNER})
+			with self.assertRaises(frappe.PermissionError, msg="nor the escalation"):
+				api.set_people(a.name, **{**same, "escalation_user": OUTSIDER})
+			with self.assertRaises(frappe.PermissionError, msg="nor the backup"):
+				api.set_people(a.name, **{**same, "backup_user": ""})
+		finally:
+			frappe.set_user("Administrator")
+		frappe.set_user(OWNER)
+		try:
+			with self.assertRaises(frappe.PermissionError, msg="not in the team"):
+				api.set_people(a.name, **{**same, "reviewers": OUTSIDER})
+			with self.assertRaises(frappe.PermissionError, msg="a team they do not manage"):
+				api.set_people(a.name, **{**same, "team": OTHER_TEAM})
+		finally:
+			frappe.set_user("Administrator")
+		name = self.no_team_agent("QA Build No Team People")
+		frappe.set_user(BACKUP)  # its owner
+		try:
+			with self.assertRaises(frappe.PermissionError, msg="no team: an admin names its people"):
+				api.set_people(name, escalation_user=OWNER)
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_only_an_admin_lifts_the_ai_budget(self):
+		a = self.build(persona="QA Build Budget")
+		frappe.set_user(BACKUP)
+		try:
+			with self.assertRaises(frappe.PermissionError, msg="0 is no limit"):
+				api.set_limits(a.name, daily_ai_budget=0)
+			with self.assertRaises(frappe.ValidationError):
+				api.set_limits(a.name, monthly_ai_budget="-0.5")
+			api.set_limits(a.name, daily_ai_budget="", monthly_ai_budget=40)
+			self.assertEqual(frappe.db.get_value("Excom AI Agent", a.name, ["daily_ai_budget", "monthly_ai_budget"]), (5, 40),
+				"an empty box leaves the budget alone")
+		finally:
+			frappe.set_user("Administrator")
+		api.set_limits(a.name, daily_ai_budget=0)
+		frappe.set_user(BACKUP)
+		try:
+			api.set_limits(a.name, daily_ai_budget=0, monthly_ai_budget=30)  # what an admin chose, sent back unchanged
+		finally:
+			frappe.set_user("Administrator")
+		doc = frappe.get_doc("Excom AI Agent", a.name)
+		doc.daily_ai_budget = -0.5
+		self.assertRaises(frappe.ValidationError, doc.save, ignore_permissions=True)
 
 	# ---- recipes and the nightly refresh
 

@@ -188,6 +188,11 @@ def _offer_ai(provider, decision, account: str, call_uuid: str, caller: str, ide
 		return
 	if offer:
 		decision.ai_stream, decision.ai_token = offer
+		if decision.is_empty:  # nobody to ring: the agent answers at once
+			try:
+				ai_voice.mark_handed(call_uuid)
+			except Exception:
+				frappe.log_error(frappe.get_traceback(), "Excom Voice: AI offer failed")
 
 
 def _route_outbound(provider, account: str, params: dict, call_uuid: str) -> str:
@@ -299,6 +304,7 @@ def dial_action():
 	provider = providers.for_account(account)
 	document = provider.action_response()
 	ai_document = None
+	ai_event = None
 	if getattr(provider, "supports_ai_stream", False):
 		try:
 			from excom.excom_ai import voice as ai_voice
@@ -307,13 +313,25 @@ def dial_action():
 			if ai_voice.offered(event.provider_call_id):
 				# Nobody answered: the agent takes the call. Answered: the call ends as usual (on a
 				# vendor told to run this reply, an explicit hangup).
-				ai_document = ai_voice.after_dial(provider, event) or provider.end_document()
+				ai_document = ai_voice.after_dial(provider, event)
+				if ai_document:
+					ai_event = event
+				else:
+					ai_document = provider.end_document()
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), "Excom Voice: AI handoff failed")
-			ai_document = None
+			ai_document = ai_event = None
 
 	try:
-		result = _handle_event("dial_action", account)
+		if ai_event is not None:
+			# The agent takes the call, so it is not missed: the people rung are not told "Missed
+			# call" (the agent's callback ToDo is the one alert), and the record stays open until the
+			# agent's call ends (excom_ai.voice.end, or the hangup).
+			ai_event.status = "In Progress"
+			ai_event.failure_reason = ""
+			result = handler.apply_event(ai_event, account)
+		else:
+			result = _handle_event("dial_action", account)
 	except Exception:
 		# The call is still up, and on a vendor that executes this reply as call control a Frappe
 		# error page is not call control — Twilio plays "an application error has occurred" and
@@ -333,7 +351,20 @@ def dial_action():
 @frappe.whitelist(allow_guest=True, methods=["POST", "GET"])
 def hangup_event():
 	"""hangup_url. Carries billed duration and cost."""
-	return _handle_event("hangup", _verified_account())
+	account = _verified_account()
+	provider = providers.for_account(account)
+	event = provider.normalize_event("hangup", _payload())
+	if getattr(provider, "supports_ai_stream", False):
+		try:
+			from excom.excom_ai import voice as ai_voice
+
+			if event.status == "Completed" and ai_voice.never_answered(event.provider_call_id):
+				# Handed to the agent, but the voice service never picked up: the caller heard
+				# nothing, so it is a missed call, not a completed one.
+				event.status = "Missed"
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), "Excom Voice: AI hangup check failed")
+	return handler.apply_event(event, account)
 
 
 # Plivo is configured with `.../voice.hangup`, which reads better in the console than

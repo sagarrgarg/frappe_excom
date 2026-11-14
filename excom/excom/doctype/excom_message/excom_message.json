@@ -69,7 +69,8 @@
    "fieldname": "omni_identity",
    "fieldtype": "Link",
    "label": "Omni Identity",
-   "options": "Omni Identity"
+   "options": "Omni Identity",
+   "search_index": 1
   },
   {
    "fieldname": "direction",
@@ -226,7 +227,8 @@
    "fieldname": "template",
    "fieldtype": "Link",
    "label": "Template",
-   "options": "WhatsApp Templates"
+   "options": "WhatsApp Templates",
+   "search_index": 1
   },
   {
    "fieldname": "column_break_rel",
@@ -333,7 +335,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-08 13:00:00.000000",
+ "modified": "2026-11-14 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom",
  "name": "Excom Message",

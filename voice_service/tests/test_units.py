@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+from dataclasses import replace
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
@@ -11,9 +12,13 @@ import pytest
 from websockets.exceptions import ConnectionClosedOK
 from websockets.frames import Close
 
+from excom_voice import phrases
+from excom_voice.config import Settings
 from excom_voice.frappe_client import FrappeClient, FrappeError
+from excom_voice.server import VoiceApp
 from excom_voice.speech.base import SpeechError
 from excom_voice.speech.deepgram import (
+    DEFAULT_VOICES,
     DeepgramSTTSession,
     DeepgramTTS,
     default_voice,
@@ -126,6 +131,8 @@ def test_default_voice() -> None:
     assert default_voice("en") == "aura-2-thalia-en"
     assert default_voice("es-MX") == "aura-2-celeste-es"
     assert default_voice("hi") == "aura-2-thalia-en"  # no Hindi Aura voice
+    assert DeepgramTTS.languages == frozenset(DEFAULT_VOICES)
+    assert "hi" not in DeepgramTTS.languages and "pt" not in DeepgramTTS.languages
 
 
 def test_split_text_respects_limit() -> None:
@@ -244,11 +251,89 @@ async def test_frappe_client_unwraps_message_and_raises_on_errors() -> None:
         return httpx.Response(403)
 
     client = FrappeClient(
-        "https://f.test", "k", transport=httpx.MockTransport(handler), end_retries=2, end_retry_backoff=0
+        "https://f.test",
+        "k",
+        transport=httpx.MockTransport(handler),
+        end_retry_seconds=1,
+        end_retry_backoff=0,
     )
     reply = await client.turn("T", "hello")
     assert (reply.say, reply.end_call) == ("Hi", True)
     with pytest.raises(FrappeError):
         await client.start("T")
-    assert await client.end("T", [], 3, "error") is False  # 403 twice, no raise
+    assert await client.end("T", [], 3, "error") is False  # 403: refused, not retried, no raise
     await client.aclose()
+
+
+def test_frappe_error_kinds() -> None:
+    assert FrappeError("x", 404).refused and FrappeError("x", 403).refused
+    assert not FrappeError("x", 500).refused and not FrappeError("x").refused
+    assert FrappeError("x").retryable and FrappeError("x", 502).retryable and FrappeError("x", 429).retryable
+    assert not FrappeError("x", 403).retryable and not FrappeError("x", 417).retryable
+
+
+async def test_end_gives_up_after_its_retry_window() -> None:
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(503)
+
+    client = FrappeClient(
+        "https://f.test",
+        "k",
+        transport=httpx.MockTransport(handler),
+        end_retry_seconds=0.1,
+        end_retry_backoff=0.02,
+    )
+    assert await client.end("T", [], 3, "error") is False
+    assert 2 <= len(calls) <= 4  # 0.02, 0.04 apart, then the next wait would pass the window
+    await client.aclose()
+
+
+# ------------------------------------------------------------------ config, phrases, server
+
+
+def test_config_defaults_and_checks(monkeypatch: pytest.MonkeyPatch) -> None:
+    names = ("HOST", "FRAPPE_URL", "VOICE_KEY", "ALLOW_INSECURE_FRAPPE", "DEFAULT_MAX_SECONDS", "MAX_CALLS")
+    for name in names:
+        monkeypatch.delenv(name, raising=False)
+    assert Settings.from_env().host == "127.0.0.1"
+    assert Settings.from_env().default_max_seconds == 600  # the same default as Frappe's
+    key = "k" * 32
+    ok = Settings(
+        frappe_url="https://erp.example.com", voice_key=key, stt_provider="fake", tts_provider="fake"
+    )
+    assert ok.check() == []
+    plain = replace(ok, frappe_url="http://erp.example.com")
+    assert any("https" in p for p in plain.check())
+    assert replace(plain, allow_insecure_frappe=True).check() == []
+    assert any("32" in p for p in replace(ok, voice_key="short").check())
+    monkeypatch.setenv("ALLOW_INSECURE_FRAPPE", "1")
+    monkeypatch.setenv("TRUSTED_PROXIES", "10.0.0.1, 10.0.0.2")
+    env = Settings.from_env()
+    assert env.allow_insecure_frappe and env.trusted_proxies == ("10.0.0.1", "10.0.0.2")
+
+
+def test_every_phrase_table_covers_the_same_languages() -> None:
+    tables = [phrases.APOLOGY, phrases.GOODBYE, phrases.STILL_THERE, phrases.IDLE_GOODBYE]
+    langs = set(tables[0])
+    assert {"en", "es", "pt", "hi", "fr", "de", "it", "nl", "ja"} <= langs
+    assert all(set(t) == langs for t in tables)
+    assert set(DEFAULT_VOICES) <= langs, "every language with a voice has its lines"
+    assert phrases.apology("pt-BR") == phrases.APOLOGY["pt"]
+    assert phrases.goodbye("xx") == phrases.GOODBYE["en"]
+
+
+def test_client_ip_believes_forwarded_for_only_from_the_proxy() -> None:
+    from types import SimpleNamespace
+
+    from websockets.datastructures import Headers
+    from websockets.http11 import Request
+
+    app = VoiceApp(Settings(), None, None, None)  # type: ignore[arg-type]
+    req = Request("/stream", Headers({"X-Forwarded-For": "6.6.6.6, 203.0.113.9"}))
+    via_proxy = SimpleNamespace(remote_address=("127.0.0.1", 5000))
+    direct = SimpleNamespace(remote_address=("198.51.100.7", 5000))
+    assert app.client_ip(via_proxy, req) == "203.0.113.9"  # type: ignore[arg-type]
+    assert app.client_ip(direct, req) == "198.51.100.7"  # type: ignore[arg-type]

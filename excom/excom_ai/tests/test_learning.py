@@ -176,3 +176,53 @@ class TestLearning(FrappeTestCase):
 		self.assertEqual([(r["model"], r["passes"]) for r in out], [("mid", True), ("big", True), ("cheap", False)])
 		self.assertTrue(out[0].get("recommended"))
 		self.assertIsNone(frappe.flags.excom_ai_trial, "the trial settings are cleared")
+
+	def test_the_cost_check_runs_as_a_background_job(self):
+		from excom.excom_ai import api
+
+		if not frappe.db.exists("AI Eval Set", "Excom Sales reply intents"):
+			self.skipTest("the evaluation set is not installed")
+		frappe.cache.delete_value(learning.COST_CHECK_CURRENT)
+		self.addCleanup(frappe.cache.delete_value, learning.COST_CHECK_CURRENT)
+		queued = []
+		pairs = [{"model": "cheap", "effort": "low"}, {"model": "mid", "effort": "low"}]
+		with patch("excom.excom_ai.builder.brief.ai_ready", return_value=True), \
+				patch("frappe.enqueue", side_effect=lambda method, **kw: queued.append((method, kw))), \
+				patch("ai_interface.services.evals.gate") as gate:
+			started = api.cost_check(json.dumps(pairs))
+			gate.assert_not_called()  # nothing is scored inside the web request
+		self.assertEqual(started["status"], "queued")
+		job = started["job"]
+		self.assertEqual(len(queued), 1)
+		method, kw = queued[0]
+		self.assertEqual((method, kw["queue"], kw["job"]), ("excom.excom_ai.learning.run_cost_check", "long", job))
+		self.assertEqual(api.cost_check(job=job)["status"], "queued")
+		with patch("excom.excom_ai.builder.brief.ai_ready", return_value=True), \
+				patch("frappe.enqueue", side_effect=lambda method, **kw: queued.append((method, kw))):
+			again = api.cost_check(json.dumps(pairs))
+		self.assertEqual((again["job"], len(queued)), (job, 1), "one check at a time: each spends model calls")
+
+		# the worker runs it and keeps the result where the endpoint reads it
+		scores = {"cheap": (False, 70, 0.01), "mid": (True, 95, 0.03)}
+		last = {}
+
+		def gate(eval_set, notes=""):
+			last["run"] = scores[frappe.flags.excom_ai_trial["model"]]
+			return last["run"][0]
+
+		with patch("excom.excom_ai.builder.brief.ai_ready", return_value=True), \
+				patch("ai_interface.services.evals.gate", side_effect=gate), \
+				patch.object(learning, "_last_run", side_effect=lambda s: ("RUN", last["run"][1], last["run"][2])):
+			learning.run_cost_check(job=kw["job"], candidates=kw["candidates"])
+		done = api.cost_check(job=job)
+		self.assertEqual(done["status"], "done")
+		self.assertEqual([(r["model"], r["passes"]) for r in done["results"]], [("mid", True), ("cheap", False)])
+		self.assertTrue(done["results"][0].get("recommended"))
+
+		# a failure is kept too, never silent
+		with patch.object(learning, "cost_check", side_effect=RuntimeError("provider down")):
+			learning.run_cost_check(job="qa-learn-failed", candidates=pairs)
+		failed = learning.cost_check_status("qa-learn-failed")
+		self.assertEqual(failed["status"], "failed")
+		self.assertIn("provider down", failed["error"])
+		self.assertEqual(learning.cost_check_status("no-such-job")["status"], "unknown")

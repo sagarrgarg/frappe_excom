@@ -48,6 +48,13 @@ Mystery shade 7 | per kg 55.00
 Payment 30 days. Valid 30 days. Freight extra."""
 
 
+def quote(lines: list[dict], **kw) -> dict:
+	"""What the reader extracts from a supplier's reply: clear lines in INR unless said otherwise."""
+	return {"is_quotation": True, "currency": "INR", "valid_till": "", "payment_terms": "", "lead_time_days": 0, "notes": "",
+		"prices_include": [], **kw, "lines": [{"min_qty": 0, "lead_time_days": 0, "unclear": False, "why": "", **ln}
+			for ln in lines]}
+
+
 def _qa_suppliers() -> list[str]:
 	return frappe.get_all("Supplier", {"supplier_name": ["like", "QA Pur%"]}, pluck="name")
 
@@ -83,6 +90,7 @@ def _cleanup_once(rules: list | None = None):
 		for f in frappe.get_all("File", {"attached_to_doctype": "Request for Quotation", "attached_to_name": rfq}, pluck="name"):
 			frappe.delete_doc("File", f, force=True, ignore_permissions=True)
 		frappe.db.delete("Comment", {"reference_name": rfq})
+		frappe.db.set_value("Request for Quotation", rfq, "docstatus", 0, update_modified=False)  # a test submitted it
 		frappe.delete_doc("Request for Quotation", rfq, force=True, ignore_permissions=True)
 	for parent, child in (("Purchase Order", "Purchase Order Item"), ("Purchase Invoice", "Purchase Invoice Item"),
 			("Material Request", "Material Request Item")):
@@ -220,8 +228,10 @@ class TestPurchasePack(FrappeTestCase):
 			).insert(ignore_permissions=True)
 		hsn = frappe.db.get_value("GST HSN Code", {}) if frappe.db.table_exists("GST HSN Code") else None
 		for code, name in ITEMS.items():
+			# Blue is also bought by the box of 12 (the unit test of quotes per piece on a box line)
+			uoms = [{"uom": "Nos", "conversion_factor": 1}, {"uom": "Box", "conversion_factor": 12}] if code == "QA-PUR-BLUE" else []
 			frappe.get_doc({"doctype": "Item", "item_code": code, "item_name": name, "item_group": GROUP, "stock_uom": "Nos",
-				"is_stock_item": 0, "is_purchase_item": 1, "gst_hsn_code": hsn}).insert(ignore_permissions=True)
+				"is_stock_item": 0, "is_purchase_item": 1, "gst_hsn_code": hsn, "uoms": uoms}).insert(ignore_permissions=True)
 		cls.suppliers = {}
 		for name, email in SUPPLIERS.items():
 			s = frappe.get_doc({"doctype": "Supplier", "supplier_name": name, "supplier_type": "Company",
@@ -447,6 +457,67 @@ class TestPurchasePack(FrappeTestCase):
 		t = tasks.add(a.name, "draft_rfq", dedupe_key=f"qa-pur-rfq-{frappe.generate_hash(length=6)}", params=params)
 		return self.run_now(t, WORDS)
 
+	def retire_others(self, a):
+		"""Earlier tests' agents stop working: their conversations with the same suppliers are nobody's
+		now, so this test's agent may take them (purchase.take_thread)."""
+		for name in frappe.get_all("Excom AI Agent", {"agent_name": ["like", "QA Pur%"], "name": ["!=", a.name]}, pluck="name"):
+			frappe.db.set_value("Excom AI Agent", name, "status", "Retired", update_modified=False)
+		frappe.db.commit()
+
+	def reset_thread(self, thread):
+		"""The shared conversation goes back to nobody's after the test (later tests expect that)."""
+		def reset():
+			if frappe.db.exists("Excom Thread", thread):
+				frappe.db.set_value("Excom Thread", thread, {"ai_mode": "", "ai_agent": None, "assigned_to": None},
+					update_modified=False)
+				frappe.db.commit()
+
+		self.addCleanup(reset)
+
+	def supplier_thread(self, supplier):
+		"""The supplier's email conversation on our mailbox (made if missing), held by nobody."""
+		from excom.excom.services.thread_service import upsert_thread
+
+		identity = purchase.supplier_identity(supplier, self.suppliers[supplier])
+		thread = upsert_thread(identity, "email", self.box.name)
+		frappe.db.set_value("Excom Thread", thread, {"ai_mode": "", "ai_agent": None, "assigned_to": None}, update_modified=False)
+		self.reset_thread(thread)
+		frappe.db.commit()
+		return thread, identity
+
+	def latest(self, a, action, **filters):
+		return frappe.get_doc("Excom AI Proposal", frappe.get_all("Excom AI Proposal", {"agent": a.name, "action": action,
+			**filters}, pluck="name", order_by="creation desc", limit=1)[0])
+
+	def send_now(self, name):
+		"""A person approves a send (if it waits) and the sender sends it now, in office hours."""
+		if frappe.db.get_value("Excom AI Proposal", name, "status") == "Pending":
+			self.as_owner(proposals.decide, name, "approve")
+		with self.fake_send() as send, patch("excom.excom_ai.sequencer.in_window", return_value=True):
+			proposals.execute(name)
+		return send
+
+	def sent_rfq(self, a, items, supplier):
+		"""An RFQ drafted, approved and sent to one supplier: (the RFQ, the conversation)."""
+		self.rfq_now(a, items=items, suppliers=[supplier])
+		made = self.latest(a, "create_rfq")
+		if made.status == "Pending":
+			self.as_owner(proposals.decide, made.name, "approve")
+		rfq = frappe.db.get_value("Excom AI Proposal", made.name, "executed_name")
+		p = self.latest(a, "send_rfq", subject_name=supplier)
+		self.send_now(p.name)
+		row = frappe.db.get_value("Excom AI Proposal", p.name, ["status", "thread", "error", "hold_reason"], as_dict=True)
+		self.assertEqual(row.status, "Sent", row)
+		return frappe.get_doc("Request for Quotation", rfq), row.thread
+
+	def quote_reply(self, a, thread, extracted, text="Please find our prices below.\n\nRegards"):
+		"""The supplier answers on the conversation; the reader returns `extracted`."""
+		msg, box = self.supplier_writes(thread, text)
+		self.mail = {**getattr(self, "mail", {}), **box}
+		with patch("excom.excom.channels.email.providers.get", return_value=FakeMailbox(self.mail)):
+			return self.run_now(tasks.add(a.name, "inbound", thread=thread, params={"message": msg, "channel": "email"}),
+				extracted)
+
 	# ---- the done-when: drafted, sent, replies into Supplier Quotation drafts
 
 	def test_an_rfq_is_drafted_sent_and_its_replies_become_supplier_quotation_drafts(self):
@@ -477,6 +548,7 @@ class TestPurchasePack(FrappeTestCase):
 		self.assertFalse(frappe.db.exists("Purchase Order", {"supplier": ["in", list(self.suppliers)], "owner": a.service_user}))
 
 		# approved, then sent by the paced sender in the supplier's office hours
+		self.retire_others(a)
 		for p in sends.values():
 			self.assertEqual(self.as_owner(proposals.decide, p.name, "approve"), "Approved", "a send waits for the sender")
 		self.assertIn({"kind": "send_due", "dedupe_key": f"send_due:{a.name}"}, purchase.plan(a))
@@ -502,7 +574,7 @@ class TestPurchasePack(FrappeTestCase):
 			[{"filename": "quotation.pdf", "mimeType": "application/pdf", "size": 2000, "attachmentId": "att-1"}])
 		mailbox = FakeMailbox(box, {"att-1": blank_pdf()})
 		extracted = {"is_quotation": True, "currency": "INR", "valid_till": add_days(nowdate(), 30), "payment_terms": "30 days",
-			"lead_time_days": 14, "notes": "Freight extra", "lines": [
+			"lead_time_days": 14, "notes": "Freight extra", "prices_include": [], "lines": [
 				{"line_id": lines["QA-PUR-RED"], "supplier_text": "Red pigment", "rate": 120, "min_qty": 0, "uom": "Nos",
 					"lead_time_days": 10, "unclear": False, "why": ""},
 				{"line_id": lines["QA-PUR-RED"], "supplier_text": "Red pigment", "rate": 110, "min_qty": 1000, "uom": "Nos",
@@ -548,8 +620,8 @@ class TestPurchasePack(FrappeTestCase):
 		msg, box = self.supplier_writes(threads[self.dyes], "Red pigment Rs 95 per piece, Blue pigment Rs 85. Valid 15 days.")
 		with patch("excom.excom.channels.email.providers.get", return_value=FakeMailbox(box)):
 			self.run_now(tasks.add(a.name, "inbound", thread=threads[self.dyes], params={"message": msg, "channel": "email"}),
-				{"is_quotation": True, "currency": "", "valid_till": "", "payment_terms": "", "lead_time_days": 0, "notes": "",
-					"lines": [{"line_id": lines["QA-PUR-RED"], "supplier_text": "Red pigment", "rate": 95, "min_qty": 0,
+				{"is_quotation": True, "currency": "INR", "valid_till": "", "payment_terms": "", "lead_time_days": 0, "notes": "",
+					"prices_include": [], "lines": [{"line_id": lines["QA-PUR-RED"], "supplier_text": "Red pigment", "rate": 95, "min_qty": 0,
 						"uom": "piece", "lead_time_days": 0, "unclear": False, "why": ""},
 						{"line_id": "", "supplier_text": "QA-PUR-BLUE", "rate": 85, "min_qty": 0, "uom": "", "lead_time_days": 0,
 							"unclear": False, "why": ""}]})
@@ -731,6 +803,7 @@ class TestPurchasePack(FrappeTestCase):
 
 	def test_a_whatsapp_only_supplier_is_chased_with_the_approved_template(self):
 		a = self.agent(whatsapp=True, policies={"po_chase": "Auto"})
+		self.retire_others(a)
 		self.steward_on()
 		tpl = self.wa_template(a, "purchase.po_chase")
 		po = self.purchase_order(self.inks, {"QA-PUR-RED": (50, 99)}, days_ago=60, schedule_in=-2)
@@ -827,13 +900,35 @@ class TestPurchasePack(FrappeTestCase):
 		a = self.agent(whatsapp=True)
 		self.steward_on()
 		tpl = self.wa_template(a, "purchase.rfq_reminder")
-		self.opt_in()
+		identity = self.opt_in()
 		out = self.rfq_now(a, items=[{"item_code": "QA-PUR-RED", "qty": 20}], suppliers=[self.inks])
 		self.assertIn("a person sends it", out)
 		rfq = frappe.db.get_value("Excom AI Proposal", {"agent": a.name, "action": "create_rfq"}, "executed_name")
 		self.assertFalse([s for s in purchase.plan(a) if s["kind"] == "rfq_follow_up"], "not yet")
 		frappe.db.set_value("Request for Quotation", rfq, "creation", add_days(now_datetime(), -(purchase.FOLLOW_UP_DAYS + 1)),
 			update_modified=False)
+		self.assertFalse([s for s in purchase.plan(a) if s["kind"] == "rfq_follow_up"], "a draft RFQ never went out")
+		self.assertIn("never submitted", self.run_now(tasks.add(a.name, "rfq_follow_up", subject=("Request for Quotation", rfq),
+			dedupe_key=f"qa-wa-draft-{rfq}", params={"supplier": self.inks})))
+		frappe.db.set_value("Request for Quotation", rfq, "docstatus", 1, update_modified=False)
+		self.assertFalse([s for s in purchase.plan(a) if s["kind"] == "rfq_follow_up"], "submitted, but never sent to them")
+		self.assertFalse(purchase.contacted(rfq, self.inks))
+		# a person sends the RFQ to the supplier on WhatsApp (their number's person is the supplier's)
+		from excom.excom.services.thread_service import upsert_thread
+
+		linked = frappe.db.get_value("Omni Identity Link", {"linked_doctype": "Supplier", "linked_name": self.inks}, "parent")
+		if not linked:
+			link = frappe.get_doc({"doctype": "Omni Identity Link", "parent": identity, "parenttype": "Omni Identity",
+				"parentfield": "linked_entities", "linked_doctype": "Supplier", "linked_name": self.inks, "role": "Primary Contact"})
+			link.name = frappe.generate_hash(length=10)
+			link.db_insert()
+		identity = linked or identity
+		frappe.get_doc({"doctype": "Excom Message", "thread": upsert_thread(identity, "whatsapp", self.wa.name),
+			"channel": "whatsapp", "account": self.wa.name, "account_doctype": "Excom Channel Account", "direction": "Outbound",
+			"message_type": "Text", "content_text": f"Please quote for {rfq}", "delivery_status": "Sent",
+			"provider_message_id": f"wamid.qa-pur-hand-{frappe.generate_hash(length=8)}"}).insert(ignore_permissions=True)
+		frappe.db.commit()
+		self.assertTrue(purchase.contacted(rfq, self.inks))
 		specs = [s for s in purchase.plan(a) if s["kind"] == "rfq_follow_up"]
 		self.assertEqual(specs, [{"kind": "rfq_follow_up", "subject": ("Request for Quotation", rfq),
 			"dedupe_key": f"rfq_follow_up:{rfq}:{self.inks}", "params": {"supplier": self.inks}}])
@@ -852,6 +947,289 @@ class TestPurchasePack(FrappeTestCase):
 			frappe.db.get_value("Excom AI Proposal", p.name, "error"))
 		self.assertEqual(send.call_args.args[1], tpl)
 		self.assertFalse([s for s in purchase.plan(a) if s["kind"] == "rfq_follow_up"], "only one reminder")
+
+	# ---- review fixes: units, repeated quotes, checks on a quote
+
+	def test_a_price_per_piece_on_a_box_line_is_converted_to_the_box(self):
+		a = self.agent()
+		rfq, thread = self.sent_rfq(a, [{"item_code": "QA-PUR-BLUE", "qty": 10, "uom": "Box"}], self.colours)
+		line = rfq.items[0]
+		self.assertEqual((line.uom, line.conversion_factor), ("Box", 12))
+		# 5 a piece, and 4.5 a piece from 240 pieces (20 boxes: more than the 10 asked for)
+		out = self.quote_reply(a, thread, quote([
+			{"line_id": line.name, "supplier_text": "Blue pigment", "rate": 5, "uom": "Nos"},
+			{"line_id": line.name, "supplier_text": "Blue pigment", "rate": 4.5, "min_qty": 240, "uom": "pcs"}]))
+		self.assertIn("1 lines, 0 unclear", out)
+		p = self.latest(a, "create_supplier_quotation")
+		ln = json.loads(p.payload)["lines"][0]
+		self.assertEqual((ln["rate"], ln["uom"]), (60, "Box"), "5 a piece is 60 a box of 12")
+		self.assertEqual([(b["min_qty"], b["rate"]) for b in ln["breaks"]], [(0, 60), (20, 54)], "the break in boxes too")
+		self.assertIn("quoted 5 per Nos", p.preview_html)
+		self.assertIn("better", p.preview_html, "5 a piece against the price list's 90 a piece")
+		self.assertEqual(p.status, "Done", p.error)
+		sq = frappe.get_doc("Supplier Quotation", p.executed_name)
+		self.assertEqual([(i.uom, i.qty, i.rate, i.conversion_factor) for i in sq.items], [("Box", 10, 60, 12)])
+
+		# a unit with no conversion to it on record: left for a person, never guessed
+		row = frappe._dict(name="r1", item_code="QA-PUR-RED", item_name="Red", qty=10, uom="Box", stock_uom="Nos",
+			conversion_factor=1)
+		mapped = purchase.map_quote(SimpleNamespace(items=[row]), quote([{"line_id": "r1", "supplier_text": "Red", "rate": 5,
+			"uom": "Nos"}]))
+		self.assertFalse(mapped.lines)
+		self.assertIn("no conversion", mapped.unclear[0]["why"])
+
+	def test_a_later_quote_from_the_same_supplier_is_an_update_never_a_second_draft(self):
+		a = self.agent()
+		rfq, thread = self.sent_rfq(a, [{"item_code": "QA-PUR-RED", "qty": 50}], self.colours)
+		line = rfq.items[0].name
+		self.quote_reply(a, thread, quote([{"line_id": line, "supplier_text": "Red", "rate": 99, "uom": "Nos"}]))
+		first = self.latest(a, "create_supplier_quotation")
+		self.assertEqual(first.status, "Done", first.error)
+		out = self.quote_reply(a, thread, quote([{"line_id": line, "supplier_text": "Red", "rate": 97, "uom": "Nos"}]),
+			"Sorry, a better price: 97.")
+		self.assertIn("a person checks", out)
+		self.assertEqual(frappe.db.count("Excom AI Proposal", {"agent": a.name, "action": "create_supplier_quotation"}), 1)
+		self.assertEqual(frappe.db.count("Supplier Quotation Item", {"request_for_quotation": rfq.name}), 1)
+		todo = self.latest(a, "create_todo")
+		self.assertEqual(todo.subject_name, first.executed_name)
+		self.assertIn("97", json.loads(todo.payload)["text"])
+
+		# while the first reading still waits for a person, the later one replaces it (for a person too)
+		b = self.agent(policies={"create_record": "Review"})
+		rfq, thread = self.sent_rfq(b, [{"item_code": "QA-PUR-RED", "qty": 60}], self.dyes)
+		line = rfq.items[0].name
+		self.quote_reply(b, thread, quote([{"line_id": line, "supplier_text": "Red", "rate": 99, "uom": "Nos"}]))
+		waiting = self.latest(b, "create_supplier_quotation")
+		self.assertEqual(waiting.status, "Pending")
+		self.quote_reply(b, thread, quote([{"line_id": line, "supplier_text": "Red", "rate": 96, "uom": "Nos"}]), "Revised: 96.")
+		later = self.latest(b, "create_supplier_quotation")
+		self.assertNotEqual(later.name, waiting.name)
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", waiting.name, ["status", "hold_reason"]),
+			("Cancelled", "replaced by a later email from the supplier"))
+		self.assertEqual(later.status, "Pending")
+		self.assertFalse(json.loads(later.checks)["update"]["ok"])
+		self.assertEqual(json.loads(later.payload)["lines"][0]["rate"], 96)
+
+	def test_a_quote_without_currency_past_its_validity_or_with_tax_in_waits_for_a_person(self):
+		a = self.agent()  # create_record is Auto: only the checks keep it for a person
+		rfq, thread = self.sent_rfq(a, [{"item_code": "QA-PUR-RED", "qty": 70}], self.colours)
+		past = add_days(nowdate(), -3)
+		self.quote_reply(a, thread, quote([{"line_id": rfq.items[0].name, "supplier_text": "Red", "rate": 101, "uom": "Nos"}],
+			currency="", valid_till=past, notes="Prices inclusive of GST, freight extra"))
+		p = self.latest(a, "create_supplier_quotation")
+		self.assertEqual(p.status, "Pending")
+		checks, payload = json.loads(p.checks), json.loads(p.payload)
+		self.assertFalse(checks["currency"]["ok"])
+		self.assertIn("did not say the currency", checks["currency"]["why"])
+		self.assertFalse(checks["validity"]["ok"])
+		self.assertFalse(checks["net"]["ok"])
+		self.assertEqual((payload["valid_till"], payload["prices_include"], payload["currency_stated"]), (past, ["tax"], False),
+			"the date is kept and shown, not blanked")
+		self.assertIn("already past", p.preview_html)
+		self.assertIn("not comparable", p.preview_html, "a price with tax in is not called better or worse than net history")
+		self.assertNotIn("worse", p.preview_html)
+		self.assertEqual(self.as_owner(proposals.decide, p.name, "approve"), "Done")
+		sq = frappe.get_doc("Supplier Quotation", frappe.db.get_value("Excom AI Proposal", p.name, "executed_name"))
+		self.assertFalse(sq.valid_till, "ERPNext takes no past date")
+		self.assertIn("already past", sq.terms)
+		self.assertIn("include tax", sq.terms)
+
+	def test_an_exchange_rate_kept_the_other_way_round_is_used(self):
+		row = frappe.get_doc({"doctype": "Currency Exchange", "from_currency": "INR", "to_currency": "JPY", "exchange_rate": 1.6,
+			"date": nowdate(), "for_buying": 1, "for_selling": 1}).insert(ignore_permissions=True)
+		self.addCleanup(lambda: (frappe.db.delete("Currency Exchange", {"name": row.name}), frappe.db.commit()))
+		with patch("erpnext.setup.utils.get_exchange_rate", return_value=0) as erp:
+			self.assertAlmostEqual(purchase.exchange_rate("JPY", "INR"), 0.625)
+			erp.assert_not_called()
+		with patch("erpnext.setup.utils.get_exchange_rate", return_value=90) as erp:
+			self.assertEqual(purchase.exchange_rate("EUR", "INR"), 90, "else ERPNext's own lookup")
+		with patch("erpnext.setup.utils.get_exchange_rate", return_value=0):
+			self.assertIsNone(purchase.exchange_rate("EUR", "INR"))
+
+	# ---- review fixes: RFQ emails follow the RFQ, threads, replies naming nothing
+
+	def test_an_edited_rfq_changes_its_emails(self):
+		a = self.agent(policies={"create_record": "Review"})
+		self.rfq_now(a, items=[{"item_code": "QA-PUR-RED", "qty": 500}], suppliers=[self.colours, self.dyes])
+		made = self.latest(a, "create_rfq")
+		self.assertEqual(made.status, "Pending")
+		colours = self.latest(a, "send_rfq", subject_name=self.colours)
+		dyes = self.latest(a, "send_rfq", subject_name=self.dyes)
+		self.as_owner(proposals.decide, colours.name, "approve")  # approved while it still said 500
+		# the person takes Dyes off and asks for 600
+		payload = json.loads(made.payload)
+		payload["suppliers"] = [s for s in payload["suppliers"] if s["supplier"] == self.colours]
+		payload["lines"][0]["qty"] = 600
+		self.assertEqual(self.as_owner(proposals.decide, made.name, "approve", payload=payload), "Done")
+		rfq = frappe.db.get_value("Excom AI Proposal", made.name, "executed_name")
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", dyes.name, "status"), "Cancelled", "taken off the RFQ")
+		colours.reload()
+		self.assertEqual(colours.status, "Pending", "what was approved is not what would go: back to a person")
+		p = json.loads(colours.payload)
+		self.assertIn("QA Pur Red Pigment (QA-PUR-RED): 600 Nos", p["body"])
+		self.assertNotIn("500", p["body"])
+		self.assertIn(WORDS["intro"], p["body"], "the same approved words")
+		self.assertEqual(p["rfq"], rfq)
+		self.assertFalse(json.loads(colours.checks)["rfq_changed"]["ok"])
+		send = self.send_now(colours.name)
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", colours.name, "status"), "Sent")
+		self.assertIn("600 Nos", send.call_args.kwargs["body_html"])
+
+		# a supplier added by the person gets an email for review; one changed on the RFQ afterwards is stopped
+		self.rfq_now(a, items=[{"item_code": "QA-PUR-BLUE", "qty": 30}], suppliers=[self.colours])
+		made = self.latest(a, "create_rfq")
+		colours = self.latest(a, "send_rfq", subject_name=self.colours, status="Pending")
+		payload = json.loads(made.payload)
+		payload["suppliers"].append({"supplier": self.dyes, "email_id": self.suppliers[self.dyes]})
+		self.as_owner(proposals.decide, made.name, "approve", payload=payload)
+		rfq = frappe.db.get_value("Excom AI Proposal", made.name, "executed_name")
+		added = self.latest(a, "send_rfq", subject_name=self.dyes)
+		self.assertEqual((added.status, added.to_email), ("Pending", self.suppliers[self.dyes]))
+		self.assertIn(WORDS["intro"], json.loads(added.payload)["body"])
+		self.assertEqual(json.loads(added.payload)["rfq"], rfq)
+		colours.reload()
+		self.assertEqual((colours.status, json.loads(colours.payload)["rfq"]), ("Pending", rfq), "unchanged: only linked")
+		frappe.db.set_value("Request for Quotation Item", {"parent": rfq}, "qty", 31)  # someone edits the draft RFQ
+		send = self.send_now(colours.name)
+		send.assert_not_called()
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", colours.name, "status"), "Cancelled")
+		self.assertIn("no longer match", frappe.db.get_value("Excom AI Proposal", colours.name, "hold_reason"))
+
+	def test_sending_leaves_a_conversation_a_person_has(self):
+		a = self.agent()
+		thread, identity = self.supplier_thread(self.colours)
+		frappe.db.set_value("Excom Thread", thread, "ai_mode", "Needs person")
+		self.rfq_now(a, items=[{"item_code": "QA-PUR-RED", "qty": 10}], suppliers=[self.colours])
+		p = self.latest(a, "send_rfq")
+		self.send_now(p.name)
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", p.name, ["status", "thread"]), ("Sent", thread))
+		self.assertEqual(frappe.db.get_value("Excom Thread", thread, ["ai_mode", "ai_agent"]), ("Needs person", None),
+			"sent, and the person keeps the conversation")
+		# held by another working agent: left alone; assigned to the agent's own owner: the agent only
+		# drafts for them (Assist, engine.threads); held by nobody: taken
+		b = self.agent()
+		frappe.db.set_value("Excom Thread", thread, {"assigned_to": None, "ai_agent": b.name, "ai_mode": "Handle"})
+		purchase.take_thread(thread, a, created=False)
+		self.assertEqual(frappe.db.get_value("Excom Thread", thread, "ai_agent"), b.name)
+		frappe.db.set_value("Excom Thread", thread, {"ai_mode": "", "assigned_to": OWNER, "ai_agent": None})
+		purchase.take_thread(thread, a, created=False)
+		self.assertEqual(frappe.db.get_value("Excom Thread", thread, ["ai_agent", "ai_mode"]), (a.name, "Assist"))
+		frappe.db.set_value("Excom Thread", thread, "assigned_to", None)
+		frappe.db.set_value("Excom Thread", thread, {"ai_agent": None, "ai_mode": ""})
+		purchase.take_thread(thread, a, created=False)
+		self.assertEqual(frappe.db.get_value("Excom Thread", thread, ["ai_agent", "ai_mode"]), (a.name, "Handle"))
+
+		# the supplier opts out after the email was approved: it is not sent
+		self.rfq_now(a, items=[{"item_code": "QA-PUR-RED", "qty": 11}], suppliers=[self.dyes])
+		p = self.latest(a, "send_rfq", subject_name=self.dyes)
+		self.as_owner(proposals.decide, p.name, "approve")
+		dyes = purchase.supplier_identity(self.dyes, self.suppliers[self.dyes])
+		frappe.db.set_value("Omni Identity", dyes, "email_opt_out", 1)
+		self.addCleanup(lambda: (frappe.db.set_value("Omni Identity", dyes, "email_opt_out", 0), frappe.db.commit()))
+		frappe.db.commit()
+		self.send_now(p.name).assert_not_called()
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", p.name, ["status", "hold_reason"]),
+			("Cancelled", f"{self.suppliers[self.dyes]} opted out"))
+
+	def test_a_reply_naming_nothing_with_an_open_rfq_and_order_goes_to_a_person(self):
+		a = self.agent()
+		thread, _identity = self.supplier_thread(self.colours)
+		rfq, rfq_thread = self.sent_rfq(a, [{"item_code": "QA-PUR-RED", "qty": 12}], self.colours)
+		self.assertEqual(rfq_thread, thread)
+		po = self.purchase_order(self.colours, {"QA-PUR-BLUE": (5, 90)}, days_ago=30, schedule_in=-2)
+		self.run_now(tasks.add(a.name, "chase_po", subject=("Purchase Order", po), dedupe_key=f"qa-both-{po}"),
+			{"intro": "We hope all is well.", "closing": "An update would help."})
+		chase = self.latest(a, "po_chase")
+		self.send_now(chase.name)
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", chase.name, ["status", "thread"]), ("Sent", thread))
+		self.assertEqual(purchase._context(thread, a, f"About {po}: next week.").kind, "po")
+		self.assertEqual(purchase._context(thread, a, f"Our prices for {rfq.name}.").kind, "rfq")
+		msg, box = self.supplier_writes(thread, "Thank you, noted. We will revert shortly.")
+		with patch("excom.excom.channels.email.providers.get", return_value=FakeMailbox(box)), \
+				patch("excom.excom_ai.engine.runner.ai", side_effect=AssertionError("no guess, no model")):
+			out = self.run_now(tasks.add(a.name, "inbound", thread=thread, params={"message": msg, "channel": "email"}))
+		self.assertIn("left to a person", out)
+		self.assertEqual(frappe.db.get_value("Excom Thread", thread, "ai_mode"), "Needs person")
+		self.assertFalse(frappe.db.exists("Excom AI Proposal", {"agent": a.name, "action": ["in", ("note",
+			"create_supplier_quotation")]}))
+
+	# ---- review fixes: chasers
+
+	def test_only_due_lines_are_chased_and_rejected_goods_are_still_to_come(self):
+		a = self.agent()
+		due, later = add_days(nowdate(), -3), add_days(nowdate(), 20)
+		# Red due three days ago, Blue only in 20 days: Red alone is chased, by its own date
+		mixed = self.purchase_order(self.dyes, {"QA-PUR-RED": (100, 99), "QA-PUR-BLUE": (40, 88)}, days_ago=30, schedule_in=-3)
+		frappe.db.set_value("Purchase Order Item", {"parent": mixed, "item_code": "QA-PUR-BLUE"}, "schedule_date", later)
+		# the order's date is past, but its past line is in: nothing is due yet
+		early = self.purchase_order(self.dyes, {"QA-PUR-RED": (10, 99), "QA-PUR-BLUE": (10, 88)}, days_ago=30, schedule_in=-3)
+		frappe.db.set_value("Purchase Order Item", {"parent": early, "item_code": "QA-PUR-RED"}, "received_qty", 10)
+		frappe.db.set_value("Purchase Order Item", {"parent": early, "item_code": "QA-PUR-BLUE"}, "schedule_date", later)
+		frappe.db.set_value("Purchase Order", early, "per_received", 50)
+		# everything came, but 10 were rejected: ERPNext says 100% received, 10 are still to come
+		rejected = self.purchase_order(self.dyes, {"QA-PUR-RED": (50, 99)}, days_ago=30, schedule_in=-3)
+		item = frappe.db.get_value("Purchase Order Item", {"parent": rejected}, "name")
+		frappe.db.set_value("Purchase Order Item", item, "received_qty", 50)
+		frappe.db.set_value("Purchase Order", rejected, {"per_received": 100, "status": "To Bill"})
+		pri = frappe.get_doc({"doctype": "Purchase Receipt Item", "parent": "QA-PUR-PR-REJ", "parenttype": "Purchase Receipt",
+			"parentfield": "items", "docstatus": 1, "item_code": "QA-PUR-RED", "qty": 40, "received_qty": 50, "rejected_qty": 10,
+			"uom": "Nos", "stock_uom": "Nos", "conversion_factor": 1, "purchase_order": rejected, "purchase_order_item": item})
+		pri.name = f"qa-pur-pri-{frappe.generate_hash(length=8)}"
+		pri.db_insert()
+		self.addCleanup(lambda: (frappe.db.delete("Purchase Receipt Item", {"name": pri.name}), frappe.db.commit()))
+		frappe.db.commit()
+
+		planned = [s["subject"][1] for s in purchase.plan(a) if s["kind"] == "chase_po"]
+		self.assertIn(mixed, planned)
+		self.assertNotIn(early, planned, "planned by its earliest pending line, not the order's date")
+		self.assertIn(rejected, planned, "rejected goods do not count as received")
+		self.assertFalse(purchase.received(rejected))
+		self.assertIn("nothing due yet", self.run_now(tasks.add(a.name, "chase_po", subject=("Purchase Order", early))))
+		chase = {"intro": "We hope all is well.", "closing": "An update would help."}
+		self.run_now(tasks.add(a.name, "chase_po", subject=("Purchase Order", mixed)), chase)
+		body = json.loads(self.latest(a, "po_chase", subject_name=mixed).payload)["body"]
+		self.assertIn("QA Pur Red Pigment (QA-PUR-RED): 100 Nos still to come", body)
+		self.assertNotIn("QA-PUR-BLUE", body, "not due yet")
+		self.assertIn(f"due on {formatdate(due)}", body)
+		self.run_now(tasks.add(a.name, "chase_po", subject=("Purchase Order", rejected)), chase)
+		body = json.loads(self.latest(a, "po_chase", subject_name=rejected).payload)["body"]
+		self.assertIn("QA Pur Red Pigment (QA-PUR-RED): 10 Nos still to come", body)
+
+	def test_no_chaser_on_top_of_a_waiting_one_none_when_off_and_none_to_a_held_supplier(self):
+		a = self.agent()
+		po = self.purchase_order(self.colours, {"QA-PUR-RED": (20, 99)}, days_ago=30, schedule_in=-2)
+		chase = {"intro": "We hope all is well.", "closing": "An update would help."}
+		self.run_now(tasks.add(a.name, "chase_po", subject=("Purchase Order", po)), chase)
+		first = self.latest(a, "po_chase", subject_name=po)
+		self.assertEqual(first.status, "Pending")
+		frappe.db.set_value("Excom AI Proposal", first.name, "creation", add_days(now_datetime(), -(purchase.CHASE_EVERY_DAYS + 1)))
+
+		def planned(agent):
+			return po in [s["subject"][1] for s in purchase.plan(agent) if s["kind"] == "chase_po"]
+
+		self.assertFalse(planned(a), "a week on, the first still waits for a person: no second one")
+		self.as_owner(proposals.decide, first.name, "reject", reason="Not needed")
+		self.assertTrue(planned(a))
+
+		# the supplier is put on hold until next week: not chased; once the release date has passed, chased again
+		frappe.db.set_value("Supplier", self.colours, {"on_hold": 1, "hold_type": "All", "release_date": add_days(nowdate(), 7)})
+		self.addCleanup(lambda: (frappe.db.set_value("Supplier", self.colours, {"on_hold": 0, "hold_type": "",
+			"release_date": None}), frappe.db.commit()))
+		self.assertFalse(planned(a))
+		self.assertIn("on hold", self.run_now(tasks.add(a.name, "chase_po", subject=("Purchase Order", po),
+			dedupe_key=f"qa-hold-{po}")))
+		self.assertTrue(purchase._cannot_ask(self.colours))
+		frappe.db.set_value("Supplier", self.colours, "release_date", add_days(nowdate(), -1))
+		self.assertTrue(planned(a))
+		self.assertIsNone(purchase._cannot_ask(self.colours))
+
+		# chasers Off: nothing planned and the model is not asked
+		off = self.agent(policies={"po_chase": "Off"})
+		self.assertFalse(planned(off))
+		with patch("excom.excom_ai.engine.runner.ai", side_effect=AssertionError("the model is not asked")):
+			out = self.run_now(tasks.add(off.name, "chase_po", subject=("Purchase Order", po), dedupe_key=f"qa-off-{po}"))
+		self.assertIn("switched off", out)
+		self.assertFalse(frappe.db.exists("Excom AI Proposal", {"agent": off.name}))
 
 	# ---- supplier discovery
 
@@ -897,6 +1275,13 @@ class TestPurchasePack(FrappeTestCase):
 			("QA Pur Pigment Works", purchase._supplier_group_for(GROUP)))
 		self.assertEqual(purchase.supplier_email(s), f"sales@pigmentworks.{DOMAIN}")
 		self.assertEqual(frappe.db.get_value("Excom AI Company", works.name, "status"), "Promoted")
+
+		# the month's search has run and finished: no new (paid) search until next month
+		key = f"discover_suppliers:{a.name}:{nowdate()[:7]}"
+		self.assertIn({"kind": "discover_suppliers", "dedupe_key": key}, purchase.plan(a))
+		t = tasks.add(a.name, "discover_suppliers", dedupe_key=key, params={"groups": [GROUP]})
+		frappe.db.set_value("Excom AI Task", t, {"status": "Done", "outcome": "qa"})
+		self.assertFalse([s for s in purchase.plan(a) if s["kind"] == "discover_suppliers"], "once a month, finished or not")
 
 	# ---- readiness and recipes
 

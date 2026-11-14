@@ -1,0 +1,68 @@
+{
+ "actions": [],
+ "autoname": "field:key_hash",
+ "creation": "2026-11-14 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "description": "Someone who asked to be forgotten: hashes of their address, LinkedIn URL and provider ids, so the People Finder never finds or adds them again (HLD-009).",
+ "field_order": [
+  "key_hash",
+  "kind",
+  "reason",
+  "forgotten_by"
+ ],
+ "fields": [
+  {
+   "fieldname": "key_hash",
+   "fieldtype": "Data",
+   "label": "Key Hash",
+   "reqd": 1,
+   "unique": 1,
+   "read_only": 1,
+   "description": "SHA-256 of one identifier (email, LinkedIn URL or provider id), so the identifier itself is not kept."
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "label": "Kind",
+   "options": "Email\nLinkedIn\nApollo\nProspeo",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason"
+  },
+  {
+   "fieldname": "forgotten_by",
+   "fieldtype": "Link",
+   "label": "Forgotten By",
+   "options": "User",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-14 10:00:00",
+ "modified_by": "Administrator",
+ "module": "Excom AI",
+ "name": "Excom AI People Suppression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "read": 1,
+   "report": 1,
+   "delete": 1,
+   "role": "System Manager"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "delete": 1,
+   "role": "Excom Admin"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

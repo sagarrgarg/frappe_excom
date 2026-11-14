@@ -45,6 +45,8 @@ class TestAdapters(FrappeTestCase):
 	def test_cleaning(self):
 		self.assertEqual(pt.linkedin("linkedin.com/in/Maria-Lopez-12/"), "https://www.linkedin.com/in/maria-lopez-12")
 		self.assertEqual(pt.linkedin("https://es.linkedin.com/in/maria"), "https://www.linkedin.com/in/maria")
+		self.assertEqual(pt.linkedin("https://www.linkedin.com/in/ana-ruiz/es/"), "https://www.linkedin.com/in/ana-ruiz")
+		self.assertEqual(pt.linkedin("https://www.linkedin.com/in/José-Pérez"), "https://www.linkedin.com/in/josé-pérez")
 		for bad in ("https://www.linkedin.com/company/acme", "https://evil.example/in/x", "javascript:alert(1)", ""):
 			self.assertIsNone(pt.linkedin(bad), bad)
 		self.assertIsNone(pt.email("email_not_unlocked@domain.com"))
@@ -131,6 +133,11 @@ class TestAdapters(FrappeTestCase):
 			with self.assertRaises(tools.ToolRefused):
 				prospeo.enrich(external_id="p1")
 
+	def test_prospeo_plain_text_account_answers_refuse(self):
+		prospeo = self.tool(pt.Prospeo)
+		with patch.object(frappe.db, "set_value"), post(403, "Forbidden"), self.assertRaises(tools.ToolRefused):
+			prospeo.enrich(external_id="p1")
+
 	def test_the_key_never_comes_back(self):
 		prospeo = self.tool(pt.Prospeo)
 		with post(400, {"error": True, "error_code": "INVALID_REQUEST", "echo": "secret-key"}):
@@ -212,6 +219,11 @@ class TestFindPeople(FrappeTestCase):
 		comps = frappe.get_all("Excom AI Company", {"company_name": ["like", "QA PF%"]}, pluck="name")
 		frappe.db.delete("Excom AI Person", {"company": ["in", comps or ["-"]]})
 		frappe.db.delete("Excom AI Company", {"name": ["in", comps or ["-"]]})
+		frappe.db.delete("Excom AI People Suppression", {"reason": "QA PF"})
+		for contact in frappe.db.sql_list("""SELECT DISTINCT parent FROM `tabContact Email` WHERE email_id LIKE %s""",
+				"%qa-pf.example"):
+			frappe.delete_doc("Contact", contact, force=True, ignore_permissions=True)
+		frappe.cache.delete_keys("excom_ai_people")  # kept lists and shared lookups from earlier tests
 		frappe.db.commit()
 
 	def agent(self):
@@ -432,3 +444,66 @@ class TestFindPeople(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			people_finder.add_people("Lead", lead, ["Apollo:ap-2"])
 		self.assertEqual(frappe.cache.get(day), b"1")  # a refused call gives its count back
+
+	# ---- review fixes (2026-11-14)
+
+	def test_titles_are_skipped_by_whole_words(self):
+		self.assertTrue(research.skipped_title("Marketing Intern"))
+		self.assertFalse(research.skipped_title("International Buyer"))
+		self.assertFalse(research.skipped_title("Head of International Procurement"))
+		self.assertTrue(research.skipped_title("HR Manager"))
+		self.assertFalse(research.skipped_title("Head of Shrimp Imports"))
+
+	def test_linkedin_is_stored_in_one_form(self):
+		a = self.agent()
+		c = self.company(a)
+		p = frappe.get_doc({"doctype": "Excom AI Person", "company": c.name, "email": f"h.u@{DOMAIN}", "first_name": "H",
+			"linkedin_url": "http://es.linkedin.com/in/H-U-123/", "status": "New"}).insert(ignore_permissions=True)
+		self.assertEqual(p.linkedin_url, "https://www.linkedin.com/in/h-u-123")
+		self.assertEqual(research.known_person(None, {"linkedin_url": "https://www.linkedin.com/in/h-u-123"}), p.name)
+
+	def test_a_forgotten_person_is_never_found_or_added_again(self):
+		a = self.agent()
+		c = self.company(a)
+		self.run_now(tasks.add(a.name, "find_people", subject=("Excom AI Company", c.name)))
+		carlos = self.people(c.name)["Carlos"]
+		out = people_finder.forget_person(person=carlos.name, reason="QA PF")
+		self.assertEqual(out["forgotten"], 1)
+		self.assertFalse(frappe.db.exists("Excom AI Person", carlos.name))
+		self.assertTrue(research.forgotten({"provider": "Apollo", "external_id": "ap-1"}))
+		frappe.db.set_value("Excom AI Company", c.name, "people_checked_on", None)
+		self.run_now(tasks.add(a.name, "find_people", subject=("Excom AI Company", c.name)))
+		self.assertNotIn("Carlos", self.people(c.name))
+		lead = self.lead()
+		found = people_finder.find_people("Lead", lead)
+		self.assertNotIn("Apollo:ap-1", [x["pick"] for x in found["candidates"]])
+
+	def test_a_lookup_is_paid_once_for_everyone(self):
+		lead = self.lead()
+		people_finder.find_people("Lead", lead)
+		with patch.object(research, "enrich_one", wraps=research.enrich_one) as enrich, \
+				patch.object(pt.Prospeo, "fake_enrich", return_value=None):
+			out = people_finder.add_people("Lead", lead, ["Apollo:ap-2"])  # Lucía: no address anywhere
+			self.assertEqual([x["full_name"] for x in out["no_email"]], ["Lucía Núñez"])
+			frappe.cache.delete_value(people_finder._key("Lead", lead))  # the list expires, or another user searches
+			found = people_finder.find_people("Lead", lead)
+			lucia = next(x for x in found["candidates"] if x["pick"] == "Apollo:ap-2")
+			self.assertEqual((lucia["looked_up"], lucia["has_email"], lucia["known_email"]), (True, False, None))
+			self.assertEqual(lucia["linkedin_url"], "https://www.linkedin.com/in/lucia-nunez-qa")
+			people_finder.add_people("Lead", lead, ["Apollo:ap-2"])
+		self.assertEqual(enrich.call_count, 1)  # nobody pays for "no address" twice
+
+	def test_another_desks_contacts_are_not_shown(self):
+		lead = self.lead()
+		people_finder.find_people("Lead", lead)
+		people_finder.add_people("Lead", lead, ["Apollo:ap-1"])
+		frappe.cache.delete_value("excom_ai_people_lookup:Apollo:ap-1")
+		with patch.object(people_finder, "_can_see_contact", return_value=False):
+			self.assertEqual(people_finder._known({"provider": "Apollo", "external_id": "ap-1"}), (None, None))
+		self.assertEqual(people_finder._known({"provider": "Apollo", "external_id": "ap-1"})[0], f"carlos.ramirez@{LEAD_DOMAIN}")
+
+	def test_footer_in_the_buyers_language(self):
+		html = mail.footer("ID-1", "", "Apollo.io", language="es")
+		self.assertIn("Darse de baja", html)
+		self.assertIn("Apollo.io, una base de datos", html)
+		self.assertIn("Unsubscribe", mail.footer("ID-1", "", None, language="ja"))  # no words for it yet: English

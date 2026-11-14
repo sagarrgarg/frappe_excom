@@ -208,3 +208,20 @@ search when Apollo answered but found nobody.
 - No phone numbers (by design, see §3.1).
 - Budget check and spend are not atomic across parallel workers (an existing tool-layer limit).
 - Supplier/Customer on-demand not built.
+
+### Second review fixes (2026-11-14, the 7-commit analysis)
+
+- Job titles to skip match whole words: "intern" skips "Marketing Intern", never "International Buyer".
+- LinkedIn URLs are stored in one form everywhere (the Person record cleans them on save; non-ASCII slugs and
+  language suffixes such as `/in/ana/es` are understood), so Hunter's raw link and a provider's never make two people.
+- Apollo's first-name-and-title match only joins a person with no Apollo id (a different id is a different person).
+- What a paid lookup found — including "no address" — is shared by everyone for 30 days, so nobody pays twice;
+  a lookup nobody answered (off, out of budget) gives the daily count back and is not remembered.
+- A Contact counts as "known" to a user only through a record they may read: another desk's contacts stay theirs.
+- Forget this person (Excom Admins; a button on the Person form, `people_finder.forget_person`): the research record is
+  deleted and hashes of the address, LinkedIn URL and provider ids go into Excom AI People Suppression; research and
+  the Find people button never find or add them again. CRM records (Leads, Contacts) are removed the usual way.
+- The cold-email footer is in the buyer's language (en, es, pt, fr, de, it, nl; English otherwise), and names the
+  provider for contacts added with the button too.
+- The "On LinkedIn only" list leaves out consent-Blocked people; the research summary counts LinkedIn-only people apart.
+- Prospeo's plain-text 401/402/403 answers are refusals.

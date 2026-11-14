@@ -269,9 +269,11 @@ PACKS = {
 }
 
 
-def generic_draft(ctx, sections: list[dict], pack: str, persona: str = "", description: str = "") -> dict:
+def generic_draft(ctx, sections: list[dict], pack: str, persona: str = "", description: str = "",
+		abilities: str = "") -> dict:
 	"""The draft for a type other than Sales: the pack's purpose in the company's words, its rules,
-	and what the keywords added."""
+	and what the keywords added. A Custom agent sends nothing: it takes a channel only when it may
+	answer questions there (the answer ability), and then for replies only."""
 	spec = PACKS.get(pack) or PACKS["custom"]
 	s = ctx.scope
 	products = ", ".join(s.get("product_words") or s.item_groups or s.brands or []) or _("the products in scope")
@@ -289,8 +291,13 @@ def generic_draft(ctx, sections: list[dict], pack: str, persona: str = "", descr
 	sources["agent_name"] = SUGGEST
 	if description:
 		sources["what_it_is"] = sources["mission"] = _("the owner's description")
-	channels = [] if pack == "compliance" else [{"channel_account": a, "purpose": "Outreach and replies"}
-		for a in _channels_for(ctx)[:2]]
+	if pack == "compliance":
+		channels = []
+	elif pack == "custom":
+		can = {a.strip().lower() for a in (abilities or "").split(",") if a.strip()}
+		channels = [{"channel_account": a, "purpose": "Replies"} for a in _channels_for(ctx)[:1]] if "answer" in can else []
+	else:
+		channels = [{"channel_account": a, "purpose": "Outreach and replies"} for a in _channels_for(ctx)[:2]]
 	products_rows = [{"item_group": g} for g in s.item_groups]
 	return {"fields": fields, "markets": [], "products": products_rows, "channels": channels,
 		"kpi_targets": [{"metric": m, "value": v, "period": p} for m, v, p in spec["kpis"]], "sources": sources,

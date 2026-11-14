@@ -42,9 +42,12 @@ class FakeFrappe:
     (an HTTP error status), or raises httpx.ConnectError."""
 
     start: Any = field(default_factory=lambda: dict(START_OK))
+    start_delay: float = 0.0
     turn: Callable[[str], Any] = lambda text: {"say": f"You said {text}.", "end_call": False}
     turn_delay: float = 0.0
     end_failures: int = 0
+    end_status: int = 502
+    ping_ok: bool = True
     requests: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     headers: list[httpx.Headers] = field(default_factory=list)
     ended: asyncio.Event = field(default_factory=asyncio.Event)
@@ -65,11 +68,16 @@ class FakeFrappe:
         return ends[-1]
 
     async def handle(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/method/ping":
+            self.requests.append(("ping", {}))
+            return httpx.Response(200 if self.ping_ok else 502, json={"message": "pong"})
         method = request.url.path.rsplit(".", 1)[-1]
         body = json.loads(request.content)
         self.requests.append((method, body))
         self.headers.append(request.headers)
         if method == "start":
+            if self.start_delay:
+                await asyncio.sleep(self.start_delay)
             result = self.start
         elif method == "turn":
             self.in_flight_turns += 1
@@ -83,7 +91,7 @@ class FakeFrappe:
         elif method == "end":
             if self.end_failures > 0:
                 self.end_failures -= 1
-                return httpx.Response(502, text="bad gateway")
+                return httpx.Response(self.end_status, text="bad gateway")
             self.ended.set()
             result = {"ok": True}
         else:
@@ -246,9 +254,11 @@ class Harness:
     settings: Settings
     clients: list[ProviderClient] = field(default_factory=list)
 
-    async def connect(self, provider: str, *, auto_mark: bool = True) -> ProviderClient:
+    app: VoiceApp | None = None
+
+    async def connect(self, provider: str, *, auto_mark: bool = True, **kwargs: Any) -> ProviderClient:
         url = self.url + ("/stream?provider=plivo" if provider == "plivo" else "/stream")
-        ws = await connect(url)
+        ws = await connect(url, **kwargs)
         client = ProviderClient(provider, ws, auto_mark=auto_mark)
         self.clients.append(client)
         return client
@@ -266,6 +276,7 @@ def make_settings(**overrides: Any) -> Settings:
         "stt_provider": "fake",
         "tts_provider": "fake",
         "end_retry_backoff_seconds": 0.01,
+        "end_retry_seconds": 2.0,
         "start_timeout_seconds": 2.0,
         "drain_timeout_seconds": 3.0,
     }
@@ -293,7 +304,7 @@ async def harness(frappe: FakeFrappe, tts: FakeTTS, settings: Settings) -> Async
     client = FrappeClient(
         settings.frappe_url,
         settings.voice_key,
-        end_retries=settings.end_retries,
+        end_retry_seconds=settings.end_retry_seconds,
         end_retry_backoff=settings.end_retry_backoff_seconds,
         transport=httpx.MockTransport(frappe.handle),
     )
@@ -301,7 +312,7 @@ async def harness(frappe: FakeFrappe, tts: FakeTTS, settings: Settings) -> Async
     app = VoiceApp(settings, client, stt, tts)
     server = await app.serve("127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
-    h = Harness(f"ws://127.0.0.1:{port}", frappe, stt, tts, settings)
+    h = Harness(f"ws://127.0.0.1:{port}", frappe, stt, tts, settings, app=app)
     try:
         yield h
     finally:

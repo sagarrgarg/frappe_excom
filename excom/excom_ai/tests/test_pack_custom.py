@@ -5,6 +5,7 @@ all end in proposals a person approves, and its policies never go past Review.
 """
 
 import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import frappe
@@ -12,7 +13,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from excom.excom.tests.fixtures import purge_users
 from excom.excom_ai import constants
-from excom.excom_ai.builder import api, service
+from excom.excom_ai.builder import api, brief, service
 from excom.excom_ai.engine import ownership, runner, tasks
 from excom.excom_ai.packs import custom
 
@@ -50,9 +51,8 @@ def _cleanup():
 		frappe.db.delete("Excom Message", {"thread": thread})
 		frappe.delete_doc("Excom Thread", thread, force=True, ignore_permissions=True)
 	frappe.db.delete("Omni Identity", {"primary_email": ["like", "%@qa-custom.example"]})
-	for b in BUYERS:
-		if frappe.db.exists("Customer", b):
-			frappe.delete_doc("Customer", b, force=True, ignore_permissions=True)
+	for b in frappe.get_all("Customer", {"customer_name": ["like", "QA Custom Buyer%"]}, pluck="name"):
+		frappe.delete_doc("Customer", b, force=True, ignore_permissions=True)
 	for dt, name in (("Excom Channel Account", BOX), ("Excom Team", TEAM)):
 		if frappe.db.exists(dt, name):
 			frappe.delete_doc(dt, name, force=True, ignore_permissions=True)
@@ -169,21 +169,56 @@ class TestCustomPack(FrappeTestCase):
 		a = self.shadow(self.build())
 		specs = custom.plan(a)
 		self.assertEqual({s["kind"] for s in specs}, {"custom_watch", "custom_chase"})
-		self.work(a, next(s for s in specs if s["kind"] == "custom_watch"))
+		watch = next(s for s in specs if s["kind"] == "custom_watch")
+		out = self.work(a, watch)
+		self.assertIn("starting point", out)
+		self.assertEqual(self.proposals(a), [], "the first scan notes what is there: nothing is new yet")
+		self.work(a, watch)
+		self.assertEqual(self.proposals(a), [], "records already there are never reported")
+		late = frappe.get_doc({"doctype": "Customer", "customer_name": f"QA Custom Buyer late {self.n}",
+			"customer_type": "Company"}).insert(ignore_permissions=True).name
+		self.addCleanup(frappe.delete_doc, "Customer", late, force=True, ignore_permissions=True)
+		frappe.db.commit()
+		self.work(a, watch)
 		found = self.proposals(a)
-		self.assertEqual({p.subject_name for p in found}, set(BUYERS), "each record it finds, once")
+		self.assertEqual([p.subject_name for p in found], [late], "only the record that appeared after the start")
 		self.assertTrue(all(p.status == "Shadow" for p in found), [p.status for p in found])
 		self.assertFalse(frappe.db.exists("ToDo", {"allocated_to": OWNER, "reference_type": "Customer"}), "Shadow does nothing")
 		self.assertEqual(json.loads(found[0].payload)["allocated_to"], OWNER)
-		self.work(a, next(s for s in specs if s["kind"] == "custom_watch"))
-		self.assertEqual(len(self.proposals(a)), len(BUYERS), "a record already reported is not reported again")
+		self.work(a, watch)
+		self.assertEqual(len(self.proposals(a)), 1, "a record already reported is not reported again")
 		# chase: records already followed up this week wait
-		self.work(a, next(s for s in specs if s["kind"] == "custom_chase"))
-		self.assertEqual(len(self.proposals(a)), len(BUYERS))
+		chase = next(s for s in specs if s["kind"] == "custom_chase")
+		self.work(a, chase)
+		self.assertEqual(len(self.proposals(a)), 1 + len(BUYERS), "the late one was told this week; the others are chased")
 		frappe.db.set_value("Excom AI Proposal", {"agent": a.name}, "creation", frappe.utils.add_days(frappe.utils.now(), -8))
 		frappe.db.commit()
-		self.work(a, next(s for s in specs if s["kind"] == "custom_chase"))
-		self.assertEqual(len(self.proposals(a)), 2 * len(BUYERS), "a week later, each one is chased")
+		self.work(a, chase)
+		self.assertEqual(len(self.proposals(a)), 2 * (1 + len(BUYERS)), "a week later, each one is chased")
+
+	def test_watch_and_chase_read_as_the_agent_not_the_owner(self):
+		a = self.shadow(self.build())
+		from excom.excom_ai.doctype.excom_ai_recipe import excom_ai_recipe
+
+		seen, real = [], excom_ai_recipe.run_spec
+
+		def spy(spec, limit=500):
+			seen.append(frappe.session.user)
+			return real(spec, limit=limit)
+
+		with patch.object(excom_ai_recipe, "run_spec", side_effect=spy):
+			custom._scan(a, custom._record_recipes(a))
+		self.assertEqual(set(seen), {a.service_user}, "its own user (pack role, team), never the owner's permissions")
+
+	def test_chase_proposes_at_most_its_limit(self):
+		a = self.shadow(self.build(abilities="chase"))
+		spec = json.loads(frappe.db.get_value("Excom AI Recipe", self.recipe, "query_spec"))
+		frappe.db.set_value("Excom AI Recipe", self.recipe, "query_spec", json.dumps({**spec, "limit": 200}))
+		self.addCleanup(frappe.db.set_value, "Excom AI Recipe", self.recipe, "query_spec", json.dumps(spec))
+		frappe.db.commit()
+		with patch.object(custom, "CHASE_LIMIT", 2):
+			self.work(a, {"kind": "custom_chase", "dedupe_key": "chase"})
+		self.assertEqual(len(self.proposals(a)), 2, "a recipe's own limit does not lift the day's cap")
 
 	def test_without_the_abilities_nothing_is_planned(self):
 		a = self.shadow(self.build(abilities="draft"))
@@ -223,13 +258,82 @@ class TestCustomPack(FrappeTestCase):
 		finally:
 			frappe.set_user("Administrator")
 
+	def fake_ai(self, prompts):
+		def ai(task, agent, **kw):
+			prompts.append(kw.get("prompt") or "")
+			return SimpleNamespace(data={"title": "Call script", "text": "Hello."})
+
+		return patch.object(custom.runner, "ai", side_effect=ai)
+
+	def test_a_draft_reads_the_record_as_the_person_who_asked(self):
+		from excom.excom_ai import api as agent_api
+
+		a = self.shadow(self.build())
+		up = frappe.get_doc({"doctype": "User Permission", "user": BACKUP, "allow": "Customer", "for_value": BUYERS[2],
+			"apply_to_all_doctypes": 1}).insert(ignore_permissions=True)  # the backup sees one buyer only
+		self.addCleanup(frappe.delete_doc, "User Permission", up.name, force=True, ignore_permissions=True)
+		frappe.db.commit()
+		frappe.set_user(BACKUP)
+		try:
+			self.assertRaises(frappe.PermissionError, agent_api.request_draft, a.name, "A call script", "Customer", BUYERS[0])
+			task = agent_api.request_draft(a.name, "A call script")["task"]
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual(json.loads(frappe.db.get_value("Excom AI Task", task, "params"))["requested_by"], BACKUP)
+		prompts = []
+		with self.fake_ai(prompts):
+			# a draft queued for the backup on a record only the owner may read: the record stays out
+			self.work(a, {"kind": "custom_draft", "dedupe_key": "draft"}, subject=("Customer", BUYERS[0]),
+				params={"instruction": "A call script", "requested_by": BACKUP})
+			self.work(a, {"kind": "custom_draft", "dedupe_key": "draft"}, subject=("Customer", BUYERS[1]),
+				params={"instruction": "A call script", "requested_by": OWNER})
+			self.work(a, {"kind": "custom_draft", "dedupe_key": "draft"}, subject=("Customer", BUYERS[2]),
+				params={"instruction": "A call script"})
+		self.assertNotIn(BUYERS[0], prompts[0], "the backup may not read it, so the model never sees it")
+		self.assertIn(BUYERS[1], prompts[1], "the owner asked and may read it")
+		self.assertNotIn(BUYERS[2], prompts[2], "nobody named as asking: the record stays out")
+
+	def test_drafts_only_for_working_custom_agents_and_always_reviewed(self):
+		from excom.excom_ai import api as agent_api
+
+		other = self.shadow(self.build(agent_type="Accounts", abilities="draft", description=""))
+		draft = self.build()
+		frappe.set_user(OWNER)
+		try:
+			self.assertRaises(frappe.ValidationError, agent_api.request_draft, other.name, "anything")
+			self.assertRaises(frappe.ValidationError, agent_api.request_draft, draft.name, "anything")
+		finally:
+			frappe.set_user("Administrator")
+		self.assertFalse(frappe.db.exists("Excom AI Task", {"agent": ["in", (other.name, draft.name)], "kind": "custom_draft"}))
+		a = self.shadow(self.build())
+		a.db_set("status", "Live")
+		a = frappe.get_doc("Excom AI Agent", a.name)
+		with self.fake_ai([]):
+			self.work(a, {"kind": "custom_draft", "dedupe_key": "draft"}, params={"instruction": "x", "requested_by": OWNER})
+			# a queued draft on another type (from before) writes nothing
+			out = self.work(other, {"kind": "custom_draft", "dedupe_key": "draft"}, params={"instruction": "x",
+				"requested_by": OWNER})
+		self.assertIn("does not draft", out)
+		self.assertEqual(self.proposals(other, "note"), [])
+		notes = frappe.get_all("Excom AI Proposal", {"agent": a.name, "action": "note"}, ["status", "policy_action"])
+		self.assertEqual([(n.status, n.policy_action) for n in notes], [("Pending", "write_draft")], "a person reads it first")
+
+	def test_channels_only_to_answer(self):
+		ctx = SimpleNamespace(company="QA Co", scope=frappe._dict(item_groups=[], brands=[]))
+		with patch.object(brief, "_channels_for", return_value=["Box A", "Box B"]):
+			self.assertEqual(brief.generic_draft(ctx, [], "custom", "P", "d", abilities="watch, draft")["channels"], [])
+			self.assertEqual(brief.generic_draft(ctx, [], "custom", "P", "d", abilities="answer")["channels"],
+				[{"channel_account": "Box A", "purpose": "Replies"}], "replies only, on one channel")
+			self.assertEqual(len(brief.generic_draft(ctx, [], "accounts", "P")["channels"]), 2, "other types unchanged")
+
 	def test_answers_from_the_playbook_or_hands_over(self):
 		if "ai_interface" not in frappe.get_installed_apps():
 			self.skipTest("ai_interface is not installed")
 		from excom.excom.services.thread_service import upsert_thread
 
 		a = self.build(abilities="answer")
-		a.append("channels", {"channel_account": self.box.name, "purpose": "Outreach and replies"})
+		self.assertTrue(all(r.purpose == "Replies" for r in a.channels), "it answers: it never claims outreach")
+		a.set("channels", [{"channel_account": self.box.name, "purpose": "Replies"}])
 		a.save(ignore_permissions=True)
 		a = self.shadow(a)
 		email = f"buyer{self.n}@qa-custom.example"

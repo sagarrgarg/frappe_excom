@@ -29,6 +29,9 @@
   "proposal",
   "attempts",
   "version",
+  "total_attempts",
+  "ready",
+  "retry_after",
   "last_error",
   "submitted_on",
   "met_on",
@@ -190,6 +193,28 @@
    "description": "Goes up when a template is withdrawn: Meta keeps a deleted name for weeks, so the next one gets a new name."
   },
   {
+   "fieldname": "total_attempts",
+   "fieldtype": "Int",
+   "label": "Attempts In All",
+   "default": "0",
+   "read_only": 1,
+   "description": "Every draft and submission of this template, never reset by Try again (Meta limits how often one template is edited). Starts again when a withdrawal gives a new template."
+  },
+  {
+   "fieldname": "ready",
+   "fieldtype": "Check",
+   "label": "Words Ready",
+   "read_only": 1,
+   "description": "The checked (or approved) words wait to go to Meta: no new draft or approval is needed."
+  },
+  {
+   "fieldname": "retry_after",
+   "fieldtype": "Datetime",
+   "label": "Not Before",
+   "read_only": 1,
+   "description": "Meta did not answer (a timeout, an outage or a rate limit): tried again after this."
+  },
+  {
    "fieldname": "last_error",
    "fieldtype": "Small Text",
    "label": "Last Error",
@@ -216,7 +241,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 10:00:00.000000",
+ "modified": "2026-11-14 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Template Need",

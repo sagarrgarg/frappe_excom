@@ -31,6 +31,7 @@
   "cb_voice",
   "voice_max_seconds",
   "voice_turn_limit",
+  "voice_recording_notice",
   "sb_templates",
   "templates_enabled",
   "whatsapp_auto_submit",
@@ -187,13 +188,13 @@
    "fieldname": "voice_service_url",
    "fieldtype": "Data",
    "label": "Voice Service URL",
-   "description": "The voice service's stream address on the VM, for example wss://voice.example.com/stream. Blank: agents take no calls."
+   "description": "The voice service's stream address on the VM, for example wss://voice.example.com/stream (/stream is added when left out). Blank: agents take no calls."
   },
   {
    "fieldname": "voice_service_key",
    "fieldtype": "Password",
    "label": "Voice Service Key",
-   "description": "Shared with the voice service; it sends it on every request."
+   "description": "Shared with the voice service (its VOICE_KEY); it sends it on every request. At least 32 characters: a shorter key accepts nothing and agents take no calls."
   },
   {
    "fieldname": "cb_voice",
@@ -203,13 +204,20 @@
    "fieldname": "voice_max_seconds",
    "fieldtype": "Int",
    "label": "Longest AI Call (seconds)",
-   "default": "600"
+   "default": "600",
+   "description": "60 to 900. The voice service hangs up then, and turns after it are refused here. The same default (600) as the service's DEFAULT_MAX_SECONDS."
   },
   {
    "fieldname": "voice_turn_limit",
    "fieldtype": "Int",
    "label": "Most Turns per AI Call",
    "default": "30"
+  },
+  {
+   "fieldname": "voice_recording_notice",
+   "fieldtype": "Small Text",
+   "label": "Notice After the Greeting",
+   "description": "Optional. Said on every AI call right after the greeting, for example a recording notice. Whether one is needed is your legal decision. Blank: nothing is added."
   },
   {
    "fieldname": "sb_templates",
@@ -344,7 +352,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-10 12:00:00",
+ "modified": "2026-11-14 12:00:00",
  "modified_by": "Administrator",
  "module": "Excom AI",
  "name": "Excom AI Settings",

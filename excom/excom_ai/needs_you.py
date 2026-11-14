@@ -40,6 +40,17 @@ def _deciding_for(user: str | None = None) -> list[str]:
 	return out
 
 
+def _may_approve_template(p) -> bool:
+	"""A template several owners' agents share is approved by an Excom Admin only (the executor refuses
+	anyone else), so it is not shown to them as theirs to approve."""
+	from excom.excom_ai.permissions import need_change_refusal
+
+	if p.subject_doctype != "Excom AI Template Need" or not p.subject_name:
+		return True
+	need = frappe.db.get_value("Excom AI Template Need", p.subject_name, ["name", "agent", "agents"], as_dict=True)
+	return not need or not need_change_refusal(need, frappe.session.user)
+
+
 def _excom_user():
 	if not set(frappe.get_roles()) & {"Excom Agent", "Excom Admin", "System Manager"}:
 		frappe.throw(_("Needs you is for Excom users."), frappe.PermissionError)
@@ -71,6 +82,7 @@ def queue() -> dict:
 		p.payload = json.loads(p.payload or "{}") if isinstance(p.payload, str) else p.payload
 		p.checks = json.loads(p.checks or "{}") if isinstance(p.checks, str) else p.checks
 		p.checks_ok = bool((p.checks or {}).get("ok", True)) and p.checker_verdict != "Fail"
+	pending = [p for p in pending if p.action != "approve_template" or _may_approve_template(p)]
 	blockers = frappe.get_all("Excom AI Readiness Gap", {"agent": ["in", agents], "status": "Open", "severity": "Blocker"},
 		["name", "agent", "rule", "detail"], limit=100)
 	for b in blockers:

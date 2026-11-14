@@ -1,7 +1,11 @@
 # /etc/systemd/system/excom-voice.service
-# Install:  python3.12 -m venv /opt/excom-voice/venv
-#           /opt/excom-voice/venv/bin/pip install /path/to/voice_service
-#           install -m 600 .env.example /etc/excom-voice.env   (then fill it in)
+# Install: sudo deploy/install.sh (creates the excom-voice system user, the venv in
+# /opt/excom-voice from requirements.txt, /etc/excom-voice.env and this unit). By hand:
+#           useradd --system --no-create-home --shell /usr/sbin/nologin excom-voice
+#           python3.12 -m venv /opt/excom-voice/venv
+#           /opt/excom-voice/venv/bin/pip install -r requirements.txt
+#           /opt/excom-voice/venv/bin/pip install --no-deps /path/to/voice_service
+#           install -m 640 -g excom-voice .env.example /etc/excom-voice.env   (then fill it in)
 #           systemctl daemon-reload && systemctl enable --now excom-voice
 [Unit]
 Description=Excom AI voice bridge (telephony media streams <-> STT/TTS <-> Frappe)
@@ -16,10 +20,12 @@ EnvironmentFile=/etc/excom-voice.env
 ExecStart=/opt/excom-voice/venv/bin/excom-voice
 Restart=on-failure
 RestartSec=2
-# SIGTERM stops accepting calls and waits for live calls to finish
-# (bounded by each call's max_seconds); then systemd kills.
+# SIGTERM stops accepting calls, waits for live calls to finish (each at most
+# max_seconds: Frappe allows 900 at most, 600 by default, plus ~20 s to play the
+# last line), then for their end reports (END_RETRY_SECONDS, 120). Keep this
+# above the sum, or a deploy loses transcripts and callbacks: 900 + 20 + 120 < 1200.
 KillSignal=SIGTERM
-TimeoutStopSec=960
+TimeoutStopSec=1200
 
 NoNewPrivileges=true
 ProtectSystem=strict

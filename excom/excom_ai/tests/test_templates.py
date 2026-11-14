@@ -3,7 +3,10 @@ verdicts, the per-account stops, email templates in review, finding and filling,
 for templates (approved, on the agent's number, opted in)."""
 
 import json
+from types import SimpleNamespace
 from unittest.mock import patch
+
+import requests
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
@@ -250,13 +253,13 @@ class TestTemplateSteward(FrappeTestCase):
 	def test_shadow_agents_never_reach_meta_and_claims_are_single(self):
 		shadow = self.agent(0, status="Shadow")
 		n = templates.need(shadow, "accounts.payment_reminder", "WhatsApp", "de", self.lines[0])
-		self.assertEqual(templates.dispatch(), [], "no Live agent needs it")
+		self.assertNotIn(n, templates.dispatch(), "no Live agent needs it")
 		self.assertEqual(frappe.db.get_value("Excom AI Template Need", n, "status"), "Open")
 		live = self.agent(1, purpose="Replies")
 		templates.need(live, "accounts.payment_reminder", "WhatsApp", "de", self.lines[1])
 		frappe.db.set_single_value("Excom AI Settings", "template_submissions_per_day", 0)
 		frappe.clear_document_cache("Excom AI Settings", "Excom AI Settings")
-		self.assertEqual(templates.dispatch(), [], "the daily cap")
+		self.assertNotIn(n, templates.dispatch(), "the daily cap")
 		frappe.db.set_single_value("Excom AI Settings", "template_submissions_per_day", 10)
 		frappe.clear_document_cache("Excom AI Settings", "Excom AI Settings")
 		self.assertIn(n, templates.dispatch())
@@ -266,6 +269,7 @@ class TestTemplateSteward(FrappeTestCase):
 	def test_the_library_first(self):
 		a = self.agent(0)
 		n = templates.need(a, "accounts.payment_reminder", "WhatsApp", "en", self.lines[0])
+		frappe.db.set_value("Excom AI Template Need", n, "status", "Drafting")  # claimed, as template_draft finds it
 		entry = {"name": "payment_overdue_1", "language": "en", "body": "Hi {{1}}, your payment of {{2}} is overdue.",
 			"button_inputs": []}
 		created = {}
@@ -289,6 +293,8 @@ class TestTemplateSteward(FrappeTestCase):
 		need = frappe.get_doc("Excom AI Template Need", n)
 		self.assertEqual((need.status, need.source, need.template), ("Submitted", "Library", created["name"]))
 		self.assertEqual([v["field"] for v in json.loads(need.variable_map)], ["contact_name", "total_due"])
+		self.assertTrue(frappe.db.exists("Notification Log", {"for_user": OWNER, "document_name": n}),
+			"the owner is told, with Withdraw, as for a written one")
 
 	# ---- Meta's verdicts
 
@@ -513,3 +519,336 @@ class TestTemplateSteward(FrappeTestCase):
 		self.assertTrue(deals._followed_up(a.name, "Quotation", "QA-TPL-Q-1", frappe.utils.add_days(frappe.utils.nowdate(), -5)))
 		self.assertTrue(deals._followed_up(a.name, "Sales Order", "QA-TPL-SO-1", None, "To Bill"))
 		self.assertFalse(deals._followed_up(a.name, "Sales Order", "QA-TPL-SO-1", None, "Completed"), "a new status is told")
+		p = frappe.get_doc("Excom AI Proposal", {"agent": a.name, "subject_name": "QA-TPL-Q-1"})
+		p.db_set("status", "Failed")
+		# a failed send may have gone out before it broke: never proposed again, so the buyer never gets it twice
+		self.assertTrue(deals._followed_up(a.name, "Quotation", "QA-TPL-Q-1", frappe.utils.add_days(frappe.utils.nowdate(), -5)),
+			"a failed send counts as done")
+		p.db_set("status", "Cancelled")
+		self.assertFalse(deals._followed_up(a.name, "Quotation", "QA-TPL-Q-1", frappe.utils.add_days(frappe.utils.nowdate(), -5)),
+			"a released proposal is not a follow-up done")
+
+	# ---- review findings (2026-11-14)
+
+	def library(self, agent, need_name, create):
+		"""_try_library on a claimed need, Meta's library mocked with one fitting entry."""
+		entry = {"name": "payment_overdue_1", "language": "en", "body": "Hi {{1}}, your payment of {{2}} is overdue.",
+			"button_inputs": []}
+		mapped = frappe._dict(data={"usable": True, "map": [{"n": 1, "field": "contact_name"}, {"n": 2, "field": "total_due"}]})
+		task = frappe._dict(name=None, kind="template_draft", subject_name=need_name)
+		with patch("excom.excom.services.whatsapp_template_library.search", return_value={"data": [entry]}), \
+				patch("excom.excom.services.whatsapp_template_library.create", side_effect=create), \
+				patch.object(runner, "ai", return_value=mapped), \
+				patch("excom.excom.doctype.whatsapp_templates.whatsapp_templates.make_request"):
+			return templates._try_library(task, agent, frappe.get_doc("Excom AI Template Need", need_name),
+				templates.NEEDS["accounts.payment_reminder"])
+
+	def lib_row(self, name, account):
+		doc = frappe.get_doc({"doctype": "WhatsApp Templates", "template_name": name, "template": "Hi {{1}}, {{2}} is overdue.",
+			"language": "en", "category": "UTILITY", "whatsapp_account": account, "status": "APPROVED", "id": f"LIB{self.n}"})
+		doc.flags.ignore_validate = True
+		doc.db_insert()
+		return {"name": doc.name, "status": "APPROVED", "category": "UTILITY"}
+
+	def test_dispatch_is_not_starved_by_needs_that_cannot_go(self):
+		shadow = self.agent(0, status="Shadow")
+		langs = ["en", "es", "fr", "de", "it", "nl", "pt_BR", "hi", "ar", "ja", "ru", "tr", "id", "bn", "gu", "mr", "ta", "te",
+			"ur", "sv", "pl", "ko"]
+		stuck = [templates.need(shadow, "accounts.payment_reminder", "WhatsApp", lang, self.lines[0]) for lang in langs]
+		live = self.agent(2)
+		newer = templates.need(live, "accounts.payment_reminder", "WhatsApp", "en", self.lines[2])
+		self.assertIn(newer, templates.dispatch(limit=20), "22 older needs with no Live agent do not hold it up")
+		self.assertEqual({frappe.db.get_value("Excom AI Template Need", n, "status") for n in stuck}, {"Open"})
+		# the daily cap stops WhatsApp entirely; email needs still go
+		frappe.db.set_value("Excom AI Template Need", newer, "status", "Open")
+		email = templates.need(live, "accounts.payment_reminder", "Email", "en")
+		frappe.db.set_single_value("Excom AI Settings", "template_submissions_per_day", 0)
+		frappe.clear_document_cache("Excom AI Settings", "Excom AI Settings")
+		with patch.object(templates, "_working_agent", wraps=templates._working_agent) as working:
+			self.assertIn(email, templates.dispatch())
+		self.assertEqual({c.args[0].channel for c in working.call_args_list}, {"Email"},
+			"WhatsApp needs are not even read once the cap is reached")
+		# a paused business account is left out by the query, and its owners hear once
+		frappe.db.set_single_value("Excom AI Settings", "template_submissions_per_day", 10)
+		frappe.clear_document_cache("Excom AI Settings", "Excom AI Settings")
+		frappe.db.set_value("Excom Channel Account", self.lines[2], "wa_quality_rating", "RED")
+		self.addCleanup(frappe.db.set_value, "Excom Channel Account", self.lines[2], "wa_quality_rating", "GREEN")
+		self.assertNotIn(newer, templates.dispatch())
+		self.assertEqual(frappe.db.get_value("Excom AI Template Need", newer, "notified"), 1)
+		# a retry that is not due yet waits
+		frappe.db.set_value("Excom Channel Account", self.lines[2], "wa_quality_rating", "GREEN")
+		frappe.db.set_value("Excom AI Template Need", newer, "retry_after", add_to_date(now_datetime(), hours=1))
+		self.assertNotIn(newer, templates.dispatch())
+		frappe.db.set_value("Excom AI Template Need", newer, "retry_after", add_to_date(now_datetime(), hours=-1))
+		self.assertIn(newer, templates.dispatch())
+
+	def test_the_library_uses_the_version_and_a_clash_falls_back_to_writing(self):
+		a = self.agent(0)
+		n = templates.need(a, "accounts.payment_reminder", "WhatsApp", "en", self.lines[0])
+		frappe.db.set_value("Excom AI Template Need", n, {"status": "Drafting", "version": 2})  # withdrawn once
+		names = []
+		self.assertIn("library", self.library(a, n, lambda lib, name, language, account_name="": names.append(name) or
+			self.lib_row(name, account_name)))
+		self.assertTrue(names[0].endswith("_v2"), names)
+		self.wipe()
+		n = templates.need(a, "accounts.payment_reminder", "WhatsApp", "en", self.lines[0])
+		frappe.db.set_value("Excom AI Template Need", n, "status", "Drafting")
+
+		def clash(*args, **kw):
+			raise frappe.ValidationError("A template named xai_accounts_payment_reminder_en_123456 already exists here")
+
+		self.assertIsNone(self.library(a, n, clash), "written instead")
+		row = frappe.db.get_value("Excom AI Template Need", n, ["status", "version"], as_dict=True)
+		self.assertEqual((row.status, row.version), ("Drafting", 2), "the written one gets the next name")
+
+	def test_a_library_template_withdrawn_while_posting_is_taken_back(self):
+		a = self.agent(0)
+		n = templates.need(a, "accounts.payment_reminder", "WhatsApp", "en", self.lines[0])
+		frappe.db.set_value("Excom AI Template Need", n, "status", "Drafting")
+		made = {}
+
+		def create(lib, name, language, account_name=""):
+			frappe.db.set_value("Excom AI Template Need", n, "status", "Withdrawn")  # a person, meanwhile
+			made.update(self.lib_row(name, account_name))
+			return made
+
+		self.library(a, n, create)
+		self.assertEqual(frappe.db.get_value("Excom AI Template Need", n, ["status", "template"]), ("Withdrawn", None))
+		self.assertFalse(frappe.db.exists("WhatsApp Templates", made["name"]), "taken back on Meta too")
+
+	def test_the_hourly_run_never_reads_the_old_rejection_during_a_rework(self):
+		a = self.agent(0)
+		need = self.submitted(a, "fr")
+		frappe.db.set_value("WhatsApp Templates", need.template, {"status": "REJECTED", "rejection_reason": "INVALID_FORMAT",
+			"rejected_at": add_to_date(now_datetime(), hours=-1)})
+		frappe.db.set_value("Excom AI Template Need", need.name, {"status": "Drafting", "attempts": 1,
+			"body": GOOD["body"].replace("friendly", "short")})  # reworded, so the edit goes to Meta
+		seen = {}
+
+		def post(*args, **kw):
+			seen["template"] = frappe.db.get_value("WhatsApp Templates", need.template, "status")
+			templates.statuses()  # the hourly run, while the edit is with Meta
+			seen["need"] = frappe.db.get_value("Excom AI Template Need", need.name, "status")
+			return {"success": True}
+
+		with patch(META, side_effect=post):
+			templates.submit(need.name)
+		self.assertEqual(seen, {"template": "PENDING", "need": "Submitted"})
+		# an old rejection arriving late is not this submission's verdict
+		frappe.db.set_value("WhatsApp Templates", need.template, {"status": "REJECTED",
+			"rejected_at": add_to_date(now_datetime(), hours=-1)})
+		templates.statuses()
+		self.assertEqual(frappe.db.get_value("Excom AI Template Need", need.name, "status"), "Submitted")
+
+	def test_an_approval_survives_a_stop(self):
+		a = self.agent(0)
+		frappe.db.set_single_value("Excom AI Settings", "whatsapp_auto_submit", 0)
+		frappe.clear_document_cache("Excom AI Settings", "Excom AI Settings")
+		n = templates.need(a, "accounts.payment_reminder", "WhatsApp", "en", self.lines[0])
+		p = frappe.get_doc({"doctype": "Excom AI Proposal", "agent": a.name, "action": "approve_template", "status": "Executing",
+			"subject_doctype": "Excom AI Template Need", "subject_name": n, "decided_by": OWNER})
+		p.flags.ignore_validate = p.flags.ignore_links = True
+		p.insert(ignore_permissions=True)
+		frappe.db.set_value("Excom AI Template Need", n, {"status": "In review", "proposal": p.name, "samples": json.dumps(
+			GOOD["samples"]), "variable_map": json.dumps(templates.NEEDS["accounts.payment_reminder"]["variables"])})
+		frappe.db.set_value("Excom Channel Account", self.lines[1], "wa_quality_rating", "RED")
+		self.addCleanup(frappe.db.set_value, "Excom Channel Account", self.lines[1], "wa_quality_rating", "GREEN")
+		p.payload = json.dumps({"subject": "", "body": GOOD["body"]})
+		templates.approve_template(p, a)
+		row = frappe.db.get_value("Excom AI Template Need", n, ["status", "ready", "body"], as_dict=True)
+		self.assertEqual((row.status, row.ready, row.body), ("Open", 1, GOOD["body"]), "the approved words wait")
+		p.db_set("status", "Done")
+		frappe.db.set_value("Excom Channel Account", self.lines[1], "wa_quality_rating", "GREEN")
+		self.assertIn(n, templates.dispatch(), "the stop lifted")
+		with patch(META, return_value={"id": f"MID{self.n}", "status": "PENDING"}), patch("requests.get") as get, \
+				patch.object(runner, "ai") as ai:
+			get.return_value.json.return_value, get.return_value.content, get.return_value.status_code = {"data": []}, b"{}", 200
+			templates.template_draft(frappe._dict(name=None, subject_name=n), a)
+		ai.assert_not_called()
+		self.assertEqual(frappe.db.get_value("Excom AI Template Need", n, "status"), "Submitted", "no new approval")
+		self.assertFalse(frappe.db.exists("Excom AI Proposal", {"subject_name": n, "name": ["!=", p.name]}))
+
+	def test_a_passing_meta_error_is_tried_again(self):
+		a = self.agent(0)
+		cases = {"en": requests.Timeout("read timed out"), "es": requests.HTTPError(response=SimpleNamespace(status_code=503)),
+			"fr": requests.HTTPError(response=SimpleNamespace(status_code=429))}
+		for lang, err in cases.items():
+			n = templates.need(a, "accounts.payment_reminder", "WhatsApp", lang, self.lines[0])
+			frappe.db.set_value("Excom AI Template Need", n, {"status": "Drafting", "body": GOOD["body"],
+				"samples": json.dumps(GOOD["samples"]), "variable_map": json.dumps(templates.NEEDS["accounts.payment_reminder"][
+					"variables"])})
+			with patch(META, side_effect=err), patch("requests.get") as get:
+				get.return_value.json.return_value, get.return_value.content, get.return_value.status_code = {"data": []}, b"{}", 200
+				templates.submit(n)
+			row = frappe.db.get_value("Excom AI Template Need", n, ["status", "ready", "retry_after", "submitted_on"], as_dict=True)
+			self.assertEqual((row.status, row.ready), ("Open", 1), lang)
+			self.assertGreater(row.retry_after, now_datetime())
+			self.assertIsNone(row.submitted_on, "not counted against the daily cap")
+		n = templates.need(a, "accounts.payment_reminder", "WhatsApp", "de", self.lines[0])
+		frappe.db.set_value("Excom AI Template Need", n, {"status": "Drafting", "body": GOOD["body"],
+			"samples": json.dumps(GOOD["samples"])})
+		with patch(META, side_effect=requests.HTTPError(response=SimpleNamespace(status_code=400))):
+			templates.submit(n)
+		self.assertEqual(frappe.db.get_value("Excom AI Template Need", n, "status"), "Failed", "a 4xx is Meta's refusal")
+
+	def test_sales_checks_the_opt_in_when_it_writes(self):
+		from excom.excom_ai import deals
+
+		a = self.agent(0)
+		need = self.submitted(a, "en")
+		frappe.db.set_value("WhatsApp Templates", need.template, {"status": "APPROVED", "category": "UTILITY"})
+		templates.statuses()
+		frappe.db.set_value("Excom AI Template Need", need.name, "need_key", "sales.order_update")  # the same words will do
+		oi = frappe.get_doc({"doctype": "Omni Identity", "display_name": f"QA Tpl Deal {self.n}",
+			"primary_phone": f"+5215552{self.n:04d}"}).insert(ignore_permissions=True)
+		thread = frappe.get_doc({"doctype": "Excom Thread", "omni_identity": oi.name, "channel": "whatsapp",
+			"account_doctype": "Excom Channel Account", "account": self.lines[0], "thread_key": f"qa-tpl-deal-{self.n}",
+			"status": "Open"}).insert(ignore_permissions=True)
+		wa = frappe._dict(name=thread.name, account=self.lines[0])
+		values = {"buyer_name": "Ana", "order": "SO-1", "status": "shipped"}
+		with patch.object(templates, "find", return_value={"template": need.template, "text": "Hi {{1}}, order {{2}} is {{3}}.",
+				"variables": templates.NEEDS["sales.order_update"]["variables"], "language": "en", "need": need.name}), \
+				patch.object(proposals, "propose", return_value="P-OK") as propose:
+			self.assertIsNone(deals.template_reply(None, a, "sales.order_update", wa, "en", values, subject=("Sales Order", "SO-1"),
+				intent="order_update"), "no opt-in: the caller writes by email")
+			propose.assert_not_called()
+			from excom.excom.services.consent import record_consent
+
+			record_consent(oi.name, "Granted", channel="whatsapp", purpose="transactional", source="manual")
+			self.assertEqual(deals.template_reply(None, a, "sales.order_update", wa, "en", values, subject=("Sales Order", "SO-1"),
+				intent="order_update"), "P-OK")
+
+	def test_values_are_cleaned_and_rechecked_at_the_send(self):
+		a = self.agent(0)
+		need = self.submitted(a, "en")
+		self.assertEqual(json.loads(send_rules.template_variables(need.template, json.dumps(["Ana\nMaria", "USD\t 10", "S-1"]),
+			user=a.service_user)), ["Ana Maria", "USD 10", "S-1"], "a reviewer's newline would make Meta refuse")
+		raw = json.dumps(["Ana\nMaria", "1", "2"])
+		self.assertEqual(send_rules.template_variables(need.template, raw, user="Administrator"), raw, "a person's send untouched")
+		frappe.db.set_value("WhatsApp Templates", need.template, "template", GOOD["body"] + " pad" * 220)
+		self.assertRaisesRegex(send_rules.AgentSendRefused, "1024", send_rules.template_variables, need.template,
+			["A", "x" * 150, "y" * 150], a.service_user)
+		self.assertRaisesRegex(send_rules.AgentSendRefused, "empty", send_rules.template_variables, need.template,
+			["A", "  ", "y"], a.service_user)
+
+	def test_promotional_words_are_whole_phrases(self):
+		spec = templates.NEEDS["accounts.payment_reminder"]
+		ok = "Hello {{1}}, feel free to reply about {{2}} owed to XYZ Pvt Limited on invoices {{3}}. Thank you."
+		self.assertEqual(templates.check_body(spec, "WhatsApp", ok, GOOD["samples"]), [])
+		for promo in ("a limited time reminder", "a free gift with", "10% off if you pay"):
+			problems = templates.check_body(spec, "WhatsApp", f"Hello {{{{1}}}}, {promo} {{{{2}}}} on invoices {{{{3}}}}. "
+				"Thank you.", GOOD["samples"])
+			self.assertIn("promotional", " ".join(problems), promo)
+
+	def test_a_later_withdrawal_beats_an_earlier_message(self):
+		from excom.excom.services.consent import record_consent
+
+		oi = frappe.get_doc({"doctype": "Omni Identity", "display_name": f"QA Tpl Optin {self.n}",
+			"primary_phone": f"+5215553{self.n:04d}"}).insert(ignore_permissions=True)
+		thread = frappe.get_doc({"doctype": "Excom Thread", "omni_identity": oi.name, "channel": "whatsapp",
+			"account_doctype": "Excom Channel Account", "account": self.lines[0], "thread_key": f"qa-tpl-optin-{self.n}",
+			"status": "Open"}).insert(ignore_permissions=True)
+
+		def inbound(when):
+			m = frappe.get_doc({"doctype": "Excom Message", "thread": thread.name, "channel": "whatsapp", "account": self.lines[0],
+				"account_doctype": "Excom Channel Account", "omni_identity": oi.name, "direction": "Inbound",
+				"message_type": "Text", "content_text": "hi"})
+			m.flags.ignore_validate = m.flags.ignore_mandatory = True
+			m.insert(ignore_permissions=True)
+			frappe.db.set_value("Excom Message", m.name, "creation", when, update_modified=False)
+
+		inbound(add_to_date(now_datetime(), hours=-2))
+		self.assertTrue(send_rules.whatsapp_opt_in([oi.name]), "they wrote to us")
+		record_consent(oi.name, "Withdrawn", channel="whatsapp", purpose="transactional", source="manual")
+		self.assertFalse(send_rules.whatsapp_opt_in([oi.name]), "a later withdrawal wins over an older message")
+		self.assertFalse(send_rules.thread_opted_in(thread.name))
+		inbound(add_to_date(now_datetime(), minutes=5))
+		self.assertTrue(send_rules.whatsapp_opt_in([oi.name]), "they wrote again after it")
+		record_consent(oi.name, "Withdrawn", channel="whatsapp", purpose="marketing", source="manual")
+		self.assertTrue(send_rules.whatsapp_opt_in([oi.name]), "stopping promotions does not end utility messages")
+
+	def test_a_shared_template_is_approved_by_an_admin_only(self):
+		from excom.excom_ai import needs_you
+		from excom.excom_ai.engine import registry
+
+		a, b = self.agent(0), self.agent(1, purpose="Replies")
+		frappe.db.set_value("Excom AI Agent", b.name, "owner_user", BACKUP)
+		n = templates.need(a, "accounts.payment_reminder", "WhatsApp", "en", self.lines[0])
+		templates.need(b, "accounts.payment_reminder", "WhatsApp", "en", self.lines[1])
+		frappe.db.set_value("Excom AI Template Need", n, {"status": "In review", "proposal": "P-S", "samples": json.dumps(
+			GOOD["samples"])})
+		p = frappe._dict(name="P-S", subject_doctype="Excom AI Template Need", subject_name=n, decided_by=OWNER,
+			payload=json.dumps({"subject": "", "body": GOOD["body"]}), action="approve_template")
+		self.assertRaisesRegex(registry.Cancel, "Excom Admin", templates.approve_template, p, a)
+		frappe.set_user(OWNER)
+		try:
+			self.assertFalse(needs_you._may_approve_template(p), "not shown to one owner as theirs to approve")
+		finally:
+			frappe.set_user("Administrator")
+		p.decided_by = "Administrator"
+		with patch(META, return_value={"id": f"MID{self.n}", "status": "PENDING"}), patch("requests.get") as get:
+			get.return_value.json.return_value, get.return_value.content, get.return_value.status_code = {"data": []}, b"{}", 200
+			templates.approve_template(p, a)
+		self.assertEqual(frappe.db.get_value("Excom AI Template Need", n, "status"), "Submitted")
+
+	def test_polled_rejections_count_and_yellow_only_warns(self):
+		a = self.agent(0)
+		need = self.submitted(a, "en")
+		with patch("requests.get") as get:
+			get.return_value.status_code, get.return_value.content = 200, b"{}"
+			get.return_value.json.return_value = {"status": "REJECTED", "category": "UTILITY", "rejected_reason": "INVALID_FORMAT"}
+			templates._poll(need.template)
+		self.assertTrue(frappe.db.get_value("WhatsApp Templates", need.template, "rejected_at"), "stamped as the webhook does")
+		frappe.db.set_value("Excom Channel Account", self.lines[1], "wa_quality_rating", "YELLOW")
+		self.addCleanup(frappe.db.set_value, "Excom Channel Account", self.lines[1], "wa_quality_rating", "GREEN")
+		self.assertIsNone(templates.waba_stop(WABA), "YELLOW warns, it does not stop")
+		self.assertIn("YELLOW", templates.waba_warning(WABA))
+		frappe.db.set_value("Excom Channel Account", self.lines[1], "wa_quality_rating", "RED")
+		self.assertIn("quality", templates.waba_stop(WABA))
+
+	def test_try_again_is_capped_per_template(self):
+		from excom.excom_ai import api
+
+		a = self.agent(0)
+		need = self.submitted(a, "en")
+		frappe.db.set_value("Excom AI Template Need", need.name, {"status": "Failed", "attempts": 2,
+			"total_attempts": templates.REOPEN_LIMIT})
+		self.assertRaisesRegex(frappe.ValidationError, "withdraw", api.reopen_template_need, need.name)
+		with patch("excom.excom.doctype.whatsapp_templates.whatsapp_templates.make_request"):
+			api.withdraw_template(need.name)
+		api.reopen_template_need(need.name)
+		row = frappe.db.get_value("Excom AI Template Need", need.name, ["status", "attempts", "total_attempts"], as_dict=True)
+		self.assertEqual((row.status, row.attempts, row.total_attempts), ("Open", 0, 0), "a new template starts afresh")
+		frappe.db.set_value("Excom AI Template Need", need.name, {"status": "Failed", "total_attempts": 3})
+		api.reopen_template_need(need.name)
+		self.assertEqual(frappe.db.get_value("Excom AI Template Need", need.name, "total_attempts"), 3, "never reset by Try again")
+
+	def test_lookups_are_indexed(self):
+		indexed = {r[0] for r in frappe.db.sql("""SELECT column_name FROM information_schema.statistics
+			WHERE table_schema = DATABASE() AND table_name = 'tabExcom Message' AND seq_in_index = 1""")}
+		self.assertTrue({"omni_identity", "template"} <= indexed, indexed)
+
+	def test_the_templates_list_filters_and_decides_in_one_read(self):
+		from excom.excom_ai import api
+
+		a, b = self.agent(0), self.agent(1, purpose="Replies")
+		frappe.db.set_value("Excom AI Agent", b.name, "owner_user", BACKUP)
+		shared = templates.need(a, "accounts.payment_reminder", "WhatsApp", "en", self.lines[0])
+		templates.need(b, "accounts.payment_reminder", "WhatsApp", "en", self.lines[1])
+		own = templates.need(a, "accounts.payment_reminder", "Email", "en")
+		decoy = templates.need(a, "purchase.po_chase", "Email", "en")
+		self.addCleanup(lambda: frappe.db.delete("Excom AI Template Need", {"name": decoy}) or frappe.db.commit())
+		frappe.db.set_value("Excom AI Template Need", decoy, {"agent": a.name + "9", "agents": f"{a.name}9, X{a.name}"})
+		frappe.set_user(OWNER)
+		real_get_doc = frappe.get_doc
+		try:
+			with patch("frappe.get_doc", side_effect=lambda *x, **k: self.fail("a read per row") if x and x[0] ==
+					"Excom AI Template Need" else real_get_doc(*x, **k)):
+				rows = {r.name: r for r in api.template_needs(agent=a.name)}
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual((rows[shared].can_change, rows[own].can_change), (False, True), "shared by two owners: an Excom Admin")
+		self.assertNotIn(decoy, {r.name for r in api.template_needs(agent=a.name)},
+			"an agent whose name merely contains this one's is not this one")
+		frappe.db.set_value("Excom AI Template Need", decoy, {"agent": "X", "agents": f"X, {a.name}"})
+		self.assertIn(decoy, {r.name for r in api.template_needs(agent=a.name)}, "named in the list of agents")

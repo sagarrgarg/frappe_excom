@@ -36,16 +36,33 @@ For each call the service:
 | `excom_voice/speech/deepgram.py` | Deepgram nova-3 streaming STT and Aura-2 TTS (default) |
 | `excom_voice/speech/fake.py` | Fake STT/TTS for tests and dry runs |
 | `excom_voice/phrases.py` | The apology and goodbye lines, per language |
-| `deploy/excom-voice.service` | systemd unit example |
+| `deploy/install.sh` | Install or upgrade on a VM: system user, venv, env file, unit |
+| `deploy/excom-voice.service` | systemd unit |
+| `deploy/Caddyfile` | TLS in front (Caddy) |
+| `requirements.txt` | Exact dependency pins (`requirements-dev.txt` adds the test tools) |
 | `Dockerfile`, `.env.example` | Container and configuration |
 
 ## Setup
 
-Python 3.12. Two runtime dependencies: `websockets` and `httpx`.
+Python 3.12. Two runtime dependencies, `websockets` and `httpx`, pinned
+exactly (with their own dependencies) in `requirements.txt`.
+
+On a VM (Debian/Ubuntu), as root, from this directory:
+
+```bash
+sudo deploy/install.sh
+```
+
+It creates the `excom-voice` system user (no login, no home), a venv in
+`/opt/excom-voice` from `requirements.txt`, `/etc/excom-voice.env` from
+`.env.example` (mode 640, group `excom-voice`; fill it in) and the systemd
+unit, then `systemctl restart excom-voice`. Run it again to upgrade.
+
+By hand, for a dry run:
 
 ```bash
 python3.12 -m venv venv
-venv/bin/pip install .
+venv/bin/pip install -r requirements.txt && venv/bin/pip install --no-deps .
 cp .env.example .env    # fill in, then:
 set -a; . ./.env; set +a
 venv/bin/excom-voice    # or: python -m excom_voice
@@ -55,33 +72,39 @@ Docker:
 
 ```bash
 docker build -t excom-voice .
-docker run --env-file .env -p 127.0.0.1:8080:8080 --stop-timeout 960 excom-voice
+docker run --env-file .env -p 127.0.0.1:8080:8080 --stop-timeout 1200 excom-voice
 ```
 
-systemd: see `deploy/excom-voice.service`.
+**TLS.** Twilio requires `wss://`, and Plivo should get it too. The service
+listens on `127.0.0.1` by default; terminate TLS in front of it.
+`deploy/Caddyfile` is a complete example (Caddy gets the certificate, proxies
+only `/stream` and `/health`, and keeps live streams open across a reload).
 
-**TLS.** Twilio requires `wss://`, and Plivo should get it too. Terminate TLS
-in front of the service (Caddy, nginx), and proxy WebSocket upgrades for
-`/stream`, for example with Caddy:
+**The address in Frappe.** Excom AI Settings > Voice Service URL is the
+public stream address, and it must end with `/stream`, for example
+`wss://voice.example.com/stream`: the service answers 404 on any other path.
+Frappe adds `/stream` when it is left out. Voice Service Key is this
+service's `VOICE_KEY`, at least 32 characters on both sides.
 
-```
-voice.example.com {
-    reverse_proxy 127.0.0.1:8080
-}
-```
+**Shutdown.** SIGTERM stops new calls, waits for calls in progress to finish
+(each at most `max_seconds`: 600 by default, 900 at most in Frappe, plus about
+20 s for the last line), then waits for their end reports
+(`END_RETRY_SECONDS`, 120). The unit's `TimeoutStopSec=1200` covers the sum;
+keep it above it if you change either.
 
-**Shutdown.** SIGTERM stops new calls and waits for calls in progress to
-finish, so a deploy does not cut people off. Allow up to `max_seconds` for
-this (the unit sets `TimeoutStopSec=960`).
+**Health.** `GET /health` answers `ok` and the number of calls. With
+`?frappe=1` it also checks that Frappe answers (`/api/method/ping`, at most
+every 30 s) and returns 503 when it does not.
 
 ## Environment
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `FRAPPE_URL` | (required) | Base URL of the Frappe site, for example `https://erp.example.com` |
-| `VOICE_KEY` | (required) | Shared secret, sent as `X-Excom-Voice-Key` |
+| `FRAPPE_URL` | (required) | Base URL of the Frappe site, for example `https://erp.example.com`. Must be `https://` |
+| `ALLOW_INSECURE_FRAPPE` | `0` | `1` allows an `http://` `FRAPPE_URL` (local development only) |
+| `VOICE_KEY` | (required) | Shared secret, sent as `X-Excom-Voice-Key`; at least 32 characters |
 | `DEEPGRAM_API_KEY` | (required for Deepgram) | Deepgram key, used for both STT and TTS |
-| `HOST` / `PORT` | `0.0.0.0` / `8080` | Listening address |
+| `HOST` / `PORT` | `127.0.0.1` / `8080` | Listening address (TLS proxy in front) |
 | `LOG_LEVEL` | `INFO` | `DEBUG` also logs transcript text. Audio is never logged |
 | `STT_PROVIDER` / `TTS_PROVIDER` | `deepgram` | `fake` for dry runs |
 | `DEEPGRAM_STT_MODEL` | `nova-3` | STT model |
@@ -89,8 +112,14 @@ this (the unit sets `TimeoutStopSec=960`).
 | `DEEPGRAM_UTTERANCE_END_MS` | `1000` | Gap (ms) for `UtteranceEnd`; Deepgram's minimum is 1000 |
 | `BARGE_IN_ON` | `speech_started` | `words` interrupts only on recognised words (fewer false barge-ins on a noisy line) |
 | `FRAPPE_TIMEOUT_SECONDS` | `10` | Timeout per Frappe call |
-| `DEFAULT_MAX_SECONDS` | `900` | Used when `voice.start` sends no `max_seconds` |
-| `DEFAULT_TURN_LIMIT` | `40` | Used when `voice.start` sends no `turn_limit` |
+| `END_RETRY_SECONDS` | `120` | How long `voice.end` is retried, in the background (backoff 1, 2, 4 ... 30 s) |
+| `DEFAULT_MAX_SECONDS` | `600` | Used when `voice.start` sends no `max_seconds` (the same default as Frappe) |
+| `DEFAULT_TURN_LIMIT` | `30` | Used when `voice.start` sends no `turn_limit` |
+| `IDLE_TIMEOUT_SECONDS` | `20` | Silence before "are you still there?", then the same again before a goodbye; `0` turns it off |
+| `PRE_STT_BUFFER_SECONDS` | `2` | Caller audio kept (the latest) until speech-to-text connects |
+| `MAX_CALLS` | `20` | Concurrent streams; more are refused at the handshake (503), no speech spent |
+| `CONNECTS_PER_IP_PER_MINUTE` | `60` | Stream connections per client address; more get 429. `0` turns it off |
+| `TRUSTED_PROXIES` | `127.0.0.1,::1` | Peers whose `X-Forwarded-For` is believed for the client address |
 
 ## How Frappe and the provider connect
 
@@ -146,18 +175,25 @@ header `X-Excom-Voice-Key: {VOICE_KEY}`. Frappe wraps results as
 
 | Method | Body | Result |
 |---|---|---|
-| `excom.excom_ai.voice.start` | `{"token"}` | `{"ok": true, "call", "agent_name", "language", "voice", "greeting", "max_seconds", "turn_limit"}` or `{"ok": false, "say"}` |
+| `excom.excom_ai.voice.start` | `{"token"}` | `{"ok": true, "call", "agent_name", "language", "reply_language", "voice", "greeting", "max_seconds", "turn_limit"}` or `{"ok": false, "say"}` |
 | `excom.excom_ai.voice.turn` | `{"token", "text"}` | `{"say", "end_call"}` |
 | `excom.excom_ai.voice.end` | `{"token", "transcript": [{"speaker", "text", "at_ms"}], "duration_seconds", "reason"}` | ignored |
 
 How the service behaves:
 
 - **`ok: false`**: it says `say`, closes, and reports `voice.end` with reason
-  `agent_end`.
+  `agent_end` (Frappe leaves the callback).
+- **`start` answers 403 or 404** (a forged, reused or expired token, or a
+  wrong key): it closes at once. Nothing is said and nothing is reported, so
+  a stranger reaching `/stream` costs no speech.
 - **`voice` empty**: it uses a default Aura-2 voice for the language (`en`
-  Thalia, `es` Celeste, `fr`, `de`, `it`, `nl`, `ja`). Deepgram has no Hindi
-  voice, so `hi` falls back to the English voice. Frappe should send a voice
-  (or a different TTS provider is needed) for Hindi.
+  Thalia, `es` Celeste, `fr`, `de`, `it`, `nl`, `ja`). There is no Hindi or
+  Portuguese voice here, so in those languages the agent speaks English:
+  Frappe sends `reply_language: "en"` and tells the model to answer in
+  English, and the service's own lines are the English ones (never an English
+  voice reading Hindi text). The caller is still heard in their language
+  (`language` goes to speech-to-text). When Frappe sends a `voice`, the call's
+  language is kept.
 - **One turn at a time**: while `voice.turn` is pending (1 to 4 s) nothing is
   played. Anything the caller finishes saying meanwhile is queued, and the
   queued pieces are joined with spaces into the next turn.
@@ -168,6 +204,12 @@ How the service behaves:
   socket. Reason `agent_end`.
 - **`max_seconds`** (counted from the `start` event): it interrupts whatever
   is happening, says a short goodbye, and ends with reason `max_seconds`.
+  Frappe also refuses turns 30 s past it, whatever the service does.
+- **Silence** (`IDLE_TIMEOUT_SECONDS` with nothing heard, nothing playing and
+  no reply pending): "are you still there?" once; the same again, a goodbye
+  and reason `idle`. Dead air or an answering machine does not hold the line.
+- **Audio before speech-to-text is connected** (while `start` runs and the
+  greeting plays) is kept, up to `PRE_STT_BUFFER_SECONDS`, and sent in order.
 - **`turn_limit`**: after the reply to the `turn_limit`-th turn, it says the
   goodbye and ends with reason `turn_limit`.
 - **HTTP failure of `start` or `turn`** (transport error, timeout, non-2xx,
@@ -177,8 +219,12 @@ How the service behaves:
   reason `error` straight away, since nothing can be said.
 - **Caller hangs up** (Twilio `stop`, or the socket closes): reason
   `caller_hangup`, unless an agent-side end was already under way.
-- **`voice.end`**: sent exactly once per call that had a token, after the
-  socket is closed. It is tried 3 times with backoff. Transcript entries are
+- **`voice.end`**: sent once per call Frappe started (or declined), after the
+  socket is closed, in the background. Transport errors, 5xx and 429 are
+  retried with exponential backoff for `END_RETRY_SECONDS`; at shutdown the
+  service waits for these. Frappe treats a repeat as already done, and if the
+  report never arrives it still leaves the callback when its engine reaps
+  the call (30 minutes). Transcript entries are
   `{"speaker": "caller"|"agent", "text", "at_ms"}`, where `at_ms` counts from
   the `start` event. An agent line is recorded when it starts playing, even
   if barge-in cuts it short. Caller words never sent as a turn (for example
@@ -280,8 +326,7 @@ No network is used. Fake Twilio and Plivo clients talk to the real server on
 127.0.0.1, with fake STT/TTS and a fake Frappe (`httpx.MockTransport`).
 
 ```bash
-uv run --no-project --python 3.12 --with websockets --with httpx --with pytest --with pytest-asyncio \
-    env PYTHONPATH=. pytest -q
+uv run --no-project --python 3.12 --with-requirements requirements-dev.txt env PYTHONPATH=. pytest -q
 uvx ruff check .
 ```
 
@@ -290,7 +335,9 @@ The tests cover:
 - the greeting on start, a turn and its reply, and barge-in `clear`/`clearAudio`;
 - `end_call`, errors from `start` and `turn` (apology, reason `error`), a declined start and an STT failure;
 - the end report on hangup (including during a pending turn) and its retries;
-- turn queueing and joining, `max_seconds`, `turn_limit`, a missing token and `/health`;
+- turn queueing and joining, `max_seconds`, `turn_limit`, a missing token and `/health` (with `?frappe=1`);
+- a refused token (no speech, no report), the call cap, the per-address rate limit;
+- background end retries and their limits, the silence prompt and goodbye, early audio, the English fallback;
 - unit tests for the message formats and the Deepgram request shapes.
 
 Each flow runs for both Twilio and Plivo.

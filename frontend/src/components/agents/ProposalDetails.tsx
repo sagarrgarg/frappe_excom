@@ -17,8 +17,8 @@ export function PricedChip({ priceList }: { priceList: string | null }) {
 
 /**
  * What a proposal would do, in plain words: a quotation as a table, a playbook suggestion, a lead
- * classification, a ToDo, a note (with its title, for a Custom agent's draft) or an email template
- * from its payload; anything else as its preview.
+ * classification, a ToDo, a note (with its title, for a Custom agent's draft) or a template (email or
+ * WhatsApp, with its English back-translation) from its payload; anything else as its preview.
  */
 export function ProposalDetails({ action, payload: raw, previewHtml, title }: { action: string; payload?: ProposalPayload | string | null; previewHtml?: string | null; title: string }) {
   const payload = parseJson<Record<string, unknown>>(raw);
@@ -164,10 +164,23 @@ function Slot({ name }: { name: string }) {
 }
 
 function TemplateProposal({ p }: { p: TemplatePayload }) {
+  const whatsapp = p.channel === "WhatsApp";
   return (
     <div className="space-y-1.5 min-w-0">
-      <TemplateWords subject={p.subject} body={p.body} />
-      <p className="text-xs text-ink-3">An email template Excom wrote for your agents. Approving lets them use it; the marked parts are filled in by code each time.</p>
+      <TemplateWords subject={whatsapp ? null : p.subject} body={p.body} />
+      {p.back_translation && (
+        <div className="rounded-md bg-surface-sunken px-2 py-1.5 min-w-0">
+          <p className="text-xs text-ink-3">In English</p>
+          <p className="text-sm text-ink-2 whitespace-pre-wrap break-words">{p.back_translation}</p>
+        </div>
+      )}
+      <p className="text-xs text-ink-3">
+        {whatsapp
+          ? "A WhatsApp template Excom wrote for your agents. Approving sends it to Meta for review; once Meta approves it, they use it. The marked parts are filled in by code each time."
+          : p.channel === "Email"
+            ? "An email template Excom wrote for your agents. Approving lets them use it; the marked parts are filled in by code each time."
+            : "A template Excom wrote for your agents. Approving lets them use it; the marked parts are filled in by code each time."}
+      </p>
     </div>
   );
 }

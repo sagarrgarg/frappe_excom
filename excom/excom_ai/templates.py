@@ -275,8 +275,9 @@ def first_use_pending(template: str | None) -> bool:
 
 # ── the code checks ──────────────────────────────────────────────────────────
 
-PROMO = re.compile(r"\b(offer|discount|sale|deal|free|limited|hurry|buy now|best price|special|exclusive|promo\w*|% off)\b",
-	re.IGNORECASE)
+# whole words and phrases only: "feel free to reply" and "XYZ Pvt Limited" are not promotions
+PROMO = re.compile(r"\b(offers?|discount\w*|sale|deals?|(?<!feel )free(?! to\b)|limited[- ](time|offer|period|stock|edition)|"
+	r"hurry|buy now|best price|special|exclusive|promo\w*)\b|\d\s*% off\b", re.IGNORECASE)
 RISKY = re.compile(r"(\$|₹|€|£|\bUSD\b|\bINR\b|\bEUR\b|https?://|www\.|\blegal action\b|\blawyer\b|\bcourt\b|\bpenalt\w*|"
 	r"\bguarantee\w*\b|\bwe promise\b|\bI am (a )?(human|person|bot|AI)\b|\bas an AI\b|\bartificial intelligence\b)",
 	re.IGNORECASE)
@@ -356,6 +357,7 @@ FINAL = ("DISABLED", "PENDING_DELETION", "DELETED")
 POLL_AFTER_HOURS = 24
 PENDING_GIVE_UP_DAYS = 14
 SLOT_ALERT = 200  # 80% of Meta's 250 for an unverified business
+REOPEN_LIMIT = 10  # tries of one template before Try again needs a withdrawal (Meta caps edits per template)
 
 
 def run():
@@ -375,11 +377,15 @@ def statuses() -> None:
 	for n in frappe.get_all("Excom AI Template Need", {"status": "Submitted", "channel": "WhatsApp"},
 			["name", "template", "category", "attempts", "submitted_on", "agent", "agents", "need_key"]):
 		if not n.template or not frappe.db.exists("WhatsApp Templates", n.template):
+			if n.submitted_on and get_datetime(n.submitted_on) > add_to_date(now_datetime(), minutes=-30):
+				continue  # being posted right now: the template is linked when Meta answers
 			_set(n.name, status="Failed", last_error=_("The template is gone from Excom"))
 			continue
-		t = frappe.db.get_value("WhatsApp Templates", n.template, ["status", "category", "rejection_reason", "id"],
-			as_dict=True)
+		t = frappe.db.get_value("WhatsApp Templates", n.template, ["status", "category", "rejection_reason", "id",
+			"rejected_at"], as_dict=True)
 		state = (t.status or "").upper()
+		if state == "REJECTED" and t.rejected_at and n.submitted_on and get_datetime(t.rejected_at) < get_datetime(n.submitted_on):
+			state = "PENDING"  # the verdict on the words before this rework, not on what Meta has now
 		if state in ("", "PENDING", "IN_APPEAL") and n.submitted_on and \
 				get_datetime(n.submitted_on) < add_to_date(now_datetime(), hours=-POLL_AFTER_HOURS):
 			t = _poll(n.template) or t
@@ -394,7 +400,7 @@ def statuses() -> None:
 				_tell(n, _("Meta moved a template to {0}; agents will not use it: {1}").format(t.category, n.need_key))
 		elif state == "REJECTED":
 			if cint(n.attempts) < cint(_settings().template_max_attempts or 2):
-				_set(n.name, status="Open", last_error=_("Rejected by Meta: {0}").format(t.rejection_reason or "-"))
+				_set(n.name, status="Open", ready=0, last_error=_("Rejected by Meta: {0}").format(t.rejection_reason or "-"))
 			else:
 				_set(n.name, status="Failed", last_error=_("Rejected by Meta {0} times: {1}").format(n.attempts,
 					t.rejection_reason or "-"))
@@ -407,9 +413,10 @@ def statuses() -> None:
 	# A need waiting for a person whose proposal is gone (rejected, cancelled, expired, or never made
 	# because the template policy is Off) fails, so a person can try again from the Templates screen.
 	for n in frappe.get_all("Excom AI Template Need", {"status": "In review"}, ["name", "proposal"]):
-		state = frappe.db.get_value("Excom AI Proposal", n.proposal, "status") if n.proposal else None
-		if state in (None, *proposals.RELEASED):
-			_set(n.name, status="Failed", last_error=_("The review ended without approval ({0})").format(state or _("no review")))
+		p = frappe.db.get_value("Excom AI Proposal", n.proposal, ["status", "hold_reason"], as_dict=True) if n.proposal else None
+		if not p or p.status in proposals.RELEASED:
+			why = ": ".join(filter(None, [p.status, p.hold_reason])) if p else _("no review")
+			_set(n.name, status="Failed", last_error=_("The review ended without approval ({0})").format(why)[:1000])
 	# A template in use that Meta later disabled, deleted or moved to another category: the owners hear
 	# once (find() already refuses it); a person tries again from the Templates screen.
 	for n in frappe.get_all("Excom AI Template Need", {"status": "Met", "channel": "WhatsApp"},
@@ -438,6 +445,10 @@ def _poll(template: str) -> frappe._dict | None:
 		values = {"status": data.get("status") or doc.status, "category": data.get("category") or doc.category}
 		if data.get("rejected_reason") and data.get("rejected_reason") != "NONE":
 			values["rejection_reason"] = data["rejected_reason"]
+		state = (values["status"] or "").upper()
+		if state != (doc.status or "").upper() and state in ("APPROVED", "REJECTED"):
+			# as the status webhook stamps it: the "3 rejections in 7 days" stop counts polled ones too
+			values["approved_at" if state == "APPROVED" else "rejected_at"] = now_datetime()
 		frappe.db.set_value("WhatsApp Templates", template, values, update_modified=False)
 		return frappe._dict(values)
 	except Exception:
@@ -474,11 +485,12 @@ def submitted_today() -> int:
 
 
 def waba_stop(waba: str) -> str | None:
-	"""Why auto-submission is paused for this WhatsApp business account, or None."""
+	"""Why auto-submission is paused for this WhatsApp business account, or None. A RED (LOW) or
+	flagged number stops it; YELLOW (MEDIUM) only warns the owners (`waba_warning`)."""
 	accounts = frappe.get_all("Excom Channel Account", {"wa_business_id": waba}, ["name", "wa_quality_rating"])
 	names = [a.name for a in accounts]
 	for a in accounts:
-		if (a.wa_quality_rating or "").upper() in ("RED", "YELLOW", "LOW", "MEDIUM", "FLAGGED"):
+		if (a.wa_quality_rating or "").upper() in ("RED", "LOW", "FLAGGED"):
 			return _("number {0} has quality {1}").format(a.name, a.wa_quality_rating)
 	if not names:
 		return None
@@ -492,6 +504,14 @@ def waba_stop(waba: str) -> str | None:
 		return _("a template's quality is low")
 	if frappe.db.count("WhatsApp Templates", {"whatsapp_account": ["in", names]}) >= SLOT_ALERT:
 		return _("{0} templates or more: near Meta's limit").format(SLOT_ALERT)
+	return None
+
+
+def waba_warning(waba: str) -> str | None:
+	"""A number on this business account at YELLOW (MEDIUM) quality: submissions go on, the owners hear."""
+	for a in frappe.get_all("Excom Channel Account", {"wa_business_id": waba}, ["name", "wa_quality_rating"]):
+		if (a.wa_quality_rating or "").upper() in ("YELLOW", "MEDIUM"):
+			return _("number {0} has quality {1}").format(a.name, a.wa_quality_rating)
 	return None
 
 
@@ -521,7 +541,9 @@ def _working_agent(n):
 
 
 def dispatch(limit: int = 20) -> list[str]:
-	"""Claim Open needs and queue their drafting on a Live agent that needs them."""
+	"""Claim Open needs and queue their drafting on a Live agent that needs them, oldest first, up to
+	`limit`. Needs that cannot go now (a paused business account, no Live agent, a retry not yet due, the
+	daily cap) are passed over in the query or skipped page by page, so they never hold up newer ones."""
 	from excom.excom_ai.engine import tasks
 
 	# a claim left behind by a run that died is opened again after two hours, unless its task is still
@@ -533,27 +555,61 @@ def dispatch(limit: int = 20) -> list[str]:
 			_set(stale, status="Open")
 	value = _settings().template_submissions_per_day
 	cap = 10 if value is None else cint(value)  # 0 stops submissions
-	queued, stops = [], {}
-	for n in frappe.get_all("Excom AI Template Need", {"status": "Open"}, ["name", "channel", "wa_business_id", "agent",
-			"agents", "need_key", "attempts", "notified", "last_error"], order_by="creation asc", limit=limit):
-		if n.channel == "WhatsApp":
-			if submitted_today() + len(queued) >= cap:
+	room = max(cap - submitted_today(), 0)
+	paused = _paused_wabas()
+	queued, skipped, working = [], ["-"], {}
+	while len(queued) < limit:
+		rows = frappe.db.sql("""SELECT name, channel, wa_business_id, agent, agents, need_key, attempts, total_attempts
+			FROM `tabExcom AI Template Need`
+			WHERE status = 'Open' AND (retry_after IS NULL OR retry_after <= %(now)s) AND name NOT IN %(skipped)s
+				AND (channel = 'Email' OR (%(room)s AND IFNULL(wa_business_id, '') NOT IN %(paused)s))
+			ORDER BY creation ASC LIMIT %(page)s""", {"now": now_datetime(), "skipped": tuple(skipped),
+			"room": int(room > 0), "paused": tuple(paused) or ("-",), "page": limit}, as_dict=True)
+		if not rows:
+			break
+		for n in rows:
+			if len(queued) >= limit:
+				break
+			if n.channel == "WhatsApp" and room <= 0:
+				skipped.append(n.name)  # the daily cap: no more WhatsApp today
 				continue
-			if n.wa_business_id not in stops:
-				stops[n.wa_business_id] = waba_stop(n.wa_business_id)
-			if stops[n.wa_business_id]:
-				if not n.notified:
-					_tell(n, _("Templates for WhatsApp are paused: {0}").format(stops[n.wa_business_id]))
-					_set(n.name, notified=1)
+			key = n.agents or n.agent
+			if key not in working:
+				working[key] = _working_agent(n)
+			agent = working[key]
+			if not agent or not _claim(n.name):
+				skipped.append(n.name)
 				continue
-		agent = _working_agent(n)
-		if not agent or not _claim(n.name):
-			continue
-		tasks.add(agent.name, "template_draft", subject=("Excom AI Template Need", n.name),
-			dedupe_key=f"tpl:{n.name}:{cint(n.attempts)}")
-		queued.append(n.name)
+			tasks.add(agent.name, "template_draft", subject=("Excom AI Template Need", n.name),
+				dedupe_key=f"tpl:{n.name}:{cint(n.total_attempts)}")
+			queued.append(n.name)
+			if n.channel == "WhatsApp":
+				room -= 1
 	frappe.db.commit()
 	return queued
+
+
+def _paused_wabas() -> list[str]:
+	"""Business accounts with Open WhatsApp needs whose auto-submission is stopped; each of those needs'
+	owners hear once. A YELLOW number only warns, once a day."""
+	paused = []
+	for waba in frappe.get_all("Excom AI Template Need", {"status": "Open", "channel": "WhatsApp"}, pluck="wa_business_id",
+			distinct=True):
+		if not waba:
+			continue
+		why = waba_stop(waba)
+		if why:
+			paused.append(waba)
+			for n in frappe.get_all("Excom AI Template Need", {"status": "Open", "channel": "WhatsApp", "wa_business_id": waba,
+					"notified": 0}, ["name", "agent", "agents"]):
+				_tell(n, _("Templates for WhatsApp are paused: {0}").format(why))
+				_set(n.name, notified=1)
+		elif (warn := waba_warning(waba)) and not frappe.cache.get_value(f"excom_ai_tpl_warn:{waba}:{nowdate()}"):
+			frappe.cache.set_value(f"excom_ai_tpl_warn:{waba}:{nowdate()}", 1, expires_in_sec=86400)
+			n = frappe.get_all("Excom AI Template Need", {"status": "Open", "channel": "WhatsApp", "wa_business_id": waba},
+				["name", "agent", "agents"], order_by="creation asc", limit=1)[0]
+			_tell(n, _("A WhatsApp number's quality is falling ({0}): templates still go to Meta, but watch it").format(warn))
+	return paused
 
 
 # ── drafting ─────────────────────────────────────────────────────────────────
@@ -595,11 +651,18 @@ def template_draft(task, agent) -> str:
 	if not spec:
 		_set(n.name, status="Failed", last_error=_("Not a declared need"))
 		return _("undeclared")
-	_set(n.name, attempts=cint(n.attempts) + 1)
+	if n.ready and n.body and n.channel == "WhatsApp":
+		# checked (or approved) words that waited for a stop to lift or for Meta to answer: no new draft
+		if _settings().whatsapp_auto_submit or _approved(n):
+			return submit(n.name)
+		_set(n.name, ready=0)  # auto-submission went off meanwhile: a person reads them first
+		return _ask_person(task, agent, n.name)
+	_set(n.name, attempts=cint(n.attempts) + 1, total_attempts=cint(n.total_attempts) + 1)
 	if n.channel == "WhatsApp" and spec.get("library") and not n.template:
 		done = _try_library(task, agent, n, spec)
 		if done:
 			return done
+		n.reload()  # a name clash moved it to a new version
 	draft, problems = _write(task, agent, n, spec)
 	if problems:
 		_set(n.name, status="Failed", last_error="; ".join(problems)[:1000], body=draft.get("body"),
@@ -674,20 +737,118 @@ def _try_library(task, agent, n, spec) -> str | None:
 			if not (r.data or {}).get("usable") or sorted(mapping) != params:
 				continue
 			variables = [dict(fields[mapping[p]], n=p) for p in params]
-			name = template_name(n.need_key, n.language, n.wa_business_id)
+			# the need's own versioned name: after a withdrawal Meta still holds the old one
+			name = template_name(n.need_key, n.language, n.wa_business_id, n.version)
+			previous = n.submitted_on
+			if not _claim_submit(n.name):
+				return _("another run is submitting it")
+			frappe.flags.integration_request = None
 			try:
 				out = lib.create(e["name"], name, n.language, account_name=n.channel_account)
 			except Exception as err:
 				frappe.db.rollback()
-				_set(n.name, status="Failed", last_error=_("Meta refused the library template: {0}").format(str(err)[:500]))
-				return _("library create refused")
-			frappe.db.set_value("WhatsApp Templates", out["name"], {"xai_need": n.name,
-				"xai_variable_map": json.dumps(variables)}, update_modified=False)
-			_set(n.name, status="Submitted", source="Library", library_template_name=e["name"], template=out["name"],
-				body=e.get("body"), variable_map=json.dumps(variables), submitted_on=now_datetime(), last_error=None)
-			frappe.db.commit()
+				frappe.clear_last_message()
+				if _transient(err):
+					return _meta_error(n.name, err, previous)
+				# the name is taken (here or on Meta): the written template gets the next version
+				clash = _name_clash(err)
+				if not _set_if(n.name, "Submitted", status="Drafting", submitted_on=previous,
+						version=cint(n.version or 1) + (1 if clash else 0),
+						last_error=_("Meta refused the library template: {0}").format(str(err)[:500])):
+					return _("withdrawn meanwhile")
+				frappe.db.commit()
+				return None  # written instead
+			_submitted(n, out["name"], _("A WhatsApp template from Meta's library is in use (or waiting for Meta): {0}").format(
+				n.need_key), source="Library", library_template_name=e["name"], body=e.get("body"),
+				variable_map=json.dumps(variables))
 			return _("library template {0} created ({1})").format(e["name"], out.get("status"))
 	return None
+
+
+def _approved(n) -> bool:
+	"""A person approved these words (the review is done or under way)."""
+	return bool(n.proposal) and frappe.db.get_value("Excom AI Proposal", n.proposal, "status") in (
+		"Approved", "Edited", "Executing", "Done")
+
+
+def _transient(err) -> bool:
+	"""A timeout, an outage on Meta's side (5xx) or a rate limit (429): worth trying again later. A
+	rejection or a validation error (any other 4xx) is final."""
+	import requests
+
+	from excom.excom.services import whatsapp_errors as wae
+
+	e, seen = err, set()
+	while e is not None and id(e) not in seen:
+		seen.add(id(e))
+		if isinstance(e, requests.Timeout | requests.ConnectionError):
+			return True
+		if isinstance(e, wae.WhatsAppAPIError) and (e.error_class in (wae.RETRY, wae.RETRY_GLOBAL) or
+				cint(e.http_status) == 429 or cint(e.http_status) >= 500):
+			return True
+		status = getattr(getattr(e, "response", None), "status_code", None)
+		if isinstance(status, int) and (status == 429 or status >= 500):
+			return True
+		e = e.__cause__ or e.__context__
+	resp = getattr(frappe.flags, "integration_request", None)  # the last Meta call (frappe's make_request)
+	status = getattr(resp, "status_code", None)
+	if not isinstance(status, int):
+		return False
+	if status == 429 or status >= 500:
+		return True
+	try:
+		error = (resp.json() or {}).get("error") or {}
+	except Exception:
+		return False
+	return bool(error.get("is_transient")) or wae.classify(error.get("code")) in (wae.RETRY, wae.RETRY_GLOBAL)
+
+
+def _name_clash(err) -> bool:
+	text = str(err).lower()
+	return any(w in text for w in ("already exists", "being deleted", "name is already", "2388023", "2388024"))
+
+
+def _meta_error(name: str, err, previous_submitted_on=None) -> str:
+	"""After a claimed post to Meta failed: a passing error leaves the checked words to go again in an
+	hour (no new draft, no new approval); anything else fails the need for a person."""
+	if _transient(err):
+		_set_if(name, "Submitted", status="Open", ready=1, submitted_on=previous_submitted_on,
+			retry_after=add_to_date(now_datetime(), hours=1),
+			last_error=_("Meta did not answer ({0}); it is tried again in an hour.").format(str(err)[:500]))
+		frappe.db.commit()
+		return _("Meta did not answer: tried again later")
+	_set_if(name, "Submitted", status="Failed", ready=0, submitted_on=previous_submitted_on,
+		last_error=_("Meta refused it: {0}").format(str(err)[:800]))
+	frappe.db.commit()
+	return _("Meta refused it")
+
+
+def _set_if(name: str, while_status: str, **values) -> bool:
+	"""Values on the need only while it is still `while_status` (a person may have withdrawn it meanwhile)."""
+	values["modified"] = now_datetime()
+	cols = ", ".join(f"`{k}` = %({k})s" for k in values)
+	frappe.db.sql(f"UPDATE `tabExcom AI Template Need` SET {cols} WHERE name = %(_name)s AND status = %(_while)s",
+		dict(values, _name=name, _while=while_status))
+	return bool(frappe.db.sql("SELECT ROW_COUNT()")[0][0])
+
+
+def _submitted(n, template: str, notice: str, **values) -> bool:
+	"""The template is on Meta: linked to its claimed need and the owners told (with Withdraw). A need a
+	person withdrew while it was being posted keeps nothing: this template is taken back too."""
+	frappe.db.set_value("WhatsApp Templates", template, {"xai_need": n.name,
+		"xai_variable_map": values.get("variable_map") or n.variable_map}, update_modified=False)
+	if not _set_if(n.name, "Submitted", template=template, last_error=None, notified=0, ready=0, retry_after=None, **values):
+		frappe.db.commit()
+		try:
+			if frappe.db.exists("WhatsApp Templates", template):
+				frappe.delete_doc("WhatsApp Templates", template, ignore_permissions=True)  # on_trash deletes it on Meta
+		except Exception:
+			frappe.log_error(title="Excom AI: template withdrawn while posting", message=frappe.get_traceback())
+		frappe.db.commit()
+		return False
+	frappe.db.commit()  # the template is on Meta now: keep the link whatever happens next
+	_tell(n, notice)
+	return True
 
 
 def ensure_language(code: str) -> str:
@@ -720,13 +881,19 @@ def _adopt(n, name: str) -> str | None:
 	return frappe.db.get_value("WhatsApp Templates", {"actual_name": name})
 
 
-def _claim_submit(name: str) -> bool:
-	"""Drafting -> Submitted, once: two runs on one need never both post to Meta."""
+def _claim_submit(name: str, rework: str | None = None) -> bool:
+	"""Drafting -> Submitted, once: two runs on one need never both post to Meta. For a rework the
+	template's old verdict is cleared in the same commit, so the hourly run never reads a rejection of
+	the old words as a verdict on this submission."""
 	frappe.db.commit()
+	now = now_datetime()
 	try:
-		frappe.db.sql("""UPDATE `tabExcom AI Template Need` SET status = 'Submitted', modified = %s
-			WHERE name = %s AND status = 'Drafting'""", (now_datetime(), name))
+		frappe.db.sql("""UPDATE `tabExcom AI Template Need` SET status = 'Submitted', submitted_on = %s, modified = %s
+			WHERE name = %s AND status = 'Drafting'""", (now, now, name))
 		claimed = bool(frappe.db.sql("SELECT ROW_COUNT()")[0][0])
+		if claimed and rework:
+			frappe.db.set_value("WhatsApp Templates", rework, {"status": "PENDING", "rejection_reason": None},
+				update_modified=False)
 	except frappe.QueryDeadlockError:
 		frappe.db.rollback()
 		return False
@@ -741,27 +908,29 @@ def submit(need_name: str) -> str:
 	samples = json.loads(n.samples or "[]")
 	problems = check_body(spec, "WhatsApp", n.body or "", samples)
 	if problems:
-		_set(n.name, status="Failed", last_error="; ".join(problems)[:1000])
+		_set(n.name, status="Failed", ready=0, last_error="; ".join(problems)[:1000])
 		return _("checks failed")
 	stop = waba_stop(n.wa_business_id)
 	if stop:
-		_set(n.name, status="Open", last_error=_("Paused: {0}").format(stop))
+		# the checked (or approved) words are kept: they go when the stop lifts, with no new draft or approval
+		_set(n.name, status="Open", ready=1, last_error=_("Paused: {0}").format(stop))
 		return _("paused: {0}").format(stop)
-	if not _claim_submit(n.name):
+	rework = n.template if n.template and frappe.db.exists("WhatsApp Templates", n.template) else None
+	before = frappe.db.get_value("WhatsApp Templates", rework, ["status", "rejection_reason"], as_dict=True) if rework else None
+	if not _claim_submit(n.name, rework):
 		return _("another run is submitting it")
 	name = template_name(n.need_key, n.language, n.wa_business_id, n.version)
+	frappe.flags.integration_request = None
 	frappe.db.savepoint("excom_ai_template")
 	try:
-		if n.template and frappe.db.exists("WhatsApp Templates", n.template):
-			doc = frappe.get_doc("WhatsApp Templates", n.template)  # a rejected one: edited, same id, no new slot
+		if rework:
+			doc = frappe.get_doc("WhatsApp Templates", rework)  # a rejected one: edited, same id, no new slot
 			doc.template = n.body
 			doc.body_variable_samples = json.dumps(samples)
 			doc.xai_back_translation = n.back_translation
 			doc.xai_first_use_done = 0
 			doc.save(ignore_permissions=True)
-			# the edit is with Meta now: the old verdict no longer stands (the webhook brings the new one)
-			frappe.db.set_value("WhatsApp Templates", doc.name, {"status": "PENDING", "rejection_reason": None,
-				"submitted_at": now_datetime()}, update_modified=False)
+			frappe.db.set_value("WhatsApp Templates", doc.name, "submitted_at", now_datetime(), update_modified=False)
 		else:
 			existing = frappe.db.get_value("WhatsApp Templates", {"actual_name": name}) or _adopt(n, name)
 			if existing:
@@ -775,15 +944,11 @@ def submit(need_name: str) -> str:
 	except Exception as e:
 		frappe.db.rollback(save_point="excom_ai_template")
 		frappe.clear_last_message()
-		_set(n.name, status="Failed", last_error=_("Meta refused it: {0}").format(str(e)[:800]))
-		frappe.db.commit()
-		return _("Meta refused it")
-	frappe.db.set_value("WhatsApp Templates", doc.name, {"xai_need": n.name, "xai_variable_map": n.variable_map},
-		update_modified=False)
-	_set(n.name, status="Submitted", template=doc.name, submitted_on=now_datetime(), last_error=None, notified=0)
-	frappe.db.commit()  # the template is on Meta now: keep the link whatever happens next
-	_tell(frappe._dict(name=n.name, agent=n.agent, agents=n.agents), _("A WhatsApp template went to Meta for review: {0}").format(
-		n.need_key))
+		if before:  # the edit never reached Meta: its last verdict stands again
+			frappe.db.set_value("WhatsApp Templates", rework, dict(before), update_modified=False)
+		return _meta_error(n.name, e, n.submitted_on)
+	if not _submitted(n, doc.name, _("A WhatsApp template went to Meta for review: {0}").format(n.need_key)):
+		return _("withdrawn while it was being submitted")
 	return _("submitted {0}").format(doc.name)
 
 
@@ -793,7 +958,8 @@ def _ask_person(task, agent, need_name: str) -> str:
 		frappe.utils.escape_html(n.body or "").replace("\n", "<br>") + \
 		(f"<br><br><i>{frappe.utils.escape_html(n.back_translation or '')}</i>" if n.back_translation else "")
 	name = proposals.propose(task, agent, "approve_template", subject=("Excom AI Template Need", n.name), risk="Medium",
-		payload={"need": n.name, "subject": n.subject or "", "body": n.body or ""}, preview_html=preview)
+		payload={"need": n.name, "channel": n.channel, "subject": n.subject or "", "body": n.body or "",
+			"back_translation": n.back_translation or ""}, preview_html=preview)
 	if not name:
 		_set(n.name, status="Failed", last_error=_("The agent's template policy is Off: nobody can approve it"))
 		return _("template policy Off")
@@ -812,6 +978,13 @@ def approve_template(proposal, agent):
 	n = frappe.get_doc("Excom AI Template Need", proposal.subject_name)
 	if n.status != "In review" or n.proposal != proposal.name:
 		raise registry.Cancel(_("the need is {0} now; this review is no longer current").format(n.status))
+	if proposal.get("decided_by") and proposal.decided_by != "Autopilot":
+		from excom.excom_ai.permissions import need_change_refusal
+
+		# a template several owners' agents share is approved by an Excom Admin, as it is withdrawn
+		why = need_change_refusal(n, proposal.decided_by)
+		if why:
+			raise registry.Cancel(why)
 	if not enabled():
 		raise registry.Defer(add_to_date(now_datetime(), hours=1), _("the template steward is switched off"))
 	spec = NEEDS.get(n.need_key)
@@ -836,7 +1009,8 @@ def withdraw(need_name: str) -> None:
 	template = n.template
 	# unlinked first, or the row cannot be deleted; the next try gets a new name (Meta keeps a deleted
 	# one for weeks); an open review is closed, so approving it later does nothing
-	_set(n.name, status="Withdrawn", template=None, version=cint(n.version or 1) + (1 if template else 0))
+	_set(n.name, status="Withdrawn", template=None, version=cint(n.version or 1) + (1 if template else 0), ready=0,
+		retry_after=None, total_attempts=0 if template else cint(n.total_attempts))
 	if n.proposal and frappe.db.get_value("Excom AI Proposal", n.proposal, "status") in ("Pending", "Held", "Shadow"):
 		frappe.db.set_value("Excom AI Proposal", n.proposal, "status", "Cancelled")
 	if template and frappe.db.exists("WhatsApp Templates", template):

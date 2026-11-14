@@ -217,7 +217,8 @@ function OverviewTab({ d, reload, go }: { d: AgentDetail; reload: () => void; go
 function AbilitiesPanel({ d, reload }: { d: AgentDetail; reload: () => void }) {
   const a = d.agent;
   const can = parseAbilities(a.abilities);
-  const canDraft = can.includes("draft") && d.can_change && a.status !== "Retired";
+  // drafts are written only by a working agent (Shadow or Live); a Draft agent would never pick them up
+  const canDraft = can.includes("draft") && d.can_change && (a.status === "Shadow" || a.status === "Live");
   return (
     <Panel title="What it can do">
       <ul className="space-y-1.5">

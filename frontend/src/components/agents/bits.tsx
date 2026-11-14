@@ -161,7 +161,7 @@ export const PROPOSAL_LABEL: Record<string, string> = {
   payment_reminder: "Payment reminder",
   create_todo: "Create a ToDo",
   note: "Add a note",
-  approve_template: "Approve an email template",
+  approve_template: "Approve a template",
 };
 
 export const RISK_ACCENT: Record<string, Accent> = { Low: "green", Medium: "amber", High: "rose" };

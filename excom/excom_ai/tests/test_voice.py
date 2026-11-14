@@ -25,7 +25,7 @@ LINE = "QA Voice Line"
 PTYPE = "QA Voice Scripted"
 PROVIDER = "QA Voice Provider"
 URL = "wss://voice.qa.example/stream"
-KEY = "qa-voice-key-123"
+KEY = "qa-voice-key-0123456789abcdef-0123"  # at least voice.MIN_KEY_LENGTH
 CALL_ID = "CA-QA-VOICE-"
 
 
@@ -87,7 +87,7 @@ class TestVoice(FrappeTestCase):
 	def setUp(self):
 		frappe.set_user("Administrator")
 		s = frappe.get_single("Excom AI Settings")
-		saved = {k: s.get(k) for k in ("enabled", "voice_service_url")}
+		saved = {k: s.get(k) for k in ("enabled", "voice_service_url", "voice_recording_notice", "voice_max_seconds")}
 		frappe.db.set_single_value("Excom AI Settings", {"enabled": 1, "voice_service_url": URL})
 		s = frappe.get_single("Excom AI Settings")
 		s.voice_service_key = KEY
@@ -236,4 +236,157 @@ class TestVoice(FrappeTestCase):
 		todo = frappe.get_all("Excom AI Proposal", {"agent": agent.name, "action": "create_todo"}, ["payload"])
 		self.assertEqual(len(todo), 1)
 		self.assertIn("+5215550001", json.loads(todo[0].payload)["text"])
+		self.retire(agent)
+
+	# ---- review fixes (2026-11-14)
+
+	def started(self, agent=None, call_id=None):
+		"""A call offered and started through the endpoints, as the voice service would."""
+		agent = agent or self.agent()
+		call_id = call_id or f"{CALL_ID}{self.n}"
+		_url, token = voice.offer(LINE, call_id, "+5215550009")
+		with patch("frappe.get_request_header", return_value=KEY):
+			out = voice.start(token)
+		return agent, call_id, token, out
+
+	def summary_task(self, agent):
+		return frappe.get_doc("Excom AI Task", {"agent": agent.name, "kind": "call_summary"})
+
+	def test_the_key_is_compared_as_bytes_and_must_be_long(self):
+		for sent in ("ключ-не-тот", "qa-voice-key-é" * 3, ""):
+			with patch("frappe.get_request_header", return_value=sent):
+				self.assertRaises(frappe.PermissionError, voice._verify_voice_key)  # 403, never a TypeError (500)
+		with patch("frappe.get_request_header", return_value=KEY):
+			voice._verify_voice_key()
+		s = frappe.get_single("Excom AI Settings")
+		s.voice_service_key = "short-key"
+		self.assertRaises(frappe.ValidationError, s.save, ignore_permissions=True)
+		s.reload()
+		s.voice_max_seconds = 1800
+		self.assertRaises(frappe.ValidationError, s.save, ignore_permissions=True)
+		with patch.object(voice, "_voice_key", return_value="short-key"):
+			self.assertFalse(voice.voice_ready(), "a short key: agents take no calls")
+			with patch("frappe.get_request_header", return_value="short-key"):
+				self.assertRaises(frappe.PermissionError, voice._verify_voice_key)
+
+	def test_the_stream_address_ends_with_stream(self):
+		for url in ("wss://voice.qa.example", "wss://voice.qa.example/", "wss://voice.qa.example/stream"):
+			frappe.db.set_single_value("Excom AI Settings", "voice_service_url", url)
+			frappe.clear_document_cache("Excom AI Settings", "Excom AI Settings")
+			self.assertEqual(voice.stream_url(), "wss://voice.qa.example/stream")
+
+	def test_spoken_identity_questions_go_to_a_person(self):
+		for text in ("am I talking to a computer", "Is it an AI?", "are you a bot", "I want a real person",
+				"can I speak to a human please", "is this a recording", "you're a robot", "Is this a real person",
+				"¿Estoy hablando con una máquina?", "quiero hablar con una persona", "क्या आप इंसान हैं",
+				"machine ho kya", "Am I talking to a real person?"):
+			self.assertTrue(voice.asks_for_person(text), text)
+		for text in ("Do you sell robot toys?", "What are your opening hours?", "Is it available in red?",
+				"are you really open on Sunday", "we are a real estate agency", "Is it a machine washable fabric?"):
+			self.assertFalse(voice.asks_for_person(text), text)
+
+	def test_a_declined_call_still_gets_its_callback(self):
+		agent = self.agent()
+		call_id = f"{CALL_ID}{self.n}"
+		_url, token = voice.offer(LINE, call_id, "+5215550009")
+		self.retire(agent)  # the agent can no longer work when the call connects
+		with patch("frappe.get_request_header", return_value=KEY):
+			out = voice.start(token)
+			self.assertFalse(out["ok"])
+			self.assertIn("call you back", out["say"])
+			self.assertEqual(voice.end(token, "[]", 0, "agent_end"), {"ok": True})
+		task = self.summary_task(agent)
+		params = json.loads(task.params)
+		self.assertTrue(params["needs_person"])
+		self.assertEqual(params["reason"], "declined")
+		self.assertEqual(voice.call_summary(task, agent)[:8], "a callba", "no transcript, still a callback")
+		todo = frappe.get_all("Excom AI Proposal", {"agent": agent.name, "action": "create_todo"}, ["payload"])
+		self.assertEqual(len(todo), 1)
+		self.assertIn("+5215550009", json.loads(todo[0].payload)["text"])
+
+	def test_a_lost_end_report_is_recovered_with_a_callback(self):
+		agent, call_id, token, out = self.started()
+		self.assertTrue(out["ok"])
+		vc = frappe.get_doc("Excom AI Task", {"agent": agent.name, "kind": "voice_call"})
+		# The engine reaped it (no end came): the task kind closes the call from its state.
+		self.assertIn("without a report", voice.voice_call(vc, agent))
+		self.assertIsNone(voice.offered(call_id))
+		with patch("frappe.get_request_header", return_value=KEY):
+			self.assertEqual(voice.end(token, "[]", 5, "caller_hangup"), {"ok": True, "already": True},
+				"a late end report is acknowledged, not applied twice")
+		params = json.loads(self.summary_task(agent).params)
+		self.assertEqual((params["needs_person"], params["reason"]), (True, "no_end_report"))
+		self.assertNotIn("transcript", params, "the transcript is not copied into task params")
+		# The state expired too: still a callback from what the task knows.
+		frappe.db.delete("Excom AI Task", {"agent": agent.name, "kind": "call_summary"})
+		voice.voice_call(vc, agent)
+		params = json.loads(self.summary_task(agent).params)
+		self.assertEqual((params["needs_person"], params["caller"]), (True, "+5215550009"))
+
+	def test_a_turn_that_outlives_the_call_does_not_bring_it_back(self):
+		agent, call_id, token, _out = self.started()
+
+		def slow_model(*args, **kwargs):  # the call ends while the model thinks
+			voice.end(token, "[]", 7, "caller_hangup")
+			return frappe._dict(data={"say": "We open at nine.", "intent": "question", "needs_person": False,
+				"end_call": False})
+
+		with patch("frappe.get_request_header", return_value=KEY), patch.object(runner, "ai", side_effect=slow_model):
+			self.assertEqual(voice.turn(token, "When do you open?")["say"], "We open at nine.")
+			self.assertIsNone(voice._live_state(token), "the ended call's state is not saved again")
+			self.assertRaises(frappe.DoesNotExistError, voice.turn, token, "hello?")
+			self.assertEqual(voice.end(token, "[]", 7, "caller_hangup"), {"ok": True, "already": True})
+		self.assertEqual(frappe.db.count("Excom AI Task", {"agent": agent.name, "kind": "call_summary"}), 1)
+
+	def test_turns_past_the_longest_call_are_refused(self):
+		agent, call_id, token, out = self.started()
+		self.assertEqual(out["max_seconds"], voice.DEFAULT_MAX_SECONDS)
+		state = voice._live_state(token)
+		state["started"] = str(frappe.utils.add_to_date(frappe.utils.now_datetime(), seconds=-(out["max_seconds"] + 60)))
+		voice._save(token, state)
+		with patch("frappe.get_request_header", return_value=KEY), patch.object(runner, "ai") as model:
+			reply = voice.turn(token, "One more thing")
+		model.assert_not_called()
+		self.assertTrue(reply["end_call"])
+		self.assertEqual(voice._live_state(token)["reason"], "max_seconds")
+
+	def test_a_turn_before_start_is_refused(self):
+		self.agent()
+		_url, token = voice.offer(LINE, f"{CALL_ID}{self.n}", "+5215550009")
+		with patch("frappe.get_request_header", return_value=KEY):
+			self.assertRaises(frappe.PermissionError, voice.turn, token, "hello")
+
+	def test_the_service_promised_a_colleague(self):
+		agent, _call_id, token, _out = self.started()
+		with patch("frappe.get_request_header", return_value=KEY):
+			voice.end(token, "[]", 600, "max_seconds")
+		self.assertTrue(json.loads(self.summary_task(agent).params)["needs_person"])
+
+	def test_recording_notice_and_english_fallback(self):
+		frappe.db.set_single_value("Excom AI Settings", "voice_recording_notice", "This call may be recorded.")
+		frappe.clear_document_cache("Excom AI Settings", "Excom AI Settings")
+		agent = self.agent()
+		with patch.object(voice, "language_of", return_value="hi"):
+			_agent, _call_id, _token, out = self.started(agent)
+		self.assertTrue(out["greeting"].endswith("This call may be recorded."))
+		self.assertEqual((out["language"], out["reply_language"]), ("hi", "en"), "no Hindi voice: the agent speaks English")
+		self.assertEqual(voice.speaks(frappe._dict(voice="custom-hi"), "hi"), "hi")
+		self.assertEqual(voice.speaks(frappe._dict(), "es"), "es")
+		frappe.db.set_single_value("Excom AI Settings", "voice_recording_notice", "")
+		frappe.clear_document_cache("Excom AI Settings", "Excom AI Settings")
+		_a, _c, _t, out = self.started(call_id=f"{CALL_ID}{self.n}x")
+		self.assertTrue(out["greeting"].endswith("How can I help you?"), "no notice: the greeting as before")
+
+	def test_a_handed_call_the_service_never_started_is_missed(self):
+		agent = self.agent()
+		call_id = f"{CALL_ID}{self.n}"
+		_url, token = voice.offer(LINE, call_id, "+5215550009")
+		self.assertFalse(voice.never_answered(call_id), "offered, not handed: people may still answer")
+		from excom.excom.channels.voice.providers.base import CallEvent as Event
+
+		voice.after_dial(TwilioAdapter(_stub("Twilio")), Event(kind="ended", provider_call_id=call_id, status="No Answer"))
+		self.assertTrue(voice.never_answered(call_id), "handed to the agent, nothing started yet")
+		with patch("frappe.get_request_header", return_value=KEY):
+			voice.start(token)
+		self.assertFalse(voice.never_answered(call_id), "the agent answered")
 		self.retire(agent)

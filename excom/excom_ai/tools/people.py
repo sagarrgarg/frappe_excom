@@ -68,7 +68,8 @@ def linkedin(url) -> str | None:
 	host = (parts.hostname or "").lower()
 	if parts.scheme not in ("http", "https") or not (host == "linkedin.com" or host.endswith(".linkedin.com")):
 		return None
-	m = re.match(r"^/in/([A-Za-z0-9\-_%.]{2,100})/?$", parts.path or "")
+	# a slug may be in any script (/in/josé-pérez) and may carry a profile-language suffix (/in/ana/es)
+	m = re.match(r"^/in/([\w\-%.]{2,100})(?:/[a-z]{2}(?:-[a-z]{2})?)?/?$", parts.path or "", re.UNICODE | re.IGNORECASE)
 	return f"https://www.linkedin.com/in/{m.group(1).lower()}" if m else None
 
 
@@ -248,9 +249,11 @@ def _prospeo(path: str, body: dict, secret: str, empty: tuple = (), record=None)
 		code = str(data.get("error_code") or "")
 		if code in empty:
 			return None
-		if code in PROSPEO_ACCOUNT or status == 401:
+		if code in PROSPEO_ACCOUNT or status in (401, 402, 403):
 			_refuse(record, _("Prospeo: {0}. Check the key and the plan's credits.").format(clean(code, 60) or status))
 		raise RuntimeError(f"Prospeo: {clean(code, 60) or 'HTTP ' + str(status)}")
+	if status in (401, 402, 403):  # an account answer in plain text
+		_refuse(record, _("Prospeo: HTTP {0}. Check the key and the plan's credits.").format(status))
 	if status != 200:
 		raise RuntimeError(f"Prospeo: HTTP {status}")
 	return data

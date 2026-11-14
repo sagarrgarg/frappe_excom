@@ -15,7 +15,7 @@ What the record itself guarantees, whoever edits it:
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint
+from frappe.utils import cint, flt
 
 from excom.excom_ai import service_user
 from excom.excom_ai.constants import OUTREACH_PURPOSES, check_policy_rows
@@ -194,7 +194,8 @@ class ExcomAIAgent(Document):
 				frappe.throw(_("The readiness check must pass (no blockers) before the agent goes live."))
 		if self.status != "On Hold" and self.has_value_changed("status"):
 			self.hold_reason = None
-		if cint(self.daily_ai_budget) < 0 or cint(self.monthly_ai_budget) < 0:
+		# flt, not cint: -0.5 is negative too. 0 means no limit; who may set it is the endpoints' check.
+		if flt(self.daily_ai_budget) < 0 or flt(self.monthly_ai_budget) < 0:
 			frappe.throw(_("Budgets cannot be negative."))
 
 

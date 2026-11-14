@@ -303,6 +303,13 @@ def execute(name: str):
 		doc.db_set(values, update_modified=False)
 		frappe.db.commit()
 		return
+	quiet = gates.quiet_until(doc) if doc.action in SENDS else None
+	if quiet:
+		# a reminder, chaser or sequence step approved ahead waits out a quiet date; replies still go
+		doc.db_set({"status": "Edited" if doc.edit_diff else "Approved", "send_at": quiet,
+			"hold_reason": _("Quiet date: no outreach today")}, update_modified=False)
+		frappe.db.commit()
+		return
 	registry.load()
 	fn = registry.EXECUTORS.get(doc.action)
 	if not fn:

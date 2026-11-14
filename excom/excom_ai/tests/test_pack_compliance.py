@@ -499,3 +499,89 @@ class TestCompliancePack(FrappeTestCase):
 		self.assertIn("register", sections["expiring_documents"]["data"])
 		self.assertIn("pending, retrying or failed", sections["einvoice_pending"]["facts"][0]["text"])
 		self.assertIn("customers and suppliers with a GSTIN", sections["gstin_status"]["facts"][0]["text"])
+
+	# ---- review fixes (2026-11-14)
+
+	def test_the_standard_indian_calendar(self):
+		def due(name, today):
+			rule = next(r for n, r, _lead in compliance.STANDARD if n.startswith(name))
+			return compliance.next_due(compliance.parse_rule(rule), today)
+
+		self.assertEqual(due("TDS payment", date(2027, 4, 1)), date(2027, 4, 30), "March's TDS is due on 30 April")
+		self.assertEqual(due("TDS payment", date(2027, 3, 8)), date(2027, 4, 30), "not on 7 April")
+		self.assertEqual(due("TDS payment", date(2027, 5, 1)), date(2027, 5, 7))
+		self.assertEqual(due("TDS payment", date(2026, 11, 14)), date(2026, 12, 7))
+		self.assertEqual([due(f"Advance tax, {n}", date(2026, 4, 1)) for n in ("1st", "2nd", "3rd", "4th")],
+			[date(2026, 6, 15), date(2026, 9, 15), date(2026, 12, 15), date(2027, 3, 15)])
+		self.assertIn("(15%)", next(n for n, _r, _l in compliance.STANDARD if n.startswith("Advance tax, 1st")))
+		self.assertIn("(100%)", next(n for n, _r, _l in compliance.STANDARD if n.startswith("Advance tax, 4th")))
+		self.assertEqual(due("GSTR-9", date(2026, 11, 14)), date(2026, 12, 31))
+		self.assertEqual(due("ROC MSME-1", date(2026, 5, 1)), date(2026, 10, 31))
+		self.assertEqual(due("ROC MSME-1", date(2026, 11, 1)), date(2027, 4, 30))
+		for line in compliance.template().splitlines():  # every standard line reads back as an obligation
+			self.assertTrue(compliance.parse_rule(line.split("|")[1]), line)
+
+	def test_the_calendar_stays_while_a_new_playbook_version_is_reviewed(self):
+		a = self.agent()
+		pb = frappe.get_doc("Excom AI Playbook", a.playbooks[0].playbook)
+		pb.sections[0].content = calendar_text().replace("GSTR-1 | monthly 11", "GSTR-1 | monthly 12")
+		pb.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Excom AI Playbook", pb.name, "status"), "In Review")
+		frappe.db.commit()
+		a = frappe.get_doc("Excom AI Agent", a.name)
+		obs = {o.name: o for o in compliance.obligations(a)}
+		self.assertIn("GSTR-1", obs, "the last approved calendar stays in use during the review")
+		self.assertEqual(obs["GSTR-1"].rule_text, "monthly 11", "the approved version, not the one in review")
+		self.assertIn(GST_OWNER, compliance.named_owners(frappe._dict(subject_doctype="Company", subject_name=self.company), a))
+		self.assertIn("2 due-date reminders", self.run_now(a, "compliance_calendar", "2026-11-08"))
+		self.assertEqual([str(t.date) for t in self.todos(a, "GSTR-1 is due")], ["2026-11-11"])
+		# retired: nothing
+		frappe.db.set_value("Excom AI Playbook", pb.name, {"status": "Retired", "approved_sections": None})
+		self.assertEqual(compliance.obligations(a), [])
+
+	def test_expiry_reminders_skip_what_was_raised_and_say_what_is_left(self):
+		a = self.agent()
+		today = getdate("2026-12-01")
+		docs = [frappe._dict(ref=("Excom AI Agent", a.name), title=f"QA Cmp licence {i}",
+			expiry=add_days(today, days), owner=DOC_OWNER, about="") for i, days in enumerate((-10, -3, 5, 20, 40))]
+		with patch.object(compliance, "documents", return_value=docs), patch.object(compliance, "MAX_PER_RUN", 2):
+			out = self.run_now(a, "compliance_documents", today)
+			self.assertIn("2 expiry reminders raised", out)
+			self.assertIn("3 more on the next run", out, "nothing is dropped silently")
+			out = self.run_now(a, "compliance_documents", today)
+			self.assertIn("2 expiry reminders raised", out, "what was raised is skipped before counting")
+			self.assertIn("1 more on the next run", out)
+			self.assertIn("1 expiry reminders raised", self.run_now(a, "compliance_documents", today))
+			self.assertIn("0 expiry reminders raised", self.run_now(a, "compliance_documents", today))
+		self.assertEqual(sorted(t.description.split(" ")[3] for t in self.todos(a, "QA Cmp licence")),
+			["0", "1", "2", "3", "4"], "each document once")
+
+	def test_documents_are_bounded_and_ordered_by_expiry(self):
+		a = self.agent()
+		today = getdate("2026-12-01")
+		register = [frappe._dict(ref=("Excom AI Agent", a.name), title="QA Cmp later", expiry=add_days(today, 50),
+			owner=None, about=""), frappe._dict(ref=("Excom AI Agent", a.name), title="QA Cmp sooner",
+			expiry=add_days(today, -20), owner=None, about="")]
+		seen = {}
+
+		def fake_register(company, within_days, expired_within=None):
+			seen["expired_within"] = expired_within
+			return list(register)
+
+		with patch.object(compliance, "_today", return_value=today), \
+				patch.object(compliance, "register_documents", side_effect=fake_register), \
+				patch.object(compliance, "expiry_fields", return_value=[]):
+			docs = compliance.documents(a)
+		self.assertEqual(seen["expired_within"], compliance.EXPIRED_REGISTER_LOOKBACK_DAYS, "expired ones have a floor")
+		self.assertEqual([d.expiry for d in docs], sorted(d.expiry for d in docs), "earliest expiry first")
+		if compliance.register_installed():
+			old = frappe.get_doc({"doctype": compliance.REGISTER, "document_name": "QA Cmp ancient licence",
+				"company": self.company, "owner_person": DOC_OWNER, "is_expiry_based": 1,
+				"expiry_date": add_days(nowdate(), -(compliance.EXPIRED_REGISTER_LOOKBACK_DAYS + 30)), "is_renewable": 1,
+				"renewal_lead_time_type": "3M", "document_reference_no": "QA-OLD"})
+			old.insert(ignore_permissions=True)
+			old.submit()
+			names = [d.ref[1] for d in compliance.register_documents(self.company, 60,
+				compliance.EXPIRED_REGISTER_LOOKBACK_DAYS)]
+			self.assertNotIn(old.name, names)
+			self.assertIn(old.name, [d.ref[1] for d in compliance.register_documents(self.company, 60)])

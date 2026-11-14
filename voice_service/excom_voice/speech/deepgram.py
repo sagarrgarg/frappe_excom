@@ -29,8 +29,9 @@ log = logging.getLogger(__name__)
 LISTEN_URL = "wss://api.deepgram.com/v1/listen"
 SPEAK_URL = "https://api.deepgram.com"
 
-# Aura-2 default voice per language. Deepgram has no Hindi TTS voice (as of
-# 2026-11); Hindi falls back to the English voice unless Frappe sends one.
+# Aura-2 default voice per language. Deepgram has no Hindi or Portuguese TTS
+# voice here (as of 2026-11): in those languages the call speaks English (the
+# English voice with English text) unless Frappe sends a voice.
 DEFAULT_VOICES = {
     "en": "aura-2-thalia-en",
     "es": "aura-2-celeste-es",
@@ -221,6 +222,8 @@ class DeepgramSTT:
 
 
 class DeepgramTTS:
+    languages: frozenset[str] | None = frozenset(DEFAULT_VOICES)
+
     def __init__(self, api_key: str, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self._client = httpx.AsyncClient(
             base_url=SPEAK_URL,

@@ -51,6 +51,40 @@ def is_quiet_date(day=None) -> bool:
 	return any(getdate(r.date) == day for r in settings.quiet_dates or [])
 
 
+# Sends that start contact (a sequence step, a payment reminder, a request for quotation, a chaser)
+# rather than answer someone who wrote. They are approved ahead and go out later through the paced
+# sender, so the quiet date is checked again when they are actually sent.
+OUTREACH_SENDS = ("payment_reminder", "send_rfq", "po_chase")
+ANSWERS = ("reply", "send_statement")  # answers to someone who wrote: never held by a quiet date
+
+
+# a "reply" the agent starts itself (Sales chasing a quote, telling a buyer their order shipped) is
+# outreach all the same: nobody wrote first
+PROACTIVE_INTENTS = ("quote_follow_up", "order_update")
+
+
+def is_outreach_send(proposal) -> bool:
+	intent = proposal.get("intent") or (frappe.parse_json(proposal.get("payload") or "{}") or {}).get("intent")
+	if intent in PROACTIVE_INTENTS:
+		return True
+	if proposal.action in ANSWERS:
+		return False
+	return proposal.action in OUTREACH_SENDS or proposal.kind == "Sequence"
+
+
+def quiet_until(proposal):
+	"""None when this send may go today. On a quiet date, an outreach send waits until the start of
+	the next day that is not quiet (system time; the send window then applies as usual)."""
+	if not is_outreach_send(proposal) or not is_quiet_date():
+		return None
+	day = add_days(getdate(nowdate()), 1)
+	for _i in range(366):
+		if not is_quiet_date(day):
+			break
+		day = add_days(day, 1)
+	return get_datetime(day)
+
+
 def spent_today(scope: str | None = None) -> float:
 	"""AI spend today in base currency: one agent's scope, or every excom call."""
 	if not frappe.db.table_exists("AI Call Log"):

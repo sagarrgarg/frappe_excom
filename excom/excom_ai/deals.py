@@ -202,12 +202,15 @@ def closed_whatsapp(agent, thread: str | None) -> frappe._dict | None:
 def template_reply(task, agent, key: str, wa, language: str | None, values: dict, *, subject: tuple, intent: str,
 		policy_action: str | None = None) -> str | None:
 	"""Outside the window: the same reply, as an approved WhatsApp template filled by code. None when
-	there is no usable template (`find` has recorded the need) or the records cannot fill it."""
-	from excom.excom_ai import templates
+	there is no usable template (`find` has recorded the need), the buyer has not opted in to WhatsApp
+	(the caller writes by email instead), or the records cannot fill it."""
+	from excom.excom_ai import send_rules, templates
 
 	found = templates.find(agent, key, "WhatsApp", language or "", wa.account)
 	if not found:
 		return None
+	if not send_rules.thread_opted_in(wa.name):
+		return None  # the send would be refused: never silently skipped, the email reply goes instead
 	try:
 		variables = templates.whatsapp_values(found, values)
 	except ValueError:
@@ -285,7 +288,9 @@ def order_update(task, agent) -> str:
 
 def _followed_up(agent: str, doctype: str, name: str, since=None, status: str | None = None) -> bool:
 	"""A reply already proposed on this record (any outcome but a release), since a date or for an
-	order status: the planner runs every tick and a finished task no longer dedupes."""
+	order status: the planner runs every tick and a finished task no longer dedupes. A Failed send
+	counts as done: it may have gone out before it broke (proposals.execute), and proposing it again
+	could reach the buyer twice. A send with no opt-in never gets that far: it is written as email."""
 	filters = {"agent": agent, "action": "reply", "subject_doctype": doctype, "subject_name": name,
 		"status": ["not in", ("Cancelled", "Expired")]}
 	if since:

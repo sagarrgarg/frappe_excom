@@ -121,3 +121,29 @@ def template_need_has_permission(doc, ptype=None, user=None) -> bool:
 
 def template_need_agents(doc) -> list[str]:
 	return [a for a in dict.fromkeys([doc.agent, *[a.strip() for a in (doc.agents or "").split(",") if a.strip()]]) if a]
+
+
+NEED_AGENT_FIELDS = ["name", "owner_user", "acting_owner", "backup_user", "reviewers"]
+
+
+def need_change_refusal(need, user: str, agents: dict | None = None) -> str | None:
+	"""Why this person may not withdraw, reopen or approve a template need; None when they may.
+
+	A need one agent uses: its owner, backup, reviewers or an Excom Admin. A need several agents share
+	(one WhatsApp business account, several owners): an Excom Admin only, since all of them depend on it.
+	agents: {name: row with NEED_AGENT_FIELDS}, read once for many needs."""
+	from frappe import _
+
+	from excom.excom_ai.engine import proposals
+
+	if is_manager(user):
+		return None
+	names = template_need_agents(need)
+	if agents is None:
+		agents = {a.name: a for a in frappe.get_all("Excom AI Agent", {"name": ["in", names or ["-"]]}, NEED_AGENT_FIELDS)}
+	rows = [agents[a] for a in names if a in agents]
+	if len({a.owner_user for a in rows}) > 1:
+		return _("Several agents' owners use this template: an Excom Admin decides.")
+	if not rows or not proposals.may_decide(rows[0], user):
+		return _("Only the agent's owner, backup or an Excom Admin can do that.")
+	return None

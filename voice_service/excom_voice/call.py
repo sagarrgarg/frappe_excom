@@ -158,7 +158,8 @@ class CallSession:
 
         self.tel: Telephony | None = None
         self.token = ""
-        self.language = "en"
+        self.language = "en"  # the caller's (speech-to-text)
+        self.speech_language = "en"  # the agent's voice and the service's own lines
         self.max_seconds = settings.default_max_seconds
         self.turn_limit = settings.default_turn_limit
         self.turns = 0
@@ -177,6 +178,16 @@ class CallSession:
         self._pending: list[str] = []
         self._pending_ready = asyncio.Event()
         self._log_id = "?"
+        # Caller audio before speech-to-text is connected (bounded, the latest kept).
+        self._early: deque[bytes] = deque()
+        self._early_bytes = 0
+        # False when Frappe refused the token: nothing to report, nothing was said.
+        self._report_end = True
+        # Silence detection (see _idle_watch).
+        self._last_heard = 0.0
+        self._quiet_since = 0.0
+        self._nudged = False
+        self._turn_pending = False
 
     # ---------------------------------------------------------------- helpers
 
@@ -290,7 +301,10 @@ class CallSession:
         self._finish(self._closing_reason or "caller_hangup")
 
     async def _feed(self, audio: bytes) -> None:
-        if self._stt is None or self._stt_failed or not audio:
+        if self._stt_failed or not audio:
+            return
+        if self._stt is None:
+            self._keep_early(audio)
             return
         try:
             await self._stt.feed(audio)
@@ -299,30 +313,70 @@ class CallSession:
             log.error("[%s] STT feed failed: %s", self._log_id, exc)
             self._spawn(self._end_with(phrases.apology(self.language), "error", interrupt=True))
 
+    def _keep_early(self, audio: bytes) -> None:
+        """Audio before speech-to-text is up (while Frappe starts the call and the greeting plays):
+        kept, the latest pre_stt_buffer_seconds of it, and sent once it is connected."""
+        limit = int(self._settings.pre_stt_buffer_seconds * BYTES_PER_SECOND)
+        if limit <= 0 or self._closing_reason:
+            return
+        self._early.append(audio)
+        self._early_bytes += len(audio)
+        while self._early_bytes > limit and self._early:
+            self._early_bytes -= len(self._early.popleft())
+
+    async def _connect_stt(self) -> STTSession:
+        stt = await self._stt_provider.open(self.language)
+        # Flush in order; audio arriving meanwhile is queued behind (self._stt is still None).
+        while self._early:
+            chunk = self._early.popleft()
+            self._early_bytes -= len(chunk)
+            await stt.feed(chunk)
+        self._stt = stt
+        return stt
+
+    def _speech_language(self, language: str, voice: str) -> str:
+        """The language the agent's lines are spoken in: the call's, when the TTS has a voice for
+        it (or Frappe sent one); otherwise English, so no voice reads text it cannot pronounce."""
+        lang = phrases.base_language(language)
+        known = getattr(self._tts, "languages", None)
+        return lang if voice or known is None or lang in known else "en"
+
     async def _converse(self) -> None:
         assert self._speaker is not None
         try:
             info = await self._frappe.start(self.token)
         except FrappeError as exc:
+            if exc.refused:
+                # Not a call Frappe knows (a forged or reused token, or a wrong key): nothing is
+                # said, so a stranger reaching /stream costs no speech.
+                log.warning("[%s] voice.start refused the token: %s; closing", self._log_id, exc)
+                self._report_end = False
+                self._closing_reason = "refused"
+                self._finish("refused")
+                return
             log.error("[%s] voice.start failed: %s", self._log_id, exc)
             await self._end_with(phrases.apology("en"), "error")
             return
         if not info.ok:
             log.info("[%s] voice.start declined the call", self._log_id)
+            self.speech_language = self._speech_language(info.reply_language or info.language, info.voice)
+            self._speaker.language = self.speech_language
             await self._end_with(info.say, "agent_end")
             return
 
         self.language = info.language or "en"
+        self.speech_language = self._speech_language(info.reply_language or self.language, info.voice)
         self.max_seconds = info.max_seconds or self._settings.default_max_seconds
         self.turn_limit = info.turn_limit or self._settings.default_turn_limit
         self._speaker.voice = info.voice
-        self._speaker.language = self.language
+        self._speaker.language = self.speech_language
         log.info(
-            "[%s] call %s agent %r lang %s max %ss turns %s",
+            "[%s] call %s agent %r lang %s (speaks %s) max %ss turns %s",
             self._log_id,
             info.call,
             info.agent_name,
             self.language,
+            self.speech_language,
             self.max_seconds,
             self.turn_limit,
         )
@@ -330,12 +384,14 @@ class CallSession:
         self._speaker.say(info.greeting)
 
         try:
-            self._stt = await self._stt_provider.open(self.language)
+            stt = await self._connect_stt()
         except SpeechError as exc:
             log.error("[%s] STT open failed: %s", self._log_id, exc)
-            await self._end_with(phrases.apology(self.language), "error")
+            await self._end_with(phrases.apology(self.speech_language), "error")
             return
-        self._spawn(self._listen(self._stt))
+        self._spawn(self._listen(stt))
+        if self._settings.idle_timeout_seconds > 0:
+            self._spawn(self._idle_watch())
         await self._turn_loop()
 
     async def _turn_loop(self) -> None:
@@ -343,18 +399,21 @@ class CallSession:
         while True:
             text = await self._next_turn_text()
             self.turns += 1
+            self._turn_pending = True
             try:
                 reply = await self._frappe.turn(self.token, text)
             except FrappeError as exc:
                 log.error("[%s] voice.turn failed: %s", self._log_id, exc)
-                await self._end_with(phrases.apology(self.language), "error")
+                await self._end_with(phrases.apology(self.speech_language), "error")
                 return
+            finally:
+                self._turn_pending = False
             if reply.end_call:
                 await self._end_with(reply.say, "agent_end")
                 return
             self._speaker.say(reply.say)
             if self.turns >= self.turn_limit:
-                await self._end_with(phrases.goodbye(self.language), "turn_limit")
+                await self._end_with(phrases.goodbye(self.speech_language), "turn_limit")
                 return
 
     async def _next_turn_text(self) -> str:
@@ -369,6 +428,8 @@ class CallSession:
         words_only = self._settings.barge_in_on == "words"
         try:
             async for ev in stt.events():
+                if ev.kind != "utterance_end" and (ev.kind == "speech_started" or ev.text):
+                    self._heard()
                 if ev.kind == "speech_started" and not words_only:
                     await self._barge_in()
                 elif ev.kind == "partial":
@@ -382,7 +443,37 @@ class CallSession:
                     self._utterance_done()
         except SpeechError as exc:
             log.error("[%s] STT failed: %s", self._log_id, exc)
-            await self._end_with(phrases.apology(self.language), "error", interrupt=True)
+            await self._end_with(phrases.apology(self.speech_language), "error", interrupt=True)
+
+    def _heard(self) -> None:
+        self._last_heard = self._clock()
+        self._nudged = False
+
+    async def _idle_watch(self) -> None:
+        """Dead air (an answering machine, a caller who walked away): after idle_timeout_seconds
+        with nothing heard, nothing playing and no reply pending, ask once whether they are still
+        there; after the same again, say goodbye and end (reason "idle")."""
+        assert self._speaker is not None
+        timeout = self._settings.idle_timeout_seconds
+        step = min(0.25, timeout / 4)
+        self._quiet_since = self._last_heard = self._clock()
+        while not self._closing_reason:
+            await asyncio.sleep(step)
+            now = self._clock()
+            if self._speaker.busy() or self._turn_pending or self._pending or self._segments:
+                self._quiet_since = now
+                continue
+            if now - max(self._quiet_since, self._last_heard) < timeout:
+                continue
+            if not self._nudged:
+                log.info("[%s] %ss of silence: asking if the caller is there", self._log_id, timeout)
+                self._nudged = True
+                self._quiet_since = now
+                self._speaker.say(phrases.still_there(self.speech_language))
+                continue
+            log.info("[%s] still silent: ending the call", self._log_id)
+            await self._end_with(phrases.idle_goodbye(self.speech_language), "idle")
+            return
 
     async def _barge_in(self) -> None:
         assert self._speaker is not None
@@ -409,7 +500,7 @@ class CallSession:
     async def _watchdog(self) -> None:
         await asyncio.sleep(max(0, self.max_seconds - (self._clock() - self._t0)))
         log.info("[%s] max_seconds (%s) reached", self._log_id, self.max_seconds)
-        await self._end_with(phrases.goodbye(self.language), "max_seconds", interrupt=True)
+        await self._end_with(phrases.goodbye(self.speech_language), "max_seconds", interrupt=True)
 
     async def _end_with(self, text: str, reason: str, *, interrupt: bool = False) -> None:
         """Say a last line, let it play, then end with ``reason``. First caller wins."""
@@ -449,7 +540,10 @@ class CallSession:
         await self._close_ws()
         duration = max(0, round(self._clock() - self._t0))
         log.info("[%s] ended: %s after %ss, %d turns", self._log_id, self.reason, duration, self.turns)
-        await self._frappe.end(self.token, self.transcript, duration, self.reason or "error")
+        self._early.clear()
+        if self._report_end:
+            # In the background, with retries: the handler (and the connection) is done now.
+            self._frappe.report_end(self.token, self.transcript, duration, self.reason or "error")
 
 
 def _loads(raw: Any) -> dict[str, Any] | None:

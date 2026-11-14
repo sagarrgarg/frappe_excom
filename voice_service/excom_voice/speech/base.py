@@ -10,7 +10,9 @@ mu-law bytes and iterate ``session.events()``. Event kinds:
   utterance_end form one turn.
 
 TTS: ``tts.synthesize(text, voice, language)`` is an async iterator of raw
-8 kHz mu-law chunks (no container/header).
+8 kHz mu-law chunks (no container/header). ``tts.languages`` is the set of
+languages it has a default voice for (None: any); in other languages the call
+speaks English rather than have a voice read text it cannot pronounce.
 """
 
 from __future__ import annotations
@@ -45,6 +47,8 @@ class STTProvider(Protocol):
 
 
 class TTS(Protocol):
+    languages: frozenset[str] | None
+
     def synthesize(self, text: str, voice: str, language: str) -> AsyncIterator[bytes]: ...
 
     async def aclose(self) -> None: ...

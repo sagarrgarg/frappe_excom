@@ -27,7 +27,18 @@ Collections ladder, per customer (not per invoice)
 
     It stops on payment (nothing outstanding: the planner closes the enrollment and the sender
     cancels anything approved), on a dispute (the reply says so, or the invoice is marked in a
-    dispute field where the site has one), and pauses while a promise is in date.
+    dispute field where the site has one), and pauses while a promise is in date. A promise still
+    waiting for a person to approve it pauses the ladder a week at most; a promise is judged once,
+    only on its own ladder and only on the invoices that were overdue when it was made.
+
+    One Accounts agent chases a customer: a customer on another working Accounts agent's open
+    ladder (same company) is left to it. A reminder never takes over a conversation a person has
+    (Needs person, Hold, a colleague's) or another agent handles: it is not written (nor sent, if
+    that changed after approval), the ladder waits a week and the owner gets a ToDo. A reply the
+    agent could not read (its responder failed, or a person has the conversation) does not leave
+    the ladder waiting in Replied: after a couple of hours it is Stopped and the owner told.
+    Approved reminders wait out quiet dates (engine.gates.quiet_until) and go in the customer's
+    office hours, in the time zone of their billing address's country.
 
     Messages go to the billing contact only (the customer's Contact marked is_billing_contact,
     else the primary contact's email), checked again when it is sent. With no such contact a
@@ -40,6 +51,9 @@ Collections ladder, per customer (not per invoice)
     language. A code check refuses any digit in those words and any threat, waiver or discount; the
     sender compares the invoices with the ledger again and cancels if they changed (the next tick
     writes a fresh one).
+
+Amounts are always in the currency the customer owes in (the party account's), and totals are
+per currency, never added across currencies.
 
 Statements: when the customer does not answer by email, the emailed statement carries a WhatsApp
 notice (`accounts.statement_ready`) on the steward's approved template, sent after the email.
@@ -67,6 +81,7 @@ import frappe
 from frappe import _
 from frappe.utils import (
 	add_days,
+	add_to_date,
 	cint,
 	date_diff,
 	flt,
@@ -105,6 +120,9 @@ GRACE_DAYS = 1  # a promise is broken this many days after its date
 RETRY_DAYS = 7  # a rejected or failed step is tried again after this
 PAUSE_DAYS = {"paid": 5, "question": 7, "statement": 3, "no_contact": 7}
 OPEN_ENROLLMENT = ("Active", "Paused", "Replied", "Stopped", "Opted out")
+RECORDED = ("Done", "Approved", "Edited", "Shadow")  # a promise on record (Pending: not yet approved)
+PROMISE_REVIEW_DAYS = 7  # how long a promise waiting for a person may pause the ladder
+STUCK_REPLY_HOURS = 2  # a ladder still in Replied this long after the reply: nobody is reading it
 WAITING = ("Pending", "Approved", "Edited", "Executing", "Sending", "Held")
 DONE = ("Sent", "Shadow", "Done")
 MSME_LIMIT_DAYS, MSME_NO_AGREEMENT_DAYS, MSME_NEAR_DAYS = 45, 15, 10
@@ -208,20 +226,24 @@ def _has(doctype: str, field: str) -> bool:
 
 
 def open_invoices(customer: str, company: str | None, overdue_only: bool = False) -> list[frappe._dict]:
-	"""Submitted Sales Invoices with something left to pay, oldest due first. Amounts are in the
-	currency the customer owes in (the party account's, else the invoice's)."""
+	"""Submitted Sales Invoices with something left to pay, oldest due first. Every amount is in the
+	currency the customer owes in, the party account's (`currency`): ERPNext keeps the outstanding
+	amount in it, and `amount` is the invoice total in it too (the invoice's own total when the
+	invoice is in that currency, else its company-currency total, which is then the account's)."""
 	filters = {"customer": customer, "docstatus": 1, "outstanding_amount": [">", 0]}
 	if company:
 		filters["company"] = company
 	if overdue_only:
 		filters["due_date"] = ["<", nowdate()]
-	fields = ["name", "posting_date", "due_date", "grand_total", "outstanding_amount", "currency"]
+	fields = ["name", "posting_date", "due_date", "grand_total", "base_grand_total", "outstanding_amount", "currency"]
 	if _has("Sales Invoice", "party_account_currency"):
 		fields.append("party_account_currency")
 	rows = frappe.get_all("Sales Invoice", filters, fields, order_by="due_date asc, posting_date asc, name asc")
 	today = getdate(nowdate())
 	for r in rows:
+		r.invoice_currency = r.currency
 		r.currency = r.get("party_account_currency") or r.currency
+		r.amount = flt(r.grand_total) if r.currency == r.invoice_currency else flt(r.base_grand_total)
 		r.days_overdue = max(0, (today - getdate(r.due_date)).days) if r.due_date else 0
 	return rows
 
@@ -232,6 +254,7 @@ def snapshot(invoices: list) -> dict:
 
 
 def totals(invoices: list) -> dict:
+	"""Outstanding per currency: amounts in different currencies are never added together."""
 	out: dict[str, float] = {}
 	for r in invoices:
 		out[r["currency"]] = out.get(r["currency"], 0) + flt(r["outstanding_amount"])
@@ -252,8 +275,11 @@ def credits(customer: str, company: str | None) -> dict:
 	si = {"customer": customer, "docstatus": 1, "outstanding_amount": ["<", 0]}
 	if company:
 		si["company"] = company
-	for r in frappe.get_all("Sales Invoice", si, ["outstanding_amount", "currency"]):
-		out[r.currency] = out.get(r.currency, 0) - flt(r.outstanding_amount)
+	fields = ["outstanding_amount", "currency"] + (["party_account_currency"] if _has("Sales Invoice",
+		"party_account_currency") else [])
+	for r in frappe.get_all("Sales Invoice", si, fields):
+		cur = r.get("party_account_currency") or r.currency  # a credit note's outstanding is in the account's currency
+		out[cur] = out.get(cur, 0) - flt(r.outstanding_amount)
 	return out
 
 
@@ -288,7 +314,7 @@ def statement_table(invoices: list, payments: list | None = None, language: str 
 	lb = labels(language)
 	rows = "".join(
 		f"<tr><td>{e(r['name'])}</td><td>{e(formatdate(r['posting_date']))}</td><td>{e(formatdate(r['due_date']))}</td>"
-		f"<td style='text-align:right'>{e(fmt_money(r['grand_total'], currency=r['currency']))}</td>"
+		f"<td style='text-align:right'>{e(fmt_money(r.get('amount', r['grand_total']), currency=r['currency']))}</td>"
 		f"<td style='text-align:right'>{e(fmt_money(r['outstanding_amount'], currency=r['currency']))}</td>"
 		f"<td style='text-align:right'>{cint(r.get('days_overdue'))}</td></tr>" for r in invoices)
 	foot = "".join(f"<tr><th colspan='4' style='text-align:right'>{e(lb['outstanding'])}</th>"
@@ -451,8 +477,7 @@ def customer_zone(customer: str, agent) -> str:
 	return tz or next((m.timezone for m in agent.markets or [] if m.timezone), None) or get_system_timezone() or "UTC"
 
 
-def identity_for(email: str | None = None, phone: str | None = None, display: str = "") -> str:
-	"""The person's Omni Identity, made if Excom has none yet (it is the conversation's anchor)."""
+def find_identity(email: str | None = None, phone: str | None = None) -> str | None:
 	if email:
 		name = frappe.db.get_value("Omni Identity", {"primary_email": email}) or frappe.db.get_value(
 			"Omni Identity", {"normalized_email": email, "status": ["!=", "Merged"]})
@@ -461,15 +486,36 @@ def identity_for(email: str | None = None, phone: str | None = None, display: st
 	if phone:
 		from excom.excom.services.identity_sync import _find_existing_identity
 
-		name = _find_existing_identity(phone=phone)
-		if name:
-			return name
+		return _find_existing_identity(phone=phone) or None
+	return None
+
+
+def identity_for(email: str | None = None, phone: str | None = None, display: str = "") -> str:
+	"""The person's Omni Identity, made if Excom has none yet (it is the conversation's anchor)."""
+	name = find_identity(email, phone)
+	if name:
+		return name
 	doc = {"doctype": "Omni Identity", "display_name": display or email or phone}
 	if email:
 		doc["primary_email"] = email
 	if phone:
 		doc.update(primary_phone=phone, primary_whatsapp=phone)
 	return frappe.get_doc(doc).insert(ignore_permissions=True).name
+
+
+def thread_for(channel: str, account: str | None, email: str | None = None, phone: str | None = None) -> str | None:
+	"""The conversation a message to this person on this number or mailbox would go on, if there is
+	one already (nothing is made here)."""
+	identity = find_identity(email, phone) if account else None
+	return frappe.db.get_value("Excom Thread", {"thread_key": f"{channel}:{account}:{identity}"}) if identity else None
+
+
+def held_by_other(thread: str | None, agent) -> str | None:
+	"""Why this conversation is not the agent's to write on, else None (engine.threads: the one rule
+	Accounts and Purchase share). A reminder never takes such a conversation over."""
+	from excom.excom_ai.engine import threads
+
+	return threads.holder(thread, agent)
 
 
 # ── ladder state ─────────────────────────────────────────────────────────────
@@ -563,17 +609,48 @@ def last_step(enrollment) -> frappe._dict | None:
 		["name", "step", "status", "sent_on", "creation", "decided_on", "modified"], as_dict=True, order_by="creation desc")
 
 
-def last_promise(customer: str, agent) -> frappe._dict | None:
-	row = frappe.db.get_value("Excom AI Proposal", {"agent": agent.name, "action": "record_promise",
-		"subject_doctype": "Customer",
-		"subject_name": customer, "status": ["in", ("Done", "Approved", "Edited", "Pending", "Shadow")]}, ["name",
-			"payload", "status"],
-		as_dict=True, order_by="creation desc")
-	if not row:
-		return None
-	p = frappe._dict(frappe.parse_json(row.payload or "{}"))
-	p.proposal, p.status = row.name, row.status
-	return p
+def last_promise(customer: str, agent, enrollment=None) -> frappe._dict | None:
+	"""The latest promise on record (recorded, or approved; in Shadow, what would have been) made on
+	this ladder: after it started, so a promise from an earlier ladder for the same customer (paid
+	off since, then behind again) is never judged. A promise still waiting for a person to approve
+	it does not hold the ladder (see PROMISE_REVIEW_DAYS)."""
+	filters = {"agent": agent.name, "action": "record_promise", "subject_doctype": "Customer", "subject_name": customer,
+		"status": ["in", RECORDED]}
+	if enrollment:
+		filters["creation"] = [">=", get_datetime(enrollment.started_on or enrollment.creation)]
+	for row in frappe.get_all("Excom AI Proposal", filters, ["name", "payload", "status", "creation"],
+			order_by="creation desc", limit=5):
+		p = frappe._dict(frappe.parse_json(row.payload or "{}"))
+		if enrollment and p.enrollment and p.enrollment != enrollment.name:
+			continue  # made on another ladder
+		p.proposal, p.status, p.made_on = row.name, row.status, row.creation
+		return p
+	return None
+
+
+def promise_kept(promise, customer: str, company: str | None) -> bool:
+	"""Was the promise kept? Judged only on the invoices that were overdue when it was made (in its
+	currency): an invoice that fell due afterwards was never part of it."""
+	names = list(promise.invoices or {})
+	filters = {"customer": customer, "docstatus": 1}
+	if company:
+		filters["company"] = company
+	if names:
+		filters["name"] = ["in", names]
+	else:  # a promise recorded before the invoices were kept with it: those due when it was made
+		filters["due_date"] = ["<", getdate(promise.made_on)]
+	fields = ["outstanding_amount", "currency"] + (["party_account_currency"] if _has("Sales Invoice",
+		"party_account_currency") else [])
+	owed = sum(flt(r.outstanding_amount) for r in frappe.get_all("Sales Invoice", filters, fields)
+		if not promise.currency or (r.get("party_account_currency") or r.currency) == promise.currency)
+	return owed <= flt(promise.overdue_then) - flt(promise.amount) + 0.5
+
+
+def mark_promise(promise, outcome: str) -> None:
+	"""A promise is judged once: kept or broken is written on its proposal."""
+	payload = frappe.parse_json(frappe.db.get_value("Excom AI Proposal", promise.proposal, "payload") or "{}") or {}
+	payload["judged"] = outcome
+	frappe.db.set_value("Excom AI Proposal", promise.proposal, "payload", json.dumps(payload), update_modified=False)
 
 
 def next_step(enrollment, oldest_overdue: int, broken: bool = False, not_before=None) -> tuple[int | None, object, str]:
@@ -610,6 +687,32 @@ def next_step(enrollment, oldest_overdue: int, broken: bool = False, not_before=
 # ── the ladder ───────────────────────────────────────────────────────────────
 
 
+def other_ladders(agent, company: str | None, customer: str | None = None) -> dict:
+	"""Customers on another working Accounts agent's open ladder for the same company: customer ->
+	when the earliest of those ladders began. One agent chases a customer, never two."""
+	rows = frappe.db.sql("""SELECT c.customer, a.company, MIN(e.creation) AS began FROM `tabExcom AI Enrollment` e
+		JOIN `tabExcom AI Company` c ON c.name = e.company
+		JOIN `tabExcom AI Agent` a ON a.name = e.agent
+		JOIN `tabExcom AI Agent Type` t ON t.name = a.agent_type
+		WHERE e.agent != %(agent)s AND t.pack = 'accounts' AND e.status IN %(open)s
+			AND a.status IN ('Shadow', 'Live', 'On Hold') AND IFNULL(c.customer, '') != ''
+			AND (%(customer)s IS NULL OR c.customer = %(customer)s)
+		GROUP BY c.customer, a.company""", {"agent": agent.name, "open": OPEN_ENROLLMENT, "customer": customer},
+		as_dict=True)
+	out = {}
+	for r in rows:
+		if company and company_of(frappe._dict(company=r.company)) != company:
+			continue
+		out[r.customer] = min(out.get(r.customer) or r.began, r.began)
+	return out
+
+
+def chased_by_another(customer: str, own_began, others: dict) -> bool:
+	"""Another agent's ladder has this customer: it keeps them unless this agent's own began first."""
+	began = others.get(customer)
+	return bool(began) and (not own_began or get_datetime(began) <= get_datetime(own_began))
+
+
 def due_customers(agent, company: str | None, limit: int = 1000) -> list[str]:
 	"""Customers with overdue invoices whose ladder needs a look now: broken or due promises first,
 	then the most overdue. Customers already handled today (next_due later), disputed, opted out,
@@ -621,15 +724,18 @@ def due_customers(agent, company: str | None, limit: int = 1000) -> list[str]:
 		GROUP BY si.customer ORDER BY oldest ASC, si.customer ASC LIMIT %(limit)s""",
 		{"today": nowdate(), "co": company, "limit": limit}, as_dict=True)
 	state = {}
-	for e in frappe.db.sql("""SELECT c.customer, e.status, e.next_due, e.current_step FROM `tabExcom AI Enrollment` e
-			JOIN `tabExcom AI Company` c ON c.name = e.company
+	for e in frappe.db.sql("""SELECT c.customer, e.status, e.next_due, e.current_step, e.creation
+			FROM `tabExcom AI Enrollment` e JOIN `tabExcom AI Company` c ON c.name = e.company
 			WHERE e.agent = %s AND e.status IN %s ORDER BY e.creation ASC""", (agent.name, OPEN_ENROLLMENT), as_dict=True):
 		state[e.customer] = e  # the newest wins
+	others = other_ladders(agent, company)
 	start = waits(frappe.db.get_value("Excom AI Sequence", {"agent": agent.name, "title": LADDER_TITLE})).get(1, 7)
 	now, today = now_datetime(), getdate(nowdate())
 	promised, due = [], []
 	for r in rows:
 		s = state.get(r.customer)
+		if chased_by_another(r.customer, s.creation if s else None, others):
+			continue
 		if not s:
 			if (today - getdate(r.oldest)).days >= start:
 				due.append(r.customer)
@@ -644,14 +750,54 @@ def due_customers(agent, company: str | None, limit: int = 1000) -> list[str]:
 	return promised + due
 
 
+def unread_replies(agent) -> int:
+	"""Ladders left in Replied with nobody reading the reply: the responder failed (or found nothing it
+	could act on), or no task was queued because a person has the conversation. Without this the
+	ladder would wait there silently for ever. Each is Stopped, with a ToDo and an alert for the
+	owner: a person reads the reply and sets the ladder Active to resume it."""
+	cutoff = add_to_date(now_datetime(), hours=-STUCK_REPLY_HOURS)
+	stuck = frappe.get_all("Excom AI Enrollment", {"agent": agent.name, "status": "Replied", "modified": ["<", cutoff]},
+		["name", "thread", "company", "modified"], limit=20)
+	done = 0
+	for e in stuck:
+		# the task queued for this reply (one from an earlier reply does not count)
+		task = frappe.db.get_value("Excom AI Task", {"agent": agent.name, "kind": "inbound", "thread": e.thread,
+			"creation": [">=", add_to_date(e.modified, minutes=-5)]}, ["status", "error", "outcome"], as_dict=True,
+			order_by="creation desc") if e.thread else None
+		if task and task.status in ("Queued", "Running", "Held"):
+			continue  # still on its way (a retry, a budget wait, the agent on hold)
+		if task and task.status == "Failed":
+			why = _("the agent could not read the reply ({0})").format((task.error or "")[:200])
+		elif task:
+			why = _("the agent read the reply but could not act on it ({0})").format((task.outcome or "")[:200])
+		else:
+			why = _("a person has the conversation, so the agent did not read the reply")
+		enr = frappe.get_doc("Excom AI Enrollment", e.name)
+		_set(enr, status="Stopped", next_due=None, stop_reason=_("Replied; {0}").format(why))
+		customer = customer_of(enr)
+		text = _("{0} replied to a collections reminder, but {1}. Read the reply and answer it; set the ladder ({2}) "
+			"back to Active to resume the reminders.").format(label("Customer", customer) if customer else _("A customer"),
+			why, enr.name)
+		proposals.propose(None, agent, "create_todo", subject=("Customer", customer) if customer else
+			("Excom AI Enrollment", enr.name), risk="Low", payload={"allocated_to": agent.acting_owner or agent.owner_user,
+				"priority": "High", "date": nowdate(), "text": text})
+		notify.alert([agent.acting_owner or agent.owner_user, agent.backup_user],
+			_("Collections: a reply needs you ({0} AI)").format(agent.agent_name), message=frappe.utils.escape_html(text),
+			doctype="Excom Thread" if e.thread else "Excom AI Enrollment", name=e.thread or enr.name)
+		done += 1
+	return done
+
+
 @registry.planner("accounts")
 def plan(agent) -> list[dict]:
-	"""Each tick: close ladders that were paid, queue a few customers' next step, send what was
-	approved; once a week the MSME list; once a day payment-match suggestions."""
+	"""Each tick: close ladders that were paid, hand unread replies to a person, queue a few
+	customers' next step, send what was approved; once a week the MSME list; once a day
+	payment-match suggestions."""
 	if agent.status not in ("Live", "Shadow"):
 		return []
 	company = company_of(agent)
 	close_paid(agent, company)
+	unread_replies(agent)
 	specs = [{"kind": "collections_step", "subject": ("Customer", c)} for c in due_customers(agent, company)[:PER_TICK]]
 	if agent.status == "Live" and frappe.db.exists("Excom AI Proposal", {"agent": agent.name, "status": ["in",
 		("Approved", "Edited")],
@@ -675,7 +821,12 @@ def collections_step(task, agent) -> str:
 	"""One customer's next step on the ladder, if one is due."""
 	customer = task.subject_name
 	company = company_of(agent)
-	enr = enrollment_for(agent, customer)
+	own = enrollment_for(agent, customer, create=False)
+	if chased_by_another(customer, own.creation if own else None, other_ladders(agent, company, customer)):
+		if own:
+			_set(own, next_due=add_days(now_datetime(), RETRY_DAYS))
+		return _("{0}: another Accounts agent's ladder has this customer; left to it").format(customer)
+	enr = own or enrollment_for(agent, customer)
 	if enr.status in ("Stopped", "Opted out"):
 		return _("{0}: {1}; left to a person").format(customer, enr.stop_reason or enr.status)
 	if enr.status == "Replied":
@@ -696,18 +847,20 @@ def collections_step(task, agent) -> str:
 		return _("{0}: paused until {1} ({2})").format(customer, enr.next_due, enr.stop_reason or "")
 	broken, not_before = False, None
 	if enr.status == "Paused":
-		promise = last_promise(customer, agent)
-		if promise and promise.get("date") and getdate(promise.date) < getdate(nowdate()):
-			owed = sum(totals(overdue).values())
-			if owed > flt(promise.get("overdue_then")) - flt(promise.get("amount")) + 0.5:
+		promise = last_promise(customer, agent, enr)
+		if promise and promise.get("date") and not promise.get("judged"):
+			if getdate(promise.date) >= getdate(nowdate()):
+				not_before = add_days(get_datetime(promise.date), 1)  # still in date
+			elif promise_kept(promise, customer, company):
+				mark_promise(promise, "kept")
+			else:
 				broken = True
+				mark_promise(promise, "broken")
 				frappe.get_doc("Customer", customer).add_comment("Comment",
 					_("{0} (AI): the promise to pay {1} by {2} was not kept; "
 					"the collections ladder moves to its next step.").format(agent.agent_name,
 					frappe.utils.escape_html(fmt_money(promise.get("amount"), currency=promise.get("currency"))),
 						formatdate(promise.date)))
-			else:
-				not_before = add_days(get_datetime(promise.date), 1)
 		_set(enr, status="Active", stop_reason=None)
 	step, due, why = next_step(enr, max(r.days_overdue for r in overdue), broken, not_before)
 	if step is None:
@@ -731,6 +884,43 @@ def _no_contact(task, agent, enr, customer: str) -> str:
 				"text": _("Add a billing contact (Contact marked 'Is Billing Contact', with an email) for {0}: it has overdue "
 					"invoices and the collections ladder has nobody to write to.").format(label("Customer", customer))})
 	return _("{0}: no billing contact; a person adds one").format(customer)
+
+
+def _conversation_held(task, agent, enr, customer: str, step: int, why: str) -> str:
+	"""The conversation the reminder would go on is a person's or another agent's. The agent does not
+	take it over and does not write there: the ladder waits a week and the owner is told (one open
+	ToDo at a time), to send it themselves or hand the conversation back."""
+	again = add_days(now_datetime(), RETRY_DAYS)
+	_set(enr, status="Paused", next_due=again, stop_reason=_("Reminder not written: {0}").format(why))
+	if not frappe.db.exists("ToDo", {"reference_type": "Customer", "reference_name": customer, "status": "Open",
+			"description": ["like", "%collections reminder%was not written%"]}):
+		proposals.propose(task, agent, "create_todo", subject=("Customer", customer), risk="Low",
+			payload={"allocated_to": agent.acting_owner or agent.owner_user, "priority": "Medium",
+				"text": _("{0} has overdue invoices, but the collections reminder (step {1}) was not written: {2}. Remind "
+					"them from that conversation yourself, or hand it back to the agent; the ladder looks again on {3}.").format(
+					label("Customer", customer), step, why, formatdate(getdate(again)))})
+	return _("{0}: step {1} not written: {2}").format(customer, step, why)
+
+
+def whatsapp_recipient(mobile: str | None) -> tuple[bool, str]:
+	"""The WhatsApp recipient check, for a reviewer to see: a real mobile number, nobody holding it on
+	do-not-contact or opted out of WhatsApp, and an opt-in (the send rules check it again at sending)."""
+	from excom.excom.services.whatsapp_service import identities_for_recipient
+	from excom.excom_ai.send_rules import whatsapp_opt_in
+
+	number = (mobile or "").strip()
+	if not 8 <= len(re.sub(r"\D", "", number)) <= 15:
+		return False, _("'{0}' is not a mobile number").format(number)
+	names = identities_for_recipient(number)
+	for row in frappe.get_all("Omni Identity", {"name": ["in", names or ["-"]]},
+			["name", "do_not_contact", "whatsapp_opt_out"]):
+		if row.do_not_contact:
+			return False, _("{0} is on do-not-contact").format(number)
+		if row.whatsapp_opt_out:
+			return False, _("{0} opted out of WhatsApp").format(number)
+	if not whatsapp_opt_in(names):
+		return False, _("{0} has no WhatsApp opt-in").format(number)
+	return True, _("WhatsApp {0} (billing contact, opted in)").format(number)
 
 
 def _model_words_check(texts: list[str], customer: str) -> tuple[dict, dict]:
@@ -765,6 +955,11 @@ def write_reminder(task, agent, enr, customer: str, overdue: list, step: int, br
 		if contact and contact.mobile and not (contact.email and account) else None
 	if not contact or not ((contact.email and account) or wa):
 		return _no_contact(task, agent, enr, customer)
+	thread = thread_for("whatsapp", wa.account, phone=contact.mobile) if wa else thread_for("email", account,
+		email=contact.email)
+	held = held_by_other(thread, agent)
+	if held:
+		return _conversation_held(task, agent, enr, customer, step, held)
 	lines = invoice_lines(overdue, language)
 	base = {"step": step, "customer": customer, "invoices": snapshot(overdue), "lines": lines, "language": language,
 		"scope": "overdue", "with_table": step == 1, "broken_promise": broken}
@@ -772,8 +967,9 @@ def write_reminder(task, agent, enr, customer: str, overdue: list, step: int, br
 		why = _("approved template {0} from the template steward{1}").format(wa.template,
 			_("; its first send waits for a person") if wa.first_use else "") if wa.need \
 			else _("approved utility template {0}").format(wa.template)
-		results = {"recipient": {"ok": True, "why": _("WhatsApp {0} (billing contact)").format(contact.mobile)},
-			"channel": {"ok": True, "why": wa.account}, "template": {"ok": True, "why": why}}
+		ok, who = whatsapp_recipient(contact.mobile)
+		results = {"recipient": {"ok": ok, "why": who}, "channel": {"ok": True, "why": wa.account},
+			"template": {"ok": True, "why": why}}
 		results = _finish_checks(results, [], customer, company)
 		name = proposals.propose(task, agent, "payment_reminder", subject=("Customer", customer), enrollment=enr.name,
 			step=step,
@@ -891,18 +1087,9 @@ def _send(proposal, agent):
 	from excom.excom.services.thread_service import upsert_thread
 
 	if p.channel == "whatsapp":
-		from excom.excom.api.chat import send_template_to_thread
-
 		identity = identity_for(phone=contact.mobile, display=contact.name)
 		thread = upsert_thread(identity, "whatsapp", proposal.channel_account)
-		if is_steward_template(p.template):  # marks the template's first use once a person approved a send
-			sent = steward.send_whatsapp(proposal, agent, thread, p.template, p.variables or [])
-		else:
-			sent = send_template_to_thread(thread, p.template, variables=json.dumps(p.variables or []))
-		message = (sent or {}).get("message_name")
 	else:
-		from excom.excom.channels.email.outbound import send_email_reply
-
 		account = proposal.channel_account or email_account(agent)
 		row = next((r for r in agent.channels or [] if r.channel_account == account), None)
 		if row and cint(row.daily_cap) and frappe.db.count("Excom AI Proposal", {"agent": agent.name,
@@ -912,6 +1099,23 @@ def _send(proposal, agent):
 				_("today's cap on {0}").format(account))
 		identity = identity_for(email=contact.email, display=contact.name)
 		thread = upsert_thread(identity, "email", account)
+	# A person (Needs person, Hold, a colleague's conversation) or another agent may have taken the
+	# conversation since this was written: it is never taken over. The ladder's next look sees the
+	# same and tells the owner (see _conversation_held).
+	held = held_by_other(thread, agent)
+	if held:
+		raise registry.Cancel(_("not sent: {0}").format(held))
+	if p.channel == "whatsapp":
+		from excom.excom.api.chat import send_template_to_thread
+
+		if is_steward_template(p.template):  # marks the template's first use once a person approved a send
+			sent = steward.send_whatsapp(proposal, agent, thread, p.template, p.variables or [])
+		else:
+			sent = send_template_to_thread(thread, p.template, variables=json.dumps(p.variables or []))
+		message = (sent or {}).get("message_name")
+	else:
+		from excom.excom.channels.email.outbound import send_email_reply
+
 		html = paragraphs(p.body)
 		if p.with_table:
 			html += statement_table(open_invoices(customer, company), recent_payments(customer, company), p.language)
@@ -919,7 +1123,9 @@ def _send(proposal, agent):
 	frappe.db.set_value("Excom AI Proposal", proposal.name, {"message": message, "sent_on": now_datetime(),
 		"thread": thread},
 		update_modified=False)
-	frappe.db.set_value("Excom Thread", thread, {"ai_agent": agent.name, "ai_mode": "Handle"}, update_modified=False)
+	from excom.excom_ai.engine import threads
+
+	threads.claim(thread, agent)  # a conversation nobody else holds becomes the agent's; its mode is kept
 	if proposal.enrollment:
 		frappe.db.set_value("Excom AI Enrollment", proposal.enrollment, {"thread": thread, "last_sent_on": now_datetime(),
 			"current_step": cint(proposal.step)}, update_modified=False)
@@ -1140,11 +1346,17 @@ def respond(task, agent) -> str:
 		amount = flt(d.get("promise_amount"))
 		amount = amount if 0 < amount <= total else total
 		if enr:
-			_set(enr, status="Paused", next_due=add_days(get_datetime(when), GRACE_DAYS),
-				stop_reason=_("Promised {0} by {1}").format(fmt_money(amount, currency=currency), formatdate(when)))
+			# Until a person approves the promise (Auto records it at once, and the executor then pauses
+			# the ladder to the promised date), the pause is short: a reply alone cannot stall the ladder.
+			until = min(get_datetime(add_days(get_datetime(when), GRACE_DAYS)),
+				get_datetime(add_days(now_datetime(), PROMISE_REVIEW_DAYS)))
+			_set(enr, status="Paused", next_due=until,
+				stop_reason=_("Promised {0} by {1}; the promise waits for a person to approve it").format(
+					fmt_money(amount, currency=currency), formatdate(when)))
 		name = proposals.propose(task, agent, "record_promise", subject=("Customer", customer), thread=thread.name,
 			risk="Low",
 			payload={"customer": customer, "date": str(when), "amount": amount, "currency": currency, "overdue_then": total,
+				"invoices": snapshot([r for r in overdue if r.currency == currency]),
 				"enrollment": enr.name if enr else None, "summary": d.get("summary") or ""},
 			preview_html=frappe.utils.escape_html(_("Promised {0} by {1}").format(fmt_money(amount, currency=currency),
 				formatdate(when))))
@@ -1197,7 +1409,7 @@ def record_promise(proposal, agent):
 		"reference_name": customer, "date": when, "priority": "Medium", "assigned_by": agent.service_user,
 		"description": _("{0}. Check the payment arrived; the reminders resume the day after if it has not.").format(what)
 		}).insert(ignore_permissions=True)
-	if p.enrollment and frappe.db.exists("Excom AI Enrollment", p.enrollment):
+	if p.enrollment and frappe.db.get_value("Excom AI Enrollment", p.enrollment, "status") in ("Active", "Paused", "Replied"):
 		frappe.db.set_value("Excom AI Enrollment", p.enrollment, {"status": "Paused",
 			"next_due": add_days(get_datetime(when), GRACE_DAYS),
 			"stop_reason": what})
@@ -1233,14 +1445,17 @@ def unreconciled(company: str | None, limit: int = MATCH_LIMIT) -> list:
 		"reference_number", "bank_party_name", "party_type", "party"], order_by="date desc", limit=limit)
 
 
-def suggestions(company: str | None, transactions: list | None = None) -> list[dict]:
-	"""For each unreconciled deposit, the best open invoice by amount, reference and party (score 3+)."""
+def suggestions(company: str | None, transactions: list | None = None, customer: str | None = None) -> list[dict]:
+	"""For each unreconciled deposit, the best open invoice by amount, reference and party (score 3+).
+	customer: only that customer's open invoices (a reply saying it is paid needs no others)."""
 	transactions = unreconciled(company) if transactions is None else transactions
 	if not transactions:
 		return []
 	filters = {"docstatus": 1, "outstanding_amount": [">", 0]}
 	if company:
 		filters["company"] = company
+	if customer:
+		filters["customer"] = customer
 	invoices = frappe.get_all("Sales Invoice", filters, ["name", "customer", "outstanding_amount", "currency"], limit=5000)
 	names = {r.name: r.customer_name for r in frappe.get_all("Customer", {"name": ["in",
 		list({i.customer for i in invoices}) or ["-"]]},
@@ -1259,7 +1474,7 @@ def suggestions(company: str | None, transactions: list | None = None) -> list[d
 
 
 def candidates_for_customer(customer: str, company: str | None) -> list[str]:
-	return sorted({s["bank_transaction"] for s in suggestions(company) if s["customer"] == customer})
+	return sorted({s["bank_transaction"] for s in suggestions(company, customer=customer) if s["customer"] == customer})
 
 
 @registry.task_kind("match_payments", priority=registry.PRIORITY["research"], effort="classify")
@@ -1386,9 +1601,11 @@ def msme_watch_list(company: str | None) -> list[frappe._dict]:
 		filters["company"] = company
 	today = getdate(nowdate())
 	out = []
-	for r in frappe.get_all("Purchase Invoice", filters, ["name", "supplier", "supplier_name", "posting_date",
-		"bill_date", "bill_no",
-			"outstanding_amount", "currency"]):
+	fields = ["name", "supplier", "supplier_name", "posting_date", "bill_date", "bill_no", "outstanding_amount", "currency"]
+	if _has("Purchase Invoice", "party_account_currency"):
+		fields.append("party_account_currency")
+	for r in frappe.get_all("Purchase Invoice", filters, fields):
+		r.currency = r.get("party_account_currency") or r.currency  # the outstanding amount is in the account's currency
 		s = suppliers[r.supplier]
 		start = getdate(r.bill_date or r.posting_date)
 		age, limit = (today - start).days, limit_days(s.agreement)
@@ -1428,10 +1645,8 @@ def msme_watch(task, agent) -> str:
 	if not rows:
 		return _("no Micro or Small supplier invoice near its limit")
 	past = [r for r in rows if r.days_left < 0]
-	owed = sum(flt(r.outstanding_amount) for r in rows)
-	currency = rows[0].currency
 	subject = _("MSME payables: {0} invoices from {1} suppliers, {2} past the limit ({3})").format(len(rows),
-		len({r.supplier for r in rows}), len(past), money(owed, currency))
+		len({r.supplier for r in rows}), len(past), "; ".join(money(v, c) for c, v in totals(rows).items()))
 	intro = _("Micro and Small suppliers' unpaid invoices near or past the 43B(h) limit (45 days with a written agreement, "
 		"15 without). Paid late, they are not deductible this year.")
 	notify.alert(finance_people(agent), subject, message=f"<p>{frappe.utils.escape_html(intro)}</p>" + msme_table(rows),
@@ -1631,11 +1846,12 @@ def msme_payables(ctx):
 	facts = [fact(_("MSME status from {0}").format(", ".join(src.fields)) if src.kind else _("No MSME status on suppliers"),
 		_("Supplier fields"), level="info" if src.kind in ("table", "fields") else "warning"),
 		fact(_("{0} past the 43B(h) limit from {1} suppliers ({2}); {3} more within {4} days").format(
-			money(sum(flt(r.outstanding_amount) for r in past), ctx.currency), len({r.supplier for r in past}), len(past),
+			"; ".join(money(v, c) for c, v in totals(past).items()) or money(0, ctx.currency),
+			len({r.supplier for r in past}), len(past),
 			len(rows) - len(past), MSME_NEAR_DAYS), _("Purchase Invoice, unpaid, Micro and Small suppliers"), "Purchase Invoice",
 			[r.name for r in rows], level="warning" if past else "info")]
 	return facts, {"source": src.kind, "fields": src.fields, "past": len(past), "near": len(rows) - len(past),
-		"past_amount": sum(flt(r.outstanding_amount) for r in past)}
+		"past_amount": sum(flt(r.outstanding_amount) for r in past if r.currency == ctx.currency)}
 
 
 @recipe("unreconciled_bank", "Unreconciled bank transactions", packs=("accounts",), privacy="aggregates", order=40)

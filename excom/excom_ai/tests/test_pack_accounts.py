@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import add_days, add_to_date, fmt_money, getdate, now_datetime, nowdate
+from frappe.utils import add_days, add_to_date, fmt_money, get_datetime, getdate, now_datetime, nowdate
 
 from excom.excom.tests.fixtures import purge_users
 from excom.excom_ai import checks, templates
@@ -89,6 +89,8 @@ def _cleanup():
 			for child in ("Omni Identity Link", "Omni Identity Channel", "Omni Identity Alias"):
 				frappe.db.delete(child, {"parent": oi})
 			frappe.delete_doc("Omni Identity", oi, force=True, ignore_permissions=True)
+	for addr in frappe.get_all("Address", {"address_title": ["like", "QA Acc%"]}, pluck="name"):
+		frappe.delete_doc("Address", addr, force=True, ignore_permissions=True)
 	for c in set(frappe.get_all("Contact", {"email_id": ["like", f"%{DOMAIN}"]}, pluck="name")) | set(
 			frappe.get_all("Contact", {"first_name": ["like", "QA Acc%"]}, pluck="name")):
 		frappe.delete_doc("Contact", c, force=True, ignore_permissions=True)
@@ -224,9 +226,9 @@ class TestAccountsPack(FrappeTestCase):
 
 	# ---- fixtures
 
-	def agent(self, status="Live", whatsapp=False):
+	def agent(self, status="Live", whatsapp=False, suffix=""):
 		numbers = [{"channel_account": wa, "purpose": "Outreach and replies"} for wa in self.wa] if whatsapp else []
-		a = _retry(lambda: frappe.get_doc({"doctype": "Excom AI Agent", "agent_name": f"QA Acc {self.n}",
+		a = _retry(lambda: frappe.get_doc({"doctype": "Excom AI Agent", "agent_name": f"QA Acc {self.n}{suffix}",
 			"agent_type": "Accounts",
 			"owner_user": OWNER, "backup_user": BACKUP, "team": TEAM, "company": self.company,
 			"channels": [{"channel_account": self.box.name,
@@ -634,6 +636,8 @@ class TestAccountsPack(FrappeTestCase):
 		self.assertEqual((p.channel_account, payload["mobile"]), (self.wa[0], b.mobile))
 		self.assertEqual(p.status, "Pending", "the first send of a steward template waits for a person, even under Auto")
 		self.assertIn("first send waits", json.loads(p.checks)["template"]["why"])
+		recipient = json.loads(p.checks)["recipient"]
+		self.assertTrue(recipient["ok"] and "opted in" in recipient["why"], recipient)
 
 		# once a person has approved one send, the policy applies
 		frappe.db.set_value("WhatsApp Templates", tpl, "xai_first_use_done", 1)
@@ -836,3 +840,273 @@ class TestAccountsPack(FrappeTestCase):
 		self.assertIn(result["state"], ("Blocked", "Warnings", "Ready"))
 		gaps = frappe.get_all("Excom AI Readiness Gap", {"agent": a.name, "status": "Open"}, pluck="rule")
 		self.assertTrue(set(gaps) <= keys, "only the Accounts type's rules apply")
+
+	# ---- review fixes (2026-11-14)
+
+	def approve(self, name):
+		frappe.set_user(OWNER)
+		status = proposals.decide(name, "approve")
+		frappe.set_user("Administrator")
+		return status
+
+	def test_a_reminder_never_takes_over_a_conversation_a_person_or_another_agent_has(self):
+		a, b = self.agent(), self.buyer()
+		first, thread = self.sent_step_one(a, b)
+		enr = self.enrollment(a, b)
+		frappe.db.set_value("Excom AI Proposal", first.name, "sent_on", add_days(now_datetime(), -30))
+		# a person took the conversation (a handover): the next step is not written there
+		frappe.db.set_value("Excom Thread", thread, "ai_mode", "Needs person")
+		frappe.db.set_value("Excom AI Enrollment", enr.name, "next_due", add_days(now_datetime(), -1))
+		out = self.step(a, b, words=None).outcome
+		self.assertIn("not written", out)
+		self.assertFalse(frappe.db.exists("Excom AI Proposal", {"agent": a.name, "action": "payment_reminder", "step": 2}))
+		self.assertEqual(frappe.db.get_value("Excom Thread", thread, "ai_mode"), "Needs person", "left as the person set it")
+		enr.reload()
+		self.assertEqual(enr.status, "Paused")
+		self.assertIn("a person has the conversation", enr.stop_reason)
+		self.assertTrue(frappe.db.exists("ToDo", {"reference_name": b.customer, "allocated_to": OWNER, "status": "Open",
+			"description": ["like", "%was not written%"]}), "the owner is told")
+
+		# handed back: step 2 is written; a colleague takes the conversation before it goes out
+		frappe.db.set_value("Excom Thread", thread, "ai_mode", "Handle")
+		frappe.db.set_value("Excom AI Enrollment", enr.name, "next_due", add_days(now_datetime(), -1))
+		second = self.step(a, b).proposal
+		self.assertEqual((second.action, second.step), ("payment_reminder", 2))
+		self.assertEqual(self.approve(second.name), "Approved")
+		frappe.db.set_value("Excom Thread", thread, {"ai_agent": None, "ai_mode": None, "assigned_to": FINANCE})
+		with patch("excom.excom.channels.email.outbound.send_email_reply") as send, \
+				patch("excom.excom_ai.sequencer.in_window", return_value=True):
+			proposals.execute(second.name)
+		send.assert_not_called()
+		row = frappe.db.get_value("Excom AI Proposal", second.name, ["status", "hold_reason"], as_dict=True)
+		self.assertEqual(row.status, "Cancelled")
+		self.assertIn(FINANCE, row.hold_reason)
+		t = frappe.db.get_value("Excom Thread", thread, ["ai_agent", "ai_mode", "assigned_to"], as_dict=True)
+		self.assertEqual((t.ai_agent, t.ai_mode, t.assigned_to), (None, None, FINANCE), "not taken over")
+
+	def test_a_promise_is_judged_only_on_its_own_ladder_and_invoices(self):
+		a, b = self.agent(), self.buyer()
+		_p, thread = self.sent_step_one(a, b)
+		self.reply(a, thread, "We will clear everything on the 15th.", {"intent": "promise",
+			"promise_date": str(add_days(nowdate(), 5)), "promise_amount": 0, "reference": "", "language": "en",
+			"summary": "Will pay in full."})
+		rec = frappe.get_doc("Excom AI Proposal", {"agent": a.name, "action": "record_promise"})
+		payload = json.loads(rec.payload)
+		self.assertEqual(payload["invoices"], {b.old: 50000, b.part: 20000}, "the invoices the promise is about")
+		# paid in full; meanwhile the third invoice fell due: the promise was kept all the same
+		for inv in (b.old, b.part):
+			frappe.db.set_value("Sales Invoice", inv, "outstanding_amount", 0)
+		frappe.db.set_value("Sales Invoice", b.fresh, "due_date", add_days(nowdate(), -1))
+		frappe.db.set_value("Excom AI Proposal", rec.name, "payload", json.dumps({**payload,
+			"date": str(add_days(nowdate(), -2))}))
+		enr = self.enrollment(a, b)
+		frappe.db.set_value("Excom AI Enrollment", enr.name, "next_due", add_to_date(now_datetime(), hours=-1))
+		out = self.step(a, b, words=None).outcome
+		self.assertFalse(frappe.db.exists("Comment", {"reference_name": b.customer, "content": ["like", "%was not kept%"]}),
+			out)
+		self.assertEqual(json.loads(frappe.db.get_value("Excom AI Proposal", rec.name, "payload"))["judged"], "kept")
+
+		# that ladder ends; a new one starts when the customer falls behind again: the old promise
+		# (made on the earlier ladder, its date long past) is not this ladder's to judge
+		frappe.db.set_value("Excom AI Proposal", rec.name, "payload", json.dumps({**payload,
+			"date": str(add_days(nowdate(), -2))}))  # not judged
+		accounts.close(frappe.get_doc("Excom AI Enrollment", enr.name), "Completed", "QA: paid")
+		frappe.db.set_value("Sales Invoice", b.old, "outstanding_amount", 50000)
+		new = accounts.enrollment_for(a, b.customer)
+		self.assertNotEqual(new.name, enr.name)
+		self.assertIsNone(accounts.last_promise(b.customer, a, new))
+		frappe.db.set_value("Excom AI Enrollment", new.name, {"status": "Paused",
+			"next_due": add_to_date(now_datetime(), hours=-1)})
+		fresh = self.step(a, b)
+		self.assertEqual((fresh.proposal.step, json.loads(fresh.proposal.payload)["broken_promise"]), (1, False),
+			fresh.outcome)
+		self.assertFalse(frappe.db.exists("Comment", {"reference_name": b.customer, "content": ["like", "%was not kept%"]}))
+
+	def test_a_promise_waiting_for_review_pauses_the_ladder_a_week_at_most(self):
+		a, b = self.agent(), self.buyer()
+		self.set_policy(a, "create_record", "Review")
+		_p, thread = self.sent_step_one(a, b)
+		when = add_days(nowdate(), 60)
+		self.reply(a, thread, "We will pay in two months.", {"intent": "promise", "promise_date": str(when),
+			"promise_amount": 0, "reference": "", "language": "en", "summary": "Will pay in two months."})
+		rec = frappe.get_doc("Excom AI Proposal", {"agent": a.name, "action": "record_promise"})
+		self.assertEqual(rec.status, "Pending")
+		enr = self.enrollment(a, b)
+		self.assertEqual(enr.status, "Paused")
+		self.assertLessEqual(get_datetime(enr.next_due), add_days(now_datetime(), accounts.PROMISE_REVIEW_DAYS),
+			"a reply alone cannot stall the ladder until its own date")
+		self.assertIsNone(accounts.last_promise(b.customer, a, enr), "not on record until a person approves it")
+		# approved: now the ladder waits for the promised date
+		self.approve(rec.name)
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", rec.name, "status"), "Done")
+		self.assertEqual(getdate(self.enrollment(a, b).next_due), getdate(add_days(when, accounts.GRACE_DAYS)))
+
+	def test_an_approved_reminder_waits_out_a_quiet_date_but_answers_do_not(self):
+		from excom.excom_ai.engine import gates
+
+		a, b = self.agent(), self.buyer()
+		p = self.step(a, b).proposal
+		self.assertEqual(self.approve(p.name), "Approved")
+		today = getdate(nowdate())
+		quiet = patch.object(gates, "is_quiet_date", side_effect=lambda day=None: getdate(day or nowdate()) == today)
+		with quiet, patch("excom.excom.channels.email.outbound.send_email_reply") as send, \
+				patch("excom.excom_ai.sequencer.in_window", return_value=True):
+			proposals.execute(p.name)
+		send.assert_not_called()
+		row = frappe.db.get_value("Excom AI Proposal", p.name, ["status", "send_at", "hold_reason"], as_dict=True)
+		self.assertEqual(row.status, "Approved")
+		self.assertEqual(get_datetime(row.send_at), get_datetime(add_days(today, 1)), "tomorrow, then its window")
+		self.assertIn("Quiet date", row.hold_reason)
+		with quiet:
+			for action, kind in (("send_statement", "Reply"), ("reply", "Reply")):
+				self.assertIsNone(gates.quiet_until(frappe._dict(action=action, kind=kind)), "an answer to someone who wrote")
+			for action, kind in (("send_email", "Sequence"), ("po_chase", "Reply"), ("send_rfq", "Reply")):
+				self.assertIsNotNone(gates.quiet_until(frappe._dict(action=action, kind=kind)), action)
+		with patch.object(gates, "is_quiet_date", return_value=False), \
+				patch("excom.excom.channels.email.outbound.send_email_reply", return_value="QA-ACC-MSG") as send, \
+				patch("excom.excom_ai.sequencer.in_window", return_value=True):
+			proposals.execute(p.name)
+		send.assert_called_once()
+		self.assertEqual(frappe.db.get_value("Excom AI Proposal", p.name, "status"), "Sent")
+
+	def test_reminders_go_in_the_customers_own_office_hours(self):
+		"""The real window (no patched in_window): the customer's billing address is in New York and the
+		site's clock is the system zone's."""
+		from datetime import date, datetime
+		from zoneinfo import ZoneInfo
+
+		from excom.excom_ai import sequencer
+
+		a, b = self.agent(), self.buyer()
+		frappe.get_doc({"doctype": "Address", "address_title": f"QA Acc Buyer {self.n}", "address_type": "Billing",
+			"address_line1": "1 Main Street", "city": "New York", "country": "United States",
+			"links": [{"link_doctype": "Customer", "link_name": b.customer}]}).insert(ignore_permissions=True)
+		zone = "America/New_York"
+		self.assertEqual(accounts.customer_zone(b.customer, a), zone)
+		p = self.step(a, b).proposal
+		self.assertEqual(self.approve(p.name), "Approved")
+
+		def at(hour):  # Wednesday 18 November 2026 at this hour in New York, as the site's clock reads it
+			return sequencer.from_zone(datetime(2026, 11, 18, hour, 0, tzinfo=ZoneInfo(zone)))
+
+		def send(when):
+			with patch("excom.excom.channels.email.outbound.send_email_reply", return_value="QA-ACC-MSG") as mail, \
+					patch.object(accounts, "now_datetime", return_value=when):
+				proposals.execute(p.name)
+			return mail, frappe.db.get_value("Excom AI Proposal", p.name, ["status", "send_at", "hold_reason"], as_dict=True)
+
+		mail, row = send(at(3))  # 03:00 there
+		mail.assert_not_called()
+		self.assertEqual(row.status, "Approved")
+		self.assertIn(zone, row.hold_reason)
+		local = sequencer.to_zone(row.send_at, zone)
+		self.assertEqual((local.date(), local.hour), (date(2026, 11, 18), 8), "the start of their next office hours")
+		mail, row = send(at(11))  # 11:00 there
+		mail.assert_called_once()
+		self.assertEqual(row.status, "Sent")
+
+	def test_amounts_are_in_the_currency_owed_and_never_added_across_currencies(self):
+		a, b = self.agent(), self.buyer()
+		debtors = frappe.db.get_value("Company", self.company, "default_receivable_account")
+		common = {"customer": b.customer, "customer_name": b.customer, "company": self.company, "debit_to": debtors,
+			"posting_date": add_days(nowdate(), -40), "due_date": add_days(nowdate(), -30), "currency": "USD",
+			"conversion_rate": 83}
+		# a dollar invoice on the customer's rupee account: ERPNext keeps what is owed in rupees
+		usd = _fixture("Sales Invoice", f"QA-ACC-SINV-{self.n}-USD", {**common, "grand_total": 1000, "base_grand_total": 83000,
+			"outstanding_amount": 83000, "party_account_currency": "INR", "is_return": 0})
+		# a dollar credit note on the same rupee account
+		_fixture("Sales Invoice", f"QA-ACC-SINV-{self.n}-CN", {**common, "grand_total": -10, "base_grand_total": -830,
+			"outstanding_amount": -830, "party_account_currency": "INR", "is_return": 1})
+		frappe.db.commit()
+		rows = {r.name: r for r in accounts.open_invoices(b.customer, self.company)}
+		self.assertEqual((rows[usd].currency, rows[usd].amount, rows[usd].outstanding_amount), ("INR", 83000, 83000))
+		html = accounts.statement_table(list(rows.values()))
+		self.assertIn(fmt_money(83000, currency="INR"), html)
+		self.assertNotIn(fmt_money(1000, currency="INR"), html, "never a dollar figure labelled in rupees")
+		self.assertEqual(accounts.credits(b.customer, self.company), {"INR": 830})
+		# owed on a dollar account as well: a total per currency, never one sum
+		_fixture("Sales Invoice", f"QA-ACC-SINV-{self.n}-USD2", {**common, "grand_total": 500, "base_grand_total": 41500,
+			"outstanding_amount": 500, "party_account_currency": "USD", "is_return": 0})
+		lines = accounts.invoice_lines(accounts.open_invoices(b.customer, self.company, overdue_only=True), "en")
+		self.assertIn(f"Total overdue: {fmt_money(500, currency='USD')}", lines)
+		self.assertIn(f"Total overdue: {fmt_money(70000 + 83000, currency='INR')}", lines)
+
+	def test_a_customer_on_another_accounts_agents_ladder_is_left_to_it(self):
+		a, b = self.agent(), self.buyer()
+		self.step(a, b)
+		first = self.enrollment(a, b)
+		other = self.agent(suffix=" Two")
+		self.assertNotIn(b.customer, accounts.due_customers(other, self.company))
+		frappe.db.delete("Excom AI Task", {"agent": other.name, "kind": "collections_step"})
+		out = self.run_now(tasks.add(other.name, "collections_step", subject=("Customer", b.customer)))
+		self.assertIn("another Accounts agent", out)
+		self.assertFalse(frappe.db.exists("Excom AI Proposal", {"agent": other.name, "action": "payment_reminder"}))
+		self.assertIsNone(accounts.enrollment_for(other, b.customer, create=False), "no second ladder")
+		# the first ladder closes: the customer is free for another agent
+		accounts.close(first, "Completed", "QA")
+		self.assertIn(b.customer, accounts.due_customers(other, self.company))
+
+	def test_says_paid_matching_reads_only_that_customers_invoices(self):
+		a, b = self.agent(), self.buyer()
+		type(self).n += 1
+		c = self.buyer()
+		bt = _fixture("Bank Transaction", f"QA-ACC-BT-{self.n}", {"company": self.company, "date": add_days(nowdate(), -1),
+			"status": "Unreconciled", "deposit": 20000, "withdrawal": 0, "unallocated_amount": 20000, "allocated_amount": 0,
+			"currency": "INR", "description": f"NEFT CR {c.part}", "reference_number": "UTR-QA-C", "party_type": "Customer",
+			"party": c.customer})
+		frappe.db.commit()
+		seen = []
+		real = frappe.get_all
+
+		def spy(doctype, *args, **kwargs):
+			if doctype == "Sales Invoice":
+				seen.append(dict(args[0] if args else kwargs.get("filters") or {}))
+			return real(doctype, *args, **kwargs)
+
+		with patch("frappe.get_all", side_effect=spy):
+			self.assertEqual(accounts.candidates_for_customer(b.customer, self.company), [], "c's payment is not b's")
+		self.assertTrue(seen)
+		self.assertTrue(all(f.get("customer") == b.customer for f in seen), "only that customer's open invoices are read")
+		self.assertEqual(accounts.candidates_for_customer(c.customer, self.company), [bt])
+
+	def test_the_whatsapp_recipient_check_is_real(self):
+		b = self.buyer(email=False)
+		ok, why = accounts.whatsapp_recipient(b.mobile)
+		self.assertFalse(ok, "no opt-in yet")
+		self.assertIn("opt-in", why)
+		ident = self.opt_in(b)
+		ok, why = accounts.whatsapp_recipient(b.mobile)
+		self.assertTrue(ok, why)
+		frappe.db.set_value("Omni Identity", ident, "do_not_contact", 1)
+		ok, why = accounts.whatsapp_recipient(b.mobile)
+		self.assertFalse(ok)
+		self.assertIn("do-not-contact", why)
+		self.assertFalse(accounts.whatsapp_recipient("12")[0], "not a mobile number")
+
+	def test_a_reply_nobody_could_read_reaches_a_person(self):
+		a, b = self.agent(), self.buyer()
+		_p, thread = self.sent_step_one(a, b)
+		ident = frappe.db.get_value("Excom Thread", thread, "omni_identity")
+		text = "About the invoices: see the attached remittance."
+		msg = frappe.get_doc({"doctype": "Excom Message", "thread": thread, "channel": "email", "account": self.box.name,
+			"account_doctype": "Excom Channel Account", "omni_identity": ident, "direction": "Inbound", "message_type": "Email",
+			"content_text": text, "content_json": json.dumps({"subject": "Re: your account"}), "delivery_status": "Delivered"}
+			).insert(ignore_permissions=True)
+		inbound.on_inbound({"thread": thread, "message": msg.name, "channel": "email", "text": text})
+		enr = self.enrollment(a, b)
+		self.assertEqual(enr.status, "Replied")
+		t = frappe.db.get_value("Excom AI Task", {"agent": a.name, "kind": "inbound", "thread": thread, "status": "Queued"})
+		self.assertEqual(accounts.unread_replies(a), 0, "just now, and its task is still queued")
+		# the responder failed for good: the ladder would sit in Replied for ever
+		frappe.db.set_value("Excom AI Task", t, {"status": "Failed", "error": "TimeoutError: the model did not answer"})
+		frappe.db.set_value("Excom AI Enrollment", enr.name, "modified", add_to_date(now_datetime(), hours=-3),
+			update_modified=False)
+		self.assertEqual(accounts.unread_replies(a), 1)
+		enr.reload()
+		self.assertEqual(enr.status, "Stopped")
+		self.assertIn("could not read the reply", enr.stop_reason)
+		self.assertTrue(frappe.db.exists("ToDo", {"reference_name": b.customer, "allocated_to": OWNER,
+			"description": ["like", "%replied to a collections reminder%"]}))
+		self.assertTrue(frappe.db.exists("Notification Log", {"for_user": OWNER,
+			"subject": ["like", "Collections: a reply needs you%"]}))
+		self.assertEqual(accounts.unread_replies(a), 0, "once")

@@ -1,0 +1,11 @@
+# Exact, known-good pins for the service (tested with Python 3.12). install.sh and the Dockerfile
+# install these first, then the package itself (whose pyproject ranges they satisfy).
+websockets==15.0.1
+httpx==0.28.1
+httpcore==1.0.9
+h11==0.16.0
+anyio==4.9.0
+sniffio==1.3.1
+idna==3.10
+certifi==2025.4.26
+typing_extensions==4.13.2

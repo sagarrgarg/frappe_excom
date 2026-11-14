@@ -1889,6 +1889,8 @@ def send_template_to_thread(
     category = (frappe.db.get_value("WhatsApp Templates", template_name, "category") or "").upper()
     send_rules.check(thread_id, purpose="outreach" if category == "MARKETING" else "transactional", window=False,
         template=template_name)
+    # an agent's values cleaned and the 1024-character limit checked again here, whoever edited them
+    variables = send_rules.template_variables(template_name, variables)
     _claim_on_talk(thread_id)
 
     thread = frappe.db.get_value(

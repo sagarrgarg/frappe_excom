@@ -3,9 +3,13 @@
 Who may do what:
 - build an agent: an Excom Admin, a System Manager, or the manager of an Excom team;
 - see an agent: Excom AI permissions (its people and its team, excom_ai/permissions.py);
-- change an agent: its owner, its backup, its team's manager, or an Excom Admin. The agent record
-  itself is read-only for people; these endpoints check first and then save through its controller,
-  so every rule of the record still holds.
+- change an agent: its owner, its backup, the manager of its team (an agent without a team has no
+  team manager), or an Excom Admin. The agent record itself is read-only for people; these endpoints
+  check first and then save through its controller, so every rule of the record still holds;
+- name the people of an agent (owner, backup, reviewers, escalation, team): naming anyone but
+  oneself as owner, and any backup, reviewer or escalation, needs an Excom Admin, or the manager of
+  the agent's team naming members of that team (HLD-007 §14). The backup changes none of these.
+- an AI budget of 0 means no limit (ai_interface and gates.over_budget): only an Excom Admin sets it.
 """
 
 from __future__ import annotations
@@ -27,15 +31,40 @@ def _roles() -> set:
 	return set(frappe.get_roles())
 
 
-def _team_manager(team: str | None = None) -> bool:
-	filters = {"parenttype": "Excom Team", "user": frappe.session.user, "role": "Manager"}
-	if team:
-		filters["parent"] = team
-	return bool(frappe.db.exists("Excom Team Member", filters))
+def _team_manager(team: str | None) -> bool:
+	"""Whether the person asking manages this team. No team: nobody manages it."""
+	return bool(team) and bool(frappe.db.exists("Excom Team Member", {"parenttype": "Excom Team", "parent": team,
+		"user": frappe.session.user, "role": "Manager"}))
+
+
+def _manages_a_team() -> bool:
+	return bool(frappe.db.exists("Excom Team Member", {"parenttype": "Excom Team", "user": frappe.session.user,
+		"role": "Manager"}))
+
+
+def _member(team: str | None, user: str) -> bool:
+	"""Whether the user is really in the team (or a team under it); an admin's role does not count."""
+	if not team or not user or user == "Administrator":
+		return False
+	from excom.excom.doctype.excom_team.excom_team import get_user_teams_with_ancestors
+
+	return team in get_user_teams_with_ancestors(user)
+
+
+def _may_name(team: str | None, users) -> None:
+	"""Naming other people on an agent: an Excom Admin names anyone the record accepts; a team's
+	manager names members of the team they manage; nobody else names anyone."""
+	if _roles() & MANAGERS:
+		return
+	if not _team_manager(team):
+		frappe.throw(_("Only an Excom Admin or the team's manager names other people on an agent."), frappe.PermissionError)
+	for user in users:
+		if user and not _member(team, user):
+			frappe.throw(_("{0} is not in the team {1}.").format(user, team), frappe.PermissionError)
 
 
 def _can_build():
-	if not (_roles() & MANAGERS or _team_manager()):
+	if not (_roles() & MANAGERS or _manages_a_team()):
 		frappe.throw(_("Only an Excom Admin or a team's manager builds agents."), frappe.PermissionError)
 
 
@@ -49,7 +78,7 @@ def _changeable(name: str):
 	doc = _readable(name)
 	user = frappe.session.user
 	if user in (doc.owner_user, doc.backup_user) or _roles() & MANAGERS or _team_manager(doc.team):
-		return doc
+		return doc  # _team_manager is False for an agent without a team
 	frappe.throw(_("Only the agent's owner, backup, its team's manager or an Excom Admin can change it."), frappe.PermissionError)
 
 
@@ -104,8 +133,12 @@ def create_agent(agent_type: str, keywords: str, rows=None, excluded=None, perso
 		team: str | None = None, company: str | None = None, owner: str | None = None, description: str = "",
 		abilities: str = "") -> dict:
 	_can_build()
-	if owner and owner != frappe.session.user and not _roles() & MANAGERS and not _team_manager(team):
-		frappe.throw(_("Only an Excom Admin or the team's manager names someone else as the owner."), frappe.PermissionError)
+	user = frappe.session.user
+	if team and not (_roles() & MANAGERS or _team_manager(team)):
+		frappe.throw(_("Only an Excom Admin or the manager of {0} builds agents for it.").format(team), frappe.PermissionError)
+	others = [u for u in (owner, backup) if u and u != user]
+	if others:
+		_may_name(team or None, others)
 	name = service.create(agent_type, keywords, _json(rows), _json(excluded, {}), persona, owner, backup or None,
 		team or None, company or None, description=description, abilities=abilities)
 	frappe.db.commit()
@@ -199,6 +232,8 @@ def agent(name: str) -> dict:
 			"creation", "ended_on", "ai_cost"], order_by="creation desc", limit=50),
 		"usage": usage,
 		"can_change": user in (doc.owner_user, doc.backup_user) or bool(_roles() & MANAGERS) or _team_manager(doc.team),
+		# owner, backup, team, reviewers and escalation: the owner (not the backup), the team's manager or an admin
+		"can_change_people": user == doc.owner_user or bool(_roles() & MANAGERS) or _team_manager(doc.team),
 		"can_handover": bool(_roles() & MANAGERS) or _team_manager(doc.team),
 		"modes": MODES,
 	}
@@ -226,13 +261,43 @@ def save_brief(name: str, fields) -> dict:
 @frappe.whitelist(methods=["POST"])
 def set_people(name: str, owner_user: str | None = None, backup_user: str | None = None, team: str | None = None,
 		escalation_user: str | None = None, reviewers: str | None = None) -> dict:
+	"""Who looks after the agent. The screen sends every field each time: only what changes is checked.
+
+	- owner or team: an Excom Admin, or the manager of the agent's team (and of the new team);
+	- backup, reviewers, escalation: also the owner; never the backup;
+	- a person newly named, by anyone but an Excom Admin, must be in the agent's team: an agent
+	  without a team gets its people from an Excom Admin.
+	"""
 	doc = _changeable(name)
-	if ((owner_user and owner_user != doc.owner_user) or (team and team != doc.team)) and not (_roles() & MANAGERS or _team_manager(doc.team)):
+	user = frappe.session.user
+	wanted = {k: (v or None) for k, v in (("owner_user", owner_user), ("backup_user", backup_user), ("team", team),
+		("escalation_user", escalation_user), ("reviewers", reviewers)) if v is not None}
+	changed = {k: v for k, v in wanted.items() if v != (doc.get(k) or None)}
+	if not changed:
+		return {"ok": True}
+	admin = bool(_roles() & MANAGERS)
+	if ("owner_user" in changed or "team" in changed) and not (admin or _team_manager(doc.team)):
 		frappe.throw(_("Only the team's manager or an Excom Admin changes an agent's owner or team."), frappe.PermissionError)
-	for k, v in (("owner_user", owner_user), ("backup_user", backup_user), ("team", team), ("escalation_user", escalation_user),
-			("reviewers", reviewers)):
-		if v is not None:
-			doc.set(k, v or None)
+	if "team" in changed and not (admin or _team_manager(changed["team"])):
+		frappe.throw(_("Only an Excom Admin moves an agent to a team you do not manage."), frappe.PermissionError)
+	if not (admin or user == doc.owner_user or _team_manager(doc.team)):
+		frappe.throw(_("Only the agent's owner, its team's manager or an Excom Admin changes who looks after it."),
+			frappe.PermissionError)
+	if not admin:
+		team_after = wanted.get("team", doc.team)
+		named = [changed.get("owner_user"), changed.get("backup_user"), changed.get("escalation_user")]
+		if "reviewers" in changed:
+			before = {u.strip() for u in (doc.reviewers or "").split(",") if u.strip()}
+			named += [u.strip() for u in (changed["reviewers"] or "").split(",") if u.strip() and u.strip() not in before]
+		named = [u for u in named if u and u != user]
+		if named:
+			if not team_after:
+				frappe.throw(_("An agent without a team gets its people from an Excom Admin."), frappe.PermissionError)
+			for u in named:
+				if not _member(team_after, u):
+					frappe.throw(_("{0} is not in the team {1}.").format(u, team_after), frappe.PermissionError)
+	for k, v in changed.items():
+		doc.set(k, v)
 	doc.save(ignore_permissions=True)
 	frappe.db.commit()
 	return {"ok": True}
@@ -242,10 +307,16 @@ def set_people(name: str, owner_user: str | None = None, backup_user: str | None
 def set_limits(name: str, daily_ai_budget=None, monthly_ai_budget=None, office_hours: str | None = None,
 		channels=None) -> dict:
 	doc = _changeable(name)
-	if daily_ai_budget is not None:
-		doc.daily_ai_budget = flt(daily_ai_budget)
-	if monthly_ai_budget is not None:
-		doc.monthly_ai_budget = flt(monthly_ai_budget)
+	for field, value in (("daily_ai_budget", daily_ai_budget), ("monthly_ai_budget", monthly_ai_budget)):
+		if value is None or value == "":
+			continue
+		amount = flt(value)
+		if amount < 0:
+			frappe.throw(_("Budgets cannot be negative."))
+		if amount == 0 and flt(doc.get(field)) != 0 and not _roles() & MANAGERS:
+			# 0 is no limit at all (gates.over_budget, ai_interface): an Excom Admin's decision
+			frappe.throw(_("Only an Excom Admin removes an agent's AI budget (0 means no limit)."), frappe.PermissionError)
+		doc.set(field, amount)
 	if office_hours:
 		doc.office_hours = office_hours
 	if channels is not None:

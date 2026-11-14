@@ -28,6 +28,7 @@ from excom.excom_ai.doctype.excom_ai_company.excom_ai_company import normalise_d
 DOCTYPES = ("Lead", "Prospect")
 MAX_PICKS = 5
 KEEP_SECONDS = 1800
+LOOKUP_SECONDS = 30 * 86400  # what a paid lookup found (or that it found no address), shared by everyone
 LOCK_SECONDS = 600  # above the worst case: 5 people × 2 providers × 40 s
 
 
@@ -70,22 +71,41 @@ def pick_id(c: dict) -> str:
 
 
 def _public(c: dict) -> dict:
+	looked = bool(c.get("done"))
 	return {"pick": pick_id(c), "full_name": c.get("full_name") or c.get("first_name"), "title": c.get("title"),
-		"seniority": c.get("seniority"), "linkedin_url": c.get("linkedin_url"), "has_email": c.get("has_email"),
-		"provider": c.get("provider"), "known_email": c.get("known_email")}
+		"seniority": c.get("seniority"), "linkedin_url": c.get("linkedin_url") or (c.get("result") or {}).get("linkedin_url"),
+		"has_email": False if looked and not c.get("known_email") else c.get("has_email"),
+		"provider": c.get("provider"), "known_email": c.get("known_email"), "looked_up": looked}
+
+
+def _lookup_key(c: dict) -> str:
+	return f"excom_ai_people_lookup:{pick_id(c)}"
+
+
+def _can_see_contact(contact: str) -> bool:
+	"""A Contact counts as known to this user only through a record they may read: another desk's
+	contacts are theirs."""
+	for link in frappe.get_all("Dynamic Link", {"parenttype": "Contact", "parent": contact},
+			["link_doctype", "link_name"]):
+		if frappe.has_permission(link.link_doctype, "read", doc=link.link_name):
+			return True
+	return False
 
 
 def _known(c: dict) -> tuple[str | None, str | None]:
 	"""(address, where it came from) when we already hold a usable address for this candidate: a Contact
-	with the same LinkedIn URL, or research the user may see whose address checked out."""
+	the user may see (same provider id or LinkedIn URL), or research the user may see whose address
+	checked out."""
 	from excom.excom_ai.permissions import visible_agents
 
 	if frappe.get_meta("Contact").has_field("ai_people_id"):
 		for field, value in (("ai_people_id", pick_id(c) if c.get("external_id") else None),
 				("ai_linkedin_url", c.get("linkedin_url"))):
-			contact = value and frappe.db.get_value("Contact", {field: value}, ["email_id", "ai_found_via"], as_dict=True)
-			if contact and contact.email_id:
-				return contact.email_id, (contact.ai_found_via or "").split(",")[0] or None
+			if not value:
+				continue
+			for contact in frappe.get_all("Contact", {field: value}, ["name", "email_id", "ai_found_via"], limit=5):
+				if contact.email_id and _can_see_contact(contact.name):
+					return contact.email_id, (contact.ai_found_via or "").split(",")[0] or None
 	person = research.known_person(None, c)
 	if not person:
 		return None, None
@@ -113,10 +133,15 @@ def find_people(doctype: str, name: str) -> dict:
 
 	keep, seen = [], set()
 	for c in people_tools.rank(found, titles):
-		if research.skipped_title(c.get("title")) or pick_id(c) in seen:
+		if research.skipped_title(c.get("title")) or pick_id(c) in seen or research.forgotten(c):
 			continue
 		seen.add(pick_id(c))
 		c["known_email"], c["known_via"] = _known(c)
+		looked = None if c["known_email"] else frappe.cache.get_value(_lookup_key(c))
+		if looked:  # paid for already, by anyone, in the last 30 days
+			c.update({"done": 1, "result": looked})
+			if looked.get("email"):
+				c.update({"known_email": looked["email"], "known_via": looked.get("email_provider") or looked.get("provider")})
 		keep.append(c)
 	keep = keep[:15]
 	before = {pick_id(c): c for c in (frappe.cache.get_value(_key(doctype, name)) or {}).get("candidates") or []}
@@ -163,14 +188,14 @@ def add_people(doctype: str, name: str, picks) -> dict:
 			frappe.cache.decrby(day_key, paid)
 		frappe.throw(_("Someone is already adding people here. Try again in a minute."))
 	try:
-		return _add(doctype, name, kept, chosen, key)
+		return _add(doctype, name, kept, chosen, key, day_key if limit and paid else None)
 	finally:
 		# only our own lock: one that expired and was taken by someone else stays theirs
 		if frappe.safe_decode(frappe.cache.get(lock) or b"") == token:
 			frappe.cache.delete(lock)
 
 
-def _add(doctype: str, name: str, kept: dict, chosen: list[dict], key: str) -> dict:
+def _add(doctype: str, name: str, kept: dict, chosen: list[dict], key: str, day_key: str | None = None) -> dict:
 	added, no_email, failed = [], [], []
 	for c in chosen:
 		if c.get("known_email"):
@@ -178,12 +203,22 @@ def _add(doctype: str, name: str, kept: dict, chosen: list[dict], key: str) -> d
 		elif c.get("done"):
 			p = c.get("result") or c  # looked up already in this list: never paid for twice
 		else:
-			p = research.enrich_one(c, kept["domain"], any_address=True) or c
-			# what was paid for is kept with the list at once, whatever happens next
-			c.update({"done": 1, "result": p})
-			if p.get("email"):
-				c.update({"known_email": p["email"], "known_via": p.get("email_provider") or p.get("provider")})
-			frappe.cache.set_value(key, kept, expires_in_sec=KEEP_SECONDS)
+			found = research.enrich_one(c, kept["domain"], any_address=True)
+			if found is None:
+				# nobody answered (switched off, out of budget): nothing was paid, nothing is remembered
+				if day_key:
+					frappe.cache.decrby(day_key, 1)
+				p = c
+			else:
+				p = found
+				# what was paid for is kept at once, whatever happens next: with this list, and for everyone
+				c.update({"done": 1, "result": p})
+				if p.get("email"):
+					c.update({"known_email": p["email"], "known_via": p.get("email_provider") or p.get("provider")})
+				frappe.cache.set_value(key, kept, expires_in_sec=KEEP_SECONDS)
+				frappe.cache.set_value(_lookup_key(c), p, expires_in_sec=LOOKUP_SECONDS)
+		if research.forgotten(p):
+			continue
 		if not p.get("email"):
 			no_email.append({"full_name": p.get("full_name"), "linkedin_url": p.get("linkedin_url")})
 			continue
@@ -203,3 +238,37 @@ def _add(doctype: str, name: str, kept: dict, chosen: list[dict], key: str) -> d
 		added.append({"contact": out["contact"], "full_name": p.get("full_name"), "email": p["email"],
 			"linkedin_url": p.get("linkedin_url"), "reused": out["reused"]})
 	return {"added": added, "no_email": no_email, "failed": failed}
+
+
+@frappe.whitelist(methods=["POST"])
+def forget_person(person: str | None = None, email: str | None = None, linkedin_url: str | None = None,
+		reason: str = "") -> dict:
+	"""A data-removal request (GDPR Art. 17, DPDP Act): the research record is deleted and the person's
+	address, LinkedIn URL and provider ids are kept only as hashes, so neither research nor the Find
+	people button finds or adds them again. CRM records (Leads, Contacts) are removed the usual way.
+	Excom Admins only."""
+	frappe.only_for(("Excom Admin", "System Manager"))
+	from excom.excom_ai.doctype.excom_ai_people_suppression.excom_ai_people_suppression import add
+	from excom.excom_ai.tools.people import linkedin
+
+	values = {"email": email, "linkedin_url": linkedin_url}
+	if person:
+		row = frappe.db.get_value("Excom AI Person", person, ["email", "linkedin_url", "apollo_id", "prospeo_id"],
+			as_dict=True)
+		if not row:
+			frappe.throw(_("No such person."), frappe.DoesNotExistError)
+		values.update({k: v for k, v in row.items() if v})
+	if not any(values.values()):
+		frappe.throw(_("Give the person, their email or their LinkedIn URL."))
+	add("Email", values.get("email"), reason)
+	add("LinkedIn", linkedin(values.get("linkedin_url")) or values.get("linkedin_url"), reason)
+	add("Apollo", values.get("apollo_id"), reason)
+	add("Prospeo", values.get("prospeo_id"), reason)
+	gone = []
+	for field in ("email", "linkedin_url", "apollo_id", "prospeo_id"):
+		if values.get(field):
+			gone += frappe.get_all("Excom AI Person", {field: values[field]}, pluck="name")
+	for name in set(gone):
+		frappe.delete_doc("Excom AI Person", name, force=True, ignore_permissions=True)
+	frappe.db.commit()
+	return {"forgotten": len(set(gone))}

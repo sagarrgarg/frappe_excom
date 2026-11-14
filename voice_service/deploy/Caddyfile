@@ -1,0 +1,22 @@
+# /etc/caddy/Caddyfile — TLS in front of the voice service.
+# Twilio requires wss://, Plivo should get it too. Caddy gets and renews the
+# certificate itself; the DNS name must point at this VM and ports 80/443 be open.
+# It adds X-Forwarded-For, which the service believes from 127.0.0.1 only
+# (TRUSTED_PROXIES), for its per-address rate limit.
+
+voice.example.com {
+	# Only the media stream and the health probe; everything else is refused here.
+	@voice path /stream /health
+	handle @voice {
+		reverse_proxy 127.0.0.1:8080 {
+			# Calls last minutes: never cut a live stream on a Caddy reload.
+			stream_close_delay 20m
+		}
+	}
+	handle {
+		respond 404
+	}
+	log {
+		output file /var/log/caddy/voice.log
+	}
+}

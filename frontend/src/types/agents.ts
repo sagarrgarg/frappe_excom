@@ -214,6 +214,9 @@ export interface AgentDetail {
   activity: AgentTask[];
   usage: { today: number; month: number; calls_month: number };
   can_change: boolean;
+  /** Owner, the team's manager or an Excom Admin: who may change the owner, backup, team and reviewers.
+   * The backup can change the agent's work but not who looks after it. */
+  can_change_people?: boolean;
   modes: Mode[];
 }
 
@@ -371,6 +374,8 @@ export interface PeopleCandidate {
   provider?: string | null;
   /** Already found by research, so adding this person costs nothing. */
   known_email?: string | null;
+  /** Looked up already (by anyone, in the last 30 days): adding costs nothing, address or not. */
+  looked_up?: boolean;
 }
 
 export interface FindPeopleResult {
@@ -512,4 +517,4 @@ export interface TemplateNeed {
 }
 
 /** An approve_template proposal's payload. */
-export interface TemplatePayload { need?: string; subject?: string; body?: string }
+export interface TemplatePayload { need?: string; channel?: "WhatsApp" | "Email" | string; subject?: string; body?: string; back_translation?: string }

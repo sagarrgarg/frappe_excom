@@ -22,6 +22,9 @@ class ExcomAISettings(Document):
 			seen.add(row.domain)
 		if cint(self.prompt_retention_days) < 0:
 			frappe.throw(_("Retention cannot be negative."))
+		from excom.excom_ai.voice import validate_settings
+
+		validate_settings(self)  # the voice service's key length and the longest call
 		if self.has_value_changed("effort_classify") and self.get_doc_before_save():
 			from excom.excom_ai.monitor import gate_change
 

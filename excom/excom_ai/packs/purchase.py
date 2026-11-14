@@ -119,6 +119,8 @@ QUOTE_RULES = """Read a supplier's reply to our request for quotation and extrac
 - currency: the ISO code of the prices, "" if not stated. valid_till: YYYY-MM-DD when the offer states a date or a
   validity period (count from today), else "". lead_time_days: delivery lead time in days, 0 if not stated.
 - payment_terms and notes: short, in the supplier's words (taxes, freight, minimum order, packing).
+- prices_include: "tax" when the prices include GST, VAT or other taxes, "freight" when they include delivery or
+  freight; [] when the prices are net or it is not said.
 - is_quotation is false when the reply gives no prices (a question, an acknowledgement, a refusal)."""
 QUOTE_SCHEMA = {
 	"type": "object",
@@ -129,6 +131,7 @@ QUOTE_SCHEMA = {
 		"payment_terms": {"type": "string"},
 		"lead_time_days": {"type": "integer"},
 		"notes": {"type": "string"},
+		"prices_include": {"type": "array", "items": {"type": "string", "enum": ["tax", "freight"]}},
 		"lines": {"type": "array", "items": {"type": "object", "properties": {
 			"line_id": {"type": "string"},
 			"supplier_text": {"type": "string"},
@@ -141,7 +144,7 @@ QUOTE_SCHEMA = {
 		}, "required": ["line_id", "supplier_text", "rate", "min_qty", "uom", "lead_time_days", "unclear", "why"],
 			"additionalProperties": False}},
 	},
-	"required": ["is_quotation", "currency", "valid_till", "payment_terms", "lead_time_days", "notes", "lines"],
+	"required": ["is_quotation", "currency", "valid_till", "payment_terms", "lead_time_days", "notes", "prices_include", "lines"],
 	"additionalProperties": False,
 }
 VISION_PROMPT = ("Transcribe this supplier's quotation as plain text. Keep every table row on one line with its "
@@ -338,17 +341,43 @@ def propose_whatsapp(task, agent, action: str, subject: tuple, route, variables:
 		payload=payload)
 
 
+def _held(s) -> bool:
+	"""The supplier is on hold for everything (not only invoices or payments) and the hold has not
+	reached its release date."""
+	if not s.on_hold or (s.hold_type or "") not in ("All", ""):
+		return False
+	return not s.release_date or getdate(s.release_date) > getdate(nowdate())
+
+
 def _cannot_ask(supplier: str) -> str | None:
-	s = frappe.db.get_value("Supplier", supplier, ["disabled", "prevent_rfqs", "on_hold", "hold_type"], as_dict=True)
+	s = frappe.db.get_value("Supplier", supplier, ["disabled", "prevent_rfqs", "on_hold", "hold_type", "release_date"],
+		as_dict=True)
 	if not s:
 		return _("no such supplier")
 	if s.disabled:
 		return _("disabled")
 	if s.prevent_rfqs:
 		return _("RFQs blocked by the scorecard")
-	if s.on_hold and s.hold_type in ("All", ""):
+	if _held(s):
 		return _("on hold")
 	return None
+
+
+def _cannot_chase(supplier: str) -> str | None:
+	"""Why a supplier may not be chased about an order: disabled, or on hold until a later date."""
+	s = frappe.db.get_value("Supplier", supplier, ["disabled", "on_hold", "hold_type", "release_date"], as_dict=True)
+	if not s:
+		return _("no such supplier")
+	if s.disabled:
+		return _("disabled")
+	if _held(s):
+		return _("on hold")
+	return None
+
+
+def _off(agent, action: str) -> bool:
+	"""The agent's policy for this action is Off: nothing would be proposed, so the model is not asked."""
+	return proposals.mode_for(agent, action) == "Off"
 
 
 def _wording(task, agent, kind: str, supplier: str, cache: dict | None = None) -> tuple[str, str, list[str]]:
@@ -530,23 +559,117 @@ def draft_rfq(task, agent) -> str:
 	rfq = _made(rfq_prop)
 	account = next(iter(rfq_accounts(agent)), None)
 	made, by_hand, words = [], [], {}
+	emails_off = _off(agent, "send_rfq")
 	for row in rows:
 		if not row["email_id"]:
 			by_hand.append(row["supplier"])
 			continue
+		if emails_off:
+			continue
 		intro, closing, notes = _wording(task, agent, "rfq", row["supplier"], words)
-		body = rfq_body(row["supplier"], intro, closing, lines)
-		subject = _("Request for quotation") + (f" {rfq}" if rfq else "")
-		results = _check(agent, row["email_id"], subject, body, account, len(lines), notes)
-		name = proposals.propose(task, agent, "send_rfq", subject=("Supplier", row["supplier"]), channel_account=account,
-			kind="Reply", to_email=row["email_id"], risk="Medium" if results["ok"] else "High", checks=results,
-			checks_ok=results["ok"], preview_html=_html(body),
-			payload={"subject": "", "body": body, "supplier": row["supplier"], "rfq_proposal": rfq_prop, "rfq": rfq,
-				"follow_up": 0})
-		made.append(name)
+		made.append(_propose_rfq_email(task, agent, row["supplier"], row["email_id"], account, rfq_prop, rfq, lines,
+			intro, closing, notes))
 	out = _("RFQ {0}; {1} emails proposed").format(rfq or rfq_prop, len([m for m in made if m]))
 	if by_hand:
 		out += "; " + _("no email for {0}: a person sends it").format(", ".join(by_hand))
+	return out
+
+
+def lines_key(lines) -> list:
+	"""What an RFQ email says about each line (item, quantity, unit, date), to tell whether the email
+	still matches the RFQ."""
+	return sorted([ln.get("item_code"), flt(ln.get("qty")), ln.get("uom") or "", str(getdate(ln.get("schedule_date")))
+		if ln.get("schedule_date") else ""] for ln in lines)
+
+
+def _propose_rfq_email(task, agent, supplier: str, to: str, account: str | None, rfq_prop: str | None, rfq: str | None,
+		lines: list[dict], intro: str, closing: str, notes: list[str], why_review: str | None = None) -> str | None:
+	"""One supplier's RFQ email (send_rfq). The model's words are kept in the payload, so the email can
+	be written again from them if a person changes the RFQ before it goes. `why_review` keeps it for a
+	person whatever the policy says."""
+	body = rfq_body(supplier, intro, closing, lines)
+	subject = _("Request for quotation") + (f" {rfq}" if rfq else "")
+	results = _check(agent, to, subject, body, account, len(lines), notes)
+	if why_review:
+		results["rfq_changed"] = {"ok": False, "why": why_review}
+		results["ok"] = False
+	return proposals.propose(task, agent, "send_rfq", subject=("Supplier", supplier), channel_account=account,
+		kind="Reply", to_email=to, risk="Medium" if results["ok"] else "High", checks=results,
+		checks_ok=results["ok"], preview_html=_html(body),
+		payload={"subject": "", "body": body, "supplier": supplier, "rfq_proposal": rfq_prop, "rfq": rfq,
+			"follow_up": 0, "intro": intro, "closing": closing, "lines_key": lines_key(lines)})
+
+
+def _rfq_doc_lines(rfq) -> list[dict]:
+	return [{"item_code": it.item_code, "item_name": it.item_name, "qty": flt(it.qty), "uom": it.uom,
+		"schedule_date": str(it.schedule_date)} for it in rfq.items]
+
+
+WAITING = ("Pending", "Held", "Approved", "Edited", "Shadow")
+
+
+def follow_rfq_edit(rfq_proposal, agent, rfq) -> dict:
+	"""The RFQ proposal was approved, perhaps after a person changed its suppliers or lines: the
+	supplier emails drafted with it must follow the RFQ that was really made.
+
+	- a supplier no longer on the RFQ: its email is cancelled;
+	- an email whose items, quantities, units or dates no longer match: it is written again from the
+	  same approved words and the RFQ's own lines, and goes back to a person for review (even if it
+	  had been approved: what was approved is not what would go);
+	- a supplier added with an email address: an email is drafted for them, for review.
+	The sender checks again before sending (send_rfq), in case the RFQ is changed later still."""
+	out = {"cancelled": [], "rewritten": [], "added": []}
+	on_rfq = {s.supplier: (s.email_id or "").strip().lower() for s in rfq.suppliers}
+	lines = _rfq_doc_lines(rfq)
+	key = lines_key(lines)
+	seen, words = set(), None
+	for row in frappe.get_all("Excom AI Proposal", {"agent": agent.name, "action": "send_rfq", "status": ["in", WAITING],
+			"payload": ["like", f'%"{rfq_proposal.name}"%']}, ["name", "status", "payload", "to_email", "channel_account"]):
+		p = frappe.parse_json(row.payload or "{}") or {}
+		if p.get("rfq_proposal") != rfq_proposal.name or cint(p.get("follow_up")):
+			continue
+		supplier = p.get("supplier")
+		seen.add(supplier)
+		if supplier not in on_rfq:
+			frappe.db.set_value("Excom AI Proposal", row.name, {"status": "Cancelled", "step_key": None,
+				"hold_reason": _("{0} was taken off the RFQ before it was made").format(supplier)}, update_modified=False)
+			out["cancelled"].append(row.name)
+			continue
+		words = words or (p.get("intro"), p.get("closing"))
+		if p.get("lines_key") == key:
+			frappe.db.set_value("Excom AI Proposal", row.name, "payload", frappe.as_json({**p, "rfq": rfq.name}),
+				update_modified=False)
+			continue
+		intro, closing = p.get("intro") or FALLBACK["rfq"][0], p.get("closing") or FALLBACK["rfq"][1]
+		body = rfq_body(supplier, intro, closing, lines)
+		results = _check(agent, row.to_email, _("Request for quotation") + f" {rfq.name}", body, row.channel_account,
+			len(lines), [])
+		results["rfq_changed"] = {"ok": False, "why": _("the RFQ was changed after this email was drafted: written again "
+			"from the RFQ's lines")}
+		results["ok"] = False
+		values = {"payload": frappe.as_json({**p, "rfq": rfq.name, "body": body, "lines_key": key}), "preview_html": _html(body),
+			"checks": frappe.as_json(results), "risk": "High"}
+		if row.status in ("Approved", "Edited", "Held"):
+			values.update({"status": "Pending", "decided_by": None, "decided_on": None, "send_at": None,
+				"hold_reason": _("the RFQ was changed after this email was approved: please read it again")})
+		frappe.db.set_value("Excom AI Proposal", row.name, values, update_modified=False)
+		out["rewritten"].append(row.name)
+	# only a person's edit adds suppliers (when the RFQ is made at once, its emails are drafted next)
+	added = [s for s, email in on_rfq.items() if s not in seen and email] if rfq_proposal.edit_diff else []
+	if added and not _off(agent, "send_rfq"):
+		intro, closing = (words[0], words[1]) if words and words[0] and words[1] else FALLBACK["rfq"]
+		account = rfq_proposal.channel_account or next(iter(rfq_accounts(agent)), None)
+		for s in added:
+			if _cannot_ask(s) or frappe.db.exists("Excom AI Proposal", {"agent": agent.name, "action": "send_rfq",
+					"subject_name": s, "payload": ["like", f'%"{rfq_proposal.name}"%']}):
+				continue
+			name = _propose_rfq_email(None, agent, s, on_rfq[s], account, rfq_proposal.name, rfq.name, lines, intro, closing, [],
+				why_review=_("{0} was added to the RFQ by a person: a new email").format(s))
+			if name:
+				out["added"].append(name)
+	if out["rewritten"] or out["added"]:
+		notify.alert(proposals.reviewers(agent), _("{0} (AI): the RFQ {1} was changed, its emails need your review").format(
+			agent.agent_name, rfq.name), doctype="Request for Quotation", name=rfq.name)
 	return out
 
 
@@ -587,6 +710,11 @@ def create_rfq(proposal, agent):
 	})
 	rfq.flags.ignore_permissions = True
 	rfq.insert(ignore_permissions=True)
+	try:
+		follow_rfq_edit(proposal, agent, rfq)
+	except Exception:
+		# never undo the RFQ for this: the sender checks each email against the RFQ again anyway
+		frappe.log_error(title="Excom AI: RFQ emails could not follow the edited RFQ", message=frappe.get_traceback())
 	return ("Request for Quotation", rfq.name)
 
 
@@ -612,15 +740,40 @@ def _send(proposal, agent, supplier: str, subject: str, body: str, in_reply_to: 
 	to = (proposal.to_email or "").strip().lower()
 	if not to:
 		raise registry.Cancel(_("no address for {0}").format(supplier))
+	why = opted_out(to)
+	if why:  # asked since the email was written: checked again now
+		raise registry.Cancel(why)
 	identity = supplier_identity(supplier, to)
-	thread = proposal.thread or upsert_thread(identity, "email", account)
+	thread, created = proposal.thread, False
+	if not thread:
+		created = not frappe.db.exists("Excom Thread", {"thread_key": f"email:{account}:{identity}"})
+		thread = upsert_thread(identity, "email", account)
 	html = compose(agent, body, None, identity, "Reply")
 	message = send_email_reply(thread, to=to, subject=subject, body_html=html, in_reply_to_gmail_id=in_reply_to or "")
 	frappe.db.set_value("Excom AI Proposal", proposal.name, {"message": message, "sent_on": now_datetime(), "thread": thread},
 		update_modified=False)
-	# the supplier's answer comes back to this agent (engine.inbound reads the thread's agent)
-	frappe.db.set_value("Excom Thread", thread, {"ai_agent": agent.name, "ai_mode": "Handle"}, update_modified=False)
+	take_thread(thread, agent, created)
 	return message, thread
+
+
+def opted_out(email: str) -> str | None:
+	"""Why this address may not be written to now (opted out or do-not-contact), else None."""
+	row = frappe.db.get_value("Omni Identity", {"primary_email": email, "status": ["!=", "Merged"]},
+		["do_not_contact", "email_opt_out"], as_dict=True)
+	if row and (row.do_not_contact or row.email_opt_out):
+		return _("{0} opted out").format(email)
+	return None
+
+
+def take_thread(thread: str, agent, created: bool) -> None:
+	"""The supplier's answer should come back to this agent (engine.inbound reads the thread's agent),
+	but only on a conversation the agent may take: one it just made, one it already has, or one nobody
+	holds. A conversation waiting for a person (Needs person, Hold), assigned to a person, or held by
+	another working agent is left as it is: the message went out, and whoever has the conversation
+	keeps it."""
+	from excom.excom_ai.engine import threads
+
+	threads.claim(thread, agent, created)  # the rule Accounts uses too (engine.threads)
 
 
 def _send_whatsapp(proposal, agent, supplier: str, p: dict) -> tuple[str, str]:
@@ -642,7 +795,10 @@ def _send_whatsapp(proposal, agent, supplier: str, p: dict) -> tuple[str, str]:
 	if not p.get("template"):
 		raise registry.Cancel(_("no template"))
 	identity = supplier_identity(supplier, phone=mobile)
-	thread = proposal.thread or upsert_thread(identity, "whatsapp", account)
+	thread, created = proposal.thread, False
+	if not thread:
+		created = not frappe.db.exists("Excom Thread", {"thread_key": f"whatsapp:{account}:{identity}"})
+		thread = upsert_thread(identity, "whatsapp", account)
 	try:
 		sent = templates.send_whatsapp(proposal, agent, thread, p["template"], p.get("variables") or [])
 	except send_rules.AgentSendRefused as e:
@@ -650,7 +806,7 @@ def _send_whatsapp(proposal, agent, supplier: str, p: dict) -> tuple[str, str]:
 	message = sent.get("message_name")
 	frappe.db.set_value("Excom AI Proposal", proposal.name, {"message": message, "sent_on": now_datetime(), "thread": thread},
 		update_modified=False)
-	frappe.db.set_value("Excom Thread", thread, {"ai_agent": agent.name, "ai_mode": "Handle"}, update_modified=False)
+	take_thread(thread, agent, created)
 	return message, thread
 
 
@@ -690,6 +846,13 @@ def send_rfq(proposal, agent):
 		message, _thread = _send_whatsapp(proposal, agent, supplier, p)
 		return ("Excom Message", message)
 	in_reply_to, subject = "", p.get("subject") or _("Request for quotation {0}").format(rfq)
+	if not cint(p.get("follow_up")):
+		# the email must still match the RFQ that was made (a person may have changed it since)
+		doc = frappe.get_doc("Request for Quotation", rfq)
+		if supplier not in {s.supplier for s in doc.suppliers}:
+			raise registry.Cancel(_("{0} is no longer on {1}").format(supplier, rfq))
+		if p.get("lines_key") is not None and p["lines_key"] != lines_key(_rfq_doc_lines(doc)):
+			raise registry.Cancel(_("{0} was changed after this email was written: its items no longer match").format(rfq))
 	if cint(p.get("follow_up")):
 		parent = frappe.db.get_value("Excom AI Proposal", p.get("parent"), ["thread", "sent_on", "message"], as_dict=True)
 		if not parent or not parent.sent_on:
@@ -708,6 +871,8 @@ def send_rfq(proposal, agent):
 def rfq_follow_up(task, agent) -> str:
 	"""One reminder to a supplier who has not answered an RFQ: by email on the RFQ's conversation, or
 	(subject: the RFQ, params.supplier) on WhatsApp to a supplier with no email."""
+	if _off(agent, "send_rfq"):
+		return _("RFQ emails are switched off for this agent")
 	if task.subject_doctype == "Request for Quotation":
 		return _rfq_whatsapp_reminder(task, agent)
 	first = frappe.get_doc("Excom AI Proposal", task.subject_name)
@@ -740,6 +905,24 @@ def rfq_follow_up(task, agent) -> str:
 	return _("reminder for {0} to {1}: {2}").format(rfq, supplier, made)
 
 
+def contacted(rfq: str, supplier: str) -> bool:
+	"""The RFQ really reached this supplier: the agent sent it (a Sent send_rfq), ERPNext emailed it
+	(email_sent on the RFQ's supplier row), or someone wrote to the supplier on one of their
+	conversations (email or WhatsApp) since the RFQ was made."""
+	for row in frappe.get_all("Excom AI Proposal", {"action": "send_rfq", "status": "Sent", "subject_name": supplier,
+			"payload": ["like", f'%"{rfq}"%']}, ["payload"]):
+		if rfq_of(frappe.parse_json(row.payload or "{}") or {}) == rfq:
+			return True
+	if frappe.get_meta("Request for Quotation Supplier").has_field("email_sent") and frappe.db.get_value(
+			"Request for Quotation Supplier", {"parent": rfq, "supplier": supplier}, "email_sent"):
+		return True
+	since = frappe.db.get_value("Request for Quotation", rfq, "creation")
+	return bool(since and frappe.db.sql("""SELECT 1 FROM `tabExcom Message` m JOIN `tabExcom Thread` t ON t.name = m.thread
+		JOIN `tabOmni Identity Link` l ON l.parent = t.omni_identity AND l.parenttype = 'Omni Identity'
+		WHERE l.linked_doctype = 'Supplier' AND l.linked_name = %s AND m.direction = 'Outbound' AND m.creation >= %s
+		LIMIT 1""", (supplier, since)))
+
+
 def _rfq_whatsapp_reminder(task, agent) -> str:
 	"""A supplier with no email was asked by a person and has not quoted: a WhatsApp reminder from an
 	approved template, else a ToDo to remind them by phone."""
@@ -749,8 +932,12 @@ def _rfq_whatsapp_reminder(task, agent) -> str:
 		return _("no RFQ or supplier")
 	if rfq.docstatus == 2:
 		return _("{0} was cancelled").format(rfq.name)
+	if rfq.docstatus != 1:
+		return _("{0} was never submitted: no reminder for an RFQ that did not go out").format(rfq.name)
 	if _quoted(rfq.name, supplier):
 		return _("answered; no reminder")
+	if not contacted(rfq.name, supplier):
+		return _("{0} was never sent {1}: no reminder").format(supplier, rfq.name)
 	if _cannot_ask(supplier):
 		return _("{0} cannot be asked: {1}").format(supplier, _cannot_ask(supplier))
 	if supplier_email(supplier):
@@ -869,14 +1056,56 @@ def _context(thread: str, agent, text: str) -> frappe._dict | None:
 				supplier=p.get("supplier") or (frappe.db.get_value("Purchase Order", ref, "supplier") if s.action == "po_chase"
 					else None)))
 	low = (text or "").lower()
-	return next((r for r in rows if r.ref.lower() in low), None) or (rows[0] if rows else None)
+	named = next((r for r in rows if r.ref.lower() in low), None)
+	if named or not rows:
+		return named
+	# The reply names nothing. With both an RFQ and a chased order still open on this conversation,
+	# the latest one is only a guess: a person reads it.
+	open_rfq = [r for r in rows if r.kind == "rfq" and (frappe.db.get_value("Request for Quotation", r.ref, "docstatus") or 0) < 2]
+	open_po = [r for r in rows if r.kind == "po" and not received(r.ref)]
+	if open_rfq and open_po:
+		return frappe._dict(kind="unsure", ref=None, refs=[open_rfq[0].ref, open_po[0].ref], proposal=None, supplier=None)
+	return rows[0]
+
+
+def _unit(u: str | None) -> str:
+	u = (u or "").strip().lower().rstrip(".")
+	return UNITS.get(u, u)
 
 
 def same_uom(theirs: str, ours: str, stock_uom: str | None = None) -> bool:
-	t = (theirs or "").strip().lower().rstrip(".")
+	t = _unit(theirs)
 	if not t:
 		return True
-	return any(UNITS.get(t, t) == UNITS.get((u or "").strip().lower(), (u or "").strip().lower()) for u in (ours, stock_uom) if u)
+	return any(t == _unit(u) for u in (ours, stock_uom) if u)
+
+
+def line_factor(row) -> float | None:
+	"""How many stock units one of the RFQ line's units holds: the line's own conversion factor, else
+	the item's (UOM Conversion Detail). None when the units differ and no factor is known."""
+	if not row.uom or row.uom == row.stock_uom:
+		return 1.0
+	factor = flt(row.get("conversion_factor"))
+	if factor and factor != 1:
+		return factor
+	factor = flt(frappe.db.get_value("UOM Conversion Detail", {"parent": row.item_code, "parenttype": "Item",
+		"uom": row.uom}, "conversion_factor"))
+	return factor or None
+
+
+def to_line_unit(theirs: str | None, row) -> tuple[float | None, str | None]:
+	"""(how many of the supplier's units make one of ours, why not) for a price per `theirs` on the RFQ
+	line: 1 when it is our unit; the line's conversion factor when they priced per stock unit (a box of
+	12 at 5 a piece is 60 a box); None, with the reason, when it cannot be told."""
+	t = _unit(theirs)
+	if not t or t == _unit(row.uom):
+		return 1.0, None
+	if row.stock_uom and t == _unit(row.stock_uom):
+		factor = line_factor(row)
+		if not factor:
+			return None, _("priced per {0}, we asked per {1}, and no conversion between them is set").format(theirs, row.uom)
+		return factor, None
+	return None, _("priced per {0}, we asked per {1}").format(theirs, row.uom)
 
 
 def map_quote(rfq, data: dict) -> frappe._dict:
@@ -891,19 +1120,24 @@ def map_quote(rfq, data: dict) -> frappe._dict:
 	for ln in data.get("lines") or []:
 		lid = ln.get("line_id") if ln.get("line_id") in rows else by_text.get((ln.get("supplier_text") or "").strip().lower())
 		row = rows.get(lid)
-		why = None
+		why, factor = None, None
 		if ln.get("unclear"):
 			why = ln.get("why") or _("the reader was not sure")
 		elif not row:
 			why = _("not one of the items asked for")
 		elif flt(ln.get("rate")) <= 0:
 			why = _("no price stated")
-		elif not same_uom(ln.get("uom"), row.uom, row.stock_uom):
-			why = _("priced per {0}, we asked per {1}").format(ln.get("uom"), row.uom)
+		else:
+			factor, why = to_line_unit(ln.get("uom"), row)
 		if why:
 			unclear.append({"supplier_text": ln.get("supplier_text") or "", "item_code": row.item_code if row else "",
 				"rate": flt(ln.get("rate")), "why": why})
 			continue
+		# the price and the break's quantity in the RFQ line's unit (stock units: per piece x pieces a box)
+		quoted = flt(ln.get("rate"))
+		ln = dict(ln, rate=flt(quoted * factor, 6), min_qty=flt(flt(ln.get("min_qty")) / factor, 6))
+		if factor != 1:
+			ln["quoted_as"] = _("{0} per {1}").format(f"{quoted:g}", ln.get("uom"))
 		offers.setdefault(lid, []).append(ln)
 	lines = []
 	for lid, offs in offers.items():
@@ -922,28 +1156,71 @@ def map_quote(rfq, data: dict) -> frappe._dict:
 				"rate": min(rates), "why": _("two prices for the same quantity: {0}").format(", ".join(map(str, sorted(rates))))})
 			continue
 		lead = next((cint(o.get("lead_time_days")) for o in offs if cint(o.get("lead_time_days"))), 0) or cint(data.get("lead_time_days"))
+		quoted_as = "; ".join(dict.fromkeys(o["quoted_as"] for o in offs if o.get("quoted_as")))
 		lines.append({"rfq_item": lid, "item_code": row.item_code, "item_name": row.item_name, "qty": flt(row.qty),
-			"uom": row.uom, "conversion_factor": flt(row.conversion_factor) or 1, "rate": rates.pop(), "lead_time_days": lead,
-			"breaks": [{"min_qty": b[0], "rate": b[1]} for b in breaks]})
+			"uom": row.uom, "conversion_factor": line_factor(row) or flt(row.conversion_factor) or 1, "rate": rates.pop(),
+			"lead_time_days": lead, "breaks": [{"min_qty": b[0], "rate": b[1]} for b in breaks],
+			**({"quoted_as": quoted_as} if quoted_as else {})})
 	answered = {ln["rfq_item"] for ln in lines} | {u["item_code"] for u in unclear}
 	not_quoted = [it.item_code for it in rfq.items if it.name not in answered and it.item_code not in answered]
 	return frappe._dict(lines=lines, unclear=unclear, not_quoted=not_quoted)
 
 
 def exchange_rate(currency: str, company_currency: str) -> float | None:
+	"""Company-currency units for one unit of `currency`: the latest Currency Exchange record either
+	way round (a record kept the other way is turned over), else ERPNext's own lookup (its settings,
+	and its rate service when one is set up). None when nothing knows."""
 	if not currency or currency == company_currency:
 		return 1.0
-	rate = frappe.db.get_value("Currency Exchange", {"from_currency": currency, "to_currency": company_currency},
-		"exchange_rate", order_by="date desc")
-	return flt(rate) or None
+	rate = flt(frappe.db.get_value("Currency Exchange", {"from_currency": currency, "to_currency": company_currency},
+		"exchange_rate", order_by="date desc"))
+	if rate:
+		return rate
+	inverse = flt(frappe.db.get_value("Currency Exchange", {"from_currency": company_currency, "to_currency": currency},
+		"exchange_rate", order_by="date desc"))
+	if inverse:
+		return flt(1 / inverse, 9)
+	try:
+		from erpnext.setup.utils import get_exchange_rate
+
+		rate = flt(get_exchange_rate(currency, company_currency, nowdate(), "for_buying"))
+	except Exception:
+		rate = 0
+	frappe.clear_last_message()  # ERPNext's "could not find a rate" note is not for the person
+	return rate or None
 
 
 def _valid_till(value: str) -> str | None:
+	"""A date the offer is valid till, or None; only still-valid dates go on a Supplier Quotation."""
+	day = _offer_date(value)
+	return str(day) if day and day >= getdate(nowdate()) else None
+
+
+def _offer_date(value: str | None):
 	try:
-		day = getdate(value) if value else None
+		return getdate(value) if value else None
 	except Exception:
 		return None
-	return str(day) if day and day >= getdate(nowdate()) else None
+
+
+TAX_INCLUDED = re.compile(r"\b(incl(\.|usive|uding|udes|uded)?|with)\s+(of\s+)?(all\s+)?(gst|igst|cgst|sgst|vat|tax(es)?)\b"
+	r"|\b(gst|igst|vat|tax(es)?)\s+(is\s+|are\s+)?incl(\.|usive|uded)?\b", re.I)
+FREIGHT_INCLUDED = re.compile(r"\b(incl(\.|usive|uding|udes|uded)?|with)\s+(of\s+)?(freight|transport(ation)?|delivery|"
+	r"shipping|cartage)\b|\b(freight|transport(ation)?|delivery|shipping|cartage)\s+(is\s+)?(incl(\.|usive|uded)?|free|paid)\b"
+	r"|\bfree\s+(delivery|shipping)\b|\bdoor\s+delivery\b", re.I)
+
+
+def inclusive(data: dict) -> list[str]:
+	"""What the quoted prices include besides the goods ('tax', 'freight'), from the reader's answer
+	and the supplier's own words on terms. Such prices are not net, so they are not compared as net."""
+	said = {str(x).strip().lower() for x in data.get("prices_include") or []}
+	words = " ".join(str(data.get(k) or "") for k in ("notes", "payment_terms"))
+	out = []
+	if "tax" in said or TAX_INCLUDED.search(words):
+		out.append("tax")
+	if "freight" in said or FREIGHT_INCLUDED.search(words):
+		out.append("freight")
+	return out
 
 
 @registry.responder("purchase")
@@ -981,6 +1258,10 @@ def respond(task, agent) -> str:
 	if not ctx:
 		to_person(thread.name, agent, _("a supplier wrote about something the agent did not ask"), text)
 		return _("not about an RFQ or an order: left to a person")
+	if ctx.kind == "unsure":
+		why = _("the supplier's reply names neither {0} nor {1}, and both are open on this conversation").format(*ctx.refs)
+		to_person(thread.name, agent, why, text)
+		return _("not sure which document the reply is about: left to a person")
 	if ctx.kind == "po":
 		return _po_reply(task, agent, thread, text, ctx)
 	return _quotation(task, agent, thread, text, reads, ctx)
@@ -1015,24 +1296,48 @@ def _quotation(task, agent, thread, text: str, reads: list, ctx) -> str:
 		to_person(thread.name, agent, why, text)
 		return why
 	company_currency = frappe.db.get_value("Company", rfq.company, "default_currency")
-	currency = (data.get("currency") or "").strip().upper() or frappe.db.get_value("Supplier", supplier, "default_currency") \
-		or company_currency
+	stated = (data.get("currency") or "").strip().upper()
+	currency = stated or frappe.db.get_value("Supplier", supplier, "default_currency") or company_currency
 	known = bool(frappe.db.exists("Currency", currency))
 	rate = exchange_rate(currency, company_currency) if known else None
 	results = {
 		"lines": {"ok": not quote.unclear, "why": _("{0} lines read").format(len(quote.lines)) if not quote.unclear else
 			_("{0} lines unclear, left for a person").format(len(quote.unclear))},
-		"currency": {"ok": known, "why": currency if known else _("unknown currency {0}").format(currency)},
+		"currency": {"ok": known and bool(stated), "why": (_("unknown currency {0}").format(currency) if not known else currency
+			if stated else _("the supplier did not say the currency; {0} assumed, please check").format(currency))},
 		"exchange": {"ok": bool(rate), "why": _("1 {0} = {1} {2}").format(currency, rate, company_currency) if rate else
 			_("no exchange rate from {0} to {1}").format(currency, company_currency)},
 	}
+	offer_date = _offer_date(data.get("valid_till"))
+	if offer_date and offer_date < getdate(nowdate()):
+		results["validity"] = {"ok": False, "why": _("the offer was valid till {0}, already past").format(offer_date)}
+	extra = inclusive(data)
+	if extra:
+		results["net"] = {"ok": False, "why": _("the prices include {0}: not comparable with net prices").format(
+			_(" and ").join(extra))}
 	results["ok"] = all(v["ok"] for v in results.values())
 	compared = [dict(ln, **{"compare": compare(ln["item_code"], flt(ln["rate"]) * (rate or 1) / (flt(ln["conversion_factor"]) or 1),
-		rfq.company)}) for ln in quote.lines]
-	payload = {"rfq": rfq.name, "supplier": supplier, "currency": currency, "conversion_rate": rate,
-		"valid_till": _valid_till(data.get("valid_till")), "payment_terms": (data.get("payment_terms") or "")[:500],
-		"notes": (data.get("notes") or "")[:1000], "lines": quote.lines, "unclear": quote.unclear, "not_quoted": quote.not_quoted,
+		rfq.company, includes=extra)}) for ln in quote.lines]
+	payload = {"rfq": rfq.name, "supplier": supplier, "currency": currency, "currency_stated": bool(stated),
+		"conversion_rate": rate, "valid_till": str(offer_date) if offer_date else None,
+		"payment_terms": (data.get("payment_terms") or "")[:500], "notes": (data.get("notes") or "")[:1000],
+		"prices_include": extra, "lines": quote.lines, "unclear": quote.unclear, "not_quoted": quote.not_quoted,
 		"message": reads[-1].message if reads else None}
+	earlier = _earlier_quote(task, agent, rfq.name, supplier)
+	if earlier and earlier.doctype == "Supplier Quotation":
+		# a draft is already made from this supplier's quotation: a person compares, nothing is made twice
+		text = _("{0} sent prices again for {1}: {2}. The draft {3} was made from an earlier email; please check it.").format(
+			supplier, rfq.name, "; ".join(f"{ln['item_code']} {flt(ln['rate'], 2)} {currency}" for ln in quote.lines), earlier.name)
+		name = proposals.propose(task, agent, "create_todo", subject=("Supplier Quotation", earlier.name), thread=thread.name,
+			risk="Low", payload={"text": text})
+		return _("a later quotation from {0} for {1}: {2} stands, a person checks ({3})").format(supplier, rfq.name,
+			earlier.name, name)
+	if earlier:  # an earlier reading still waits: this one replaces it, and a person reads it
+		frappe.db.set_value("Excom AI Proposal", earlier.name, {"status": "Cancelled", "step_key": None,
+			"hold_reason": _("replaced by a later email from the supplier")}, update_modified=False)
+		results["update"] = {"ok": False, "why": _("replaces an earlier reading ({0}) of this supplier's quotation").format(
+			earlier.name)}
+		results["ok"] = False
 	name = proposals.propose(task, agent, "create_supplier_quotation", subject=("Request for Quotation", rfq.name),
 		thread=thread.name, payload=payload, checks=results, checks_ok=results["ok"], risk="Medium" if results["ok"] else "High",
 		preview_html=quote_preview(payload, compared, company_currency))
@@ -1040,18 +1345,44 @@ def _quotation(task, agent, thread, text: str, reads: list, ctx) -> str:
 		len(quote.unclear), name)
 
 
+def _earlier_quote(task, agent, rfq: str, supplier: str) -> frappe._dict | None:
+	"""What already stands for this supplier's quotation on this RFQ: a Supplier Quotation (draft or
+	submitted), else a create_supplier_quotation proposal still waiting (one this same task made is
+	its own, found again by proposals.propose)."""
+	sq = frappe.db.sql("""SELECT sq.name FROM `tabSupplier Quotation Item` i JOIN `tabSupplier Quotation` sq
+		ON sq.name = i.parent WHERE i.request_for_quotation = %s AND sq.supplier = %s AND sq.docstatus < 2
+		ORDER BY sq.creation DESC LIMIT 1""", (rfq, supplier))
+	if sq:
+		return frappe._dict(doctype="Supplier Quotation", name=sq[0][0])
+	for row in frappe.get_all("Excom AI Proposal", {"agent": agent.name, "action": "create_supplier_quotation",
+			"subject_doctype": "Request for Quotation", "subject_name": rfq, "status": ["in", WAITING],
+			"task": ["!=", task.name]}, ["name", "payload"], order_by="creation desc"):
+		if (frappe.parse_json(row.payload or "{}") or {}).get("supplier") == supplier:
+			return frappe._dict(doctype="Excom AI Proposal", name=row.name)
+	return None
+
+
 def quote_preview(p: dict, compared: list[dict], company_currency: str) -> str:
 	esc = frappe.utils.escape_html
+	valid = ""
+	if p.get("valid_till"):
+		valid = ", " + _("valid till") + " " + p["valid_till"] + (" " + _("(already past)") if not _valid_till(p["valid_till"])
+			else "")
+	currency = esc(p["currency"]) + ("" if p.get("currency_stated", True) else " " + esc(_("(not stated by the supplier)")))
 	head = (f"<p><b>{_('Supplier Quotation (draft)')}</b>: {esc(p['supplier'])}, {_('for')} {esc(p['rfq'])}, "
-		f"{esc(p['currency'])}{', ' + _('valid till') + ' ' + p['valid_till'] if p.get('valid_till') else ''}</p>")
+		f"{currency}{esc(valid)}</p>")
+	if p.get("prices_include"):
+		head += "<p><b>" + esc(_("The prices include {0}: they are not net, so the comparison with history is only a "
+			"guide.").format(_(" and ").join(p["prices_include"]))) + "</b></p>"
 	if p.get("payment_terms") or p.get("notes"):
 		head += f"<p>{esc(' · '.join(filter(None, (p.get('payment_terms'), p.get('notes')))))}</p>"
 	rows = ""
 	for ln in compared:
 		c = ln["compare"]
 		breaks = ", ".join(f"{_qty(b['min_qty'])}+: {b['rate']}" for b in ln.get("breaks") or [] if b["min_qty"]) or ""
+		quoted = f" ({esc(_('quoted {0}').format(ln['quoted_as']))})" if ln.get("quoted_as") else ""
 		rows += (f"<tr><td>{esc(ln['item_name'])} ({esc(ln['item_code'])})</td><td>{_qty(ln['qty'])} {esc(ln['uom'])}</td>"
-			f"<td>{fmt_money(ln['rate'], currency=p['currency'])}</td><td>{esc(breaks)}</td>"
+			f"<td>{fmt_money(ln['rate'], currency=p['currency'])}{quoted}</td><td>{esc(breaks)}</td>"
 			f"<td>{cint(ln.get('lead_time_days')) or ''}</td><td><b>{esc(c['verdict'])}</b> {esc(c['note'])}</td></tr>")
 	out = head + (f"<table class='table table-bordered'><tr><th>{_('Item')}</th><th>{_('Qty')}</th><th>{_('Rate')}</th>"
 		f"<th>{_('Breaks')}</th><th>{_('Lead days')}</th><th>{_('Against history')}</th></tr>{rows}</table>")
@@ -1072,6 +1403,10 @@ def create_supplier_quotation(proposal, agent):
 	rfq = frappe.get_doc("Request for Quotation", p["rfq"])
 	if rfq.docstatus == 2:
 		frappe.throw(_("{0} was cancelled.").format(rfq.name))
+	made = frappe.db.sql("""SELECT sq.name FROM `tabSupplier Quotation Item` i JOIN `tabSupplier Quotation` sq ON sq.name = i.parent
+		WHERE i.request_for_quotation = %s AND sq.supplier = %s AND sq.docstatus < 2 LIMIT 1""", (rfq.name, p["supplier"]))
+	if made:
+		raise registry.Cancel(_("{0} already has {1} from {2}: not made twice").format(rfq.name, made[0][0], p["supplier"]))
 	rows = {it.name: it for it in rfq.items}
 	lines = [ln for ln in p.get("lines") or [] if ln.get("rfq_item") in rows and flt(ln.get("rate")) > 0]
 	if not lines:
@@ -1082,6 +1417,10 @@ def create_supplier_quotation(proposal, agent):
 	if not rate:
 		frappe.throw(_("No exchange rate from {0} to {1}: add a Currency Exchange first.").format(currency, company_currency))
 	terms = [x for x in (p.get("payment_terms"), p.get("notes")) if x]
+	if p.get("valid_till") and not _valid_till(p["valid_till"]):
+		terms.append(_("The supplier's offer was valid till {0}, already past when it was read.").format(p["valid_till"]))
+	if p.get("prices_include"):
+		terms.append(_("The quoted prices include {0}.").format(_(" and ").join(p["prices_include"])))
 	breaks = [ln["item_code"] + ": " + ", ".join(f"{_qty(b['min_qty'])}+ at {b['rate']}" for b in ln["breaks"])
 		for ln in lines if len(ln.get("breaks") or []) > 1]
 	if breaks:
@@ -1165,9 +1504,11 @@ def cost_rule(item_code: str) -> dict | None:
 		return None
 
 
-def compare(item_code: str, rate: float, company: str) -> dict:
+def compare(item_code: str, rate: float, company: str, includes: list[str] | None = None) -> dict:
 	"""A quoted rate (per stock unit, company currency) against history: better, worse, about the
-	same, or no history. The reference is the last PO, else the last invoice, else the price list."""
+	same, or no history. The reference is the last PO, else the last invoice, else the price list.
+	A rate that `includes` tax or freight is not net like the history: it is said so, never called
+	better or worse."""
 	h = history(item_code, company)
 	ref_key = next((k for k in ("last_po", "last_pi", "price_list") if h.get(k) and flt(h[k]["rate"])), None)
 	notes = []
@@ -1188,6 +1529,9 @@ def compare(item_code: str, rate: float, company: str) -> dict:
 			(rule.get("max_rate") and rate > flt(rule["max_rate"]))
 		notes.append(_("outside the cost rule ({0} ± {1}%)").format(flt(rule["rate"], 2), flt(rule["allowed_pct"], 1)) if outside
 			else _("within the cost rule"))
+	if includes and ref_key:
+		verdict = _("not comparable")
+		notes.insert(0, _("the price includes {0}, the history is net").format(_(" and ").join(includes)))
 	return {"verdict": verdict, "delta_pct": None if delta is None else round(delta, 1), "note": "; ".join(notes),
 		"history": h}
 
@@ -1213,35 +1557,76 @@ DONE_PO = ("Closed", "Completed", "Delivered", "Cancelled", "On Hold")
 
 
 def received(po: str) -> bool:
+	"""Nothing more to come on the order: not submitted, closed, or every line in. ERPNext counts
+	rejected goods as received; here they are still to come."""
 	row = frappe.db.get_value("Purchase Order", po, ["docstatus", "per_received", "status"], as_dict=True)
-	return not row or row.docstatus != 1 or flt(row.per_received) >= 100 or row.status in DONE_PO
+	if not row or row.docstatus != 1 or row.status in DONE_PO:
+		return True
+	if flt(row.per_received) < 100:
+		return False
+	return not pending_lines(frappe.get_doc("Purchase Order", po))
 
 
-def pending_lines(po) -> list[dict]:
-	return [{"item_code": it.item_code, "item_name": it.item_name, "uom": it.uom, "pending": flt(it.qty) - flt(it.received_qty),
-		"schedule_date": str(it.schedule_date or po.schedule_date)} for it in po.items if flt(it.qty) - flt(it.received_qty) > 0]
+def rejected_qty(po_items: list[str]) -> dict[str, float]:
+	"""Rejected quantity per Purchase Order line, from submitted receipts (and invoices that update stock)."""
+	if not po_items:
+		return {}
+	out = {}
+	for name, qty in frappe.db.sql("""SELECT purchase_order_item, SUM(rejected_qty) FROM `tabPurchase Receipt Item`
+			WHERE docstatus = 1 AND purchase_order_item IN %(names)s GROUP BY purchase_order_item
+			UNION ALL SELECT i.po_detail, SUM(i.rejected_qty) FROM `tabPurchase Invoice Item` i JOIN `tabPurchase Invoice` pi
+			ON pi.name = i.parent WHERE i.docstatus = 1 AND pi.update_stock = 1 AND i.po_detail IN %(names)s GROUP BY i.po_detail""",
+			{"names": tuple(po_items)}):
+		out[name] = out.get(name, 0) + flt(qty)
+	return out
+
+
+def pending_lines(po, due_by=None) -> list[dict]:
+	"""The order's lines with goods still to come (rejected goods do not count as received); with
+	`due_by`, only the lines due by that day."""
+	rejected = rejected_qty([it.name for it in po.items])
+	out = []
+	for it in po.items:
+		pending = flt(it.qty) - max(0, flt(it.received_qty) - rejected.get(it.name, 0))
+		day = getdate(it.schedule_date or po.schedule_date)
+		if pending <= 0 or (due_by and day > getdate(due_by)):
+			continue
+		out.append({"item_code": it.item_code, "item_name": it.item_name, "uom": it.uom, "pending": pending,
+			"schedule_date": str(day)})
+	return out
+
+
+def due_on(lines: list[dict]) -> str:
+	"""The date the chased lines were due: the earliest of them."""
+	return frappe.utils.formatdate(min(getdate(ln["schedule_date"]) for ln in lines))
 
 
 def chase_body(po, intro: str, closing: str, lines: list[dict]) -> str:
 	name = frappe.db.get_value("Supplier", po.supplier, "supplier_name") or po.supplier
 	items = "\n".join(f"{i}. {ln['item_name']} ({ln['item_code']}): {_qty(ln['pending'])} {ln['uom']} still to come"
 		for i, ln in enumerate(lines, 1))
-	return (f"Dear {name},\n\n{intro}\n\nPurchase order {po.name}, due on {frappe.utils.formatdate(po.schedule_date)}:\n"
+	return (f"Dear {name},\n\n{intro}\n\nPurchase order {po.name}, due on {due_on(lines)}:\n"
 		f"{items}\n\nCould you tell us when these will be dispatched?\n\n{closing}")
 
 
 @registry.task_kind("chase_po", priority=registry.PRIORITY["write"], effort="write")
 def chase_po(task, agent) -> str:
-	"""A polite question about a purchase order that is due, to the supplier (po_chase)."""
+	"""A polite question about a purchase order that is due, to the supplier (po_chase): only the
+	lines that are due (or nearly) and not yet in."""
+	if _off(agent, "po_chase"):
+		return _("chasers are switched off for this agent")
 	po = frappe.get_doc("Purchase Order", task.subject_name)
 	if received(po.name):
 		return _("{0} is received or closed: no chaser").format(po.name)
-	lines = pending_lines(po)
+	why = _cannot_chase(po.supplier)
+	if why:
+		return _("{0} is not chased: {1}").format(po.supplier, why)
+	lines = pending_lines(po, add_days(nowdate(), CHASE_AHEAD_DAYS))
 	if not lines:
-		return _("nothing outstanding on {0}").format(po.name)
+		return _("nothing due yet on {0}").format(po.name)
 	to = (po.get("contact_email") or "").strip().lower() or supplier_email(po.supplier, po.get("contact_person"))
 	values = {"supplier_name": frappe.db.get_value("Supplier", po.supplier, "supplier_name") or po.supplier, "po": po.name,
-		"due_date": frappe.utils.formatdate(po.schedule_date)}
+		"due_date": due_on(lines)}
 	if not to:
 		route = whatsapp_route(agent, "purchase.po_chase", po.supplier, po.get("contact_person"))
 		variables, why = whatsapp_values(route, values) if route else (None, None)
@@ -1258,7 +1643,7 @@ def chase_po(task, agent) -> str:
 	if words:
 		items = "\n".join(f"{i}. {ln['item_name']} ({ln['item_code']}): {_qty(ln['pending'])} {ln['uom']} still to come"
 			for i, ln in enumerate(lines, 1))
-		content = f"Purchase order {po.name}, due on {frappe.utils.formatdate(po.schedule_date)}:\n{items}"
+		content = f"Purchase order {po.name}, due on {due_on(lines)}:\n{items}"
 		body = "\n\n".join(filter(None, (words.opening, content, words.closing)))
 		subject = words.subject or subject
 		notes, source = [], _("an approved email template ({0})").format(words.need)
@@ -1282,6 +1667,8 @@ def po_chase(proposal, agent):
 	if received(po):
 		raise registry.Cancel(_("{0} is received or closed").format(po))
 	supplier = p.get("supplier") or frappe.db.get_value("Purchase Order", po, "supplier")
+	if _cannot_chase(supplier):
+		raise registry.Cancel(_("{0} is not chased: {1}").format(supplier, _cannot_chase(supplier)))
 	if p.get("channel") == "whatsapp":
 		message, _thread = _send_whatsapp(proposal, agent, supplier, p)
 		return ("Excom Message", message)
@@ -1526,13 +1913,15 @@ def _follow_ups(agent) -> list[dict]:
 
 def _whatsapp_follow_ups(agent, limit: int) -> list[dict]:
 	"""Suppliers on the agent's RFQs who had no email (a person asked them) and have not quoted:
-	one WhatsApp reminder each, when they and the agent have a WhatsApp number."""
+	one WhatsApp reminder each, when they and the agent have a WhatsApp number. Only for an RFQ a
+	person submitted, and only to a supplier it really reached (contacted): no reminder about a
+	request that never went out."""
 	if limit <= 0 or not whatsapp_numbers(agent):
 		return []
 	specs = []
 	rfqs = frappe.get_all("Excom AI Proposal", {"agent": agent.name, "action": "create_rfq", "status": "Done",
 		"executed_name": ["is", "set"]}, pluck="executed_name", limit=50, order_by="creation desc")
-	for rfq in frappe.get_all("Request for Quotation", filters=[["name", "in", rfqs or ["-"]], ["docstatus", "<", 2],
+	for rfq in frappe.get_all("Request for Quotation", filters=[["name", "in", rfqs or ["-"]], ["docstatus", "=", 1],
 			["creation", ">", add_days(now_datetime(), -FOLLOW_UP_UNTIL_DAYS)],
 			["creation", "<", add_days(now_datetime(), -FOLLOW_UP_DAYS)]], pluck="name"):
 		for s in frappe.get_all("Request for Quotation Supplier", {"parent": rfq, "parenttype": "Request for Quotation"},
@@ -1542,6 +1931,8 @@ def _whatsapp_follow_ups(agent, limit: int) -> list[dict]:
 				continue
 			if supplier_email(s.supplier) or _quoted(rfq, s.supplier) or _cannot_ask(s.supplier) or not supplier_mobile(s.supplier):
 				continue
+			if not contacted(rfq, s.supplier):
+				continue
 			specs.append({"kind": "rfq_follow_up", "subject": ("Request for Quotation", rfq), "dedupe_key": key,
 				"params": {"supplier": s.supplier}})
 			if len(specs) >= limit:
@@ -1549,15 +1940,33 @@ def _whatsapp_follow_ups(agent, limit: int) -> list[dict]:
 	return specs
 
 
+CHASE_WAITING = ("Pending", "Held", "Approved", "Edited", "Executing")
+
+
 def _chases(agent, company: str) -> list[dict]:
+	"""Orders with a line due (or nearly) and goods still to come, earliest due line first; at most
+	once a week each, and never while an earlier chaser still waits for a person or the sender."""
+	if _off(agent, "po_chase"):
+		return []
 	specs = []
 	today = getdate(nowdate())
-	for po in frappe.get_all("Purchase Order", filters=[["docstatus", "=", 1], ["company", "=", company],
-			["per_received", "<", 100], ["status", "not in", DONE_PO],
-			["schedule_date", "<=", add_days(today, CHASE_AHEAD_DAYS)], ["schedule_date", ">=", add_days(today, -CHASE_BACK_DAYS)]],
-			pluck="name", order_by="schedule_date asc", limit=50):
-		last = frappe.db.get_value("Excom AI Proposal", {"agent": agent.name, "subject_doctype": "Purchase Order", "subject_name": po,
-			"action": ["in", ("po_chase", "create_todo")]}, "creation", order_by="creation desc")
+	rows = frappe.db.sql("""SELECT poi.parent AS po, po.supplier, MIN(poi.schedule_date) AS due
+		FROM `tabPurchase Order Item` poi JOIN `tabPurchase Order` po ON po.name = poi.parent
+		WHERE po.docstatus = 1 AND po.company = %(company)s AND po.status NOT IN %(done)s
+			AND poi.schedule_date <= %(ahead)s AND poi.schedule_date >= %(back)s
+			AND (poi.received_qty < poi.qty OR EXISTS (SELECT 1 FROM `tabPurchase Receipt Item` pri
+				WHERE pri.purchase_order_item = poi.name AND pri.docstatus = 1 AND pri.rejected_qty > 0))
+		GROUP BY poi.parent, po.supplier ORDER BY due ASC LIMIT 50""", {"company": company, "done": DONE_PO,
+		"ahead": add_days(today, CHASE_AHEAD_DAYS), "back": add_days(today, -CHASE_BACK_DAYS)}, as_dict=True)
+	for r in rows:
+		po = r.po
+		if _cannot_chase(r.supplier):
+			continue
+		mine = {"agent": agent.name, "subject_doctype": "Purchase Order", "subject_name": po,
+			"action": ["in", ("po_chase", "create_todo")]}
+		if frappe.db.exists("Excom AI Proposal", {**mine, "status": ["in", CHASE_WAITING]}):
+			continue  # the last one still waits: no second one on top
+		last = frappe.db.get_value("Excom AI Proposal", mine, "creation", order_by="creation desc")
 		if last and get_datetime(last) > add_days(now_datetime(), -CHASE_EVERY_DAYS):
 			continue
 		specs.append({"kind": "chase_po", "subject": ("Purchase Order", po)})
@@ -1585,8 +1994,12 @@ def plan(agent) -> list[dict]:
 	company = company_of(agent)
 	stop_received_chases(agent)
 	specs = _rfq_requests(agent, company) + _follow_ups(agent) + _chases(agent, company) + _comparisons(agent, company)
-	if any(tools.available(s) for s in DISCOVERY_SOURCES):
-		specs.append({"kind": "discover_suppliers", "dedupe_key": f"discover_suppliers:{agent.name}:{nowdate()[:7]}"})
+	key = f"discover_suppliers:{agent.name}:{nowdate()[:7]}"
+	# once a month: tasks.add dedupes only open tasks, so a finished (or failed) search this month
+	# counts too, or every tick would pay for a new one
+	if any(tools.available(s) for s in DISCOVERY_SOURCES) and not frappe.db.exists("Excom AI Task",
+			{"agent": agent.name, "dedupe_key": key}):
+		specs.append({"kind": "discover_suppliers", "dedupe_key": key})
 	if agent.status == "Live" and frappe.db.exists("Excom AI Proposal", {"agent": agent.name,
 			"status": ["in", ("Approved", "Edited")], "action": ["in", proposals.SENDS]}):
 		specs.append({"kind": "send_due", "dedupe_key": f"send_due:{agent.name}"})

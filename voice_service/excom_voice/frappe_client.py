@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -17,7 +18,21 @@ END = "excom.excom_ai.voice.end"
 
 
 class FrappeError(Exception):
-    """Any failure talking to Frappe: transport, timeout, non-2xx, bad body."""
+    """Any failure talking to Frappe: transport, timeout, non-2xx, bad body. ``status`` is the HTTP
+    status when there was a response."""
+
+    def __init__(self, message: str, status: int = 0) -> None:
+        super().__init__(message)
+        self.status = status
+
+    @property
+    def refused(self) -> bool:
+        """Frappe answered that this token or key is not valid (403/404): nothing to apologise for."""
+        return self.status in (403, 404)
+
+    @property
+    def retryable(self) -> bool:
+        return not self.status or self.status in (408, 425, 429) or self.status >= 500
 
 
 @dataclass
@@ -27,6 +42,8 @@ class StartInfo:
     call: str = ""
     agent_name: str = ""
     language: str = "en"
+    # The language the agent speaks (Frappe sends "en" when there is no voice for ``language``).
+    reply_language: str = ""
     voice: str = ""
     greeting: str = ""
     max_seconds: int = 0
@@ -46,8 +63,9 @@ class FrappeClient:
         voice_key: str,
         *,
         timeout: float = 10.0,
-        end_retries: int = 3,
+        end_retry_seconds: float = 120.0,
         end_retry_backoff: float = 1.0,
+        end_retry_max_backoff: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._client = httpx.AsyncClient(
@@ -56,11 +74,23 @@ class FrappeClient:
             timeout=timeout,
             transport=transport,
         )
-        self._end_retries = end_retries
+        self._end_retry_seconds = end_retry_seconds
         self._end_backoff = end_retry_backoff
+        self._end_max_backoff = end_retry_max_backoff
+        self._reports: set[asyncio.Task[bool]] = set()
 
     async def aclose(self) -> None:
+        for task in self._reports:
+            task.cancel()
         await self._client.aclose()
+
+    async def ping(self) -> bool:
+        """Frappe answers (its own /api/method/ping; no key, nothing written)."""
+        try:
+            resp = await self._client.get("/api/method/ping")
+        except httpx.HTTPError:
+            return False
+        return resp.status_code == 200
 
     async def _post(self, method: str, body: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -68,7 +98,7 @@ class FrappeClient:
         except httpx.HTTPError as exc:
             raise FrappeError(f"{method}: {type(exc).__name__}") from exc
         if resp.status_code // 100 != 2:
-            raise FrappeError(f"{method}: HTTP {resp.status_code}")
+            raise FrappeError(f"{method}: HTTP {resp.status_code}", resp.status_code)
         try:
             data = resp.json()
         except ValueError as exc:
@@ -88,6 +118,7 @@ class FrappeClient:
                 call=str(m.get("call") or ""),
                 agent_name=str(m.get("agent_name") or ""),
                 language=str(m.get("language") or "en"),
+                reply_language=str(m.get("reply_language") or ""),
                 voice=str(m.get("voice") or ""),
                 greeting=str(m.get("greeting") or ""),
                 max_seconds=int(m.get("max_seconds") or 0),
@@ -107,20 +138,49 @@ class FrappeClient:
         duration_seconds: int,
         reason: str,
     ) -> bool:
-        """Report the call end. Best effort with retries; never raises."""
+        """Report the call end. Retried with exponential backoff for ``end_retry_seconds`` (a
+        Frappe restart or a deploy must not lose the transcript and the callback); never raises."""
         body = {
             "token": token,
             "transcript": transcript,
             "duration_seconds": duration_seconds,
             "reason": reason,
         }
-        for attempt in range(1, self._end_retries + 1):
+        deadline = time.monotonic() + self._end_retry_seconds
+        attempt = 0
+        while True:
+            attempt += 1
             try:
                 await self._post(END, body)
                 return True
             except FrappeError as exc:
-                log.warning("voice.end attempt %d/%d failed: %s", attempt, self._end_retries, exc)
-                if attempt < self._end_retries:
-                    await asyncio.sleep(self._end_backoff * 2 ** (attempt - 1))
-        log.error("voice.end gave up after %d attempts", self._end_retries)
-        return False
+                delay = min(self._end_backoff * 2 ** (attempt - 1), self._end_max_backoff)
+                if not exc.retryable or time.monotonic() + delay > deadline:
+                    log.error("voice.end gave up after %d attempts: %s", attempt, exc)
+                    return False
+                log.warning("voice.end attempt %d failed: %s; retrying in %.1fs", attempt, exc, delay)
+                await asyncio.sleep(delay)
+
+    def report_end(
+        self,
+        token: str,
+        transcript: list[dict[str, Any]],
+        duration_seconds: int,
+        reason: str,
+    ) -> asyncio.Task[bool]:
+        """end() in the background: the call's socket is already closed, and its retries must not
+        hold the call's handler. drain() waits for these at shutdown."""
+        task = asyncio.create_task(self.end(token, transcript, duration_seconds, reason))
+        self._reports.add(task)
+        task.add_done_callback(self._reports.discard)
+        return task
+
+    @property
+    def pending_reports(self) -> int:
+        return len(self._reports)
+
+    async def drain(self, limit: float) -> None:
+        """Wait (at most ``limit`` seconds) for end reports still being retried."""
+        if self._reports:
+            log.info("waiting up to %.0fs for %d end report(s)", limit, len(self._reports))
+            await asyncio.wait(set(self._reports), timeout=limit)

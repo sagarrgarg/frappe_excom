@@ -58,25 +58,64 @@ def cold_headers(identity: str, account) -> dict:
 
 
 PROVIDER_SITES = {"Apollo": "Apollo.io", "Prospeo": "Prospeo.io"}
+# The footer in the buyer's language, not the server's: (where we found the address, unsubscribe)
+FOOTER_WORDS = {
+	"en": ("We found your work address through {0}, a business contact database.", "Unsubscribe"),
+	"es": ("Obtuvimos su dirección de trabajo a través de {0}, una base de datos de contactos comerciales.",
+		"Darse de baja"),
+	"pt": ("Obtivemos o seu endereço profissional através de {0}, uma base de dados de contactos comerciais.",
+		"Cancelar inscrição"),
+	"fr": ("Nous avons trouvé votre adresse professionnelle via {0}, une base de données de contacts professionnels.",
+		"Se désabonner"),
+	"de": ("Wir haben Ihre geschäftliche Adresse über {0} gefunden, eine Datenbank für Geschäftskontakte.",
+		"Abmelden"),
+	"it": ("Abbiamo trovato il suo indirizzo di lavoro tramite {0}, un database di contatti aziendali.",
+		"Annulla iscrizione"),
+	"nl": ("We hebben uw zakelijke adres gevonden via {0}, een database met zakelijke contacten.", "Afmelden"),
+}
+
+
+def _address(identity: str | None) -> str | None:
+	address = identity and frappe.db.get_value("Omni Identity", identity, "primary_email")
+	return (address or "").strip().lower() or None
 
 
 def data_source(identity: str | None) -> str | None:
 	"""Where we got this person's address, when it came from a data provider (HLD-009): the law in
-	the EU (GDPR Art. 14) and elsewhere says to tell them by the first email."""
-	address = identity and frappe.db.get_value("Omni Identity", identity, "primary_email")
-	source = address and frappe.db.get_value("Excom AI Person", {"email": address.lower()}, "email_source")
+	the EU (GDPR Art. 14) and elsewhere says to tell them by the first email. Research people and
+	contacts added with the Find people button both count."""
+	address = _address(identity)
+	if not address:
+		return None
+	source = frappe.db.get_value("Excom AI Person", {"email": address}, "email_source")
+	if not source and frappe.get_meta("Contact").has_field("ai_found_via"):
+		via = frappe.db.sql("""SELECT c.ai_found_via FROM `tabContact` c JOIN `tabContact Email` ce ON ce.parent = c.name
+			WHERE ce.email_id = %s AND IFNULL(c.ai_found_via, '') != '' LIMIT 1""", address)
+		source = via[0][0].split(",")[0].strip() if via else None
 	return PROVIDER_SITES.get(source or "")
 
 
-def footer(identity: str, postal_address: str = "", source: str | None = None) -> str:
-	"""The footer of a cold email: the company's postal address, where the address came from when a
-	data provider gave it, and the personal opt-out link."""
+def recipient_language(identity: str | None) -> str | None:
+	"""The language we write to this person in: their research record's, else their lead's."""
+	address = _address(identity)
+	if not address:
+		return None
+	lang = frappe.db.get_value("Excom AI Person", {"email": address}, "language")
+	if not lang and frappe.get_meta("Lead").has_field("ai_language"):
+		lang = frappe.db.get_value("Lead", {"email_id": address}, "ai_language")
+	return lang
+
+
+def footer(identity: str, postal_address: str = "", source: str | None = None, language: str | None = None) -> str:
+	"""The footer of a cold email, in the buyer's language: the company's postal address, where the
+	address came from when a data provider gave it, and the personal opt-out link."""
 	link = unsubscribe_url(identity)
+	lang = (language or recipient_language(identity) or "en").split("-")[0].lower()
+	notice, unsubscribe_word = FOOTER_WORDS.get(lang, FOOTER_WORDS["en"])
 	address = frappe.utils.escape_html(postal_address or "")
-	found = (frappe.utils.escape_html(_("We found your work address through {0}, a business contact database.").format(
-		source)) + "<br>") if source else ""
+	found = (frappe.utils.escape_html(notice.format(source)) + "<br>") if source else ""
 	return (f'<p style="color:#888;font-size:12px;margin-top:24px">{address}{"<br>" if address else ""}{found}'
-		f'<a href="{link}" style="color:#888">{_("Unsubscribe")}</a></p>')
+		f'<a href="{link}" style="color:#888">{frappe.utils.escape_html(unsubscribe_word)}</a></p>')
 
 
 @frappe.whitelist(allow_guest=True, methods=["GET", "POST"])

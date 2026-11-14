@@ -136,7 +136,7 @@ def research_people(name: str, status: str = "Ready", limit: int = 200, linkedin
 		if not open_companies:
 			return []
 		filters.update({"company": ["in", open_companies], "email": ["is", "not set"], "linkedin_url": ["is", "set"],
-			"status": ["not in", ("Excluded", "Invalid")]})
+			"status": ["not in", ("Excluded", "Invalid")], "consent_verdict": ["!=", "Blocked"]})
 	elif status:
 		filters["status"] = status
 	rows = frappe.get_all("Excom AI Person", filters, ["name", "email", "full_name", "title", "email_status", "status", "company",
@@ -192,8 +192,11 @@ def apply_promotion(name: str, action: str):
 
 @frappe.whitelist(methods=["POST"])
 def request_draft(name: str, instruction: str, subject_doctype: str | None = None, subject_name: str | None = None):
-	"""Custom agents: ask for a document or message draft (it arrives as a note for review)."""
+	"""Custom agents with the draft ability, while they work (Shadow or Live): ask for a document or
+	message draft. It arrives as a note for review, and the record it is about is read as the person
+	asking (custom.custom_draft), never as the owner."""
 	from excom.excom_ai.builder.api import _team_manager
+	from excom.excom_ai.builder.service import pack_of
 	from excom.excom_ai.packs import custom
 
 	agent = frappe.get_doc("Excom AI Agent", name)
@@ -201,40 +204,43 @@ def request_draft(name: str, instruction: str, subject_doctype: str | None = Non
 	# whoever may change the agent (as its page shows the form): the draft only lands for review
 	if not (proposals.may_decide(agent, frappe.session.user) or (agent.team and _team_manager(agent.team))):
 		frappe.throw(_("Only this agent's owner, backup, team manager or an Excom Admin can ask it."), frappe.PermissionError)
-	if "draft" not in custom.abilities(agent):
+	if pack_of(agent.agent_type) != "custom" or "draft" not in custom.abilities(agent):
 		frappe.throw(_("This agent does not draft."))
+	if agent.status not in ("Shadow", "Live"):
+		frappe.throw(_("{0} is {1}: it drafts in Shadow or Live.").format(agent.agent_name, agent.status))
 	if subject_name:
+		if not (subject_doctype and frappe.db.exists("DocType", subject_doctype) and frappe.db.exists(subject_doctype, subject_name)):
+			frappe.throw(_("Name the record the draft is about."))
 		# the person asking must be able to read that record, not just that kind of record
 		frappe.has_permission(subject_doctype, "read", subject_name, throw=True)
-	task = custom.request_draft(agent.name, instruction, subject_doctype, subject_name)
+	task = custom.request_draft(agent.name, instruction, subject_doctype, subject_name, requested_by=frappe.session.user)
 	frappe.db.commit()
 	return {"task": task}
 
 
 @frappe.whitelist(methods=["POST"])
-def cost_check(candidates):
+def cost_check(candidates=None, job: str | None = None):
 	"""Excom Admin: score cheaper model/effort pairs on the evaluation set (each costs one call per
-	case). Nothing is switched; the recommendation is applied through the usual settings change."""
+	case). It runs as a background job: with candidates, it is queued and {job, status} comes back at
+	once; with job, its status, and when done its results (cheapest first, the passing ones marked).
+	Nothing is switched; the recommendation is applied through the usual settings change."""
 	from excom.excom_ai import learning
 
 	frappe.only_for(list(MANAGERS))  # it spends money on model calls
-	return learning.cost_check(frappe.parse_json(candidates) if isinstance(candidates, str) else candidates)
+	if job:
+		return learning.cost_check_status(job)
+	return learning.start_cost_check(frappe.parse_json(candidates) if isinstance(candidates, str) else candidates)
 
 
 def _may_change_need(doc) -> None:
 	"""A need one agent uses: its owner, backup or an Excom Admin. A need several agents share (one
 	WhatsApp business account, several owners): an Excom Admin only, since all of them depend on it."""
-	from excom.excom_ai.permissions import template_need_agents
+	from excom.excom_ai.permissions import need_change_refusal
 
 	frappe.has_permission("Excom AI Template Need", "read", doc, throw=True)
-	agents = [frappe.get_doc("Excom AI Agent", a) for a in template_need_agents(doc) if frappe.db.exists("Excom AI Agent", a)]
-	owners = {a.owner_user for a in agents}
-	if set(frappe.get_roles()) & MANAGERS:
-		return
-	if len(owners) > 1:
-		frappe.throw(_("Several agents' owners use this template: an Excom Admin decides."), frappe.PermissionError)
-	if not agents or not proposals.may_decide(agents[0], frappe.session.user):
-		frappe.throw(_("Only the agent's owner, backup or an Excom Admin can do that."), frappe.PermissionError)
+	why = need_change_refusal(doc, frappe.session.user)
+	if why:
+		frappe.throw(why, frappe.PermissionError)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -253,12 +259,20 @@ def withdraw_template(need: str):
 
 @frappe.whitelist(methods=["POST"])
 def reopen_template_need(need: str):
-	"""A failed need tried again (after a person fixed what stopped it)."""
+	"""A failed need tried again (after a person fixed what stopped it). Meta limits how often one
+	template is edited, so a template already tried REOPEN_LIMIT times is withdrawn instead (the next
+	try is then a new template)."""
+	from excom.excom_ai.templates import REOPEN_LIMIT
+
 	doc = frappe.get_doc("Excom AI Template Need", need)
 	_may_change_need(doc)
 	if doc.status not in ("Failed", "Withdrawn"):
 		frappe.throw(_("Only a failed or withdrawn need is opened again."))
-	frappe.db.set_value("Excom AI Template Need", need, {"status": "Open", "attempts": 0, "notified": 0})
+	if doc.template and frappe.utils.cint(doc.total_attempts) >= REOPEN_LIMIT:
+		frappe.throw(_("This template was tried {0} times and Meta limits its edits: withdraw it, then try again for a "
+			"new one.").format(doc.total_attempts))
+	frappe.db.set_value("Excom AI Template Need", need, {"status": "Open", "attempts": 0, "notified": 0, "ready": 0,
+		"retry_after": None})
 	frappe.db.commit()
 	return {"status": "Open"}
 
@@ -267,25 +281,31 @@ def reopen_template_need(need: str):
 def template_needs(agent: str | None = None, status: str | None = None) -> list:
 	"""The Template Steward's needs a person may see (their agents' and their team's), newest first,
 	with the template's words, Meta's status and category."""
+	from excom.excom_ai.permissions import NEED_AGENT_FIELDS, need_change_refusal, template_need_agents
+
 	frappe.has_permission("Excom AI Template Need", "read", throw=True)
 	filters = {"status": status} if status else {}
-	# a need shared by several agents names the first one in `agent` and all of them in `agents`
-	or_filters = {"agent": agent, "agents": ["like", f"%{agent}%"]} if agent else None
+	or_filters = None
+	if agent:
+		# a need shared by several agents names the first one in `agent` and all of them in `agents`
+		# ("A, B, C"): this agent exactly, never one whose name merely contains it
+		like = agent.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+		or_filters = [["agent", "=", agent], ["agents", "=", agent], ["agents", "like", f"{like}, %"],
+			["agents", "like", f"%, {like}"], ["agents", "like", f"%, {like}, %"]]
 	rows = frappe.get_list("Excom AI Template Need", filters=filters, or_filters=or_filters, fields=["name", "need_key", "channel", "category",
 		"language", "status", "agent", "agents", "channel_account", "source", "template", "subject", "body",
 		"back_translation", "last_error", "attempts", "submitted_on", "met_on", "proposal", "modified"],
 		order_by="modified desc", limit_page_length=200)
+	# read once for every row: the templates, and the agents who decide (get_list already checked reading)
+	names = [r.template for r in rows if r.template]
+	meta = {t.name: t for t in frappe.get_all("WhatsApp Templates", {"name": ["in", names]}, ["name", "status", "category",
+		"quality_score", "rejection_reason"])} if names else {}
+	agent_names = list({a for r in rows for a in template_need_agents(r)})
+	agents = {a.name: a for a in frappe.get_all("Excom AI Agent", {"name": ["in", agent_names]}, NEED_AGENT_FIELDS)} \
+		if agent_names else {}
 	for r in rows:
-		r.meta_status = r.meta_category = None
-		if r.template:
-			t = frappe.db.get_value("WhatsApp Templates", r.template, ["status", "category", "quality_score",
-				"rejection_reason"], as_dict=True) or {}
-			r.meta_status, r.meta_category = t.get("status"), t.get("category")
-			r.quality, r.rejection_reason = t.get("quality_score"), t.get("rejection_reason")
-		try:
-			_may_change_need(frappe.get_doc("Excom AI Template Need", r.name))
-			r.can_change = True
-		except frappe.PermissionError:
-			frappe.clear_last_message()
-			r.can_change = False
+		t = meta.get(r.template) or {}
+		r.meta_status, r.meta_category = t.get("status"), t.get("category")
+		r.quality, r.rejection_reason = t.get("quality_score"), t.get("rejection_reason")
+		r.can_change = not need_change_refusal(r, frappe.session.user, agents)
 	return rows

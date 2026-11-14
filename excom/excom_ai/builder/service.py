@@ -47,7 +47,8 @@ def create(agent_type: str, keywords: str, rows: list | None = None, excluded: d
 	rows = rows or resolve.resolve(keywords, pack)
 	ctx = knowledge.context(rows, pack, company, team, excluded)
 	sections = knowledge.build(ctx)
-	d = brief.draft(ctx, sections, persona) if pack == "sales" else brief.generic_draft(ctx, sections, pack, persona, description)
+	d = brief.draft(ctx, sections, persona) if pack == "sales" else brief.generic_draft(ctx, sections, pack, persona, description,
+		abilities=_abilities(abilities) if pack == "custom" else "")
 	if use_ai:
 		d = brief.ai_polish(d, knowledge.summary(sections), keywords)
 	f = d["fields"]

@@ -74,7 +74,10 @@ class FakeSTT:
 
 
 class FakeTTS:
-    def __init__(self, chunks: int = 1, delay: float = 0.0, pad: int = 160) -> None:
+    def __init__(
+        self, chunks: int = 1, delay: float = 0.0, pad: int = 160, languages: frozenset[str] | None = None
+    ) -> None:
+        self.languages = languages
         self.chunks = chunks
         self.delay = delay
         self.pad = pad

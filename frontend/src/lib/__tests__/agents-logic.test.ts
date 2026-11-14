@@ -174,6 +174,7 @@ describe("creditsFor", () => {
     expect(creditsFor(cands, ["a", "b", "c"])).toBe(2);
     expect(creditsFor(cands, ["a"])).toBe(0);
     expect(creditsFor(cands, [])).toBe(0);
+    expect(creditsFor([{ pick: "d", known_email: null, looked_up: true }], ["d"])).toBe(0);
   });
 });
 

@@ -388,8 +388,11 @@ def people_titles() -> list[str]:
 
 
 def skipped_title(title: str | None) -> bool:
-	t = f" {(title or '').lower()} "
-	return any(f" {w.lower()}" in t for w in _words("people_exclude_titles"))
+	"""A title to skip, by whole words: "intern" skips "Marketing Intern", never "International Buyer"."""
+	import re
+
+	t = (title or "").lower()
+	return any(re.search(rf"(?<!\w){re.escape(w.lower())}(?!\w)", t) for w in _words("people_exclude_titles"))
 
 
 def people_search(domain: str, titles: list[str], limit: int = 10) -> tuple[list[dict], str | None]:
@@ -422,8 +425,11 @@ def known_person(company: str | None, c: dict) -> str | None:
 			name = frappe.db.get_value("Excom AI Person", {field: value})
 			if name:
 				return name
-	if company and c.get("first_name") and c.get("title"):
-		return frappe.db.get_value("Excom AI Person", {"company": company, "first_name": c["first_name"], "title": c["title"]})
+	if company and c.get("first_name") and c.get("title") and c.get("provider") == "Apollo":
+		# Apollo's search hides the last name: the same first name and title here, found some other way
+		# (a person already found through Apollo has an id, and a different id is a different person)
+		return frappe.db.get_value("Excom AI Person", {"company": company, "first_name": c["first_name"], "title": c["title"],
+			"apollo_id": ["is", "not set"]})
 	return None
 
 
@@ -431,8 +437,16 @@ def pick(candidates: list[dict], titles: list[str], n: int, company: str | None 
 	from excom.excom_ai.tools import people as people_tools
 
 	keep = [c for c in candidates if not skipped_title(c.get("title")) and c.get("has_email") is not False
-		and not known_person(company, c)]
+		and not forgotten(c) and not known_person(company, c)]
 	return people_tools.rank(keep, titles)[: max(0, n)]
+
+
+def forgotten(p: dict) -> bool:
+	"""Someone who asked to be forgotten (Excom AI People Suppression): never found or added again."""
+	from excom.excom_ai.doctype.excom_ai_people_suppression.excom_ai_people_suppression import suppressed
+
+	ids = list((p.get("ids") or {}).values())
+	return suppressed(p.get("email"), p.get("linkedin_url"), p.get("external_id"), *ids)
 
 
 def enrich_one(c: dict, domain: str, any_address: bool = False) -> dict | None:
@@ -489,7 +503,7 @@ def _merge(best: dict | None, found: dict) -> dict:
 def save_person(company, p: dict) -> tuple[str | None, bool]:
 	"""Update the person we already have (found by id, LinkedIn or address) or add them. Returns
 	(name, created). A person without an address is kept for LinkedIn and never written to."""
-	if not p.get("email") and not p.get("linkedin_url"):
+	if (not p.get("email") and not p.get("linkedin_url")) or forgotten(p):
 		return None, False
 	ids = p.get("ids") or {}
 	values = {"apollo_id": ids.get("Apollo"), "prospeo_id": ids.get("Prospeo"), "linkedin_url": p.get("linkedin_url"),
@@ -678,5 +692,9 @@ def summary(agent_name: str) -> dict:
 	by_status = dict(frappe.db.sql("SELECT status, COUNT(*) FROM `tabExcom AI Company` WHERE agent = %s GROUP BY status",
 		agent_name))
 	people = dict(frappe.db.sql("""SELECT p.email_status, COUNT(*) FROM `tabExcom AI Person` p JOIN `tabExcom AI Company` c
-		ON c.name = p.company WHERE c.agent = %s GROUP BY p.email_status""", agent_name))
-	return {"companies": by_status, "people": people, "total": cint(sum(by_status.values()))}
+		ON c.name = p.company WHERE c.agent = %s AND IFNULL(p.email, '') != '' GROUP BY p.email_status""", agent_name))
+	linkedin_only = frappe.db.sql("""SELECT COUNT(*) FROM `tabExcom AI Person` p JOIN `tabExcom AI Company` c
+		ON c.name = p.company WHERE c.agent = %s AND IFNULL(p.email, '') = '' AND IFNULL(p.linkedin_url, '') != ''""",
+		agent_name)[0][0]
+	return {"companies": by_status, "people": people, "linkedin_only": cint(linkedin_only),
+		"total": cint(sum(by_status.values()))}

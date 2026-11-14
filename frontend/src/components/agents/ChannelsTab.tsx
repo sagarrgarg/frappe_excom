@@ -26,6 +26,7 @@ function pickChannel(r: ChannelRow): ChannelRow {
 export function ChannelsTab({ d, reload }: { d: AgentDetail; reload: () => void }) {
   const a = d.agent;
   const edit = d.can_change && a.status !== "Retired";
+  const editPeople = Boolean(d.can_change_people ?? d.can_change) && a.status !== "Retired";
 
   /* people */
   const serverPeople: People = useMemo(() => ({ owner_user: a.owner_user || "", backup_user: a.backup_user || "", team: a.team || "", escalation_user: a.escalation_user || "", reviewers: a.reviewers || "" }), [a]);
@@ -52,26 +53,26 @@ export function ChannelsTab({ d, reload }: { d: AgentDetail; reload: () => void 
 
   const pp = (k: keyof People, label: string, doctype: string, hint?: string) => (
     <Field label={label} hint={hint}>
-      {edit ? <LinkField doctype={doctype} value={people[k]} onChange={(v) => setPeople((p) => ({ ...p, [k]: v }))} placeholder={doctype === "User" ? "Choose a person" : "Choose a team"} filters={doctype === "User" ? USER_FILTERS : undefined} />
+      {editPeople ? <LinkField doctype={doctype} value={people[k]} onChange={(v) => setPeople((p) => ({ ...p, [k]: v }))} placeholder={doctype === "User" ? "Choose a person" : "Choose a team"} filters={doctype === "User" ? USER_FILTERS : undefined} />
         : <p className="text-sm text-ink-1 min-h-8 flex items-center">{people[k] || "—"}</p>}
     </Field>
   );
 
   return (
     <div className="space-y-2 max-w-4xl">
-      <Panel title="People" actions={edit && peopleDirty ? <>
+      <Panel title="People" actions={editPeople && peopleDirty ? <>
         <Button size="sm" variant="ghost" onClick={() => setPeople(serverPeople)}><X />Discard</Button>
         <Button size="sm" variant="primary" disabled={savePeople.loading || !people.owner_user} onClick={async () => {
           const { owner_user, ...rest } = people;
           if (await savePeople.run({ name: a.name, ...(owner_user ? { owner_user } : {}), ...rest }, "People saved", "Could not save the people")) reload();
         }}><Save />{savePeople.loading ? "Saving…" : "Save people"}</Button></> : edit ? <HandoverButton d={d} reload={reload} /> : undefined}>
         <div className="grid grid-cols-1 tablet:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
-          {pp("owner_user", "Owner", "User", edit ? "Only the team's manager or an Excom Admin changes the owner." : undefined)}
+          {pp("owner_user", "Owner", "User", editPeople ? "Only the team's manager or an Excom Admin changes the owner. Everyone named here must be in the agent's team." : undefined)}
           {pp("backup_user", "Backup", "User", "Takes over when the owner is away.")}
           {pp("team", "Team", "Excom Team", "Its numbers and mailboxes are the ones the agent may use.")}
           {pp("escalation_user", "Escalate to", "User", "Who hears when something goes wrong and nobody answers.")}
           <Field label="Also reviews" className="tablet:col-span-2" htmlFor="reviewers" hint="Other people who may approve its messages: their login emails, separated by commas.">
-            {edit ? <Input id="reviewers" value={people.reviewers} onChange={(e) => setPeople((p) => ({ ...p, reviewers: e.target.value }))} placeholder="name@company.com, other@company.com" />
+            {editPeople ? <Input id="reviewers" value={people.reviewers} onChange={(e) => setPeople((p) => ({ ...p, reviewers: e.target.value }))} placeholder="name@company.com, other@company.com" />
               : <p className="text-sm text-ink-1 break-words">{people.reviewers || "—"}</p>}
           </Field>
         </div>
@@ -90,11 +91,11 @@ export function ChannelsTab({ d, reload }: { d: AgentDetail; reload: () => void 
           if (ok) reload();
         }}><Save />{saveLimits.loading ? "Saving…" : "Save limits"}</Button></> : undefined}>
         <div className="grid grid-cols-1 tablet:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
-          <Field label="AI budget per day" htmlFor="daily" hint="0 or empty: no daily limit of its own.">
+          <Field label="AI budget per day" htmlFor="daily" hint="Empty keeps the current limit. Only an Excom Admin can set 0 (no limit of its own).">
             {edit ? <Input id="daily" type="number" min={0} step="0.01" inputMode="decimal" value={limits.daily_ai_budget} onChange={(e) => setLimits((l) => ({ ...l, daily_ai_budget: e.target.value }))} className="tabular-nums" />
               : <p className="text-sm text-ink-1 tabular-nums">{a.daily_ai_budget ? cost(a.daily_ai_budget) : "No limit"}</p>}
           </Field>
-          <Field label="AI budget per month" htmlFor="monthly" hint="0 or empty: no monthly limit of its own.">
+          <Field label="AI budget per month" htmlFor="monthly" hint="Empty keeps the current limit. Only an Excom Admin can set 0 (no limit of its own).">
             {edit ? <Input id="monthly" type="number" min={0} step="0.01" inputMode="decimal" value={limits.monthly_ai_budget} onChange={(e) => setLimits((l) => ({ ...l, monthly_ai_budget: e.target.value }))} className="tabular-nums" />
               : <p className="text-sm text-ink-1 tabular-nums">{a.monthly_ai_budget ? cost(a.monthly_ai_budget) : "No limit"}</p>}
           </Field>

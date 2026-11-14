@@ -131,16 +131,23 @@ def _last_run(eval_set: str) -> tuple:
 	return run, score, cost
 
 
-def cost_check(candidates: list[dict]) -> list[dict]:
-	"""Score each {model, effort} on the Sales reply-intents set (it costs one model call per case
-	each, so a person starts it). Returns them cheapest first, the passing ones marked; the first
-	passing one is the recommendation."""
+def _cost_check_ready() -> str:
 	from excom.excom_ai.builder.brief import ai_ready
 	from excom.excom_ai.evals import SET
-	from excom.excom_ai.monitor import _trial
 
 	if not ai_ready() or not frappe.db.exists("AI Eval Set", SET):
 		frappe.throw(_("No model provider or no evaluation set: nothing to compare."))
+	return SET
+
+
+def cost_check(candidates: list[dict]) -> list[dict]:
+	"""Score each {model, effort} on the Sales reply-intents set (it costs one model call per case
+	each, so a person starts it). Returns them cheapest first, the passing ones marked; the first
+	passing one is the recommendation. Up to six passes over the set: it runs as a background job
+	(start_cost_check), never inside a web request."""
+	from excom.excom_ai.monitor import _trial
+
+	SET = _cost_check_ready()
 	from ai_interface.services import evals
 
 	threshold = flt(frappe.db.get_value("AI Eval Set", SET, "pass_threshold"))
@@ -157,3 +164,63 @@ def cost_check(candidates: list[dict]) -> list[dict]:
 	frappe.get_doc("AI Eval Set", SET).add_comment("Comment", _("Cost check (threshold {0}%): {1}").format(threshold, "; ".join(
 		f"{r['model'] or 'default'}/{r['effort'] or 'default'} {round(r['score'])}% {r['cost']:.4f}" for r in out)))
 	return out
+
+
+# The cost check runs in the background: the endpoint queues it and returns a job id at once, and
+# the result is kept (a week) where the endpoint reads it back. It is also written as a comment on
+# the evaluation set, as before.
+COST_CHECK_KEY = "excom_ai:cost_check:{0}"
+COST_CHECK_CURRENT = "excom_ai:cost_check:current"
+COST_CHECK_TTL = 7 * 24 * 3600
+COST_CHECK_MAX = 6  # pairs per check
+
+
+def _put(job: str, state: dict) -> dict:
+	frappe.cache.set_value(COST_CHECK_KEY.format(job), state, expires_in_sec=COST_CHECK_TTL)
+	return state
+
+
+def cost_check_status(job: str) -> dict:
+	"""{job, status: queued | running | done | failed | unknown, results (when done), error (when failed)}."""
+	return frappe.cache.get_value(COST_CHECK_KEY.format(job)) or {"job": job, "status": "unknown"}
+
+
+def start_cost_check(candidates: list[dict]) -> dict:
+	"""Queue a cost check on the long queue and return {job, status} at once. A check already queued
+	or running is returned instead of starting a second one (each spends model calls)."""
+	_cost_check_ready()  # say at once when there is nothing to compare with
+	pairs = [{"model": c.get("model") or None, "effort": c.get("effort") or None}
+		for c in (candidates or []) if isinstance(c, dict)][:COST_CHECK_MAX]
+	if not pairs:
+		frappe.throw(_("Nothing to compare: give at least one model and effort pair."))
+	current = frappe.cache.get_value(COST_CHECK_CURRENT)
+	state = cost_check_status(current) if current else {}
+	# a check whose worker died never reports: after twice the job's timeout it no longer blocks a new one
+	since = state.get("started_on") or state.get("queued_on")
+	stale = bool(since) and frappe.utils.time_diff_in_seconds(frappe.utils.now_datetime(), since) > 7200
+	if current and state.get("status") in ("queued", "running") and not stale:
+		return {"job": current, "status": cost_check_status(current)["status"], "already_running": True}
+	job = frappe.generate_hash(length=12)
+	_put(job, {"job": job, "status": "queued", "candidates": pairs, "by": frappe.session.user,
+		"queued_on": str(frappe.utils.now_datetime())})
+	frappe.cache.set_value(COST_CHECK_CURRENT, job, expires_in_sec=COST_CHECK_TTL)
+	frappe.enqueue("excom.excom_ai.learning.run_cost_check", queue="long", timeout=3600,
+		job_id=f"excom_ai_cost_check:{job}", job=job, candidates=pairs)
+	return {"job": job, "status": "queued"}
+
+
+def run_cost_check(job: str, candidates: list[dict]) -> None:
+	"""The background job: run the check and keep the outcome for cost_check_status."""
+	state = cost_check_status(job)
+	state.update(job=job, status="running", started_on=str(frappe.utils.now_datetime()))
+	_put(job, state)
+	try:
+		results = cost_check(candidates)
+		frappe.db.commit()
+	except Exception as e:
+		frappe.db.rollback()
+		frappe.log_error(title="Excom AI: cost check failed", message=frappe.get_traceback())
+		_put(job, {**state, "status": "failed", "error": f"{type(e).__name__}: {e!s}"[:500],
+			"ended_on": str(frappe.utils.now_datetime())})
+		return
+	_put(job, {**state, "status": "done", "results": results, "ended_on": str(frappe.utils.now_datetime())})

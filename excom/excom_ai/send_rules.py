@@ -89,17 +89,65 @@ def _check_opt_in(thread, marketing: bool = False) -> None:
 
 
 def whatsapp_opt_in(identities: list[str], marketing: bool = False) -> bool:
-	"""A recorded WhatsApp "Granted" (transactional or marketing), or a WhatsApp message from them.
-	Marketing needs a recorded marketing "Granted": having written to us is not consent to promotions."""
-	from excom.excom.services.consent import latest_consent
-
+	"""A recorded WhatsApp "Granted" (transactional or marketing), or a WhatsApp message from them. The
+	person's latest word wins: a "Withdrawn" recorded after their last message ends it (a message written
+	after the withdrawal counts again). Marketing needs a recorded marketing "Granted": having written to
+	us is not consent to promotions; a marketing "Withdrawn" (Stop promotions) does not end utility ones."""
 	names = [n for n in identities or [] if n]
-	purposes = ("marketing",) if marketing else ("transactional", "marketing")
-	for name in names:
-		if any(latest_consent(name, "whatsapp", purpose) == "Granted" for purpose in purposes):
-			return True
-	return bool(not marketing and names and frappe.db.exists("Excom Message", {"omni_identity": ["in", names],
-		"direction": "Inbound", "channel": "whatsapp"}))
+	if not names:
+		return False
+	purposes = ["marketing", "all"] if marketing else ["transactional", "marketing", "all"]
+	rows = frappe.get_all("Excom Consent", {"omni_identity": ["in", names], "channel": ["in", ["whatsapp", "all"]],
+		"purpose": ["in", purposes]}, ["action", "purpose", "recorded_on", "creation"],
+		order_by="recorded_on desc, creation desc", limit=50) if frappe.db.exists("DocType", "Excom Consent") else []
+	if not marketing:
+		rows = [r for r in rows if not (r.purpose == "marketing" and r.action == "Withdrawn")]
+	latest = rows[0] if rows else None
+	if latest and latest.action == "Granted":
+		return True
+	if marketing:
+		return False
+	filters = {"omni_identity": ["in", names], "direction": "Inbound", "channel": "whatsapp"}
+	if latest:
+		filters["creation"] = [">", latest.recorded_on or latest.creation]
+	return bool(frappe.db.exists("Excom Message", filters))
+
+
+def thread_opted_in(thread, marketing: bool = False) -> bool:
+	"""For packs choosing a channel at writing time: may an agent send a template on this WhatsApp
+	conversation? (Checked again when it is sent.)"""
+	if isinstance(thread, str):
+		thread = frappe.get_doc("Excom Thread", thread)
+	return whatsapp_opt_in(_identities(thread), marketing)
+
+
+def template_variables(template: str, variables, user: str | None = None):
+	"""An agent's template values as Meta takes them, whoever last edited them (a reviewer may have):
+	each on one line, whitespace collapsed, at most 200 characters, none empty, and the filled body
+	within 1024 characters. A person's own sends are untouched. Takes and returns what
+	send_template_to_thread receives (a JSON list, or a list)."""
+	if not applies(user):
+		return variables
+	import json
+
+	from excom.excom_ai.templates import VAR, clean_value, fill
+
+	try:
+		values = json.loads(variables) if isinstance(variables, str) else variables
+	except (TypeError, ValueError):
+		return variables  # send_template_to_thread refuses it in its own words
+	if not isinstance(values, list):
+		return variables
+	values = [clean_value(v) for v in values]
+	body = frappe.db.get_value("WhatsApp Templates", template, "template") or ""
+	count = len(set(VAR.findall(body)))  # header values come first, then the body's
+	body_values = values[len(values) - count:] if count and len(values) >= count else values
+	if any(not v for v in values):
+		raise AgentSendRefused(_("A value for template {0} is empty: Meta refuses it.").format(template))
+	if len(fill(body, body_values)) > 1024:
+		raise AgentSendRefused(_("Template {0} filled with these values is longer than WhatsApp allows (1024 characters).").format(
+			template))
+	return json.dumps(values) if isinstance(variables, str) else values
 
 
 def number_opted_in(number: str | None) -> bool:

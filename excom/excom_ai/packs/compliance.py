@@ -18,8 +18,9 @@ In the agent's approved playbook, in sections of kind **Compliance**, one obliga
 
     GSTR-1                    | monthly 11                          | gst.desk@example.com | 5
     GSTR-3B                   | monthly 20                          | gst.desk@example.com | 5
-    TDS payment               | monthly 7                           | accounts@example.com | 3
+    TDS payment               | yearly 01-07, 02-07, 03-07, 04-30, 05-07, 06-07, 07-07, 08-07, 09-07, 10-07, 11-07, 12-07 | accounts@example.com | 3
     TDS return                | yearly 07-31, 10-31, 01-31, 05-31   | accounts@example.com | 10
+    Advance tax, 1st (15%)    | yearly 06-15                        | accounts@example.com | 7
     PF                        | monthly 15                          | hr@example.com       | 3
     ESI                       | monthly 15                          | hr@example.com       | 3
     ROC AOC-4                 | yearly 10-30                        | cs@example.com       | 15
@@ -35,7 +36,8 @@ January, April, July and October: the month after each quarter), `yearly MM-DD[,
 `on YYYY-MM-DD` (once), `expires YYYY-MM-DD` (a document outside the register: the 60/30/7-day
 ladder), and `checks` (no date: who gets the transaction checks of that name). The owner is a user
 (its ID or email); days before defaults to 7. Lines without `|` are prose and are left alone, so the
-same section can still hold market rules (§12.6).
+same section can still hold market rules (§12.6). TDS is a yearly list because March's deposit is due
+on 30 April and every other month's on the 7th of the next.
 
 Why there: the playbook is already the agent's approved, versioned instructions, a person approves it
 before it counts, and its Compliance section kind exists. No doctype had to be added (no migrate);
@@ -56,6 +58,7 @@ from __future__ import annotations
 import calendar
 import hashlib
 import html
+import json
 import re
 from datetime import date
 
@@ -71,6 +74,7 @@ from excom.excom_ai.engine.prompts import untrusted
 DEFAULT_LEAD_DAYS = 7
 EXPIRY_THRESHOLDS = (7, 30, 60)  # smallest first: the threshold a document is inside
 EXPIRED_LOOKBACK_DAYS = 30  # an expiry field (not the register) older than this is history, not news
+EXPIRED_REGISTER_LOOKBACK_DAYS = 365  # a register entry expired longer ago than this is a stale record, not news
 RECENT_DAYS = 60  # invoices the transaction checks look at
 MAX_PER_RUN = 25  # ToDos one check raises in one run, so a first run on old data is not a flood
 DOCUMENT_HORIZON_DAYS = 90  # what the builder shows as expiring soon
@@ -85,15 +89,23 @@ EXPIRY_FIELD = re.compile(r"expir|valid_upto|valid_till|valid_until|validity_dat
 DATED = ("monthly", "quarterly", "yearly", "on")
 
 # The Indian statutory calendar, owners to be named (§8.4).
+# TDS deducted in March is deposited by 30 April; every other month's by the 7th of the next.
+TDS_PAYMENT = "yearly " + ", ".join("04-30" if m == 4 else f"{m:02d}-07" for m in range(1, 13))
 STANDARD = [
 	("GSTR-1", "monthly 11", 5),
 	("GSTR-3B", "monthly 20", 5),
-	("TDS payment", "monthly 7", 3),
+	("GSTR-9 annual return", "yearly 12-31", 15),
+	("TDS payment", TDS_PAYMENT, 3),
 	("TDS return", "yearly 07-31, 10-31, 01-31, 05-31", 10),
+	("Advance tax, 1st instalment (15%)", "yearly 06-15", 7),
+	("Advance tax, 2nd instalment (45%)", "yearly 09-15", 7),
+	("Advance tax, 3rd instalment (75%)", "yearly 12-15", 7),
+	("Advance tax, 4th instalment (100%)", "yearly 03-15", 7),
 	("PF", "monthly 15", 3),
 	("ESI", "monthly 15", 3),
 	("ROC AOC-4", "yearly 10-30", 15),
 	("ROC MGT-7", "yearly 11-29", 15),
+	("ROC MSME-1 (half-yearly)", "yearly 04-30, 10-31", 10),
 ]
 
 
@@ -150,17 +162,33 @@ def _user(value: str) -> str | None:
 	return frappe.db.get_value("User", {"email": value}, "name")
 
 
+def approved_compliance_sections(agent) -> list[str]:
+	"""The content of the Compliance sections a person approved, playbook by playbook: an Approved
+	playbook's own sections, and for one whose newer version waits in review, the last approved
+	version kept on the record (as prompts do), so the calendar does not vanish during a review."""
+	out = []
+	for link in agent.get("playbooks") or []:
+		pb = frappe.db.get_value("Excom AI Playbook", link.playbook, ["name", "status", "approved_sections"], as_dict=True)
+		if not pb:
+			continue
+		if pb.status == "Approved":
+			out += frappe.get_all("Excom AI Playbook Section", {"parent": pb.name, "parenttype": "Excom AI Playbook",
+				"kind": "Compliance"}, pluck="content", order_by="idx")
+		elif pb.status == "In Review" and pb.approved_sections:
+			try:
+				kept = json.loads(pb.approved_sections) or []
+			except ValueError:
+				kept = []
+			out += [s.get("content") for s in kept if isinstance(s, dict) and s.get("kind") == "Compliance"]
+	return out
+
+
 def calendar_of(agent) -> tuple[list[frappe._dict], list[str]]:
 	"""(obligations, lines that look like obligations but could not be read), from the Compliance
 	sections of the agent's approved playbooks: only what a person approved sets anyone's work."""
-	approved = [link.playbook for link in agent.get("playbooks") or []
-		if frappe.db.get_value("Excom AI Playbook", link.playbook, "status") == "Approved"]
-	if not approved:
-		return [], []
 	out, bad, seen = [], [], set()
-	for s in frappe.get_all("Excom AI Playbook Section", {"parent": ["in", approved], "parenttype": "Excom AI Playbook",
-			"kind": "Compliance"}, ["content"], order_by="parent, idx"):
-		for line in _lines(s.content):
+	for content in approved_compliance_sections(agent):
+		for line in _lines(content):
 			line = line.lstrip("-*• ").strip()
 			if "|" not in line or line.startswith("#"):
 				continue
@@ -335,13 +363,16 @@ def register_installed() -> bool:
 	return "docpulse" in frappe.get_installed_apps() and bool(frappe.db.table_exists(REGISTER))
 
 
-def register_documents(company: str | None, within_days: int) -> list[frappe._dict]:
-	"""Current, submitted, expiry-based documents in docpulse expiring within the window (and every
-	expired one still current: the register is curated, so an old expiry still needs a person)."""
+def register_documents(company: str | None, within_days: int, expired_within: int | None = None) -> list[frappe._dict]:
+	"""Current, submitted, expiry-based documents in docpulse expiring within the window, and the
+	expired ones still current (the register is curated, so an old expiry still needs a person).
+	expired_within: only those expired at most this many days ago (None: all of them)."""
 	if not register_installed():
 		return []
-	filters = {"docstatus": 1, "lifecycle_state": "Current", "is_expiry_based": 1,
-		"expiry_date": ["<=", add_days(_today(), within_days)],
+	today = _today()
+	window = ["<=", add_days(today, within_days)] if expired_within is None else \
+		["between", [add_days(today, -expired_within), add_days(today, within_days)]]
+	filters = {"docstatus": 1, "lifecycle_state": "Current", "is_expiry_based": 1, "expiry_date": window,
 		"status": ["not in", ("Renewed", "Revoked", "Cancelled")]}
 	if company:
 		filters["company"] = company
@@ -364,11 +395,12 @@ def expiry_fields() -> list[tuple[str, str]]:
 
 
 def documents(agent, within_days: int = EXPIRY_THRESHOLDS[-1]) -> list[frappe._dict]:
-	"""Everything with an expiry the agent watches: the register, `expires` lines in the calendar,
-	and expiry-like date fields. (Files have no expiry of their own; Item's has_expiry_date is batch
-	shelf life, not a certificate, so neither is read.)"""
+	"""Everything with an expiry the agent watches, earliest expiry first: the register (expired up
+	to a year ago), `expires` lines in the calendar, and expiry-like date fields (expired up to 30
+	days ago). (Files have no expiry of their own; Item's has_expiry_date is batch shelf life, not a
+	certificate, so neither is read.)"""
 	today = _today()
-	docs = register_documents(agent.company, within_days)
+	docs = register_documents(agent.company, within_days, EXPIRED_REGISTER_LOOKBACK_DAYS)
 	for ob in obligations(agent):
 		if ob.rule["kind"] == "expires" and (ob.rule["date"] - today).days <= within_days:
 			docs.append(frappe._dict(ref=_home(agent), title=ob.name, expiry=ob.rule["date"], owner=ob.owner, about=""))
@@ -377,11 +409,11 @@ def documents(agent, within_days: int = EXPIRY_THRESHOLDS[-1]) -> list[frappe._d
 		filters = {field: ["between", window]}
 		if dt == "Company" and agent.company:
 			filters["name"] = agent.company
-		for r in frappe.get_all(dt, filters, ["name", field], limit=MAX_PER_RUN):
-			label = frappe.get_meta(dt).get_label(field)
+		label = frappe.get_meta(dt).get_label(field)
+		for r in frappe.get_all(dt, filters, ["name", field], order_by=f"`{field}` asc"):
 			docs.append(frappe._dict(ref=(dt, r.name), title=f"{label} ({dt} {r.name})", expiry=getdate(r[field]),
 				owner=None, about=""))
-	return docs
+	return sorted(docs, key=lambda d: d.expiry)
 
 
 def stage(expiry: date, today: date) -> int | str | None:
@@ -394,11 +426,19 @@ def stage(expiry: date, today: date) -> int | str | None:
 
 @registry.task_kind("compliance_documents", priority=registry.PRIORITY["check"], effort="classify")
 def compliance_documents(task, agent) -> str:
-	"""A ToDo for the document's owner at 60, 30 and 7 days before expiry; an alert once expired."""
-	today, made, expired = _today(), 0, []
-	for d in documents(agent)[: MAX_PER_RUN * 2]:
+	"""A ToDo for the document's owner at 60, 30 and 7 days before expiry; an alert once expired.
+	At most MAX_PER_RUN a run, earliest expiry first; what was raised before is skipped before
+	counting, and what is left for the next run is said in the outcome."""
+	today, made, expired, later = _today(), 0, [], 0
+	for d in documents(agent):
 		rung = stage(d.expiry, today)
 		if rung is None:
+			continue
+		key = _key("doc", d.ref[0], d.ref[1], d.title, d.expiry, rung)
+		if _already(agent, key):
+			continue
+		if made >= MAX_PER_RUN:
+			later += 1
 			continue
 		owner = _active(d.owner) or in_charge(agent)
 		about = f" ({d.about})" if d.about else ""
@@ -409,8 +449,7 @@ def compliance_documents(task, agent) -> str:
 			text = _("{0}{1} expires on {2}, in {3} days. Start the renewal.").format(d.title, about,
 				frappe.format(d.expiry, "Date"), (d.expiry - today).days)
 		priority = {60: "Low", 30: "Medium"}.get(rung, "High")
-		if not _todo(task, agent, _key("doc", d.ref[0], d.ref[1], d.title, d.expiry, rung), owner, text, d.ref,
-				due=max(d.expiry, today), priority=priority):
+		if not _todo(task, agent, key, owner, text, d.ref, due=max(d.expiry, today), priority=priority):
 			continue
 		made += 1
 		if rung == "expired":
@@ -419,7 +458,8 @@ def compliance_documents(task, agent) -> str:
 				_("{0} (AI): {1} has expired").format(agent.agent_name, d.title),
 				message=frappe.utils.escape_html(text), doctype=d.ref[0], name=d.ref[1])
 	out = _("{0} expiry reminders raised").format(made)
-	return out + (_("; expired: {0}").format(", ".join(expired)) if expired else "")
+	out += _("; expired: {0}").format(", ".join(expired)) if expired else ""
+	return out + (_("; {0} more on the next run").format(later) if later else "")
 
 
 # ── 3. transaction checks ────────────────────────────────────────────────────
