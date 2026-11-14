@@ -1,7 +1,7 @@
 """Excom AI Phase 1I: importing Harvey (HLD-007 Appendix A). Runs the real import from Harvey's
 database on this machine into the test site, checks the counts match on both sides, runs it again
 to show nothing doubles, then removes it. Heavy (hundreds of companies and emails): it runs when
-EXCOM_HARVEY_IMPORT_TEST=1, or by name."""
+EXCOM_HARVEY_IMPORT_TEST=1, or by name. EXCOM_HARVEY_DIR points it at a copy of Harvey's folder instead of ~/harvey."""
 
 import os
 import sqlite3
@@ -15,7 +15,8 @@ from excom.excom_ai import harvey_import
 OWNER = "qa.hvy.owner@example.com"
 BACKUP = "qa.hvy.backup@example.com"
 TEAM = "QA Harvey Desk"
-DB = os.path.join(harvey_import.HARVEY, "data", "harvey.db")
+ROOT = os.path.expanduser(os.environ.get("EXCOM_HARVEY_DIR") or harvey_import.HARVEY)
+DB = os.path.join(ROOT, "data", "harvey.db")
 
 
 class TestHarveyImport(FrappeTestCase):
@@ -23,7 +24,7 @@ class TestHarveyImport(FrappeTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		if not os.path.exists(DB) or not os.environ.get("EXCOM_HARVEY_IMPORT_TEST"):
-			raise __import__("unittest").SkipTest("set EXCOM_HARVEY_IMPORT_TEST=1 (and have ~/harvey) to run the import")
+			raise __import__("unittest").SkipTest("set EXCOM_HARVEY_IMPORT_TEST=1 (and have ~/harvey or EXCOM_HARVEY_DIR) to run the import")
 		frappe.flags.mute_emails = True
 		purge_users(OWNER, BACKUP)
 		for email in (OWNER, BACKUP):
@@ -54,7 +55,7 @@ class TestHarveyImport(FrappeTestCase):
 	def test_import_counts_match_and_a_rerun_adds_nothing(self):
 		conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
 		promoted = conn.execute("SELECT COUNT(*) FROM prospects WHERE status IN ('contacted', 'replied', 'lost') AND IFNULL(email, '') != ''").fetchone()[0]
-		r = harvey_import.run(OWNER, BACKUP, TEAM, agent_name="QA Harish")
+		r = harvey_import.run(OWNER, BACKUP, TEAM, agent_name="QA Harish", harvey_dir=ROOT)
 		h, e = r["harvey"], r["excom"]
 		self.assertEqual(e["sequences"], h["campaigns"])
 		self.assertEqual(e["leads"], promoted, "everyone Harvey contacted is a Lead")
@@ -69,7 +70,7 @@ class TestHarveyImport(FrappeTestCase):
 		self.assertTrue({"Facts", "Banned claims", "Certifications"} <= {s.kind for s in pb.sections})
 		self.assertEqual(frappe.db.count("Excom AI Proposal", {"agent": agent.name, "status": "Approved"}),
 			h["outbox_by_status"].get("approved", 0), "approved emails wait for the agent to be Live")
-		again = harvey_import.run(OWNER, BACKUP, TEAM, agent_name="QA Harish")["excom"]
+		again = harvey_import.run(OWNER, BACKUP, TEAM, agent_name="QA Harish", harvey_dir=ROOT)["excom"]
 		self.assertEqual((again["proposals"], again["leads"], again["sequences"]), (e["proposals"], e["leads"], e["sequences"]))
 		self.assertEqual(frappe.db.count("Excom AI Proposal", {"agent": agent.name}), e["proposals"], "nothing doubled")
 		self.assertEqual(frappe.db.get_value("Excom AI Settings", None, "enabled") or 0, 0, "the import switches nothing on")

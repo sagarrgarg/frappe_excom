@@ -45,19 +45,19 @@ STAGE = {"initial_outreach": "Initial outreach", "engaged": "Engaged", "qualifyi
 	"negotiating": "Negotiating", "closing": "Closing", "closed_lost": "Closed lost", "closed_won": "Closed won"}
 
 
-def _db(path: str | None = None):
-	path = path or os.path.join(HARVEY, "data", "harvey.db")
+def _db(path: str | None = None, root: str | None = None):
+	path = path or os.path.join(root or HARVEY, "data", "harvey.db")
 	conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
 	conn.row_factory = sqlite3.Row
 	return conn
 
 
-def _config() -> dict:
+def _config(root: str | None = None) -> dict:
 	import yaml
 
 	out = {}
 	for name in ("harvey.yaml", "harvey.local.yaml"):
-		p = os.path.join(HARVEY, name)
+		p = os.path.join(root or HARVEY, name)
 		if os.path.exists(p):
 			with open(p) as f:
 				_merge(out, yaml.safe_load(f) or {})
@@ -91,16 +91,18 @@ def _country(location: str | None) -> str | None:
 
 
 def run(owner: str, backup: str | None = None, team: str | None = None, mailbox: str | None = None,
-		db_path: str | None = None, agent_name: str = "Harish") -> dict:
-	"""Import everything; returns counts on both sides so a person can see they match."""
-	conn = _db(db_path)
-	cfg = _config()
+		db_path: str | None = None, agent_name: str = "Harish", harvey_dir: str | None = None) -> dict:
+	"""Import everything; returns counts on both sides so a person can see they match. harvey_dir is a copy
+	of Harvey's folder (harvey.yaml, harvey.local.yaml, skills/, data/harvey.db); ~/harvey when not given."""
+	root = os.path.expanduser(harvey_dir) if harvey_dir else None
+	conn = _db(db_path, root)
+	cfg = _config(root)
 	report = {"harvey": {}, "excom": {}}
 	for t in ("companies", "prospects", "campaigns", "outbox", "conversations", "email_patterns"):
 		report["harvey"][t] = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
 	report["harvey"]["outbox_by_status"] = dict(conn.execute("SELECT status, COUNT(*) FROM outbox GROUP BY status").fetchall())
 
-	agent = _agent(cfg, owner, backup, team, mailbox, agent_name)
+	agent = _agent(cfg, owner, backup, team, mailbox, agent_name, root)
 	stops = {r["key"].split(":", 1)[1] for r in conn.execute("SELECT key FROM settings WHERE key LIKE 'company_stop:%'")}
 	companies = _companies(conn, agent, stops)
 	people, leads = _people(conn, agent, companies)
@@ -121,7 +123,8 @@ def run(owner: str, backup: str | None = None, team: str | None = None, mailbox:
 	return report
 
 
-def _agent(cfg: dict, owner: str, backup: str | None, team: str | None, mailbox: str | None, name: str):
+def _agent(cfg: dict, owner: str, backup: str | None, team: str | None, mailbox: str | None, name: str,
+		root: str | None = None):
 	existing = frappe.db.get_value("Excom AI Agent", {"agent_name": name, "status": ["!=", "Retired"]})
 	if existing:
 		return frappe.get_doc("Excom AI Agent", existing)
@@ -138,17 +141,17 @@ def _agent(cfg: dict, owner: str, backup: str | None, team: str | None, mailbox:
 		"channels": [{"channel_account": mailbox, "purpose": "Outreach and replies"}] if mailbox else [],
 	})
 	doc.insert(ignore_permissions=True)
-	pb = _playbook(cfg, name)
+	pb = _playbook(cfg, name, root)
 	doc.reload()
 	doc.append("playbooks", {"playbook": pb})
 	doc.save(ignore_permissions=True)
 	return frappe.get_doc("Excom AI Agent", doc.name)
 
 
-def _playbook(cfg: dict, name: str) -> str:
+def _playbook(cfg: dict, name: str, root: str | None = None) -> str:
 	"""Harish's first playbook: his two generated skill files and the writer's company rules."""
 	def read(f):
-		p = os.path.join(HARVEY, "skills", f)
+		p = os.path.join(root or HARVEY, "skills", f)
 		return open(p).read() if os.path.exists(p) else ""
 
 	sections = [
